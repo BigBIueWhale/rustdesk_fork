@@ -59,8 +59,7 @@ finish does not by itself make it the next task.
   must have a demonstrated connection to the selected release requirement or an explicit current
   user request. Keep required status/evidence maintenance proportionate. Do not substitute these
   activities for available work that would resolve a more consequential release blocker.
-- Respect explicit user pivots and parked items, applying the authorization clarification below.
-  A generic continue or goal resume does not reopen independently parked topics.
+- Follow the user's current task direction, applying the clarification below.
   Select the next highest-value permitted release task; if no such task or feasible prerequisite
   remains, report the concrete constraint and what would unlock progress instead of filling time
   with unrelated work. Follow the goal lifecycle rules when reporting a blocked objective.
@@ -76,15 +75,21 @@ finish does not by itself make it the next task.
   scope, relabel an unresolved requirement, or weaken a check to manufacture release readiness.
   Keep optional future improvements separate from the binding release requirements.
 
-### Authorization and task resumption (user clarification, 2026-10-31)
+### Authorization and task selection (user clarification, 2026-11-05)
+
+The user clarified that earlier requests to pivot or switch tasks were responses to OpenAI model
+capability restrictions, not standing prohibitions on returning to those topics. Delete the
+assistant-created persistent topic restrictions. Unfinished work remains OPEN and eligible for
+selection under the release priorities; it does not require a separate task-specific resumption.
+Do not turn a request to switch tasks into a continuing authorization barrier. Follow applicable
+model capability restrictions for the particular action and continue useful permitted work.
 
 User authorization persists across turns, compactions, and goal resumptions. A specific instruction
 to resume a task also authorizes the necessary research, implementation decisions, builds, focused
 tests, fixture/harness repairs, and cleanup needed to complete and verify that task on already-authorized
-hosts. It supersedes older pivots within that scope, including an older park on a build/test lane
-needed by the resumed task. Do not require the user to separately reopen each prerequisite.
+hosts. Do not require the user to separately authorize each prerequisite.
 For the explicitly resumed file-receive fix, TUF and the necessary full-application builds and
-focused tests are already authorized. Independently parked, unrelated topics remain parked.
+focused tests are already authorized.
 
 A direct answer to an assistant's question, including a selected reply such as "Resume this
 file-receive fix", is a user instruction. It does not need to be repeated in a standalone message

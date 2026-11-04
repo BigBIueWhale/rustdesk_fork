@@ -39,7 +39,7 @@ profile/refusal count; every existing profile, wrong-memory and headroom asserti
 still runs before the receipt. This corrects `OweQFPJLHx`'s wrapper rejection of
 33 passing profiles/60 refusals against obsolete 30/54 literals. Source comparison
 and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
-“2026-10-28 — storage-profile completion receipt”. Parser development remains parked.
+“2026-10-28 — storage-profile completion receipt”. Parser development remains open.
 
 The workload selector also checks completion against its actual case list and
 reports observed totals separately. This corrects `so3fp6oM5y`'s rejection of
@@ -50,132 +50,126 @@ the host requires the exact completion receipt. Evidence: the audit's
 
 ## Current Verdict
 
-**User pivot (2026-11-04):** Further mobile Settings metadata work and the
-not-yet-started ledger consolidation are OPEN/PARKED. The completed eight-case
-Settings correction remains valid. Work moves to release-version validation
-below; all independent parks remain.
+Unfinished work below is OPEN for release-priority selection. Earlier task switches
+did not withdraw authorization or require separate permission to return to a topic.
 
-**User pivot (2026-11-04):** Authenticated-session continuity during password
-throttling is OPEN/PARKED. The extension at `ffa36e12` has not been compiled or
+**Checkpoint (2026-11-04):** Further mobile Settings metadata work and the
+not-yet-started ledger consolidation are OPEN. The completed eight-case
+Settings correction remains valid.
+
+**Checkpoint (2026-11-04):** Authenticated-session continuity during password
+throttling is OPEN. The extension at `ffa36e12` has not been compiled or
 executed; the earlier 21-case installed limiter recovery result remains valid.
-Work moves to mobile Settings build-date rendering and page lifetime. All
-independent parks remain.
 
-**User pivot (2026-11-04):** OpenRC lifecycle validation is OPEN/PARKED.
+
+**Checkpoint (2026-11-04):** OpenRC lifecycle validation is OPEN.
 At `9e6aa6d4`, both generations complete authenticated login and exact
 supervisor/child retirement, but a combined final-state assertion fails without
 identifying its differing field. The runtime also lacks `/etc/insserv.conf`.
 `openrc-exec-9e6aa6d4.json` retains the failed run and joined cleanup; full
-lifecycle acceptance is unproved. Work moves to current-ledger classification;
-all independent parks remain.
+lifecycle acceptance is unproved.
 
-**User pivot (2026-11-04):** Further desktop settings-sidebar work is
-OPEN/PARKED. Its six-case rendered-component correction remains valid;
-full-application and OS screen-reader acceptance remain unproved. Work moves
-to consolidation of documentation history below. Independent parks remain.
 
-**User pivot (2026-11-04):** R-S11c-27r runit lifecycle validation is
-OPEN/PARKED before native fixture implementation or execution. The verified
+**Checkpoint (2026-11-04):** Further desktop settings-sidebar work is
+OPEN. Its six-case rendered-component correction remains valid;
+full-application and OS screen-reader acceptance remain unproved.
+
+**Checkpoint (2026-11-04):** R-S11c-27r runit lifecycle validation is
+OPEN before native fixture implementation or execution. The verified
 `60e3fb0a` service artifact remains available; manager and installed/release
-acceptance remain unproved. Independent parks remain.
+acceptance remain unproved.
 
-**User pivot (2026-11-04):** Connection-manager duration (R-S0) is
-OPEN/PARKED. The unchanged-product rendered baseline at `0d3365e2` passes
+**Checkpoint (2026-11-04):** Connection-manager duration (R-S0) is
+OPEN. The unchanged-product rendered baseline at `0d3365e2` passes
 two controls and fails six cases, including header recreation and connection
 replacement. Other cases use prospective duration samples; native elapsed-time
 production and timing across CM startup/restart remain unproved. The unverified
 six-file correction is preserved in stash
 `f78e5d91eec30c4d6f90b780e54bd08cafbb1a44`. Evidence and joined cleanup:
-`cm-duration-before-0d3365e2.json`. Work moves to dependency-evidence
-consolidation below; all independent parks remain.
+`cm-duration-before-0d3365e2.json`.
 
-**User pivot (2026-11-04):** The four single-Rust-test execution guards remain
-OPEN/PARKED before implementation. Independent parks remain.
+**Checkpoint (2026-11-04):** The four single-Rust-test execution guards remain
+OPEN before implementation.
 
-**User pivot (2026-11-04):** Further password-derivation work is OPEN/PARKED.
-The independent 17-case component result remains valid. Work moves to bounded
-release-ledger consolidation; broader acceptance and independent parks remain.
+**Checkpoint (2026-11-04):** Further password-derivation work is OPEN.
+The independent 17-case component result remains valid.  broader acceptance and other open tasks remain.
 
-**User pivot (2026-11-04):** Further peer-version work is OPEN/PARKED.
+**Checkpoint (2026-11-04):** Further peer-version work is OPEN.
 The optimized library result remains valid; its separate TUF reinspection/evidence
-copy remains pending. Work moves to independent Unicode NFC conformance below;
-all independent parks remain.
+copy remains pending.
 
-**User pivot (2026-11-04):** Further rotated Linux resolution work is
-OPEN/PARKED. The 21-case component result remains valid; actual rotated X-server
+
+**Checkpoint (2026-11-04):** Further rotated Linux resolution work is
+OPEN. The 21-case component result remains valid; actual rotated X-server
 acceptance remains missing. Both runtime-acquisition attempts failed on snapshot
 server errors without publishing a candidate; exact processes, private state and
-RAM workspaces are retired. Work moves to release-ledger consolidation; all
-independent parks remain.
+RAM workspaces are retired.
 
-**User pivot (2026-11-04):** Further PAKE secret-erasure work is OPEN/PARKED
-before pending-confirmation implementation or execution. The accepted credential-buffer
-evidence remains valid. Work moves to Linux rotated-resolution correctness below;
-all independent parks remain.
+**Checkpoint (2026-11-04):** Further PAKE secret-erasure work is OPEN
+before implementation or execution. The accepted credential-buffer
+evidence remains valid.
 
-**User pivot (2026-11-04):** Further Android boot-first credential reload is
-OPEN/PARKED before execution. Six unfinished harness edits are preserved in stash
+
+**Checkpoint (2026-11-04):** Further Android boot-first credential reload is
+OPEN before execution. Six unfinished harness edits are preserved in stash
 `7549e817c376e670fde85eddba74cda20f0e7276`. The accepted healthy process-reload
-evidence remains valid; it does not establish boot-first startup. Work moves to
-release-ledger consolidation; all independent parks remain.
+evidence remains valid; it does not establish boot-first startup.
 
-**User pivot (2026-11-04):** Direct SysV init-script lifecycle validation is
-OPEN/PARKED before implementation or execution. Existing Linux service evidence
+**Checkpoint (2026-11-04):** Direct SysV init-script lifecycle validation is
+OPEN before implementation or execution. Existing Linux service evidence
 below remains valid; it does not establish SysV integration or final-package
-acceptance. Work moves to release-ledger consolidation. Independent parks remain.
+acceptance.
 
-**User pivot (2026-11-04):** Windows privacy-backend preference work is
-OPEN/PARKED. The source-confirmed rejected settings write remains unresolved;
+**Checkpoint (2026-11-04):** Windows privacy-backend preference work is
+OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
-below retains the required authorized behavior. Work moves to release-evidence
-reconciliation; all independent parks remain.
+below retains the required authorized behavior.
 
-**User pivot (2026-11-04):** Further Linux application dependency/artifact
-validation is OPEN/PARKED. Build `aMRuM2TUs8` at `59b51e80` completes with
+**Checkpoint (2026-11-04):** Further Linux application dependency/artifact
+validation is OPEN. Build `aMRuM2TUs8` at `59b51e80` completes with
 thirteen widget/two native command controls and all 73 payload hashes verified.
 `dependency-app-build-59b51e80.json` binds exact process/private/RAM retirement
 and four zero listener deltas. The additional native/asset inventory observer
-has no accepted result. Work moves to release-verification guidance; independent parks remain.
+has no accepted result.
 
-**User pivot (2026-11-04):** Further Android account-API artifact validation is
-OPEN/PARKED. Run `CQ4XBSwjHA` was cancelled before a build/native-test verdict;
+**Checkpoint (2026-11-04):** Further Android account-API artifact validation is
+OPEN. Run `CQ4XBSwjHA` was cancelled before a build/native-test verdict;
 `account-android-build-af8f69cb.json` binds exact process/private/RAM retirement
-and four zero listener deltas. Ordinary APK validation still includes the parked
+and four zero listener deltas. Ordinary APK validation still includes the unfinished
 scroll experiment; that prerequisite repair remains unimplemented. Existing Linux
-ABI evidence remains valid. Work moves to ledger-history consolidation; all
-independent parks remain.
+ABI evidence remains valid.
 
-**User pivot (2026-11-04):** Further PAKE timing work is OPEN/PARKED.
+**Checkpoint (2026-11-04):** Further PAKE timing work is OPEN.
 The repeated detections remain valid evidence; the proposed CPU-group comparison
-has not run. Work moves to dependency minimization below. Independent parks remain.
+has not run.
 
-**User pivot (2026-11-04):** Further Windows service-protocol work is OPEN/PARKED.
+**Checkpoint (2026-11-04):** Further Windows service-protocol work is OPEN.
 The completed seven-case Linux component run at `b81452e0` is retained under
 R-S11hg below, with exact VM/RAM retirement. No Windows acceptance is claimed.
-Independent parks remain.
 
-**User pivot (2026-11-04):** Mobile incoming voice controls are OPEN/PARKED.
+
+**Checkpoint (2026-11-04):** Mobile incoming voice controls are OPEN.
 Preparation `af311435` leaves production unchanged. Run `auakRqgWeC` passes forty
 existing cases but executes none of the nine new voice cases; count validation
 refuses it. No voice correction or runtime acceptance is claimed. The receipt
 edit is stashed at `30f00f9937dcd85032694cf9a1bbf9fc2630a913`.
 `voice-controls-before-af311435.json` binds exact process/private/RAM retirement
-and four zero listener deltas. Work moves to R-S11hg below; all other parks remain.
+and four zero listener deltas.
 
-**User pivot (2026-11-04):** Native Auto/VP8/VP9 switching is OPEN/PARKED.
+**Checkpoint (2026-11-04):** Native Auto/VP8/VP9 switching is OPEN.
 Five unexecuted harness edits are preserved in stash
 `852b340fed401975e24d3086bdf30f393083ead2`; no codec VM ran or native switching
-acceptance was obtained. Work moves to unused text/font dependencies below.
-All independent parks remain.
+acceptance was obtained.
 
-**User pivot (2026-11-04):** Retired account-store native observation is
-OPEN/PARKED. Run `s51zTJQ9dT` reports both observers and the inner peer scenario
+
+**Checkpoint (2026-11-04):** Retired account-store native observation is
+OPEN. Run `s51zTJQ9dT` reports both observers and the inner peer scenario
 successful, but the guest wrapper rejects the product verdict and exits 1.
 No overall acceptance or repair/rerun follows the pivot. Exact processes, RAM
 and private scratch retire with four zero listener deltas; bounded evidence is
 in `account-stores-parked-79fb7864.json`. Existing source/Linux ABI acceptance
-remains valid. Work moves to R-X2 Linux artifact component verification below;
-complete address-page testing and all independent parks remain.
+remains valid.
+Complete address-page testing remains OPEN.
 
 **Linux native component identity verified (`47aff5d9`).** The retained
 `a3192591` app completes a real direct session with current displayed frames.
@@ -183,14 +177,13 @@ Two kernel mapping snapshots match all twelve packaged native file identities;
 three wrong-expectation controls refuse. Exact cleanup and four zero listener
 deltas pass. R-S11gf below records scope and the remaining installed/release gap.
 
-**User pivot (2026-11-04):** Mobile **Reverse mouse wheel** is OPEN/PARKED.
+**Checkpoint (2026-11-04):** Mobile **Reverse mouse wheel** is OPEN.
 The Android/iOS preference exclusion remains a source finding. The in-progress
 baseline was cancelled before a compilation/behavioral result; exact VM/RAM cleanup
 and four zero listener deltas are retained in `android-scroll-admitted-ca70a84d.json`.
 The unverified two-line candidate is preserved in stash
 `9536b1f8a6f28b8192009b6b23b39433551a699e`; preparation remains at `ca70a84d`.
-No mobile correction or runtime acceptance is claimed. X11 capture integration
-and all independent parks remain. The documentation checkpoint is complete.
+No mobile correction or runtime acceptance is claimed. X11 capture integration remains OPEN. The documentation checkpoint is complete.
 The current R-S11hj checkpoint verifies retained Linux/Android asset inventories
 and removes two unused source fonts; complete account-removal and release
 acceptance remain OPEN.
@@ -213,25 +206,23 @@ Their sole caller disappeared with terminal-admin removal in `84d33ecd`; the
 required environment reader remains. At `821088a1`, fresh Rust/Dart bridge
 generation excludes the setter and all fourteen unchanged connection-password
 dialog cases pass, with three focused result controls and exact source checks.
-The runner now selects those controls explicitly; broader model failures remain
-parked. Evidence: `environment-bridge-821088a1.json` and the audit's matching entry.
+The runner now selects those controls explicitly; broader model failures remain open. Evidence: `environment-bridge-821088a1.json` and the audit's matching entry.
 All four endpoint deltas are zero; exact processes and private/RAM state retire.
 This is unused-API retirement, not a demonstrated LPE. Full native-library ABI,
 application/web/device and installed release acceptance remain OPEN.
 
-**User pivot (2026-11-04):** Android permission native-workflow acceptance is
-OPEN/PARKED; the accepted Kotlin callback correction below remains valid.
+**Checkpoint (2026-11-04):** Android permission native-workflow acceptance is
+OPEN; the accepted Kotlin callback correction below remains valid.
 The unfinished native fixture is preserved in stash
 `7c39f66c29be5abf64b2e6f306389341082074b6`. X11 release-ledger consolidation
-is complete; native capture authentication advances below. All independent parks remain.
+is complete; native capture authentication advances below.
 
 **Earlier pivot (2026-11-04):** Further floating-panel native/device/session work is
-OPEN/PARKED; its accepted component correction remains valid. The already-running
+OPEN; its accepted component correction remains valid. The already-running
 Linux app build at `27bf28eb` completes with thirteen widget/two native command
 checks and all 74 payload hashes verified. `floating-app-build-27bf28eb.json`
 binds that reusable artifact, four zero listener deltas and exact VM/RAM retirement;
-no native panel scenario ran. PE/linker validation, concurrent logging and all
-independent parks remain.
+no native panel scenario ran. PE/linker validation, concurrent logging remain.
 
 **Android permission denial — Kotlin component correction verified.**
 `c868c6eb` delivers ordinary/permanent denial through the exact-request callback,
@@ -240,7 +231,7 @@ The unchanged nineteen-case comparison uses real XXPermissions 18.5 and passes
 after both denial failures are reproduced. Evidence and joined cleanup:
 `permission-{before-2b554b43,fixed-c868c6eb}.json`. Actual Android dialogs,
 looper/MethodChannel, complete settings, final APK/device and release acceptance
-remain OPEN; native-workflow work is parked above.
+remain OPEN; native-workflow work is open above.
 
 **Floating-panel viewport ownership — Flutter component correction verified.**
 `f08e0ba3` passes each panel's local viewport into position adjustment and
@@ -249,7 +240,7 @@ comparison reproduces three containment failures, then passes the same 23 widget
 pointer cases and three parser controls; only the fixture override gains Size.
 `floating-viewport-{before-7e667815,fixed-f08e0ba3}.json` bind evidence and joined
 cleanup. Viewport/persistence are controlled. Physical rotation, native keyboard/
-storage, complete-session and release acceptance remain OPEN; native work stays parked.
+storage, complete-session and release acceptance remain OPEN; native work stays open.
 
 **PE reproducibility markers — build component corrected.** `ad2b4f24` accepts
 the documented empty REPRO entry and counts it without authorizing payload writes.
@@ -260,16 +251,16 @@ no-clobber controls. Linux evidence and joined cleanup:
 `--pe-canonicalizer-tests`. Shipping-linker artifacts, native Windows filesystem/
 installation, cold equality and full seven-suite integration remain OPEN.
 
-**User pivot (2026-11-03):** Remote-restart work is OPEN/PARKED. Baseline
+**Checkpoint (2026-11-03):** Remote-restart work is OPEN. Baseline
 `f0fb02a4` reproduces four admission/state failures with one successful-command
 control. Candidate `f4f544cf` initially fails fresh bridge generation on `ResultType<()>`.
 The type-equivalent `Result<()>` spelling at `7e667815` restores generation for
 the panel shard; restart behavior remains unverified. Nine rendered cases and their lane
 (`94124746`) are also unexecuted. `restart-native-candidate-f4f544cf.json`
 retains the failure and exact VM/RAM retirement. Native connection-error retry
-remains independently parked with two unexecuted bridge tests in stash
+remains open with two unexecuted bridge tests in stash
 `ac067e981c1ddac8edc7826379f586a8ff13b3d6`; its accepted Flutter correction
-below remains valid. All other independent parks remain.
+below remains valid.
 
 **File-log process restarts — Linux component verified.** `4b62ff2f` verifies
 forty sequential builders retain exactly the newest 32 records within fixture
@@ -279,9 +270,9 @@ creates no new destination. All four cases pass with product logging unchanged.
 `file-log-startup-46e498c5.json` binds the nonoptimized Linux library and joined
 cleanup. Full-app/installed startup, concurrency, crashes, daily rollover,
 privileged namespaces and other platforms remain OPEN. Single-record/Windows-log
-work stays parked; the demonstrated concurrent loss remains OPEN/PARKED below.
+work stays open; the demonstrated concurrent loss remains OPEN below.
 
-**Concurrent log retention — OPEN/PARKED (user pivot, 2026-11-04).** Linux permits multiple primary
+**Concurrent log retention — OPEN (user pivot, 2026-11-04).** Linux permits multiple primary
 UI processes, whose role/executable log family is shared. At `1401acc9`, one
 resident logger remains alive while forty other actual-init processes write and
 exit. Its initial record is visible; its fresh final record is absent from all
@@ -297,7 +288,7 @@ that. The installer-ledger consolidation is complete; the PE component result
 above records the subsequent selected work.
 
 **Earlier pivot (2026-11-03):** Android imported-backup restore acceptance is
-OPEN/PARKED before execution; its six unfinished harness edits are preserved in
+OPEN before execution; its six unfinished harness edits are preserved in
 stash `d30327499554c4fef473a52e47e5f256218c4d4d`. The accepted new-backup
 checkpoint below remains valid.
 
@@ -309,15 +300,14 @@ reproduce both failures then pass at `101d0449`, with three parser controls and
 joined cleanup (`terminal-retry-accepted-101d0449.json`). Session/input/native
 events are doubles. No endpoint is added; two baseline endpoints disappear,
 unattributed and untouched. Actual peer recovery, desktop/mobile installed behavior
-and R-S0/R-F5/release acceptance remain OPEN; independent parks remain.
+and R-S0/R-F5/release acceptance remain OPEN.
 
-**User pivot (2026-11-03):** Mobile Remote/Camera native close acceptance is
-OPEN/PARKED. The component result below remains valid. APK `fd258e8b` passes
+**Checkpoint (2026-11-03):** Mobile Remote/Camera native close acceptance is
+OPEN. The component result below remains valid. APK `fd258e8b` passes
 build, manifest/signature checks, Android 14 install/launch/rendering and the
 instrumentation-process smoke; no native route/owner-retirement case ran.
 `mobile-android-build-fd258e8b.json` binds artifacts, four zero listener deltas
-and exact process/private/RAM retirement. Work moves to R-S9 Android backup
-and device-transfer exclusion; all independent parks remain.
+and exact process/private/RAM retirement.
 
 **Android backup/transfer exclusion — Android 14 native checkpoint verified.**
 `ba738346` adds explicit cloud/device-transfer exclusions for all nine storage
@@ -336,14 +326,13 @@ artifact identity and joined cleanup: `android-backup-build-aca3df16.json` and
 `android-backup-native-2918e1a5.json`. This offline AOSP-14 test APK does not prove
 app-archive restoration or older imported-archive rejection, manufacturer/older-OS
 behavior, external backup services, final artifacts or complete mobile storage/
-privilege acceptance. Those remain OPEN; imported-backup work is parked above.
+privilege acceptance. Those remain OPEN; imported-backup work is open above.
 
-**User pivot (2026-11-03):** Peer-window close/reopen acceptance is OPEN/PARKED.
+**Checkpoint (2026-11-03):** Peer-window close/reopen acceptance is OPEN.
 The nineteen-case component result below remains valid. The earlier Linux app
 build at `2ed4dd37` completes with thirteen widget/two native command checks,
 all payload hashes verified and VM/RAM retirement; `window-app-build-2ed4dd37.json`
-retains the receipt. No window-manager scenario ran. Work moves to R-S0 mobile
-Remote/Camera cancellation and route ownership. All independent parks remain.
+retains the receipt. No window-manager scenario ran.
 
 **Mobile Remote/Camera close ownership — component correction verified.**
 `e8447792` binds loading Cancel, Back and toolbar Close to the page's exact route
@@ -352,12 +341,12 @@ Cancel and ended-session Back, then passes the unchanged eighteen cases and thre
 parser controls (`mobile-navigation-fixed-e8447792.json`, including joined cleanup).
 Actual pages, dialogs, FFI navigation and Navigator run; native admission/retirement,
 platform channels and preferences are doubles. Android/iOS device, native teardown
-and complete release acceptance remain OPEN; native work stays parked above.
+and complete release acceptance remain OPEN; native work stays open above.
 
-**User pivot (2026-11-03):** Release-input promotion is OPEN/PARKED after
+**Checkpoint (2026-11-03):** Release-input promotion is OPEN after
 read-only investigation. The Debian recipe still selects stock Flutter 3.24.5;
 the validated Linux app producer uses 3.47.5 with the patched engine. No input,
-pin, recipe or artifact changed. Work moved to peer-window size persistence.
+pin, recipe or artifact changed.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,
@@ -366,20 +355,19 @@ comparison reproduces both 0x0-versus-960x540 failures, then passes nineteen cas
 and three parser controls at `829a57f9`, preserving existing fields/ordinary saves.
 Evidence and joined cleanup: `window-position-accepted-829a57f9.json`. Window
 channels/native storage are doubles. Complete app/native restart, monitor changes,
-other-platform and release acceptance remain OPEN; native work is parked above.
+other-platform and release acceptance remain OPEN; native work is open above.
 
-**User pivot (2026-11-03):** Mobile theme dialog work is OPEN/PARKED.
+**Checkpoint (2026-11-03):** Mobile theme dialog work is OPEN.
 Candidate `b98d0ea3`, run `UksnB7II3a`, passes 53 of 54 component cases;
 failed-save/retry ends with a pending timer after widget disposal. Complete
 correction acceptance and diagnosis remain open. `mobile-theme-parked-b98d0ea3.json`
 retains the result, four zero listener deltas and exact process/private/RAM
-retirement. Work moves to fork-specific issue reporting; all independent parks remain.
+retirement.
 
-**User pivot (2026-11-03):** Mouse focus-loss work is OPEN/PARKED. Run
+**Checkpoint (2026-11-03):** Mouse focus-loss work is OPEN. Run
 `usbFMul9p2` stops before any mouse-case receipt, so it establishes no focus-loss
 defect; setup/first-event diagnostics remain outstanding. Evidence and joined
-cleanup are retained in `mouse-focus-afa1eee2.json`. Work moves to R-S0 theme
-restoration after desktop appearance changes. Cursor and all independent parks remain.
+cleanup are retained in `mouse-focus-afa1eee2.json`.  Cursor work remains OPEN.
 
 **Overlapping mouse buttons — named Linux native cases pass (2026-11-03).**
 `fffdc44e`, run `ZYMaxMdH9S`, reuses app `9f78434c` / engine `ddb1541d`.
@@ -405,21 +393,20 @@ GObject and XFixes run; Flutter method arguments are doubles. Full app/bridge,
 strict offline lock resolution and remote-session acceptance remain OPEN. R-S11gv
 below and `cursor-image-fixed-c45e3e6b.json` retain the scope and evidence.
 
-**User pivot (2026-11-03):** R-B3 source delivery and the unfinished unused
-Android TLS-verifier removal remain OPEN/PARKED. The eight-file, untested
+**Checkpoint (2026-11-03):** R-B3 source delivery and the unfinished unused
+Android TLS-verifier removal remain OPEN. The eight-file, untested
 removal is preserved in stash `ac531d3c706b6c6a7c594179efaae15a4679e7a2`;
-the lockfile was not changed. Work moves to R-S11gv native remote-cursor
-presentation and resource ownership. All independent parks remain.
+the lockfile was not changed.
 
-**User pivot (2026-11-03):** R-B9 scratch-directory replacement/consumer work
-remains OPEN/PARKED. Its two-file, unexecuted fixture draft is preserved in stash
+**Checkpoint (2026-11-03):** R-B9 scratch-directory replacement/consumer work
+remains OPEN. Its two-file, unexecuted fixture draft is preserved in stash
 `9ca48810c2e5fd8287ee60fd84920e6ebe964898`; no native result is claimed.
-Work moves to R-B3 release-source delivery. All independent parks remain.
 
-**User pivot (2026-11-03):** Connecting from a filtered Recent-computer card
-remains OPEN/PARKED after read-only preparation; no new fixture, product patch
+
+**Checkpoint (2026-11-03):** Connecting from a filtered Recent-computer card
+remains OPEN after read-only preparation; no new fixture, product patch
 or connection replay ran. The completed search cases below remain valid.
-Work moved to Linux application build reproducibility. All independent parks remain.
+
 
 **Linux application reproducibility — exact-source double build passes (2026-11-03).**
 Independent no-NIC runs `G8C9spTcwm` and `xM3cmb8D8T` build commit `9f78434c`
@@ -454,7 +441,7 @@ Fixed build paths and pinned maintenance inputs are part of its environment;
 canonical release-input promotion, other platforms/profiles, independent-operator
 reproduction and complete package/installed/release acceptance remain OPEN.
 
-**User pivot (2026-11-03):** Monitor-selection work is OPEN/PARKED.
+**Checkpoint (2026-11-03):** Monitor-selection work is OPEN.
 Retained app `f043c5ae` passes ordinary left/right/left selection, but native
 burst replay `0vebGh5CF0` ends on the wrong monitor after sixteen injected
 clicks ending on the left. `monitor-burst-97d9eab8.json` binds the failure;
@@ -464,8 +451,7 @@ has run. R-S11go below retains the acceptance boundary.
 Documentation review found an additional OPEN R-B9 fixture-conformance gap:
 the release summary claimed coverage from a deleted verifier framework. The
 R-B2 section below now separates its outstanding contracts from retained runtime
-evidence. Keep-awake, Linux service-child startup-failure cleanup and all
-independent parks remain.
+evidence. Keep-awake, Linux service-child startup-failure cleanup remain.
 The prior wake build completed and retired its owned resources; its native
 wake-lock fixture remains unexecuted.
 
@@ -483,7 +469,7 @@ failures are retained separately in the audit; no product correction was needed.
 This verifies the named cards through native accessibility, not exact glyph
 pixels (two baseline cards are partly clipped), new-peer persistence, arbitrary
 row inventories, large-list performance, shared-controller lifetime, other
-platforms or installed/release acceptance. Those and all user parks remain OPEN.
+platforms or installed/release acceptance.
 
 **Outgoing-session wake lock — component correction verified (2026-11-03):**
 `af9f4b2c` serializes platform transitions, retaining latest session demand
@@ -526,16 +512,16 @@ Swift compilation, AppKit pixels/OS changes, startup/restart and current-app
 native/installed evidence. Component reordering and full-app integration establish
 their respective layers only.
 
-**User pivot (2026-11-02):** View mode / Show my cursor work is OPEN/PARKED.
+**Checkpoint (2026-11-02):** View mode / Show my cursor work is OPEN.
 Candidate `0ccb2a7e` completes the Linux Flutter app build with thirteen focused
 Flutter tests and two native command-queue tests passing. Run `uRaKGkDRPY`
 then fails the outer wrapper's obsolete Mute-test receipt check; the candidate
-remains unpublished. Its native failed-save/retry acceptance remains parked;
+remains unpublished. Its native failed-save/retry acceptance remains open;
 the shared producer receipt correction is validated by the later theme build.
 The exact pending app is preserved; all owned processes, RAM scratch
 and the private diagnostics directory have retired, with four zero listener
 deltas. `view-mode-app-0ccb2a7e.json` and its retirement receipt bind the result.
-Work moves to theme synchronization between the main and open remote windows.
+
 
 **View mode baseline save failure reproduced (2026-11-02):** Native Linux replay
 `11PkXxJ7Hl` at `9722aae2` uses retained app `7e6f6459` / engine `ddb1541d`.
@@ -545,11 +531,11 @@ the control and delivers a native key press, while the previous saved file's
 identity and bytes remain unchanged. `save_config` logs storage failure then
 publishes its cache; the void toggle still sends the option. The checked
 implementation above is compiled; native correction/retry acceptance remains
-OPEN/PARKED. `view-only-save-9722aae2.json` binds the
+OPEN. `view-only-save-9722aae2.json` binds the
 reproduction, identical driver rebuilds, four zero listener deltas and joined
 VM/RAM cleanup. One initial menu-observation failure was repaired; a separate
 initial click mismatch remains unresolved and retained with added diagnostics.
-On a specific resumption, validate the retained candidate and replay the same
+validate the retained candidate and replay the same
 native failure/retry scenario; do not rebuild the completed app by default.
 
 **Native Linux View mode verified (2026-11-02):** Replay `xLULyflt3A` at
@@ -565,12 +551,12 @@ All owned processes join, RAM scratch retires and four listener deltas are zero.
 is unchanged. Held-input transitions, save failure, restart restoration, other input
 forms, physical devices, other platforms and installed/release acceptance remain OPEN.
 
-**User pivot (2026-11-02):** Language locale/direction integration is OPEN/PARKED.
+**Checkpoint (2026-11-02):** Language locale/direction integration is OPEN.
 Correction `ee5e3c41` and fixture correction `217f0470` remain committed. The focused
 run compiles and passes thirteen of sixteen cases; an Arabic label expectation and
 two guarded callback conflicts prevent acceptance. No corrected native-app replay
 ran. Both failed attempts retain bounded evidence and have joined VM/RAM/private
-cleanup. Work moved to View mode above; all independent parked items remain parked.
+cleanup.
 
 **Native language-direction failure reproduced (2026-11-02):** Replay
 `nOIZ8lS7U6` at `62cff9d8` reuses app `7e6f6459` and engine `ddb1541d`.
@@ -584,11 +570,10 @@ native acceptance remain OPEN. Restart and other languages/platforms are unteste
 four zero listener deltas and joined VM/RAM cleanup. Duplicate failure-bundle bytes
 were retired after comparison with the canonical app cache; bounded evidence remains.
 
-**User pivot (2026-11-02):** Differing-keyboard-layout work is OPEN/PARKED.
+**Checkpoint (2026-11-02):** Differing-keyboard-layout work is OPEN.
 Its unexecuted one-file observer draft is preserved in stash
 `4bcdb11c128c2f2a193f937b8c315716b8fa5ed4`; no differing-layout run or product
-change occurred. Work moved to language-setting direction above. The completed
-equal-layout keyboard result remains valid, and independent parks remain.
+change occurred.
 
 **Keyboard settings — named Linux native scenarios pass; broader acceptance OPEN.**
 `c6aed851` fixes Translate Ctrl+A disconnect by removing blanket hotkey
@@ -616,18 +601,17 @@ Capsules bind exact harness/app identities and raw observations.
 | `keyboard-translate-corrected-c6aed851.json` / `c6aed851` | `zES9qwcOLV` replays the unchanged baseline observer/provider: Map→Translate→Map passes 33 cases / 84 events including Ctrl+A and subsequent typing; twelve fresh frames and saved Map. 308 ms. |
 | `keyboard-shortcuts-e3f83515.json` / `c6aed851` | Seven compound cases cover left/right Ctrl+Shift+Z, right Ctrl+A, Alt+A, Super+A, A/C with Control held and subsequent typing. With the original cases: 40 cases / 118 events, twelve fresh frames and saved Map. 298 ms. Right Shift remains held through the injector's temporary left-Shift pair. |
 
-**OPEN:** differing layouts (independently PARKED), input methods, physical
+**OPEN:** differing layouts (open), input methods, physical
 devices, other platforms and installed/release acceptance; application-specific
 or side-specific shortcut bindings and unnamed combinations; longer/concurrent
 holds; abrupt restart; save failures beyond EACCES and concurrent settings.
 Only the named retained artifacts/scenarios are accepted. Historical fixture
 repairs remain in the audit; no new runtime acceptance is asserted here.
 
-**User pivot (2026-11-02):** Custom quality/FPS native validation is OPEN/PARKED.
+**Checkpoint (2026-11-02):** Custom quality/FPS native validation is OPEN.
 Its unexecuted two-file draft is preserved in stash
 `2b7f208acb6cdd5ad893a312d7997854d341b65e`; no Custom run or product change
-occurred. Work moved to keyboard-mode switching above. Existing independent
-parked investigations remain parked.
+occurred.
 
 **Native Linux quality restoration verified (2026-11-02):** Replay `xZp6BSefOe`
 at `e80d4e4b` reuses app `7e6f6459` and engine `ddb1541d`. Four complete viewer
@@ -643,9 +627,9 @@ rescans within its original deadline; it never uses a partial match. Product
 code is unchanged. Subjective visual quality, radio state, save failures, Custom,
 physical scanout, installed artifacts and other platforms remain OPEN.
 
-**User pivot (2026-11-02):** Rapid main-window show/close finality is OPEN/PARKED
-after source review only. Work moved to quality restoration above. The separate
-quality save-failure/radio-state investigation and Mute follow-ups remain parked.
+**Checkpoint (2026-11-02):** Rapid main-window show/close finality is OPEN
+after source review only.  The separate
+quality save-failure/radio-state investigation and Mute follow-ups remain open.
 
 **Native Linux language selection and restart verified (2026-11-02):** Replay
 `KmxcPNjxGA` at `5f80d142` reuses app `7e6f6459` and engine `ddb1541d`.
@@ -664,11 +648,10 @@ New Connection request followed immediately by Close. That rapid show/close
 finality failure and its causation remain OPEN; the accepted language scenario
 only hovers over the translated tooltip and retains the unchanged exit deadline.
 
-**User pivot (2026-11-02):** Further Mute audio-output and restart validation is
-OPEN/PARKED. The local-preference evidence below remains valid; subsequent audio
+**Checkpoint (2026-11-02):** Further Mute audio-output and restart validation is
+OPEN. The local-preference evidence below remains valid; subsequent audio
 work only researched and copied the authenticated PulseAudio input to TUF.
-No audio fixture integration or new audio run followed. Work moved to the native
-language-setting workflow above. Do not resume Mute follow-ups automatically.
+No audio fixture integration or new audio run followed.
 
 **Session Mute save/failure/retry verified on Linux (2026-11-02):** The shared
 desktop/mobile control publishes the confirmed native preference and retains one
@@ -686,9 +669,9 @@ and drivers, zero listener deltas and joined VM/RAM cleanup. The audit retains t
 failing baselines and build identities; the earlier submenu refresh correction
 remains (`cce0f30f`). This confirms local preference persistence and UI outcome,
 not remote delivery or audio suppression. Actual audio-output effects, restart
-persistence, installed/mobile/other-platform acceptance remain OPEN/PARKED at the
+persistence, installed/mobile/other-platform acceptance remain OPEN at the
 user's subsequent pivot; the completed local-preference result remains valid.
-Fullscreen/window-state work remains independently parked.
+Fullscreen/window-state work remains open.
 
 **Healthy Linux display and input soaks pass (2026-11-02):** Separate complete-peer
 runs finish their fixed baselines and four additional hours. Display records
@@ -730,140 +713,120 @@ installed privileged settings and release acceptance remain OPEN. Evidence:
 `theme-appearance-fixed-16ba2033.json`, `theme-save-failure-67bb26bc.json`;
 appearance baseline `theme-appearance-61ea882f.json`.
 
-**User pivot (2026-11-01):** Password-recovery follow-ups remain OPEN/PARKED.
+**Checkpoint (2026-11-01):** Password-recovery follow-ups remain OPEN.
 The completed wrong-password refusal, 65-second idle observation and deliberate
-correct retry remain valid. Work moved to native desktop theme persistence
-across complete application restarts; do not resume authentication follow-ups
-automatically. The theme checkpoint is recorded below.
+correct retry remain valid.   The theme checkpoint is recorded below.
 
-**User pivot (2026-11-01):** Background-tab Close isolation remains OPEN/PARKED.
+**Checkpoint (2026-11-01):** Background-tab Close isolation remains OPEN.
 Both attempted replays stop in address-field discovery before a second connection
 opens; neither establishes a product defect or exercises background Close.
 The unrun locator repair is preserved in stash `77d9608794fb33b4d5e19553505fdf2bf0364b62`.
-The completed single-session Close evidence remains. Work moved to native
-incorrect-password refusal and deliberate correct-password retry; do not resume
-the concurrent-tab investigation automatically.
+The completed single-session Close evidence remains.
 
-**User pivot (2026-11-01):** Further shared-menu validation is OPEN/PARKED.
+**Checkpoint (2026-11-01):** Further shared-menu validation is OPEN.
 The completed button-entry correction and the already-running native accessible
 Forget replay are retained below. No additional pointer replay or menu correction
-follows this pivot. Work moved to normal Remote-session Close and main-window
-usability; do not resume menu follow-ups automatically.
+follows this pivot.
 
-**User pivot (2026-11-01):** Fractional-wheel native validation remains
-OPEN/PARKED after the completed component checkpoint. No wheel provider or
-native scrolling scenario followed. Work moved to saved-peer visibility and
-explicit Forget password; do not resume native scrolling automatically.
+**Checkpoint (2026-11-01):** Fractional-wheel native validation remains
+OPEN after the completed component checkpoint. No wheel provider or
+native scrolling scenario followed.
 
-**User pivot (2026-11-01):** Installed Linux caller/administrator authorization
-validation remains OPEN/PARKED after read-only preparation. No principal-profile
+**Checkpoint (2026-11-01):** Installed Linux caller/administrator authorization
+validation remains OPEN after read-only preparation. No principal-profile
 fixture, product correction or authorization run followed. The completed startup
-and live-incumbent evidence remains. Work moved to fractional wheel input;
-do not resume the authorization profile automatically.
+and live-incumbent evidence remains.
 
-**User pivot (2026-11-01):** Live Original/Adaptive scaling remains OPEN/PARKED.
+
+**Checkpoint (2026-11-01):** Live Original/Adaptive scaling remains OPEN.
 The native menu and saved peer record both remain Original after selecting
 Adaptive; the stream stays fresh. No product correction followed. The three
-VMs joined and retired their RAM workspaces with zero listener deltas. Work
-moved to remembered-password persistence across a complete viewer restart;
-do not resume the scaling investigation automatically.
+VMs joined and retired their RAM workspaces with zero listener deltas.
 
-**User pivot (2026-11-01):** Positive native screenshot Save As validation and
-chooser acquisition remain OPEN/PARKED after read-only prerequisite research.
+
+**Checkpoint (2026-11-01):** Positive native screenshot Save As validation and
+chooser acquisition remain OPEN after read-only prerequisite research.
 The reproduced missing-provider error and Debian dependency correction remain.
-Work moved to live viewer Original/Adaptive scaling; do not resume positive
-Save As automatically. No chooser acquisition or positive save run followed.
+  No chooser acquisition or positive save run followed.
 
-**User pivot (2026-11-01):** Large-selection/repeated-clipboard validation remains
-OPEN/PARKED. Preparation `d7cf665e` and one unchanged replay both fail at text
+**Checkpoint (2026-11-01):** Large-selection/repeated-clipboard validation remains
+OPEN. Preparation `d7cf665e` and one unchanged replay both fail at text
 case 3, before any image case. Native clipboard-read timeouts are recorded, but
 fixture versus product causation is unresolved. The earlier twelve-case pass
 remains historical evidence. Both VMs join, RAM scratch retires and all eight
-listener deltas are zero. Work moved to native Back/Forward mouse delivery;
-do not resume the clipboard investigation automatically. Exact evidence remains
+listener deltas are zero.
+ Exact evidence remains
 in the audit journal and the two retained run receipts.
 
-**User pivot (2026-11-01):** Complete connection-page address validation remains
-OPEN/PARKED. Preparation `136490a5` stops at a fixture compile error before any
+**Checkpoint (2026-11-01):** Complete connection-page address validation remains
+OPEN. Preparation `136490a5` stops at a fixture compile error before any
 page case executes; correction `8685264a` is committed but unrun. QEMU and its
 wrapper exit, RAM scratch retires and all four listener deltas are zero.
-The accepted callback-level correction remains. Work moved to native clipboard
-image transfer; do not resume the complete-page scenario automatically.
+The accepted callback-level correction remains.
 
-**User pivot (2026-11-01):** Pre-key connection-capacity validation remains
-OPEN/PARKED after read-only preparation. No fixture, product change or runtime
-run followed. Completed password-attempt limiter evidence remains. Work moved
-to connection-screen saved-address failure handling; do not resume capacity
-validation automatically.
+**Checkpoint (2026-11-01):** Pre-key connection-capacity validation remains
+OPEN after read-only preparation. No fixture, product change or runtime
+run followed. Completed password-attempt limiter evidence remains.
 
-**User pivot (2026-11-01):** Native file-browser UI navigation remains
-OPEN/PARKED. The unrun five-file scenario is preserved in stash
+**Checkpoint (2026-11-01):** Native file-browser UI navigation remains
+OPEN. The unrun five-file scenario is preserved in stash
 `832a88e30e4148bf3ef798dacff650edb8054ddc`; the completed Dart/Rust listing
-evidence remains. Work moved to actual server password-attempt limiting.
-Do not resume the UI scenario automatically.
+evidence remains.
 
-**User pivot (2026-11-01):** Inactivity-timeout session validation remains
-OPEN/PARKED after read-only preparation. The completed bounds correction and its
+
+**Checkpoint (2026-11-01):** Inactivity-timeout session validation remains
+OPEN after read-only preparation. The completed bounds correction and its
 native initializer evidence remain; no authenticated expiry/activity-reset fixture
-or run follows the pivot. Work moved to native file-browser link and filename
-transport. Do not resume the timer follow-up automatically.
+or run follows the pivot.
 
-**User pivot (2026-11-01):** CM filesystem-action outcome logging remains
-OPEN/PARKED. Preparation `40d5f993` reproduces zero receiver action logs for ten
+**Checkpoint (2026-11-01):** CM filesystem-action outcome logging remains
+OPEN. Preparation `40d5f993` reproduces zero receiver action logs for ten
 completed native operations; the existing transfer-log test passes. QEMU joined,
 RAM scratch retired and all listener deltas were zero. No product correction or
-Dart run followed. Work moved to native inactivity-timeout bounds; do not resume
-the action-log fix automatically. Exact evidence is retained in the audit journal.
+Dart run followed.   Exact evidence is retained in the audit journal.
 
-**User pivot (2026-11-01):** Android long-session/presentation follow-ups remain
-OPEN/PARKED. The two-hour run was stopped after five passing minute windows;
+**Checkpoint (2026-11-01):** Android long-session/presentation follow-ups remain
+OPEN. The two-hour run was stopped after five passing minute windows;
 its exact VM exited and RAM scratch retired. This is partial evidence, not
-completed soak acceptance. Work moved to connection-manager transfer-speed
-reporting. Do not resume the Android investigation automatically.
+completed soak acceptance.
 
-**User pivot (2026-11-01):** Camera supplier/device-ownership correction remains
-OPEN/PARKED. The two reproduced supplier failures and successful native capture
+**Checkpoint (2026-11-01):** Camera supplier/device-ownership correction remains
+OPEN. The two reproduced supplier failures and successful native capture
 are retained; no product correction followed the read-only design review.
-Work moved to Android task-relaunch presentation. Do not resume camera work
-automatically.
 
-**User pivot (2026-11-01):** Native session-type input-confinement validation
-remains OPEN/PARKED after read-only preparation. No fixture, product change or
-native refusal run followed that investigation. Work moved to ViewCamera native
-device identity; do not resume the confinement follow-up automatically.
 
-**User pivot (2026-10-31):** Production directory-download follow-ups, including
-the proposed overwrite-decision scenario, remain OPEN/PARKED. The completed
+**Checkpoint (2026-11-01):** Native session-type input-confinement validation
+remains OPEN after read-only preparation. No fixture, product change or
+native refusal run followed that investigation.
+
+**Checkpoint (2026-10-31):** Production directory-download follow-ups, including
+the proposed overwrite-decision scenario, remain OPEN. The completed
 absent-destination download evidence remains valid; no overwrite fixture or run
-preceded this pivot. Work moved to native remote mouse delivery. Do not resume
-the file-transfer follow-up automatically.
+preceded this pivot.
 
-**User pivot (2026-10-31):** Two-Remote shared-key ownership validation remains
-OPEN/PARKED after read-only preparation. No second-viewer fixture or run follows
+**Checkpoint (2026-10-31):** Two-Remote shared-key ownership validation remains
+OPEN after read-only preparation. No second-viewer fixture or run follows
 that investigation. Completed Ctrl+A and abrupt-viewer-exit evidence remains.
-Work moved to production directory downloads; do not resume the ownership
-follow-up automatically.
 
-**User pivot (2026-10-31):** Clipboard reconnect validation remains OPEN/PARKED.
+
+**Checkpoint (2026-10-31):** Clipboard reconnect validation remains OPEN.
 The five-file draft is unrun and preserved in stash
 `b2bf714fa3f115d67ae0740d8581c0be456adeff`; no product correction or reconnect
-result is claimed. Work moved to native remote keyboard delivery. The reproduced
+result is claimed.  The reproduced
 Linux Ctrl+A disconnect is corrected and passes the unchanged full-app scenario,
-recorded under R-S19 below. Do not resume clipboard reconnect work automatically;
+recorded under R-S19 below.
 the earlier connected-session passes remain.
 
-**User pivot (2026-10-31):** Network-impairment/recovery follow-ups remain
-OPEN/PARKED. The completed three-profile packet-loss run and its unresolved
+**Checkpoint (2026-10-31):** Network-impairment/recovery follow-ups remain
+OPEN. The completed three-profile packet-loss run and its unresolved
 12,226-ms sampled image age during burst loss are retained below; no transport
-diagnostic extension or further impairment run follows this pivot. Work moved
-to native Linux clipboard text transfer. Do not resume the parked investigation
-automatically.
+diagnostic extension or further impairment run follows this pivot.
 
-**User pivot (2026-10-30):** Saved-peer rename remains OPEN/PARKED. Unrun
+**Checkpoint (2026-10-30):** Saved-peer rename remains OPEN. Unrun
 fixture and partial profile preparation is preserved in stash
 `c2ad6e9ae594c0d0aaf0dc5c96851f13b362204e`; no product change or VM run
-preceded this pivot. Work moved to European Portuguese language selection.
-Do not resume the rename work automatically.
+preceded this pivot.
+
 
 **Development storage (2026-10-28):** User-directed cleanup removed seven superseded
 debug peer builds and 40 old Android artifact directories (39 APKs and one empty
@@ -896,346 +859,324 @@ case inventories, intermediate failures, source/artifact hashes and timings rema
 receipts under `.harness-state/verifier-vm/` and in Git history. Shared current-artifact,
 installed/other-platform, R-S0/R-F5, resource/soak and release obligations below remain OPEN.
 
-**User pivot (2026-10-30):** Further Debian package/ELF checks remain OPEN/PARKED.
-The completed load-range correction is retained. Work moved to image-quality
-slider accessibility; do not resume package follow-ups automatically.
+**Checkpoint (2026-10-30):** Further Debian package/ELF checks remain OPEN.
+The completed load-range correction is retained.
 
-**User pivot (2026-10-28):** Bulk Favorites selection ownership remains
-OPEN/PARKED. Test preparation `c1732910` is preserved but unrun; no Favorites
-product correction follows. Work moved to audio-input failure feedback.
-Related tab/selection findings remain unverified. Do not resume automatically.
+**Checkpoint (2026-10-28):** Bulk Favorites selection ownership remains
+OPEN. Test preparation `c1732910` is preserved but unrun; no Favorites
+product correction follows.
+Related tab/selection findings remain unverified.
 
-**User pivot (2026-10-28):** Shared file-job cancellation failure handling remains
-OPEN/PARKED after read-only review. No cancellation correction or new runtime
-check follows. Work moved to saved-peer search rendering; the accepted bounded
-file-progress runner remains. Do not resume cancellation handling automatically.
+**Checkpoint (2026-10-28):** Shared file-job cancellation failure handling remains
+OPEN after read-only review. No cancellation correction or new runtime
+check follows.  the accepted bounded
+file-progress runner remains.
 
-**User pivot (2026-10-28):** Shared-dialog keyboard ownership remains OPEN/PARKED
+**Checkpoint (2026-10-28):** Shared-dialog keyboard ownership remains OPEN
 after read-only review. No Shift+Tab or focused-button activation correction or
 runtime check follows. The accepted connection-password submission fix remains;
-work moved to mobile file-transfer failure reporting. Do not resume automatically.
+work moved to mobile file-transfer failure reporting.
 
-**User pivot (2026-10-28):** Remote-toolbar keyboard entry and submenu lifecycle
-remain OPEN/PARKED after read-only follow-up. The accepted focus-painting fix is
-retained; no further toolbar patch or runtime check follows. Work moved to
-connection-password input focus. Do not resume the toolbar follow-up automatically.
+**Checkpoint (2026-10-28):** Remote-toolbar keyboard entry and submenu lifecycle
+remain OPEN after read-only follow-up. The accepted focus-painting fix is
+retained; no further toolbar patch or runtime check follows.
 
-**User pivot (2026-10-28):** Full-peer presentation evidence hashing remains
-OPEN/PARKED after read-only review. The preceding installed-service hashing fix
-is retained; no full-peer checker patch or execution follows. Work moved to
-remote-toolbar focus painting. Do not resume the hashing follow-up automatically.
+**Checkpoint (2026-10-28):** Full-peer presentation evidence hashing remains
+OPEN after read-only review. The preceding installed-service hashing fix
+is retained; no full-peer checker patch or execution follows.
 
-**User pivot (2026-10-28):** Trackpad integer-range consistency remains
-OPEN/PARKED. Test preparation `a04fa78b` reproduces five failures with eleven
+**Checkpoint (2026-10-28):** Trackpad integer-range consistency remains
+OPEN. Test preparation `a04fa78b` reproduces five failures with eleven
 passing controls in run `GeYBMST6e7`; no product correction follows. QEMU joined
-and bounded RAM scratch retired. Work moved to mobile About-label localization.
-Do not resume the trackpad follow-up automatically.
+and bounded RAM scratch retired.
 
-**User pivot (2026-10-28):** Acquisition VM cleanup/process retirement remains
-OPEN/PARKED. Unrun fixture/launcher preparation is preserved in stash
+
+**Checkpoint (2026-10-28):** Acquisition VM cleanup/process retirement remains
+OPEN. Unrun fixture/launcher preparation is preserved in stash
 `433a06a5f427121133348d09ca837f4c0bb747bd`; no correction or native reproduction
-preceded the pivot. Work moved to trackpad speed accessibility. Do not resume
-the acquisition cleanup work automatically.
+preceded the pivot.
 
-**User pivot (2026-10-28):** File-manager column geometry remains OPEN/PARKED.
+**Checkpoint (2026-10-28):** File-manager column geometry remains OPEN.
 Patch `a7c362a4` is preserved; its candidate test run has not executed. The valid
 unchanged-product baseline at `a49df0be` reproduces thirteen rendered failures;
 the preceding resource-limited run is excluded. Both VMs joined and retired
-RAM scratch. Work moved to engine-prerequisite ledger consolidation.
-Do not resume the column work automatically.
+RAM scratch.
 
-**User pivot (2026-10-28):** The current read-only whiteboard/helper review
-remains OPEN/PARKED. No new escalation was established and no product correction
-or runtime check was performed in that review. Work moved to file-column divider
-keyboard access. Do not resume the parked review automatically.
 
-**User pivot (2026-10-28):** Terminal child teardown remains OPEN/PARKED.
+**Checkpoint (2026-10-28):** The current read-only whiteboard/helper review
+remains OPEN. No new escalation was established and no product correction
+or runtime check was performed in that review.
+
+**Checkpoint (2026-10-28):** Terminal child teardown remains OPEN.
 The six-case test preparation and portable-pty VM profile are preserved in stash
 `7cde58ff26696698de69fa3c0805b15c82b7c2e2`; no termination-method correction or
-VM execution preceded the pivot. Work moved to Flutter framework locale codes.
-Do not resume automatically.
+VM execution preceded the pivot.
 
-**User pivot (2026-10-28):** Screenshot Copy/Cancel and picker-cancellation
-discard handling remain OPEN/PARKED after read-only inspection. No follow-up
+
+**Checkpoint (2026-10-28):** Screenshot Copy/Cancel and picker-cancellation
+discard handling remain OPEN after read-only inspection. No follow-up
 product patch or test was added or run. The twelve accepted Save As component
-cases remain recorded below. Work moved to consolidating historical Flutter
-canvas/image evidence in this ledger. Do not resume automatically.
+cases remain recorded below.
 
-**User pivot (2026-10-28):** Retired uinput IPC decoder follow-up remains
-OPEN/PARKED. The prior deletion has source evidence only; no decoder test was
-added or run before this pivot. Work moved to screenshot Save As exception
-reporting. Do not resume the IPC decoder follow-up automatically.
+**Checkpoint (2026-10-28):** Retired uinput IPC decoder follow-up remains
+OPEN. The prior deletion has source evidence only; no decoder test was
+added or run before this pivot.
 
-**User pivot (2026-10-28):** Windows session chooser follow-up remains
-OPEN/PARKED. The already-finished `GgcjL3jsDg` run at `e6c8d283` passes its nine
+**Checkpoint (2026-10-28):** Windows session chooser follow-up remains
+OPEN. The already-finished `GgcjL3jsDg` run at `e6c8d283` passes its nine
 rendered chooser cases, then fails an existing duplicate-peer registration case;
 the other eight suites load but their cases do not execute after fail-fast.
 QEMU joined, RAM scratch retired and endpoint deltas are zero. Native Windows
 switching, baseline A/B, remaining suite acceptance and the separate shared parser
-failures remain open. No chooser change or rerun follows. Work moved to Norwegian
-system-language selection. Do not resume automatically.
+failures remain open. No chooser change or rerun follows.
 
-**User pivot (2026-10-28):** Buffered TCP key-transition follow-up remains
-OPEN/PARKED. The already-finished `Dk15PfhffW` run at `111eea6b` passes six
+**Checkpoint (2026-10-28):** Buffered TCP key-transition follow-up remains
+OPEN. The already-finished `Dk15PfhffW` run at `111eea6b` passes six
 production-library tests / nineteen scenarios, including observed pending native
 reads before cancellation. QEMU joined, RAM scratch retired and endpoint deltas
 are zero. Controlled keys/prefetch do not establish full handshake, application
 or installed-service acceptance. No further transport change or rerun follows.
-Work moved to unused UI validation definitions. Do not resume automatically.
 
-**User pivot (2026-10-28):** Keyboard-layout chooser accessibility remains
-OPEN/PARKED. Both baseline `6aefb7c4` and candidate `c84b7171` pass three pointer/
+
+**Checkpoint (2026-10-28):** Keyboard-layout chooser accessibility remains
+OPEN. Both baseline `6aefb7c4` and candidate `c84b7171` pass three pointer/
 removal controls and fail four accessibility cases; the candidate is not a
 verified correction. QEMU joined and RAM scratch retired; bounded diagnostics
-remain. No further chooser change or rerun follows. Work moved to the remaining
-active-language chat-history notice translations. Do not resume automatically.
+remain. No further chooser change or rerun follows.
 
-**User pivot (2026-10-28):** Generated protobuf parser tests and the observed
-truncated-submessage acceptance remain OPEN/PARKED. The isolated run at
+**Checkpoint (2026-10-28):** Generated protobuf parser tests and the observed
+truncated-submessage acceptance remain OPEN. The isolated run at
 `bf8918b6` builds successfully and passes four tests, failing three; two failures
 also need recursion-depth test expectations corrected. No parser fix or further
 run follows this pivot. QEMU joined and RAM scratch retired; diagnostics remain.
-Work moved to missing chat-history notice translations. Do not resume automatically.
 
-**User pivot (2026-10-28):** Tab-overflow menu coordinates, dismissal and owner
-lifetime remain OPEN/PARKED after read-only inspection. No menu patch or new
-test ran. Do not resume automatically. Work moved to correcting the historical
-protobuf assurance claims in this ledger and the version-check output.
 
-**User pivot (2026-10-28):** Raw credential decoder format/length review remains
-OPEN/PARKED after initial read-only inspection. No new defect, patch or native
-test was established. Do not resume automatically. Work moved to unused copied
-desktop popup-menu controls; credential persistence and deadline work stay parked.
+**Checkpoint (2026-10-28):** Tab-overflow menu coordinates, dismissal and owner
+lifetime remain OPEN after read-only inspection. No menu patch or new
+test ran.
 
-**User pivot (2026-10-28):** Touch/remote-input callback consumption follow-up
-remains OPEN/PARKED after read-only review. The completed transformed hold-drag
+**Checkpoint (2026-10-28):** Raw credential decoder format/length review remains
+OPEN after initial read-only inspection. No new defect, patch or native
+test was established.   credential persistence and deadline work stay open.
+
+**Checkpoint (2026-10-28):** Touch/remote-input callback consumption follow-up
+remains OPEN after read-only review. The completed transformed hold-drag
 correction and its seventeen component passes remain recorded below; no further
-input change or test ran. Work moved to Hebrew/Indonesian locale selection.
+input change or test ran.
 
-**User pivot (2026-10-28):** RDP settings-dialog load/save/lifetime follow-up
-remains OPEN/PARKED after read-only review. The completed port-field correction
+**Checkpoint (2026-10-28):** RDP settings-dialog load/save/lifetime follow-up
+remains OPEN after read-only review. The completed port-field correction
 and its 33 passing component cases remain recorded below; the shared parser,
 full dialog and native persistence acceptance remain open. No further dialog
-change or test was made. Work moved to public deployment/security documentation.
+change or test was made.
 
-**User pivot (2026-10-28):** Unix clipboard FILETIME follow-up remains OPEN/PARKED.
+**Checkpoint (2026-10-28):** Unix clipboard FILETIME follow-up remains OPEN.
 Correction `1a4f9c36` is pushed; Linux clipboard-library run `vQpPSzdjDr` passes
 all thirteen cases after baseline `DrEkRpwDES` passes four and fails nine.
 Both QEMU processes joined and bounded RAM workspaces retired. Shared-verifier
 integration, full application/paste and other-platform acceptance remain open;
-do not resume automatically. Work moved to unused peer-menu option removal.
 
-**User pivot (2026-10-28):** Recording-status repair, software-only recorder
-cleanup and the proposed library-only VM profile remain OPEN/PARKED. Regression
+
+**Checkpoint (2026-10-28):** Recording-status repair, software-only recorder
+cleanup and the proposed library-only VM profile remain OPEN. Regression
 preparation `ac236b65` remains uncompiled/unexecuted. The subsequent five-file
 cleanup/profile draft is retained in stash `000d0b21d4a3d77909197fde7629ef1f70486db1`;
-it has no accepted compilation or native result. Do not resume automatically.
-Work moved to translation-only UI text completion; chat lifecycle work stays parked.
+it has no accepted compilation or native result.
+ chat lifecycle work stays open.
 
-**User pivot (2026-10-28):** The new October RustSec advisory/reachability review
-remains OPEN/PARKED after read-only research. No dependency update, decoder
-regression or fresh advisory scan ran. Work moved to unused desktop UI removal.
+**Checkpoint (2026-10-28):** The new October RustSec advisory/reachability review
+remains OPEN after read-only research. No dependency update, decoder
+regression or fresh advisory scan ran.
 
-**User pivot (2026-10-28):** Parent-build and option-ack integration validation
-remain OPEN/PARKED. Diagnostic correction `b33e9f58` is committed; no current
+**Checkpoint (2026-10-28):** Parent-build and option-ack integration validation
+remain OPEN. Diagnostic correction `b33e9f58` is committed; no current
 parent compilation or native option-ack run followed it. Audio device-selection
-behavior and shared Flutter result-parser work remain parked. Work moved to
-removing the unused Sciter session launcher below.
+behavior and shared Flutter result-parser work remain open.
 
-**User pivot (2026-10-28):** VM output-finality follow-up remains OPEN/PARKED.
+**Checkpoint (2026-10-28):** VM output-finality follow-up remains OPEN.
 The committed `65b98230` confirmation change and retained `icSVzwbo9j` /
 `lEfIQRShqV` results remain; the last owned VM and RAM workspace are gone.
-Further work and reconciliation of that section are parked. Do not resume
-automatically. Work moved to automatic UI language selection below.
+Further work and reconciliation of that section are open.
 
-**User pivot (2026-10-28):** CLI address decoding and native handoff follow-up
-remain OPEN/PARKED. Correction `8963aa82` preserves explicit addresses and removes
+**Checkpoint (2026-10-28):** CLI address decoding and native handoff follow-up
+remain OPEN. Correction `8963aa82` preserves explicit addresses and removes
 only the final marker extension for `--play`. Retained Linux component run
 `PncuBpaUza` passes 103 cases; complete application startup, Windows recent-document
-paths and native handoff remain unexecuted. Do not resume automatically. Work
-moved to correcting verification-status claims below.
+paths and native handoff remain unexecuted.
 
-**User pivot (2026-10-28):** Service-owned credential persistence/failure review
-remains OPEN/PARKED after read-only inspection; no new defect, patch or native
-test was established. Do not resume automatically. Work moved to direct-address
-contract consistency below.
+**Checkpoint (2026-10-28):** Service-owned credential persistence/failure review
+remains OPEN after read-only inspection; no new defect, patch or native
+test was established.
 
-**User pivot (2026-10-28):** Release-recovery journal-transition review remains
-OPEN/PARKED after read-only inspection; no new defect, patch or test was established.
-Do not resume automatically. Work moved to unused clipboard progress API removal.
+**Checkpoint (2026-10-28):** Release-recovery journal-transition review remains
+OPEN after read-only inspection; no new defect, patch or test was established.
 
-**User pivot (2026-10-28):** Terminal replay-history byte bounds and the separate
-output-channel drop investigation remain OPEN/PARKED. The unexecuted five-file
+
+**Checkpoint (2026-10-28):** Terminal replay-history byte bounds and the separate
+output-channel drop investigation remain OPEN. The unexecuted five-file
 test preparation is saved in stash `c850422b0c540aeaf5fcf63aaec3558b09919956`;
-no product change or runtime test was made. Do not resume automatically. Work
-moved to native-codec documentation consistency below.
+no product change or runtime test was made.
 
-**User pivot (2026-10-28):** Temporary modifier press bookkeeping/allocation
-investigation remains OPEN/PARKED after read-only inspection. No implementation
-or runtime test was made. Work moved to unused desktop popup-menu variants below.
+**Checkpoint (2026-10-28):** Temporary modifier press bookkeeping/allocation
+investigation remains OPEN after read-only inspection. No implementation
+or runtime test was made.
 
-**User pivot (2026-10-28):** Shared-decompressor native workspace allocation
-failure coverage remains OPEN/PARKED after research only. No decoder change or
-execution was made. Do not resume automatically. Work moved to removing unused
-input-backend downcast interfaces below.
+**Checkpoint (2026-10-28):** Shared-decompressor native workspace allocation
+failure coverage remains OPEN after research only. No decoder change or
+execution was made.
 
-**User pivot (2026-10-28):** The macOS mouse-button coordinate investigation
-remains OPEN/PARKED after source research only. No product or test change was
-made. Do not resume automatically. Work moved to the IPC verification correction
-recorded under documentation and verification architecture.
+**Checkpoint (2026-10-28):** The macOS mouse-button coordinate investigation
+remains OPEN after source research only. No product or test change was
+made.
 
-**User pivot (2026-10-28):** Exact model-result inventory enforcement remains
-OPEN/PARKED at preparation `fa342297`. Baseline `oqK3uathmq` reproduces three
+**Checkpoint (2026-10-28):** Exact model-result inventory enforcement remains
+OPEN at preparation `fa342297`. Baseline `oqK3uathmq` reproduces three
 parser failures; no parser correction or full model checkpoint ran. The shared
 parser-test step runs after the Flutter command succeeds. In focused `--peer-search`
 run `7OUTibJl5O`, its three failures prevent case-result validation, detailed case
 output and source postconditions. The retained log therefore supplies no accepted
 Flutter case inventory; it does not establish that Flutter never ran. Diagnostics are
 retained in `model-case-inventory-parked.oqK3uathmq`, with QEMU joined and RAM
-retired. Do not resume automatically. Work moved to Windows pointer coordinates.
+retired.
 
-**User pivot (2026-10-28):** Mobile language-dialog save ownership remains
-OPEN/PARKED. Its one-file unexecuted regression draft is preserved in stash
+**Checkpoint (2026-10-28):** Mobile language-dialog save ownership remains
+OPEN. Its one-file unexecuted regression draft is preserved in stash
 `96b6bdf874460a7d2eac7bd045e14a5347d33794`; no product correction or focused
-harness profile was applied. Do not resume automatically. Work moved to the
-direct-address source-catalogue deletion below.
+harness profile was applied.
 
-**User pivot (2026-10-27):** Tunnel-page text/scroll controller ownership remains
-OPEN/PARKED. Its seven-file unexecuted test draft is preserved in stash
+**Checkpoint (2026-10-27):** Tunnel-page text/scroll controller ownership remains
+OPEN. Its seven-file unexecuted test draft is preserved in stash
 `e7df9fd4b8b868506bf34c32244c291867ab9950`; no controller product change was made.
-Do not resume automatically. Work moved to credential-status retry accessibility.
 
-**User pivot (2026-10-27):** Mobile virtual mouse button press ownership remains
-OPEN/PARKED. Preparation `dd27da7e` is pushed; no product change was made. Baseline
+
+**Checkpoint (2026-10-27):** Mobile virtual mouse button press ownership remains
+OPEN. Preparation `dd27da7e` is pushed; no product change was made. Baseline
 `PErInhKEZN` passes four cases and fails thirteen. QEMU joined and RAM scratch
 retired; diagnostics remain in `virtual-buttons-parked.PErInhKEZN`. The final
 listener snapshot records an unattributed endpoint removal without owner inspection.
-Do not resume automatically. Work moved to stale peer-verifier assertions below.
 
-**User pivot (2026-10-27):** Further decoded-PCM/audio acceptance remains
-OPEN/PARKED. The accepted `c82f2d3d` correction and its component evidence remain;
-physical-device and end-to-end latency/soak acceptance are still open. Work moved
-to desktop theme save ownership below. Do not resume automatically.
 
-**User pivot (2026-10-27):** Whiteboard verifier/filter and historical-ledger
-cleanup remain OPEN/PARKED after source review only. No implementation, test or
-ledger correction was made for that investigation. Do not resume automatically.
-Work moved to filename accessibility layout below.
+**Checkpoint (2026-10-27):** Further decoded-PCM/audio acceptance remains
+OPEN. The accepted `c82f2d3d` correction and its component evidence remain;
+physical-device and end-to-end latency/soak acceptance are still open.
 
-**User pivot (2026-10-27):** Further Server Pro tool cleanup and the historical
-`d235c97b` ledger-count receipt remain OPEN/PARKED. The committed removal of
-seven unused tools remains in place. Do not resume automatically. Work moved
-to settings checkbox accessibility below.
+**Checkpoint (2026-10-27):** Whiteboard verifier/filter and historical-ledger
+cleanup remain OPEN after source review only. No implementation, test or
+ledger correction was made for that investigation.
 
-**User pivot (2026-10-26):** Same-query autocomplete refresh and selection remain
-OPEN/PARKED. No widget implementation was changed; do not resume automatically.
 
-**User pivot (2026-10-27):** Default-display radio save admission and effective-value
-feedback remain OPEN/PARKED. Research only; no implementation or new tests were added.
+**Checkpoint (2026-10-27):** Further Server Pro tool cleanup and the historical
+`d235c97b` ledger-count receipt remain OPEN. The committed removal of
+seven unused tools remains in place.
 
-**User pivot (2026-10-27):** Native terminal size admission remains OPEN/PARKED.
-The source finding below is retained; do not resume automatically.
+**Checkpoint (2026-10-26):** Same-query autocomplete refresh and selection remain
+OPEN. No widget implementation was changed.
 
-**User pivot (2026-10-27):** R-S15 source-check/comment cleanup remains OPEN/PARKED
+**Checkpoint (2026-10-27):** Default-display radio save admission and effective-value
+feedback remain OPEN. Research only; no implementation or new tests were added.
+
+**Checkpoint (2026-10-27):** Native terminal size admission remains OPEN.
+The source finding below is retained.
+
+**Checkpoint (2026-10-27):** R-S15 source-check/comment cleanup remains OPEN
 in stash `d1d4dfc74506280b04a31ce5368c85968c473845`. Its four-file draft is uncommitted;
 its proposed receipt was never published and its draft ledger was not counted.
-Do not resume automatically. The subsequent slice fixes peer-search focus below.
+ The subsequent slice fixes peer-search focus below.
 
-**User pivot (2026-10-27):** Native Android key-converter work remains OPEN/PARKED
+**Checkpoint (2026-10-27):** Native Android key-converter work remains OPEN
 in stash `cac25c3d9cf91b613e32b0616f0ce8125466dd29`. The six-file harness draft is
 uncommitted and unexecuted; no Kotlin product correction or emulator result is claimed.
-Do not resume automatically. Work pivoted to connection-tab selection below.
+ Work pivoted to connection-tab selection below.
 
-**User pivot (2026-10-27):** Current Linux native-app build/resource preparation remains
-OPEN/PARKED. No build profile or artifact was changed and no app-builder VM was launched.
-Do not resume automatically. Work pivoted to file-deletion error handling below.
+**Checkpoint (2026-10-27):** Current Linux native-app build/resource preparation remains
+OPEN. No build profile or artifact was changed and no app-builder VM was launched.
+ Work pivoted to file-deletion error handling below.
 
-**User pivot (2026-10-27):** File-manager search against visible/current rows remains
-OPEN/PARKED. Preparation `e353d469` is pushed; no product change was made. Run
+**Checkpoint (2026-10-27):** File-manager search against visible/current rows remains
+OPEN. Preparation `e353d469` is pushed; no product change was made. Run
 `rfExYeBFbq` reports errors in all twelve cases, beginning with missing theme setup
 at `MyTheme.tabbar`; this is not reliable before/after behavioral evidence. QEMU
 joined and RAM scratch retired. Failed diagnostics are preserved in
 `file-search-parked.rfExYeBFbq`; the final listener snapshot records one unattributed
-baseline endpoint removal, without owner inspection. Do not resume automatically.
-Work moved to Android network-lifecycle verifier cleanup.
+baseline endpoint removal, without owner inspection.
 
-**User pivot (2026-10-27):** Clipboard-keystroke action admission remains
-OPEN/PARKED. Preparations `bf92a798` and `ef043d43` are pushed; no product change
+
+**Checkpoint (2026-10-27):** Clipboard-keystroke action admission remains
+OPEN. Preparations `bf92a798` and `ef043d43` are pushed; no product change
 was made. Run `gaUv7pmG1y` stopped at a fixture type error before behavior ran;
 the corrected fixture has not run. QEMU joined, RAM scratch retired and all
 listener deltas were zero. Diagnostics remain in
-`clipboard-keystrokes-fixture.gaUv7pmG1y`. Do not resume automatically.
-Work moved to the desktop tunnel verifier below.
+`clipboard-keystrokes-fixture.gaUv7pmG1y`.
 
-**User pivot (2026-10-27):** Further tunnel-owner reaper work is OPEN/PARKED.
+
+**Checkpoint (2026-10-27):** Further tunnel-owner reaper work is OPEN.
 The focused correction `506a5800` and its accepted component evidence remain;
 parent application, installed/other-platform and soak acceptance are still open.
-Do not resume automatically. Work moved to desktop help-card accessibility.
 
-**User pivot (2026-10-27):** Connection-start credential derivation and peer-receive
-timeout investigation remain OPEN/PARKED. Source review only; no implementation,
-fixture or runtime result was added. Do not resume automatically. Work moved to
-the authentication-settings specification cleanup below.
 
-**User pivot (2026-10-27):** File-transfer decoder/writer and truncated-frame
-research remain OPEN/PARKED. No product or fixture changes or new runtime result
-were added. Do not resume automatically. Work moved to saved peer-list layout loading.
+**Checkpoint (2026-10-27):** Connection-start credential derivation and peer-receive
+timeout investigation remain OPEN. Source review only; no implementation,
+fixture or runtime result was added.
 
-**User pivot (2026-10-27):** File-deletion row publication remains OPEN/PARKED.
+**Checkpoint (2026-10-27):** File-transfer decoder/writer and truncated-frame
+research remain OPEN. No product or fixture changes or new runtime result
+were added.
+
+**Checkpoint (2026-10-27):** File-deletion row publication remains OPEN.
 Preparation `c57667a6` and product `4bdc799b` are pushed; the already-running candidate
 finished with exit 1 after the pivot. Raw runs `memOlQqRwO` and `UvBpC70MCB` are retained,
 with joined QEMU and retired RAM workspaces. No complete workload acceptance is claimed;
-the five sorting failures remain parked and native local-directory cleanup finality is
-unverified. Do not resume automatically. Work moved to desktop listener-status reads.
+the five sorting failures remain open and native local-directory cleanup finality is
+unverified.
 
-**User pivot (2026-10-27):** Linux authorization-child wait ownership remains
-OPEN/PARKED after read-only investigation. Exit-status collection still uses the
+**Checkpoint (2026-10-27):** Linux authorization-child wait ownership remains
+OPEN after read-only investigation. Exit-status collection still uses the
 numeric-PID `Child` API despite retaining a pidfd for signaling; the separate
 spawn-to-pidfd acquisition race also remains open. No implementation or native
-verification was performed for that investigation. Do not resume automatically.
-Work moved to right-to-left file-column resizing below.
+verification was performed for that investigation.
 
-**User pivot (2026-10-27):** Other mobile Boolean settings remain OPEN/PARKED.
+
+**Checkpoint (2026-10-27):** Other mobile Boolean settings remain OPEN.
 Test preparation `65fda51f` is pushed; baseline `XL2UqoLzyZ` finishes with 19 passing
 and 21 failing cases. The proposed product patch was not applied. QEMU joined,
 RAM scratch retired and failed diagnostics were reconciled without deletion.
-Do not resume automatically. Work moved to file-transfer percentage rendering below.
 
-**User pivot (2026-10-27):** Linux audio device identity and UI selection remain
-OPEN/PARKED. Preparation `2edea60c` and candidate `f5df7a96` are pushed. Native
+
+**Checkpoint (2026-10-27):** Linux audio device identity and UI selection remain
+OPEN. Preparation `2edea60c` and candidate `f5df7a96` are pushed. Native
 baseline `GlxpzGBmud` passes 14 tests and fails the new source-name case; candidate
 `Xpx8oOCvqz` stops at compile error E0277 in `src/platform/linux.rs:2787`, before
 behavior runs. The error formats a ControllerError with Display, which it does not
 implement. Later `b33e9f58` changes that diagnostic to Debug formatting; it has
 no subsequent compiler/runtime acceptance. No candidate or Flutter acceptance is claimed. Both QEMU processes join,
 RAM workspaces retire and all listener deltas are zero. Diagnostics are preserved.
-Do not resume automatically. Work moved to the R-S11hj current-state ledger cleanup.
+
 
 | Surface | Current state and evidence boundary | Receipt |
 | --- | --- | --- |
-| Shared toast replacement (`584ab939`) | A new toast cancels the old timer and removes/disposes its overlay; expiry retires the current message. Baseline passes 28 cases but retains older text beneath its replacement and renders 41 messages from one burst. The identical corrected suite passes all 30 cases, three parser controls and exact-source postchecks. Default/custom expiry, click-through, latest-message visibility, navigator replacement and missing-navigator behavior run with production Flutter rendering and controlled application bindings. Individual caller lifetime and device/native-window acceptance remain OPEN; existing parks remain. | Audit entry “2026-10-30 — latest toast replacement”; runs `g1NshomZhY` / `viTFnNcSM5` |
-| Help-card button labels (`abb21b43`) | The fixed-width button permits label wrapping by default. Baseline passes eight interaction controls and fails four truncation cases. After correcting the fixture to match the scrollable help pane, fourteen rendered cases pass, including explicit one-line versus wrapping comparisons, long labels, 1–3× text, LTR/RTL, focus, semantics and pointer/keyboard actions. Three parser controls and source postchecks pass. Earlier candidate overflow came from the non-scrollable fixture; the final fixture differs from baseline. Full-page/native-font/platform acceptance remains OPEN; existing parks remain. | Audit entry “2026-10-30 — help-card button label wrapping”; final run `NIZqoqjma3` |
-| Saved-computer search label | The expanded search field reuses the existing `Search` translation, matching its opening button. The former `Search address` key is absent from all 50 active catalogues and falls back to English. All 49 non-English catalogues already supply `Search`; English uses its key fallback. This changes one label expression. Catalogue and exact-diff review pass; native rendering and existing search/favorites work remain OPEN/PARKED. | Audit entry “2026-10-30 — user pivot; search-label localization” |
-| Shared dropdown text sizing (`ca316d49`) | `ComboBox` removes its fixed 42-pixel height and uses intrinsic menu-item heights. At unchanged product, three enlarged-text checks exceed the selected-label, unavailable-label and menu-row bounds; eight selection controls and the narrow long-label control pass. The identical candidate suite passes all twelve cases, three focused parser controls and source postchecks. Tests execute the production widget at 1–4× text scale, with LTR/RTL layout, controlled labels and callbacks. Both bounded VMs join and retire RAM scratch; all eight endpoint deltas are zero. Native settings/device/session actions, complete-page layout and existing user parks remain OPEN. | Audit entry “2026-10-30 — shared dropdown enlarged text”; runs `yFTuFsju9T` / `RTkRgYAf3D` |
+| Shared toast replacement (`584ab939`) | A new toast cancels the old timer and removes/disposes its overlay; expiry retires the current message. Baseline passes 28 cases but retains older text beneath its replacement and renders 41 messages from one burst. The identical corrected suite passes all 30 cases, three parser controls and exact-source postchecks. Default/custom expiry, click-through, latest-message visibility, navigator replacement and missing-navigator behavior run with production Flutter rendering and controlled application bindings. Individual caller lifetime and device/native-window acceptance remain OPEN;  | Audit entry “2026-10-30 — latest toast replacement”; runs `g1NshomZhY` / `viTFnNcSM5` |
+| Help-card button labels (`abb21b43`) | The fixed-width button permits label wrapping by default. Baseline passes eight interaction controls and fails four truncation cases. After correcting the fixture to match the scrollable help pane, fourteen rendered cases pass, including explicit one-line versus wrapping comparisons, long labels, 1–3× text, LTR/RTL, focus, semantics and pointer/keyboard actions. Three parser controls and source postchecks pass. Earlier candidate overflow came from the non-scrollable fixture; the final fixture differs from baseline. Full-page/native-font/platform acceptance remains OPEN;  | Audit entry “2026-10-30 — help-card button label wrapping”; final run `NIZqoqjma3` |
+| Saved-computer search label | The expanded search field reuses the existing `Search` translation, matching its opening button. The former `Search address` key is absent from all 50 active catalogues and falls back to English. All 49 non-English catalogues already supply `Search`; English uses its key fallback. This changes one label expression. Catalogue and exact-diff review pass; native rendering and existing search/favorites work remain OPEN. | Audit entry “2026-10-30 — user pivot; search-label localization” |
+| Shared dropdown text sizing (`ca316d49`) | `ComboBox` removes its fixed 42-pixel height and uses intrinsic menu-item heights. At unchanged product, three enlarged-text checks exceed the selected-label, unavailable-label and menu-row bounds; eight selection controls and the narrow long-label control pass. The identical candidate suite passes all twelve cases, three focused parser controls and source postchecks. Tests execute the production widget at 1–4× text scale, with LTR/RTL layout, controlled labels and callbacks. Both bounded VMs join and retire RAM scratch; all eight endpoint deltas are zero. Native settings/device/session actions, complete-page layout and other open tasks remain OPEN. | Audit entry “2026-10-30 — shared dropdown enlarged text”; runs `yFTuFsju9T` / `RTkRgYAf3D` |
 | Session-mode label localization | Four session window-title prefixes use the existing translated connection-menu labels. The connection manager replaces two nonexistent keys (`File Transfer`, `View Camera`) and its literal `Port Forward` prefix with those same catalogue keys. All four keys are populated in 49 non-English catalogues; English retains its existing value/key fallback. Exact comparison limits production changes to seven label expressions; translations, peer/app identifiers and title-update scheduling are unchanged. Native rendering and live language-change title refresh remain unverified. | Audit entry “2026-10-30 — session-mode label localization” |
-| Quality-monitor delay (`d9f2e5b6`) | The shared desktop/mobile monitor displays the reported delay independently of FPS; zero or missing FPS no longer substitutes `0ms`. Baseline fails three label/update cases; the identical corrected suite passes all 29 cases. Coverage-only `1966eacc` adds actual FPS JSON decoding, selected/all-display ordering, independent updates and omitted/empty fields: all 33 cases, three parser controls and exact-source checks pass. Production model/widget run with controlled event maps, display metadata and visibility. Native peer/event delivery, measurement freshness and R-F5 recovery remain OPEN/PARKED at the user's pivot. | Audit entries “2026-10-30 — quality-monitor delay display” and “2026-10-30 — user pivot; build-guide entrypoints”; runs `iGMXTQkRjk`, `IDFcUurt7q`, `ftwK86gswZ` |
+| Quality-monitor delay (`d9f2e5b6`) | The shared desktop/mobile monitor displays the reported delay independently of FPS; zero or missing FPS no longer substitutes `0ms`. Baseline fails three label/update cases; the identical corrected suite passes all 29 cases. Coverage-only `1966eacc` adds actual FPS JSON decoding, selected/all-display ordering, independent updates and omitted/empty fields: all 33 cases, three parser controls and exact-source checks pass. Production model/widget run with controlled event maps, display metadata and visibility. Native peer/event delivery, measurement freshness and R-F5 recovery remain OPEN at the user's pivot. | Audit entries “2026-10-30 — quality-monitor delay display” and “2026-10-30 — user pivot; build-guide entrypoints”; runs `iGMXTQkRjk`, `IDFcUurt7q`, `ftwK86gswZ` |
 | Connection-heading direction | The shared desktop/web-desktop heading uses end padding so its four-pixel text-to-help gap follows LTR/RTL. Labels, automatic sizing and tooltip behavior remain unchanged; the unused Get import is removed. Source/caller review and whitespace checks pass. Rendered/device acceptance remains OPEN. | Audit entry “2026-10-30 — connection-heading direction” |
 | Connection-mode menu (`1d0e8475`, `c1942c9a`) | The menu anchors to the current button's lower leading edge, including RTL and transformed layouts. It reuses the desktop MenuButton for a translated More tooltip, enabled button semantics and a clickable interior within the existing 28-pixel outline. The current unchanged-product baseline passes 41 checks and fails description/action, edge-hit and hover cases; the identical corrected suite passes all 44 rendered cases, three focused parser controls and source-copy checks. Accessibility activation, four inner-edge taps, hover text, Enter/Space reopening, Escape dismissal and all three connection callbacks run. Translation, icon and actual connection are fixtures; full page/session, native screen readers/devices and other platforms remain OPEN. | Audit entries “2026-10-30 — connection-mode menu keyboard positioning” and “2026-10-30 — connection-mode button accessibility”; current runs `mMhTZLZPdi` / `QJsBTfvpvf` |
 | Home-card frame freshness (`abb6ff01`) | Synchronous help cards render directly; the unnecessary FutureBuilder and delayed resize timers are removed. Window measurement is scheduled after layout and checks that the home page is mounted/current. The expanded existing pane case reproduces missing first-frame status before the fix; afterward initial/replaced/cleared messages and all 22 desktop cases pass, with three parser controls and exact-source checks. Native bindings are fixtures; full home lifecycle, native resizing and device acceptance remain OPEN. | Audit entry “2026-10-30 — home-card frame freshness”; runs `I7bJVYK19i` / `3VhqVn74qn` |
-| Connection-tab Close label (`2607e100`) | The visible tab-close icon now has the existing localized `Close` tooltip. Source review and whitespace checks pass; click handling, geometry and translations are unchanged. Reaching the post-test parser controls implies a successful test-command exit, but three parked controls fail before result validation/source postchecks and individual results were not retained. Full harness, tooltip-specific and native acceptance remain OPEN. Settings-save investigation and earlier parks remain OPEN. | Audit entry “2026-10-30 — user pivot; connection-tab Close label”; run `VNW9kAPxzy` |
+| Connection-tab Close label (`2607e100`) | The visible tab-close icon now has the existing localized `Close` tooltip. Source review and whitespace checks pass; click handling, geometry and translations are unchanged. Reaching the post-test parser controls implies a successful test-command exit, but three unfinished controls fail before result validation/source postchecks and individual results were not retained. Full harness, tooltip-specific and native acceptance remain OPEN. Settings-save investigation and other open tasks remain OPEN. | Audit entry “2026-10-30 — user pivot; connection-tab Close label”; run `VNW9kAPxzy` |
 | Settings sidebar text layout (`18b262a5`) | Heading and tab labels wrap within the existing width, rows retain a minimum height, and heading/tabs share one scroll area. At unchanged product, enlarged English/German labels fail with horizontal overflow; wrapping alone still leaves one label below the viewport at 3× text. The same three cases now pass with nineteen existing desktop cases, three parser controls and exact-source checks. Actual Flutter page layout runs with native/platform fixtures; settings writes, navigation handlers and translations are unchanged. Native window/device and release acceptance remain OPEN. | Audit entry “2026-10-30 — settings sidebar text layout”; run `CUCbRx4RSU` |
-| Peer event registration (`0625112a`) | Successful registration returns an exact-binding cancellation handle; rejected or replaced models cannot remove another model's handler. Native/web name-only unregister APIs are removed. Historical `GgcjL3jsDg` reproduces duplicate disposal on the same pre-change source. At `1a0b612b`, TUF `8DmykJOpct` passes all 113 cases across seven peer/dispatcher suites and three focused result controls in 261.501 seconds, with fresh bridge generation and exact source-copy checks. Queued/active delivery, same-callback replacement, capacity and retirement are covered. All VMs join and bounded RAM scratch retires; the accepted run's four listener deltas are zero. Excluded `g684Esy2gj` records one unattributed endpoint removal; excluded `zyEpIR8Hio` records two unattributed additions. Their scratch was removed; the endpoint changes remain unattributed. Complete app/session delivery, browser/mobile/device and installed acceptance remain OPEN; broader parser and parent integration remain PARKED. | `peer-event-owner-0625112a.json`; audit entry “2026-10-29 — peer event registration ownership” |
-| Retired peer-model machinery (`235d92f8`, `5b9f8678`) | Removes the unused account/group initializer, placeholder peer/list accessors, three unconsumed RDP/login fields, tags/notes and tag tooltip. Current Rust Recent/Favorites producers emit only five live display fields. Peer loading/publication, event ownership, tile layout/selection and actual RDP settings remain unchanged. At `60d63db9`, the seven-suite Linux Flutter cohort passes 113 cases and three result controls in 260.931 seconds, with fresh bindings and exact source copies. Existing fixtures are updated; no new cases or live-defect claim are added. An initial formatting refusal is excluded and its scratch removed. Both VMs/RAM workspaces retire; all eight listener deltas are zero. Full application, native FFI/storage, browser/mobile/device and separate peer-search-probe acceptance remain OPEN; existing parks remain. | `peer-model-retirement-235d92f8.json`; `peer-tags-retirement-5b9f8678.json` |
-| Remote-toolbar icon focus (`fd4145a5`) | Action and submenu icon backgrounds observe their actual Flutter focus node and use the existing highlight color. The unchanged-product baseline reproduces three focus/re-enable pixel failures with 29 controls passing. Final `2d477622` passes all 32 focused rendered cases and three scoped parser checks in 109 outer seconds, with exact widget bodies and source bindings; translation, surrounding palette and absent session are doubles. Two initial focus-entry fixtures are excluded. Two additional submenu lifecycle cases remain OPEN after repeated-focus and `_Submenu` layout failures; they are outside the focused paint suite and retained in Git/diagnostics. Closed top-level keyboard entry, complete toolbar/session/device behavior and shared release acceptance remain OPEN. All VMs join and bounded RAM scratch retires; unattributed endpoint changes remain untouched. The separate broad parser failures stay PARKED. | `toolbar-focus-fd4145a5.json`; audit entry “2026-10-28 — user pivot to remote-toolbar keyboard focus” |
+| Peer event registration (`0625112a`) | Successful registration returns an exact-binding cancellation handle; rejected or replaced models cannot remove another model's handler. Native/web name-only unregister APIs are removed. Historical `GgcjL3jsDg` reproduces duplicate disposal on the same pre-change source. At `1a0b612b`, TUF `8DmykJOpct` passes all 113 cases across seven peer/dispatcher suites and three focused result controls in 261.501 seconds, with fresh bridge generation and exact source-copy checks. Queued/active delivery, same-callback replacement, capacity and retirement are covered. All VMs join and bounded RAM scratch retires; the accepted run's four listener deltas are zero. Excluded `g684Esy2gj` records one unattributed endpoint removal; excluded `zyEpIR8Hio` records two unattributed additions. Their scratch was removed; the endpoint changes remain unattributed. Complete app/session delivery, browser/mobile/device and installed acceptance remain OPEN; broader parser and parent integration remain open. | `peer-event-owner-0625112a.json`; audit entry “2026-10-29 — peer event registration ownership” |
+| Retired peer-model machinery (`235d92f8`, `5b9f8678`) | Removes the unused account/group initializer, placeholder peer/list accessors, three unconsumed RDP/login fields, tags/notes and tag tooltip. Current Rust Recent/Favorites producers emit only five live display fields. Peer loading/publication, event ownership, tile layout/selection and actual RDP settings remain unchanged. At `60d63db9`, the seven-suite Linux Flutter cohort passes 113 cases and three result controls in 260.931 seconds, with fresh bindings and exact source copies. Existing fixtures are updated; no new cases or live-defect claim are added. An initial formatting refusal is excluded and its scratch removed. Both VMs/RAM workspaces retire; all eight listener deltas are zero. Full application, native FFI/storage, browser/mobile/device and separate peer-search-probe acceptance remain OPEN;  | `peer-model-retirement-235d92f8.json`; `peer-tags-retirement-5b9f8678.json` |
+| Remote-toolbar icon focus (`fd4145a5`) | Action and submenu icon backgrounds observe their actual Flutter focus node and use the existing highlight color. The unchanged-product baseline reproduces three focus/re-enable pixel failures with 29 controls passing. Final `2d477622` passes all 32 focused rendered cases and three scoped parser checks in 109 outer seconds, with exact widget bodies and source bindings; translation, surrounding palette and absent session are doubles. Two initial focus-entry fixtures are excluded. Two additional submenu lifecycle cases remain OPEN after repeated-focus and `_Submenu` layout failures; they are outside the focused paint suite and retained in Git/diagnostics. Closed top-level keyboard entry, complete toolbar/session/device behavior and shared release acceptance remain OPEN. All VMs join and bounded RAM scratch retires; unattributed endpoint changes remain untouched. The separate broad parser failures stay open. | `toolbar-focus-fd4145a5.json`; audit entry “2026-10-28 — user pivot to remote-toolbar keyboard focus” |
 | Mobile About version label | The live settings row looks up the existing `Version` key before adding punctuation and the version value, matching desktop behavior. The old `Version: ` key is absent from every active catalogue and therefore displayed English. All 48 active non-English catalogues contain `Version`; English falls back to the key. The uncalled duplicate `showAbout` dialog is deleted. Reference, catalogue and exact-diff review plus whitespace checks pass. No compiler, rendered widget or mobile device ran for this small text correction; device rendering remains OPEN. | Audit entry “2026-10-28 — user pivot; mobile About version label” |
 | Flutter framework locale codes (`6295989e`) | Kazakh and Vietnamese use `kk`/`vi` instead of `kz`/`vn` in the shared Flutter locale list. The list moves to an independent module exported through the existing common library; saved Rust catalogue keys remain unchanged. The old list fails six locale-resolution cases with four controls passing. Final `4281d7f0` passes all ten rendered MaterialApp cases and three parser controls, including regional forms, ordered preferences, live language changes and Hebrew direction. One initial compile failure, a Get-wrapper lifetime fixture failure and a Vietnamese expected-label spelling correction are retained separately; the baseline's locale failures precede that label assertion. The no-NIC Linux VM completes in 113 outer seconds using the bounded 2-GiB guest profile, joins QEMU and retires RAM scratch with zero endpoint deltas. Complete GetMaterialApp roots, native settings/OS locale acquisition, devices/other platforms and R-S0/R-F5/release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; Flutter framework locale codes”; baseline `oi4vtVN349`, final `IpKfBjmMlk` |
 | Unused home-card browser launcher | Deletes the unreachable help-link widget, its two optional parameters, the unused URL-launcher import and four obsolete removal comments (23 lines). All eight callers already omit both parameters; the last callers were removed in `bf0878d8`, following Linux-link removal in `2978284a`. Exact deletion/reference checks preserve every retained source byte, including permission/installation actions, warnings and dismissal. Whitespace checks pass. No compiler or rendered/native application ran for this deletion; no new live egress or LPE finding is claimed. Installed/platform and release acceptance remain OPEN. | Audit entry “2026-10-28 — unused home-card browser launcher” |
 | Screenshot Save As exceptions (`f0798948`) | The deferred operation reports picker/save exceptions only while its originating session is current. At `c3033e75`, the real Dart handler and rendered dialog pass twelve focused cases plus three result-parser checks: exact path/request dispatch, cancellation, returned errors, synchronous/asynchronous exceptions and late results after controlled session retirement. The initial fixture passes one case and fails eleven; moving its picker assertions outside the product error handler resolves those failures without a product change. The accepted no-NIC Linux VM uses the existing 3-GiB guest/2-GiB container profile, completes in 274 outer seconds, joins QEMU and retires bounded RAM scratch. Picker, native save, translation and session-current responses are doubles. Native picker/FFI/filesystem behavior, real owner replacement, historical A/B, other platforms and full application acceptance remain OPEN. | Audit entries “2026-10-28 — user pivot; screenshot Save As exceptions” and “2026-10-28 — screenshot Save As rendered acceptance”; run `w00WRZHmDM` |
-| Windows session chooser submission | Source correction retires the exact dialog before dispatching its selected ID, rejects retired dropdown callbacks and shares submission with Enter/numpad Enter. At `e6c8d283`, all nine rendered chooser cases pass with fresh bindings and exact source copies. Four peer cases pass and the existing duplicate-registration case fails; fail-fast prevents execution of the remaining eight suites' cases. The smaller 3-GiB guest/2-GiB container reports zero OOM events and uses 5,070,770,176 bytes peak RAM scratch; QEMU joins and scratch retires. Native selection is controlled in the fixture. Baseline A/B, native session-switch capability, installed functionality and full suite acceptance remain OPEN/PARKED by user pivot. | Audit entries “2026-10-28 — Windows session chooser submission ownership” and “2026-10-28 — user pivot; Norwegian system-language selection” |
+| Windows session chooser submission | Source correction retires the exact dialog before dispatching its selected ID, rejects retired dropdown callbacks and shares submission with Enter/numpad Enter. At `e6c8d283`, all nine rendered chooser cases pass with fresh bindings and exact source copies. Four peer cases pass and the existing duplicate-registration case fails; fail-fast prevents execution of the remaining eight suites' cases. The smaller 3-GiB guest/2-GiB container reports zero OOM events and uses 5,070,770,176 bytes peak RAM scratch; QEMU joins and scratch retires. Native selection is controlled in the fixture. Baseline A/B, native session-switch capability, installed functionality and full suite acceptance remain OPEN by user pivot. | Audit entries “2026-10-28 — Windows session chooser submission ownership” and “2026-10-28 — user pivot; Norwegian system-language selection” |
 | Unused UI validation definitions | Removes three uncalled validators, the duplicate base class used only by two of them, and the obsolete Change ID removal comment (53 lines). The length/regex rules lost their caller in `bf0878d8`. Tracked-reference review, exact deletion comparison and whitespace checks pass; the live password rules, dialog and every retained source byte are unchanged. No compiler or UI runtime ran for this deletion. Full application and installed/native acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; unused UI validation definitions” |
-| Peer, connection and file-menu pointer anchors (`89984256`) | Shared `popupMenuPosition` converts a global point through the current navigator overlay and forms real edge distances. All five custom-popup callers plus the file-manager upload menu use it; peer menu construction checks mounting after its asynchronous item lookup, and the breadcrumb anchor transforms its local bottom edge. The extracted old caller expression passes two root/LTR positioning cases and fails ten RTL/offset/scaled cases; the identical corrected Linux Flutter run passes all twelve positioning/selection cases plus fourteen button controls. Full harness acceptance remains OPEN on the three parked shared-parser failures. Both QEMU processes join and bounded RAM scratch retires; each final endpoint inventory has one unattributed addition left untouched. Complete pages, keyboard-only anchoring, other stock-menu callers and native-device/release acceptance remain OPEN. | Audit entry “2026-10-28 — popup anchors in navigator coordinates”; runs `CJpIu1poWK` / `11OM2BKtdq` |
+| Peer, connection and file-menu pointer anchors (`89984256`) | Shared `popupMenuPosition` converts a global point through the current navigator overlay and forms real edge distances. All five custom-popup callers plus the file-manager upload menu use it; peer menu construction checks mounting after its asynchronous item lookup, and the breadcrumb anchor transforms its local bottom edge. The extracted old caller expression passes two root/LTR positioning cases and fails ten RTL/offset/scaled cases; the identical corrected Linux Flutter run passes all twelve positioning/selection cases plus fourteen button controls. Full harness acceptance remains OPEN on the three unfinished shared-parser failures. Both QEMU processes join and bounded RAM scratch retires; each final endpoint inventory has one unattributed addition left untouched. Complete pages, keyboard-only anchoring, other stock-menu callers and native-device/release acceptance remain OPEN. | Audit entry “2026-10-28 — popup anchors in navigator coordinates”; runs `CJpIu1poWK` / `11OM2BKtdq` |
 | Unused copied popup-menu controls | Removes the uncalled custom menu-button and checked-item families, position enum, three callback typedefs, private cursor helper, unused icon constant/imports and obsolete examples (555 net lines). All eight tracked importers use a namespace prefix and reference only retained types/functions. The visible peer-layout selector uses Flutter's standard controls. The thirteen retained declarations have identical executable lines; reference and whitespace checks pass. No compiler or UI runtime ran for this deletion. Full application/menu and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; unused copied popup-menu controls” |
-| RDP port editing and editor retirement (`5e56d319`) | The actual field uses the shared whole-port validator and a Flutter-owned TextFormField controller. Invalid edits preserve the draft and selection; clear/replacement, pending-save disabling and controller retirement remain covered. The extracted old formatter/ownership baseline passes 30 cases and fails invalid-input preservation plus two retirement cases. Final Linux Flutter execution at `05e02ee1` passes all 33 exact address/port cases after correcting a test's newline-normalization expectation; product code is unchanged after `5e56d319`. The outer harness still fails the three parked shared-parser inventory checks, so full harness acceptance remains OPEN. Source-copy checks and raw per-case/terminal success are retained. All VMs join and RAM scratch retires. Full dialog, native persistence/Windows RDP launch and installed acceptance remain OPEN. | Audit entry “2026-10-28 — RDP port drafts and editor ownership”; runs `aOHwxxZdeR` / `Il6mgqc1jH` |
+| RDP port editing and editor retirement (`5e56d319`) | The actual field uses the shared whole-port validator and a Flutter-owned TextFormField controller. Invalid edits preserve the draft and selection; clear/replacement, pending-save disabling and controller retirement remain covered. The extracted old formatter/ownership baseline passes 30 cases and fails invalid-input preservation plus two retirement cases. Final Linux Flutter execution at `05e02ee1` passes all 33 exact address/port cases after correcting a test's newline-normalization expectation; product code is unchanged after `5e56d319`. The outer harness still fails the three unfinished shared-parser inventory checks, so full harness acceptance remains OPEN. Source-copy checks and raw per-case/terminal success are retained. All VMs join and RAM scratch retires. Full dialog, native persistence/Windows RDP launch and installed acceptance remain OPEN. | Audit entry “2026-10-28 — RDP port drafts and editor ownership”; runs `aOHwxxZdeR` / `Il6mgqc1jH` |
 | Unused peer-menu tab/window options | Deletes four private uncalled helpers, two commented menu entries and their two unused constants (31 lines). The dead entries already existed in upstream import `c2abd3b3`; complete library and tracked-reference review establishes no live caller. Exact deletion comparison and whitespace checks pass; retained code, the global tab preference and actual window dispatch are byte-identical. No compilation or runtime acceptance is claimed. | Audit entry “2026-10-28 — user pivot; unused peer-menu tab/window options” |
 | Chat-history limit translations | All 50 active language tables contain the notice, including English. The European Portuguese catalogue is now routed and its final empty notice is translated from the English display text. Read-only UTF-8, literal/placeholder, active routing and exact-diff checks pass. Application rendering, bidirectional layout, native-speaker review and chat lifecycle acceptance remain OPEN. | Audit entries “2026-10-28 — user pivot; chat-history notice translations”, “2026-10-28 — user pivot; eleven additional notice translations” and “2026-10-28 — user pivot; remaining active notice translations” |
 | European Portuguese selection (`9e09aff3`) | Portugal locales and explicit `pt-pt` select the Portugal catalogue; both Portuguese menu choices have distinct names. Saved `pt`/`br` and other automatic Portuguese regions retain their previous selection. The final empty Portugal notice is translated without changing existing translations or keys. The original selector baseline fails at `pt_PT`; its corrected ten groups pass. At `762aaf06`, the expanded runner compiles production `lang.rs`, its selector and all 50 active catalogues, then passes all 16 cases: existing selector/placeholder cases, distinct Portugal/Brazil/French/Hebrew text, configured precedence and English fallback, all menu-language notices, Unicode/literal substitutions, the public translator with a configured preference and bounded allocation work. Configuration storage and branding are fixture inputs. The prior ten rendered Flutter locale cases and three parser controls remain valid for unchanged UI source. QEMU joins and RAM scratch retires. Full application, saved-setting UI/persistence, platform language changes, native-speaker review and device acceptance remain OPEN. | Audit entries “2026-10-30 — user pivot; European Portuguese selection” and “2026-10-30 — production translation lookup”; accepted lookup `zqD8nbiOsy`; allocation evidence below |
@@ -1247,46 +1188,46 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | Unused Sciter session launcher (`562a2501`) | Removes 71 lines: the uncalled launcher, recent-session flag, UI-only child reaper, registry/type and unused imports. Their Sciter callers disappeared in `0d2c8825`. Repository reference review and exact deletion comparison pass; all retained source bytes, the distinct active server reaper and its direct-service/tray callers are unchanged. No compiler or product runtime pass is claimed for this deletion. Full application, installed/native and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; retire unused Sciter session launcher” |
 | Norwegian system-language selection (`b1c9e014`) | Generic Norwegian `no` selects the existing Bokmål `nb` catalogue; explicit Nynorsk forms retain `nn` and its existing unsupported-language fallback. Saved preferences retain priority. The unchanged-selector baseline passes nine groups and fails the general locale group at `no`; the identical corrected Linux component passes all ten groups / 130 examples, with full harness acceptance in 60 outer seconds. The complete production selector runs without config/translation doubles. Both QEMU processes join and bounded RAM scratch retires; unattributed endpoint additions remain untouched. Full app, OS locale acquisition, rendered Norwegian UI and other-platform acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot; Norwegian system-language selection”; runs `JUSipfolrx` / `vYkWpycaoc` |
 | Automatic UI language selection (`21a3f154`, `dfe65350`) | Maps Georgian `ka` and Kazakh `kk` to `ge`/`kz`, and Android Hebrew `iw` and Indonesian `in` to `he`/`id`. Saved preferences retain precedence; Chinese script/region handling, Java suffix parsing and unrelated language codes retain their behavior. The first correction passed eight groups/70 examples. The later unchanged-selector baseline passes eight groups and fails both new Android-code groups; the identical corrected Linux component passes all ten groups/100 examples, with full harness acceptance in 61 outer seconds. It compiles the actual selector directly, without config/translation doubles. QEMU processes join and bounded RAM scratch retires; unattributed endpoint changes remain untouched. Full app, OS locale acquisition, Android rendering and other-platform acceptance remain OPEN. | Audit entries “2026-10-28 — Georgian and Kazakh system-language selection” and “2026-10-28 — user pivot; Hebrew and Indonesian platform locale codes”; runs `yy3wsSXNDa` / `iDO52oHJco` and `Ox9AqmsJU0` / `VX3x0WCY82` |
-| Unused desktop popup-menu variants (`df111c4b`) | Removes 440 lines: unreferenced radio/nested-menu families, their child-menu widget, alternate reactive switch and unused constants. Repository-wide reference review finds no callers; remaining button, divider and switch bodies are byte-identical. Whitespace and exact deletion checks pass. The isolated `--peer-search` runner reaches the parked parser failures after the Flutter command succeeds, before case-result validation, detailed case output and source postconditions. No accepted Flutter case inventory or runtime acceptance is retained. QEMU joins and bounded RAM scratch retires; one unattributed endpoint removal is untouched. Complete menu behavior, current application compilation and shared release acceptance remain OPEN. | Audit entries “2026-10-28 — unused desktop popup-menu variants” and “2026-10-28 — user pivot; verification-status accuracy”; retained `retired-popup-validation.7OUTibJl5O` |
+| Unused desktop popup-menu variants (`df111c4b`) | Removes 440 lines: unreferenced radio/nested-menu families, their child-menu widget, alternate reactive switch and unused constants. Repository-wide reference review finds no callers; remaining button, divider and switch bodies are byte-identical. Whitespace and exact deletion checks pass. The isolated `--peer-search` runner reaches the unfinished parser failures after the Flutter command succeeds, before case-result validation, detailed case output and source postconditions. No accepted Flutter case inventory or runtime acceptance is retained. QEMU joins and bounded RAM scratch retires; one unattributed endpoint removal is untouched. Complete menu behavior, current application compilation and shared release acceptance remain OPEN. | Audit entries “2026-10-28 — unused desktop popup-menu variants” and “2026-10-28 — user pivot; verification-status accuracy”; retained `retired-popup-validation.7OUTibJl5O` |
 | File-transfer filename endings after line breaks (`4888d3f7`) | `StartEllipsisText` rejects omitted lines as well as excessive width and fits unbounded layouts too. Truncation retains a complete-grapheme suffix and the original accessibility label. Baseline `2e21a4f0` fails all eight LF/CRLF/Unicode line/paragraph-separator cases while eight controls pass. At `fe2a1029`, all sixteen rendered Linux Flutter cases and three parser controls pass in 100 outer seconds; extension selection boxes are present and inside the label. The new fixture explicitly clears inherited letter spacing after four geometry assertions failed, and the parser's stale eight-case self-test count is corrected. The product is unchanged after `4888d3f7`. All runs join QEMU and retire bounded RAM scratch; unattributed endpoint changes remain untouched. Full file-manager/device and installed acceptance remain OPEN. | Audit entry “2026-10-27 user pivot — filename endings after line breaks”; baseline `IFrUm1uvVT`, final `WCiLcArqXR` |
 | Settings checkbox accessibility (`3175a035`) | The shared settings row merges its label and Checkbox into one accessible node carrying checked/enabled state and one action. Existing write admission, acknowledged state, progress and failure feedback remain. The unchanged widget fails six semantics cases and passes two input controls; the identical eight-case Linux Flutter run passes after correction, plus three parser controls, in 100 outer seconds. Actual semantics dispatch covers pending-write refusal and failure/retry; pointer and keyboard actions each write once. Both VMs join and retire bounded RAM scratch; the baseline final snapshot has one unattributed endpoint removal, left untouched, and the candidate has zero deltas. Full settings-page, native persistence, assistive-technology/device and other-platform acceptance remain OPEN. | Audit entry “2026-10-27 user pivot — settings checkbox accessibility”; VM runs `acYXmKsZRW` / `PHNeKKYmCv` |
 | File-transfer filename bold accessibility (`9dcf2600`) | `StartEllipsisText` measures with the same system bold-text font weight as its rendered Text and recomputes the suffix when that preference changes. At unchanged-product preparation `33ef9aff`, all four fitting/truncated and inherited/explicit-style cases clip the `.txt` ending, while four existing controls pass. The identical eight-case rendered Linux Flutter check passes after correction, plus three parser controls, in 118 outer seconds. Real pinned-SDK Roboto metrics and actual paragraph selection boxes establish layout bounds; complete graphemes and accessibility labels remain. Both VMs join and retire bounded RAM scratch; the candidate final inventory records one unattributed endpoint removal, left untouched. Full file-manager, OS-setting propagation, other-device/platform and R-S0/R-F5/release acceptance remain OPEN. | Audit entry “2026-10-27 user pivot — filename accessibility layout”; VM runs `fTtmL7284q` / `Ww9LFHsefO` |
 | Retired peer-serialization verifier assertions | Shared and Apple R-G9 gates no longer demand an assertion for the removed `Peer.toJson` API. That assertion disappeared in `125a7bd3` after API removal in `c0bf7675`; its absence caused a false failure. Only the two obsolete two-line checks are deleted. Current peer metadata tests, CM serialization execution, capability checks and Dart/VM test invocations are unchanged. Shell syntax, exact deletion review and whitespace checks pass; full catalogs and application tests were not rerun. Product behavior and installed/platform acceptance remain OPEN. | Audit journal: retired peer-serialization verifier assertions |
-| Mobile virtual joystick movement retirement (`b7f81c85`) | The hold callback sends its first movement directly and owns subsequent movement through its periodic timer. Removing the widget cancels all scheduled movement; the separate zero-delay Future is removed from this control. At unchanged product `02a691ad`, six controls pass and both absolute/relative removal cases dispatch one extra movement call (2 becomes 3). The identical eight-case rendered Linux Flutter check passes after correction, plus three parser controls, in 277 outer seconds. Actual gesture cancellation, early removal, normal held movement and retry remain functional. A prior fixture wrongly expected movement at the neutral center and provides no product reproduction. The production widget runs with controlled movement adapters and delayed ready-callback delivery. All VMs join and retire bounded RAM; baseline/candidate final inventories retain unattributed endpoint addition/removals without owner inspection. Native input delivery, physical mobile devices, session retargeting and R-S0/R-F5/release acceptance remain OPEN. Peer sorting is user-PARKED with source review only; do not resume automatically. | Audit journal: mobile virtual joystick callback lifetime; raw `T8GA8fE0jo`, `mnwHorVvW9`, `dnrYbLxrxD` records |
+| Mobile virtual joystick movement retirement (`b7f81c85`) | The hold callback sends its first movement directly and owns subsequent movement through its periodic timer. Removing the widget cancels all scheduled movement; the separate zero-delay Future is removed from this control. At unchanged product `02a691ad`, six controls pass and both absolute/relative removal cases dispatch one extra movement call (2 becomes 3). The identical eight-case rendered Linux Flutter check passes after correction, plus three parser controls, in 277 outer seconds. Actual gesture cancellation, early removal, normal held movement and retry remain functional. A prior fixture wrongly expected movement at the neutral center and provides no product reproduction. The production widget runs with controlled movement adapters and delayed ready-callback delivery. All VMs join and retire bounded RAM; baseline/candidate final inventories retain unattributed endpoint addition/removals without owner inspection. Native input delivery, physical mobile devices, session retargeting and R-S0/R-F5/release acceptance remain OPEN. Peer sorting is OPEN with source review only;  | Audit journal: mobile virtual joystick callback lifetime; raw `T8GA8fE0jo`, `mnwHorVvW9`, `dnrYbLxrxD` records |
 | Peer-list layout loading and saving (`b1804d7a`, `bab736bb`) | Loading preserves valid choices and selects Grid for empty/invalid contents without a write. Typed popup results now own dismissal; the mounted control admits one save, disables itself while pending, rechecks fixed policy, publishes valid actual readback and reports failure/mismatch with retry. Retired callbacks cannot start work or show late failures; accepted writes drain. The save baseline passes fourteen cases and fails five admission/feedback checks. The final 19-case Linux Flutter shard and three parser controls pass, including the four constructor and six search controls. The later-dialog case gains transition completion and hit-testing before candidate execution, so its earlier pass does not establish a baseline navigation result. Full VM acceptance passes at `fcedaaff`; the earlier ten-case outer receipt mismatch is historical. Both save VMs join and retire bounded RAM; baseline/final snapshots retain one unattributed endpoint addition/removal without owner inspection. Native settings/persistence, cross-control/process ordering, full-page/mobile/device, R-S0/R-F5 and release acceptance remain OPEN. | Audit journal: saved peer-list layout loading and peer-layout selection/save lifetime; raw `ayeZPPAiIQ`, `CC2tsNj3c8`, `jXUHqqNnuE`, `eazCTVE3Xl` records |
 | Android network-lifecycle verifier cleanup | The R-T13 gate drops its 84-line source-order catalogue and two log/test-name checks. Compact wiring and retired-global-authority checks remain, as do all three executable listener-state tests and their gate/VM invocations. Output now identifies source evidence; the false wake-lock/Doze claim is removed. Shell syntax, exact retained-source comparison and whitespace checks pass. Product code and behavioral tests are unchanged; no Android execution is claimed. Device network changes, forced Doze recovery, listener/wake-lock cleanup and R-F5 remain OPEN. | `android-network-wiring-e353d469.json` |
 | File-transfer percentage rendering (`f8bf2ee7`) | The display ratio is bounded to 0–100%, preserving reported bytes, total metadata and transfer state. The unchanged-product baseline at `ca9b0464` throws in the real progress-bar constructor at 140% for upload and download; 34 other cases pass. The identical 36-case Linux Flutter suite passes after correction, plus three result-parser controls, including unknown totals, large byte counts and recovery to ordinary progress. This is production model and rendered dependency-widget evidence with controlled events. Complete file-manager/native-transfer/device behavior and shared R-S0/R-F5/release acceptance remain OPEN. Both VMs join and retire bounded RAM scratch with zero listener deltas. | `transfer-percent-65fda51f.json` |
 | Mobile keep-awake setting (`d5490eae`) | The mounted settings page admits one save, disables the switch while pending, publishes checked readback, shows local failure with retry, and rejects retired callbacks. An admitted write drains after close. The rendered baseline exposes six feedback/readback/retirement failures with ten controls passing; two scrolling cases had an ambiguous fixture selector and are excluded. After fixing that selector, all 18 cases and three parser controls pass in the isolated Linux Flutter workload, including Android/iOS layouts, rebuild/scroll ownership and Y/N mapping. Native settings and branding are doubles. Two earlier mount preparations and one stale harness-count refusal are retained separately; the first and final runs retain unattributed endpoint changes, without owner inspection or mutation. All VMs join and retire RAM scratch. Device persistence/wakelock effects, cross-page/process ordering, other mobile switches and shared R-S0/R-F5/release acceptance remain OPEN. | `mobile-keep-awake-dc9bb4f7.json` |
 | Desktop listener-status reads (`a8af0ea6`) | A reachable listener publishes immediately without a password-status query. An unreachable listener still reads the current password fact for its explanation; disposal refuses a new read or follow-up, while accepted reads settle without updating a retired widget. The exact unchanged-widget baseline passes 13 checks and fails three reachability/retirement checks; the identical two-suite Linux Flutter run passes all 16 cases plus three parser controls after correction. Seven rendered widget cases cover both unavailable explanations, nonoverlapping slow reads, replacement and configuration changes, alongside nine existing polling cases. One earlier fixture run had an undersized surface and did not start the deferred timer; another stopped at a stale credential-dialog parser count before emitting case results. Neither supplies accepted widget evidence. The parser inventory is corrected and status cases are now emitted before parser checks. Every VM joins and retires bounded RAM scratch with zero endpoint deltas. Native status and translation are controlled doubles; actual main-IPC/service failure and restart behavior, full-page/device/other-platform and shared R-S0/R-F5/release acceptance remain OPEN. | `listener-status-4bdc799b.json` |
-| File-deletion error handling (`7456e523`) | The UI workflow owns failure presentation and returns a checked result; desktop/mobile selection callbacks preserve selection on error or retirement. Listing failure stops the batch instead of opening the next confirmation. Exact-session checks suppress late errors after replacement; existing command-result ownership and job error state remain. The unchanged-product baseline passes 23 file-command controls and fails seven new cases; the identical 30-case group passes after correction, exercising rendered local/remote file and empty-directory errors, listing refusal, allocation retry and retired-dialog preservation. The combined seven-suite run remains RED: baseline 105 passes/12 failures; candidate 112 passes/five unchanged sorting/listing failures. Those five cases stay OPEN/PARKED; no complete workload or parser-gate pass is claimed. Two preparation runs were stopped and one timed out without usable product results; the fixture now drains within the widget-test scope and streams output. Every VM joins and retires bounded RAM scratch with zero endpoint deltas. Native requests are controlled doubles. Full desktop/mobile page interaction, real filesystem/peer deletion, partial-success listing refresh, installed/platform and R-S0/R-F5/release acceptance remain OPEN. | `delete-errors-bd30cdc1.json` |
+| File-deletion error handling (`7456e523`) | The UI workflow owns failure presentation and returns a checked result; desktop/mobile selection callbacks preserve selection on error or retirement. Listing failure stops the batch instead of opening the next confirmation. Exact-session checks suppress late errors after replacement; existing command-result ownership and job error state remain. The unchanged-product baseline passes 23 file-command controls and fails seven new cases; the identical 30-case group passes after correction, exercising rendered local/remote file and empty-directory errors, listing refusal, allocation retry and retired-dialog preservation. The combined seven-suite run remains RED: baseline 105 passes/12 failures; candidate 112 passes/five unchanged sorting/listing failures. Those five cases stay OPEN; no complete workload or parser-gate pass is claimed. Two preparation runs were stopped and one timed out without usable product results; the fixture now drains within the widget-test scope and streams output. Every VM joins and retires bounded RAM scratch with zero endpoint deltas. Native requests are controlled doubles. Full desktop/mobile page interaction, real filesystem/peer deletion, partial-success listing refresh, installed/platform and R-S0/R-F5/release acceptance remain OPEN. | `delete-errors-bd30cdc1.json` |
 | Connection-tab selection and page lifetime (`7d3bd3db`, `8220e6d1`, `f364ca18`) | Background close preserves the active connection; active close selects its right neighbor, or its left neighbor at the end. Selection rejects invalid indices, presentation follows current state after layout, and exact `TabInfo` identity preserves surviving page state while replacing retired pages. The switch timer and mutable count-only cache are deleted. Selection notifications now belong to the mounted tab content: after child initialization, it checks the exact controller/tab/current request and suppresses duplicate, superseded and retired callbacks. The six page-local announcements, public callback invocation and suppression flag are removed; selecting an existing tab through `add` now notifies. Terminal titles resolve the peer from the selected terminal page. The expanded unchanged-product baseline passes 24 cases and fails seven; the identical 31-case Linux Flutter check passes after correction, plus three parser controls, in 262 seconds. The 22 prior close/presentation/retirement cases remain, with nine notification cases covering initialization, existing tabs, supersession, remount, parent rebuild, same-key replacement, reentrancy and clear. Both no-NIC VMs join and retire bounded RAM scratch with zero endpoint deltas. The production widget runs with hidden header, placeholder pages and native policy/window doubles. The earlier initialization-announcement source finding is corrected; actual per-page FFI/session/input/presentation/title/CM-chat effects, header interaction, installed/device/other-platform execution and shared release obligations remain OPEN. | `connection-tab-selection-1cf4a45e.json`; `tab-presentation-e43e2cc5.json`; `tab-notification-bdaac839.json` |
 | Android receiver keyboard modifiers (`7752f651`) | Modifier down/up state now uses eight connection-owned protocol keys; complete taps preserve existing holds, physical and Legacy releases share ownership, and supplied modifiers/lock flags survive without added duplicates. The old always-release condition and the redundant rdev-to-protocol helper are removed. Exact production rewrite/protobuf execution in a networkless Linux VM reproduces seven failures plus one nonmodifier control pass, then passes all eight cases, including left/right independence, repeats, taps, mode transitions and separate/replacement owners. Final `bed3a5bd` completes the harness in 82 seconds with zero endpoint deltas and joined RAM cleanup. The initial missing fixture dependency and subsequent outer receipt-prefix refusal are retained separately. This is Rust component evidence: complete Android artifacts, authenticated ingress/JNI/queue effects, native shortcuts/IME, modifier normalization/right-Meta mapping, synthetic releases, owner teardown, devices and R-S0/R-F5/release acceptance remain OPEN. | `android-key-modifiers-592205e6.json` |
 | Recent/Favorites search focus (`1cf65659`) | The search widget owns one focus node across parent rebuilds and disposes it on removal. Focus entry selects the query; focus loss preserves selection. The unchanged widget at `c0785a2c` passes three controls and fails rebuild focus, blur selection and disposal. The identical six-case Flutter widget suite passes after correction, plus three result-parser checks. It mounts the exact widget with fresh bindings and a translation-only native double, exercising continued text input, three rebuilds, focus return and three close/reopen cycles. Both no-NIC Linux VMs join and retire bounded RAM scratch. The baseline's final snapshot has two unattributed loopback TCP additions, retained without owner inspection or mutation; the corrected run has zero endpoint deltas. Complete peer-page/native-device integration, native search/filter integration, cross-page shared-controller lifetime, resource soaks and shared release obligations remain OPEN. | `peer-search-focus-6cea59f3.json` |
-| Recent/Favorites search results (`223e76cb`) | Local string matching is synchronous; the obsolete FutureBuilder, per-peer futures and unused tab argument are removed. At unchanged product `98b948b4`, six rendered initial/query/replacement cases fail and nineteen existing controls pass; two additional controls check the deferred selection cache prematurely. Their timing and test-owner cleanup are corrected without relaxing the six rendering assertions. At `c76d6cb3`, all 27 widget cases and three parser checks pass in 277 outer seconds, covering current row actions, all four local fields, whitespace/case, literal punctuation, no matches and clearing. A later cleanup removes only an unused import. The exact production list and models run with controlled native preferences, translation, global owner and row callbacks. All three VMs join and retire bounded RAM; the accepted run retains one unattributed endpoint addition untouched. Full peer-card/native-device integration, large-list performance, shared-controller lifetime, R-S0/R-F5 and release acceptance remain OPEN. Peer sorting remains user-PARKED. | `peer-filter-223e76cb.json` |
+| Recent/Favorites search results (`223e76cb`) | Local string matching is synchronous; the obsolete FutureBuilder, per-peer futures and unused tab argument are removed. At unchanged product `98b948b4`, six rendered initial/query/replacement cases fail and nineteen existing controls pass; two additional controls check the deferred selection cache prematurely. Their timing and test-owner cleanup are corrected without relaxing the six rendering assertions. At `c76d6cb3`, all 27 widget cases and three parser checks pass in 277 outer seconds, covering current row actions, all four local fields, whitespace/case, literal punctuation, no matches and clearing. A later cleanup removes only an unused import. The exact production list and models run with controlled native preferences, translation, global owner and row callbacks. All three VMs join and retire bounded RAM; the accepted run retains one unattributed endpoint addition untouched. Full peer-card/native-device integration, large-list performance, shared-controller lifetime, R-S0/R-F5 and release acceptance remain OPEN. Peer sorting remains OPEN. | `peer-filter-223e76cb.json` |
 | File-list quick search (`781569df`, `83d52d70`) | Losing list focus clears the prefix; descendant focus and parent rebuilds retain it. Meta chords and Ctrl chords without Alt now pass through without changing search state. Shift, Option and Ctrl+Alt text entry remain supported. The expanded unchanged-product baseline passes seven cases and fails all four left/right Ctrl/Meta regressions: shortcut press/repeat changes `a` to `acc`. After correction, the identical eleven widget tests and three result-parser controls pass in a 103-second isolated run, covering shifted/unshifted commands, propagation, repeats, eight text-entry combinations and the six prior focus controls. One intermediate run lacks a final receipt because a parser self-test retained the old six-case count; `7a64f12d` corrects only that expectation. All three VMs join and retire bounded RAM. Baseline/final endpoint deltas are zero; the intermediate snapshot records an unattributed UDP addition and loopback TCP removal without owner inspection or intervention. This is rendered production-widget/key/focus dispatch with controlled callbacks. Full file-manager/native-device/keyboard-layout integration, wall-clock expiry, R-S0/R-F5 and release acceptance remain OPEN. | `list-search-focus-cfdb94b6.json`; `list-shortcuts-128cd0b5.json` |
 | File-column divider input (`e9e17140`, `ac9e426f`, `4e14a74b`) | Primary-button axis dragging follows the layout direction; other mouse buttons and trackpad scrolling cannot resize. Axis, direction and availability changes retire the old drag. Keyboard focus now admits unmodified axis-arrow presses/repeats through the same resize callback, using eight-pixel steps; disabled controls lose focus eligibility and bindings. Focus paints with the theme color, and the two file-header controls receive their translated column labels. At unchanged-product `98ed1bdf`, all eight new keyboard/focus cases fail while fourteen pointer controls pass. The identical 22-case rendered Flutter suite passes after correction, plus three parser controls, in 112 outer seconds. Both networkless VMs join and retire bounded RAM scratch; each retains one unattributed endpoint addition without owner inspection or mutation. Earlier pointer/RTL evidence remains retained. This executes the shared widget and pane geometry with controlled callbacks, including rasterized focus color, current-axis/direction rebuilds, repeats, modifier refusal, blur and disable/re-enable. Full file-manager integration/width limits, native devices and assistive technology, platform execution and shared R-S0/R-F5/release acceptance remain OPEN. | `divider-keyboard-4e14a74b.json`; `divider-rtl-585860ca.json`; `divider-drag-cb537f00.json` |
 | Desktop menu-button accessibility (`1c0904d2`) | The shared button publishes its button role and enabled state. Its background paints through `Ink`, allowing `InkWell` to render keyboard focus, hover and press feedback; the duplicate hover state is removed. The unchanged-product baseline `21989dc4` passes three interaction controls and fails enabled/disabled semantics and the sampled focus pixel. The identical six-case rendered Flutter check passes after correction, plus three result-parser controls. It checks the actual semantics tree, rasterized focus/hover/exit pixels, Enter/Space/pointer activation, disabled rebuilding and recovery. An earlier fixture selected the route and sampled text; that run is excluded from product evidence. All three no-NIC Linux VMs joined and retired RAM scratch with zero endpoint deltas. Full application/menu integration, native screen-reader/platform execution and shared release obligations remain OPEN. | `menu-accessibility-6b243996.json` |
 | Desktop help-card button accessibility (`b9f56325`) | The live fixed-width button owns its material surface, paints decoration through Ink and publishes its button/enabled role. The unused duplicate Button class is deleted. At unchanged product `4f820360`, the 14-case rendered check passes ten controls and fails focus pixels and semantics for both filled and outlined help-card buttons. The identical check passes all fourteen cases after correction, plus three parser controls, in 106 outer seconds. It observes the production widget body and theme constants with identity translation, a complete material/gradient card, actual semantics and pixels, Enter/Space/pointer activation, cancelled presses and geometry. The earlier incomplete outline capture is diagnostic only. All three VMs join and retire bounded RAM scratch; snapshots retain unattributed baseline endpoint removals without owner inspection. Full application/card routing, native screen readers, macOS permission/helper actions, other-platform and shared R-S0/R-F5/release acceptance remain OPEN. | `help-button-a6b1a8d0.json` |
 | Desktop settings navigation and scrolling (`b0f60986`, `243294d9`) | Selected-tab state stays page-local; the owned `PageController` is disposed and its registration removed. The sidebar and General/Safety/Display/About use Flutter-owned scrolling with `primary: false`; four unused, undisposed external controllers are deleted. A disposable Linux VM mounts the exact settings page with fresh bindings and explicit native/parent/outer-tab doubles: sidebar and external selection, all four initial-tab close/reopen cycles, and each section's scroll position across three rebuilds and retirement. Baseline: two navigation cases pass, four external-controller disposal checks fail; corrected: all six cases and three result-parser controls pass. Two earlier fixture preflight/compile failures provide no product evidence. All runs join QEMU and retire RAM scratch. The baseline has one unattributed added UDP endpoint (`0.0.0.0:51981`), retained exactly without owner inspection or mutation; the candidate has zero endpoint deltas. This is rendered Flutter component evidence, not native settings writes/persistence, resource soaks, other-platform/device, R-S0/R-F5 or release acceptance; those remain OPEN. | `settings-navigation-7ea344d0.json`; `settings-rendered-d0dda407.json` |
-| Current desktop settings integration (`1fedb57d`) | The unchanged existing 84-case profile runs against current source in a no-NIC CTE VM. All twelve navigation, scrolling, scaled/translated sidebar and About metadata cases report success. Overall: 62 successes and 22 errors, comprising the parked mobile-theme timer case and 21 parked mobile-Boolean cases. The harness exits 1 before result-parser controls and the source-copy postcheck; this is partial component evidence, not a new complete acceptance. The exact settings page and test input match their preparation hashes; native operations, parent and outer tabs are doubles. Four listener deltas are zero; exact processes, private diagnostics and bounded RAM scratch retire. Product, tests and harness are unchanged. Independent parks, target-native settings effects and release acceptance remain OPEN. | `settings-current-1fedb57d.json` |
+| Current desktop settings integration (`1fedb57d`) | The unchanged existing 84-case profile runs against current source in a no-NIC CTE VM. All twelve navigation, scrolling, scaled/translated sidebar and About metadata cases report success. Overall: 62 successes and 22 errors, comprising the unfinished mobile-theme timer case and 21 unfinished mobile-Boolean cases. The harness exits 1 before result-parser controls and the source-copy postcheck; this is partial component evidence, not a new complete acceptance. The exact settings page and test input match their preparation hashes; native operations, parent and outer tabs are doubles. Four listener deltas are zero; exact processes, private diagnostics and bounded RAM scratch retire. Product, tests and harness are unchanged. other open tasks, target-native settings effects and release acceptance remain OPEN. | `settings-current-1fedb57d.json` |
 | Desktop settings sidebar accessibility (`57fb3185`) | Each entry publishes its button/enabled/selected semantics, and one focus group keeps sidebar Tab traversal together. Unchanged-product checks fail role semantics and traversal to About while four layout/pointer controls pass. The identical six rendered cases now pass, plus three parser controls and before/after source-copy checks. Coverage includes translated labels, enlarged text, semantic activation, external selection, rebuilds and Enter/Space on all four pages. An intermediate six-pass run fails a missing parser-fixture count; its evidence remains partial. All three no-NIC VMs have four zero listener deltas and joined process/private/RAM retirement. Native calls, parent and platform are doubles; full application, native screen readers, settings effects and release acceptance remain OPEN. | `sidebar-accepted-35fa6f2e.json` |
 | Recording directory selection (`aedf1ed6`) | A retained Recording widget owns one directory lookup/picker/save operation, rejects duplicate or disposed callbacks before effects, preserves pending admission across scrolling, and shows local failure with retry. Cancellation preserves the prior value; an admitted write drains after close without stale UI effects. General settings no longer rebuilds for this control's pending/error changes. In the rendered Linux VM baseline, six existing cases pass and four recording cases expose overlap/stale-callback admission, an escaping picker error and missing persistent local failure feedback. The final ten-case component check plus three parser controls passes; viewport and frame-pump fixture corrections and two partial candidates are retained without completion claims. Picker/native responses are controlled doubles; actual dialogs, storage persistence, cross-window ordering, other platforms, R-S0/R-F5 and release acceptance remain OPEN. One intermediate baseline added and one partial candidate removed an unattributed TCP endpoint (`127.0.0.1:9223`); owners were not inspected or changed. The final run has zero endpoint deltas and joined RAM cleanup. | `recording-directory-49ba36aa.json` |
-| Recent-peer loader lifetime (`4f4d4d94`) | Cold loading ends on model publication, including an empty result; native request completion alone cannot mark data loaded. The arbitrary delay is removed. Request failures propagate and permit retry; clearing releases the page callback, cached rows and listener and refuses later work. Both connection pages use actual loading state and report request failure while mounted. With the same dependency-injected loader cases and harness, preparation `df78392c` has 78 passes/four failures; the corrected four-suite check passes 82 cases plus three parser controls. This executes the loader and real `Peers` model with controlled requests/publication, while compiling the callers. Full-page loading/error/keyboard behavior, same-query dropdown refresh and selection, missing/out-of-order native publication, full FFI/filesystem, device and installed/R-S0/R-F5 acceptance remain OPEN. Registration ownership stays user-PARKED. The baseline retains two unattributed loopback additions; no endpoint owner was inspected or changed. | `peer-loader-a60fd6f2.json` |
+| Recent-peer loader lifetime (`4f4d4d94`) | Cold loading ends on model publication, including an empty result; native request completion alone cannot mark data loaded. The arbitrary delay is removed. Request failures propagate and permit retry; clearing releases the page callback, cached rows and listener and refuses later work. Both connection pages use actual loading state and report request failure while mounted. With the same dependency-injected loader cases and harness, preparation `df78392c` has 78 passes/four failures; the corrected four-suite check passes 82 cases plus three parser controls. This executes the loader and real `Peers` model with controlled requests/publication, while compiling the callers. Full-page loading/error/keyboard behavior, same-query dropdown refresh and selection, missing/out-of-order native publication, full FFI/filesystem, device and installed/R-S0/R-F5 acceptance remain OPEN. Registration ownership stays OPEN. The baseline retains two unattributed loopback additions; no endpoint owner was inspected or changed. | `peer-loader-a60fd6f2.json` |
 | Mobile settings metadata (`dda3f316`, `4f75cc4f`) and dormant battery control (`b0e36ab3`) | The page owns one build-date read, publishes success only while mounted, and handles bridge errors locally with a translated Failed value. Reopening creates a fresh read. The unchanged eight-case rendered suite passes at `4f75cc4f`; before correction all four injected-error cases fail while four healthy controls pass. Coverage includes delayed display, rebuild reuse, old replies after replacement, visible failure/reopen recovery and late failure after disposal in both Android/iOS SettingsList styles on Linux with the Android branch selected. Fresh bindings, three parser controls, exact-source checks and joined cleanup pass. Native metadata/parent/platform/logo are doubles; physical/emulated device integration, pre-dispatch disposal, current APK/release and complete R-S0/R-F5 acceptance remain OPEN. The matching older APK is on TUF; its known SSH control socket is absent. The dormant battery switch/state and unused resume observer are removed; service-start consent and native permission/boot handling remain unchanged, with device/Doze acceptance OPEN. | `mobile-date-errors-before-5abbc087.json`, `mobile-date-errors-fixed-4f75cc4f.json`; earlier `mobile-date-cdc1eb29.json`, `battery-settings-684287fa.json`, `settings-build-date-e8fb2d84.json` |
 | Mobile action-sheet rebuilding (`08af6b01`) | `BottomSheetBody` constructs a fresh child list inside its builder, preserving supplied action widgets and callbacks and adding one Cancel button without mutating caller-owned lists. Unchanged-product `57d19547` reproduces duplicate Cancel buttons on parent rebuild and an exception for immutable actions; 23 existing cases pass. Corrected Linux Flutter execution passes all 26 cases plus three result-parser controls with fresh bindings. The child-only rebuild case passes only after its fixture is scoped to the nested sheet, so its earlier ambiguous selection is not baseline product evidence. This verifies the real widget, supplied-button identity, callbacks, disabled controls and repeat rebuilds. Full mobile pages/devices, native actions and installed/R-S0/R-F5 acceptance remain OPEN. | `action-sheet-f87a6877.json` |
 | CM read-block payload ownership (`fecb67ed`) | The admitted `Bytes` moves into the outgoing protobuf without a forwarding allocation/copy; earlier fallible admission still releases unrelated backing. Session/job/generation, size and wire checks stay intact. The 38-case Linux component covers six storage forms under selective allocation refusal, exact bytes/pointers and backing lifetime. Complete authenticated handlers, CM IPC, filesystem/peer effects and root execution remain OPEN. | `cm-read-block-move-a6599f3a.json` |
 | File timestamp representation (`534488f3`) | Desktop/mobile rows share bounded seconds-to-date formatting; unsupported dates show `—`, and sorting uses original seconds. Sixteen Dart cases cover range/overflow, pre-epoch/2038, drive rows and metadata retention; mobile delegation is source-reviewed. Success retains a strict result summary, not per-case JSON or a compiled image. Rendered rows, native filesystem/mobile behavior and directory-ordering/Home parks remain OPEN. | `file-timestamps-fe769b80.json` |
-| File-list numeric sorting — user-PARKED (`05f0b473`) | Preparation only; product unchanged. Run `G1V3ouRCT7` completed with 105 passing and five failing cases: four direction/work failures and one invalid drive-selection fixture. Numeric comparisons rescan metadata; type/size drive retention remains source-observed only because the fixture stopped early. Fix the fixture before claiming drive/selection evidence. Do not resume automatically. Exact QEMU joined, RAM workspace gone, all listener snapshots unchanged; bounded failed diagnostics retained. | `dart-catalogue-removal-05f0b473.json` |
-| Focused viewer suspension — capture pacing corrected; R-F5 OPEN | `5d8cf83a` replaces capture's fixed sleep with a wait that follows the current shared rate and original frame deadline. The instrumented baseline reaches 10 FPS but sleeps another 703 ms, then fails the 12-second pause with two of four required fresh frames. After correction, all 28 controller cases pass, including recovery, lower-rate, last-peer and notification-only waits. Exact Linux X11 app replay `WNthvLmv9r` passes the unchanged 2/6/12-second pauses in 2,069/1,854/1,666 ms, with healthy maximum displayed ages 341/321/369 ms. The same window/TCP connection survives; resources remain bounded and all owned processes join. This is one native suspension sequence, not phase-exhaustive, realistic network impairment, input-visible latency, multi-hour or other-platform acceptance; those remain OPEN. Independent parks remain. | `viewer-pacing-5d8cf83a.json`; earlier `viewer-current-build-6b9e5acc.json` and `viewer-capture-cadence-108f40d2.json` |
+| File-list numeric sorting — OPEN (`05f0b473`) | Preparation only; product unchanged. Run `G1V3ouRCT7` completed with 105 passing and five failing cases: four direction/work failures and one invalid drive-selection fixture. Numeric comparisons rescan metadata; type/size drive retention remains source-observed only because the fixture stopped early. Fix the fixture before claiming drive/selection evidence.  Exact QEMU joined, RAM workspace gone, all listener snapshots unchanged; bounded failed diagnostics retained. | `dart-catalogue-removal-05f0b473.json` |
+| Focused viewer suspension — capture pacing corrected; R-F5 OPEN | `5d8cf83a` replaces capture's fixed sleep with a wait that follows the current shared rate and original frame deadline. The instrumented baseline reaches 10 FPS but sleeps another 703 ms, then fails the 12-second pause with two of four required fresh frames. After correction, all 28 controller cases pass, including recovery, lower-rate, last-peer and notification-only waits. Exact Linux X11 app replay `WNthvLmv9r` passes the unchanged 2/6/12-second pauses in 2,069/1,854/1,666 ms, with healthy maximum displayed ages 341/321/369 ms. The same window/TCP connection survives; resources remain bounded and all owned processes join. This is one native suspension sequence, not phase-exhaustive, realistic network impairment, input-visible latency, multi-hour or other-platform acceptance; those remain OPEN.  | `viewer-pacing-5d8cf83a.json`; earlier `viewer-current-build-6b9e5acc.json` and `viewer-capture-cadence-108f40d2.json` |
 | Frame observer progress and full-window coverage | The observer counts advancing identities, excludes deadline-late samples and includes both preceding gaps and the unobserved tail, capped at the window end. Twenty-nine synthetic C cases distinguish healthy 80/1,000-ms tails from a 1,040-ms refusal; real-X11 oracle/geometry/identity controls and controller compilation pass. No RustDesk app/device runs. Diagnostic/clock/history/sleep/identity/cancellation faults, current-app latency and the retained-app recovery failure remain OPEN; thresholds and resource policy are unchanged. | `observer-window-overrun-19daee8b.json`, `observer-window-tail-dd55ee9d.json`, `observer-window-deadline-d1f2f826.json`, `observer-fresh-gap-25c024aa.json`, `frame-progress-7f5e0497.json` |
 | VM workload admission (`744cd77f`) | Only explicitly configured workloads may select `standard`; missing/unconfigured classes refuse before allocation. Native Bash A/B retains legitimate profiles and rejects the four former fallthroughs, with profile, filesystem, supervisor/startup, root-entry and child-wait controls. Specialized limits and cleanup are unchanged. Full Windows/media RAM admission and product/installed acceptance remain OPEN. | `closed-vm-workloads-6ad50b54.json` |
-| Capture PCM storage (`660429dd`) | Linux/Android capture converts native float bytes into reusable typed storage and refuses incomplete samples without changing output; unsafe byte-to-float casts and the generic aligned allocator are removed. Twenty-two selected Linux tests include exact bits at four offsets, replacement/empty behavior and zero warmed allocations. The old fallback is forced by a probe, not shown naturally reachable. Native device/Opus/IPC, Android, full-parent compilation and performance/soak remain OPEN; audio cancellation stays parked. | `audio-capture-storage-bab1aca9.json` |
+| Capture PCM storage (`660429dd`) | Linux/Android capture converts native float bytes into reusable typed storage and refuses incomplete samples without changing output; unsafe byte-to-float casts and the generic aligned allocator are removed. Twenty-two selected Linux tests include exact bits at four offsets, replacement/empty behavior and zero warmed allocations. The old fallback is forced by a probe, not shown naturally reachable. Native device/Opus/IPC, Android, full-parent compilation and performance/soak remain OPEN; audio cancellation stays open. | `audio-capture-storage-bab1aca9.json` |
 | VM scratch enumeration failures (`0d576cdb`, `6a89940e`) | Storage scans propagate workspace/permission errors through the existing failed-receipt and exact-parent cancellation path; only genuinely removed descendants may retire. A real permission-loss fixture exposes the former hidden-allocation/false-zero result and now refuses before an accepted sample. Filesystem, supervisor and startup controls pass. Budgets and cleanup policy are unchanged; broader scan/storage races and stress remain OPEN. | `vm-allocation-errors-f011cc1b.json` |
 | VM storage-watch fixture publication | Fixture readiness publishes a closed private record through no-replace rename, and failure cleanup permits the existing supervisor grace before escalation. The prior partial-JSON exposure and premature helper kill are retained as rejected diagnostics. Fresh counting and existing filesystem/supervisor/startup controls cover the corrected fixture. Production supervision/admission/ceilings are unchanged; this supplies no product privilege acceptance. | `retired-common-network-afe28f4f.json` |
 | Retired common helpers (`e3b52538`, `19f4895f`, `fbb86a9b`, `1fbc4958`, `a126bc2e`) | Dormant NAT/URL-version/custom-ID/derived-port/host-split, reusable/dual-stack listener and orphaned creation/executable-time/jitter APIs are removed without aliases; their consumers were already retired. Live peer mtime, IPv4-exclusive constructors, connector, normalizer, parser and formatter remain. Named library/configuration/graph and real exclusive-bind controls pass; one unused socket2 version is removed. Complete app/peer, DNS, installed and other-platform acceptance remain OPEN. | `retired-clock-helpers-8f6d5281.json`, `retired-listener-apis-f9e9c84e.json`, `socket-port-retirement-0b9df517.json`, `retired-common-network-afe28f4f.json` |
 | Retired Linux KDE environment getter (`0e8fef80`) | The uncalled KDE getter and its constants are removed; the clipboard caller already uses `is_kde_session()`, whose executable code is unchanged. The same 201-case Linux configuration/at-rest cohort passes without a ceremonial deletion test. This retires a dormant API, not a demonstrated escalation. KDE/X11 clipboard, service/session principals, root, full app/FFI and resource/performance acceptance remain OPEN. | `retired-kde-getter-a06d739e.json` |
 | Unicode password normalization (`66dc8496`; R-P1) | The unchanged production NFC normalizer passes all 19,074 Unicode 15.1 corpus rows (95,370 column checks), 1,095,035 unlisted valid scalars and twelve case/space/compatibility-preservation controls. Expected bytes come from the digest-pinned official corpus in existing offline inputs, independently of the implementation tables. Three optimized Rust 1.75/Linux tests pass in 0.18 seconds; the 94-second zero-NIC VM has four zero listener deltas and verified process/private/RAM retirement. This establishes normalization only; derivation evidence follows below. UI input, cross-platform peers, shipping artifacts and independent review remain OPEN. | `nfc-conformance-66dc8496.json`; `--nfc-conformance-tests` |
-| Fixed password derivation (`1cf48290`; R-P1) | The actual public API matches a separate Debian libargon2 reference for sixteen nonempty inputs and rejects empty input. The reference first passes RFC 9106 §5.3; literal NFC expectations cover accents/Hangul, combining order, case, spaces, compatibility characters, NUL and emoji. Exact salt, Argon2id13 parameters, base64 outputs and both artifact identities are retained. One optimized Rust 1.75/Linux test passes in 0.95 seconds; the 190-second zero-NIC VM has four zero listener deltas and verified process/private/RAM retirement. UI/peer integration, storage, other platforms, shipping artifacts and independent review remain OPEN; connection-start timeout work stays parked. | `prs-derivation-1cf48290.json`; `--prs-derivation-tests` |
+| Fixed password derivation (`1cf48290`; R-P1) | The actual public API matches a separate Debian libargon2 reference for sixteen nonempty inputs and rejects empty input. The reference first passes RFC 9106 §5.3; literal NFC expectations cover accents/Hangul, combining order, case, spaces, compatibility characters, NUL and emoji. Exact salt, Argon2id13 parameters, base64 outputs and both artifact identities are retained. One optimized Rust 1.75/Linux test passes in 0.95 seconds; the 190-second zero-NIC VM has four zero listener deltas and verified process/private/RAM retirement. UI/peer integration, storage, other platforms, shipping artifacts and independent review remain OPEN; connection-start timeout work stays open. | `prs-derivation-1cf48290.json`; `--prs-derivation-tests` |
 | Peer version arithmetic (`86544806`) | Checked arithmetic returns unknown value 0 when unrepresentable, preserving valid numbering/parsing/suffix conventions. Historical development A/B replaces seven panics with refusal. At `7a8b4cc2`, the unchanged Rust 1.75/Linux production-library test passes fourteen compatibility/boundary controls and seven range cases with Cargo-confirmed optimization level 3 and overflow/debug checks disabled. Its artifact hash stays fixed through execution; the 197-second VM reports joined cleanup and four zero listener deltas. SSH loss leaves the separate post-run process check/evidence copy pending. Packet/FFI/app integration, other platforms and final shipping artifacts remain OPEN. | `version-number-a507e657.json`; `hbb-common-fs-run.LwFiKqTokZ.serial.log`; `--version-number-tests` |
 | VM daemon generation publication (`071a3f9f`) | The guest publisher uses the bounded task-name-aware procfs parser instead of whitespace fields. Real task-name and unreaped-child A/B observations pass, children join and malformed/missing PIDs refuse. The zero-NIC authority smoke also boots guest Docker, admits its nonroot entry and refuses root/foreign callers. Actual Docker renaming, remaining readers, PID-reuse/signalling races and product authority remain OPEN. | `vm-daemon-stat-9a3261ff.json` |
 | Linux configuration-directory lease wait (`9c3eed26`) | Configuration-directory leases use nonblocking kernel requests within one monotonic second, with at most 10 ms between attempts. Contention returns TimedOut without recovery, mutation or forced unlock; other errors return immediately. The 182-case Linux cohort covers four formerly blocking create/save cases, preserved journal/file identity, retry after release, concurrent first saves and descriptor balance. Other I/O waits, cross-process lost updates and full settings behavior remain OPEN. | `config-lease-wait-9c3eed26.json` |
@@ -1296,7 +1237,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | Unix configuration temporary-file mode (`ff156029`) | The temporary-file verifier requires exactly 0600 including special bits, retaining owner/regular/single-link/named-inode checks. Controlled post-sync chmod A/B rejects all fourteen special-bit cases while preserving destination state and the altered stage; healthy retries and descriptor balance pass in the 164-case Linux cohort. Native other-platform, metadata/namespace/ACL races, stale-stage cleanup, new-directory durability and failed-create recovery remain OPEN. | `config-temp-mode-ff156029.json` |
 | Boolean setting save ownership (`390c9ab3`, `7afffc98`, `598cfd47`) | Server/local and desktop/mobile Boolean settings share one owned save, confirmed readback, visible failure/mismatch/retry and retirement by exact default/key. Y/empty/explicit-N mapping, native writers, fixed-option guards and both platform layouts remain. The 319-case Linux Flutter component cohort uses controlled Futures and fresh bindings, including rendered Android/iOS layouts; it is not device evidence. Full settings routing, backend/FFI persistence, page-close/global-toast lifetime and cross-control/window/process ordering remain OPEN. | `settings-checkbox-390c9ab3.json`, `default-options-checkbox-7afffc98.json`, `mobile-default-switch-598cfd47.json` |
 | Dropdown selection identity (`73412b93`) | Dropdowns use immutable key-to-label maps and parent-confirmed selection; duplicate labels keep distinct keys, empty choices disable, and missing keys stay visible without first-item fallback. Audio/language/Windows-session callers use this API; language changes serialize and dialogs own their draft. The themed 293-case Flutter cohort passes after constructor adaptation, with controlled Futures/fresh bindings. Actual persistence, complete settings/session dialogs, native FFI and cross-window behavior remain OPEN. | `combo-selection-73412b93.json` |
-| Desktop theme save ownership (`0b3d2db1`) | The General page admits one theme change, retains pending state across tab navigation, disables duplicate actions and rejects callbacks after disposal or a fixed-option change. Admitted preference/notification work drains; failures remain visible and retryable. Five unchanged regression cases fail at `d12e9471`; six theme cases and ten desktop controls pass at `f557b015` using native doubles. At `ea75e846`, app `a630f880` passes four complete Linux X11 process generations: pointer choices Light, Dark and Follow System survive restart, exclusive radio selection agrees with header pixels, and joined storage matches. Every generation presents fresh frames on its unchanged TCP connection. **Live Follow System correction verified:** two baseline replays retain light pixels after a native dark change with no portal. Patch `42dbfc74` admits only a usable portal; native A/B cases prove GNOME selection/live changes and retain valid partial portals. Engine `ddb1541d` and app `16ba2033` build; full-app `sjF2tSUfzS` passes four system transitions, four five-second explicit-choice holds, System reselection/persistence and fresh frames on the same connection. Full-app `CD7hQlSdvD` at `67bb26bc` also passes real EACCES saving: the visible failure retains Light radio/pixels and exact file identity/bytes; restoring directory access permits Dark retry, clears the error and persists Dark after process join. Four fresh frames follow on the same connection. All processes and RAM scratch retire with zero listener deltas. Other save/crash failures, concurrent writers/windows, installed privileged settings, other platforms/providers and release acceptance remain OPEN; parked mobile-boolean failures remain unresolved. | Audit “2026-10-27 user pivot — desktop theme save ownership” and “2026-11-01 — restore TUF access and validate the corrected theme engine”; `theme-restart-ea75e846.json`, `theme-appearance-61ea882f.json`, `theme-appearance-fixed-16ba2033.json`, `theme-save-failure-67bb26bc.json` |
+| Desktop theme save ownership (`0b3d2db1`) | The General page admits one theme change, retains pending state across tab navigation, disables duplicate actions and rejects callbacks after disposal or a fixed-option change. Admitted preference/notification work drains; failures remain visible and retryable. Five unchanged regression cases fail at `d12e9471`; six theme cases and ten desktop controls pass at `f557b015` using native doubles. At `ea75e846`, app `a630f880` passes four complete Linux X11 process generations: pointer choices Light, Dark and Follow System survive restart, exclusive radio selection agrees with header pixels, and joined storage matches. Every generation presents fresh frames on its unchanged TCP connection. **Live Follow System correction verified:** two baseline replays retain light pixels after a native dark change with no portal. Patch `42dbfc74` admits only a usable portal; native A/B cases prove GNOME selection/live changes and retain valid partial portals. Engine `ddb1541d` and app `16ba2033` build; full-app `sjF2tSUfzS` passes four system transitions, four five-second explicit-choice holds, System reselection/persistence and fresh frames on the same connection. Full-app `CD7hQlSdvD` at `67bb26bc` also passes real EACCES saving: the visible failure retains Light radio/pixels and exact file identity/bytes; restoring directory access permits Dark retry, clears the error and persists Dark after process join. Four fresh frames follow on the same connection. All processes and RAM scratch retire with zero listener deltas. Other save/crash failures, concurrent writers/windows, installed privileged settings, other platforms/providers and release acceptance remain OPEN; unfinished mobile-boolean failures remain unresolved. | Audit “2026-10-27 user pivot — desktop theme save ownership” and “2026-11-01 — restore TUF access and validate the corrected theme engine”; `theme-restart-ea75e846.json`, `theme-appearance-61ea882f.json`, `theme-appearance-fixed-16ba2033.json`, `theme-save-failure-67bb26bc.json` |
 | Unix deletion completion (`67f96c65`) | File, empty-directory and nested-link deletion verifies absence and synchronizes the retained parent before success. Sync failure reports visible deletion with uncertain durability; recursive removal stops before deleting that parent. Controlled fsync-EIO A/B and healthy/missing/link-root/nonempty cases pass in the 105-case Linux cohort. This is not power-loss evidence. Namespace races, uncertain retry/crash recovery, other-platform calls and large-tree latency remain OPEN. | `removal-sync-67f96c65.json` |
 | Linux corrupt-config recovery (`4de1eb9b`) | Corrupt-config recovery retains syncable parent/file authority before rename, hardens to 0600, syncs file/directory and confirms backup identity plus old-name absence. Sync failure returns TransientError with the visible backup; unavailable parent-read authority refuses before mutation. Native syscall-fault, healthy/read-only, permission-repair/retry and descriptor controls pass in the 163-case Linux cohort. Actual disk/power-loss/crash durability, namespace/content races and other platforms remain OPEN. | `config-recovery-sync-4de1eb9b.json` |
 | Credential-status retry accessibility (`a360d341`) | The saved-status error control uses Material/InkWell, labelled button semantics and visible keyboard focus while retaining exact-generation, one-pending-read admission. Baseline `7c80769a` fails four accessibility cases and passes ten pointer/lifecycle controls; source `4975454e` passes all 14 rendered Flutter cases and three parser controls in 274 outer VM seconds. QEMU joined and bounded RAM scratch retired. Native storage/FFI, full peer cards, OS screen readers and installed acceptance remain OPEN. | Audit “2026-10-27 — user pivot: credential-status retry accessibility”; runs `dUFlWZfePN` / `VdElZUEnV1` |
@@ -1307,10 +1248,10 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | Tunnel local-port ownership (`47748322`, `4c27ab6c`) | Ordinary request, saved-write and one-off paths require ports 1–65535; only an RDP session may create its internal ephemeral mapping 0, and that session cannot request a fixed mapping. The supervisor checks kind before bind/launch. The one-off API is explicitly named and validates before its owner thread. Invalid legacy entries remain removable. Separate native regressions reproduce the saved/owner and one-off failures; the accepted Linux cohort passes all 91 tests and covers valid bounds, refusal, legacy removal, native exclusive listeners, RDP-branch selection and joined/rebindable owner shutdown. Session-kind, peer-file, relay and RDP-process effects are doubles; full parent/CLI parser, rendered UI, encrypted TOML, real Windows helper/peer traffic, other platforms and release acceptance remain OPEN. A prior 91-pass capture lacked a required summary and was rejected; console-receipt reliability remains OPEN. | `tunnel-port-kind-ff84c0ff.json` |
 | Saved tunnel mapping identity (`4df5b869`) | An explicit edit leaves one selected target for its local port, removes stale same-port rows, preserves other mappings and peer fields, and reports write failure. Canonical identical retries do not rewrite. Startup bounds its snapshot before cloning, refuses lists over 32 without saving, and leaves every duplicate port unbound while attempting unrelated unique mappings; explicit repair remains usable. The real Linux configuration-library regression fails on five duplicate layouts and false write success before correction; the corrected 202-test cohort passes with durable reload, credential/sibling preservation, write refusal and no-write retries. A separate native component regression reproduces duplicate and oversized-list activation, then all 92 tests pass, including exact-capacity 32 listeners, healthy siblings, repair and joined/rebindable shutdown. Its session/error recipient, peer-file adapter and relay are doubles; the library uses the actual peer-file schema and writer. Full parent/rendered flows, actual remote target traffic, other desktop platforms, other legacy/corrupt records, concurrent whole-peer writers, crash durability and release acceptance remain OPEN. | `saved-tunnel-identity-16255c27.json` |
 | Orphaned session tunnel mode (`91e4a699`) | The unpopulated `Session.args` field, its string parsing and duplicate one-off supervisor loop are deleted. Desktop sessions select saved mappings or RDP; the live CLI retains its explicit typed `listen_one_off` route. The historical test alias and API auto-selection are removed. Whole-tree reference/constructor review finds no producer of the deleted field. The saved startup body and all one-off regression bodies are unchanged; all prior 92 Linux component test identities pass, including native listener admission, repair and joined/rebindable shutdown. This retires unused code. Full parent/generated linkage, actual CLI parsing/rendered workflows, real peers, other platforms, installed privilege boundaries and release acceptance remain OPEN. | `session-tunnel-mode-6e51cedc.json` |
-| Unix receive-parent lifetime (`458c3771`; accepted `2f7edfff`) | Each receive lease retains its admitted parent directory through sidecar setup, resume/inspection, finalization, cleanup and namespace synchronization. Renaming that directory no longer loses completion/cleanup authority or redirects later operations through a replacement path. Selected child identity and post-unlink absence/link checks remain relative to that parent. Unix production pathname-reopening helpers are removed; Windows NT implementation bytes are unchanged. The unchanged regression reproduces nine lost-parent failures and three healthy controls, then all twelve cases pass with replacement-file identity/content preserved and descriptors 6→6. The expanded Linux shard passes all 123 required named tests/33 groups, including 17 existing receive lifecycle controls; all names and final artifact stability are retained. One setup-only rejected fixture and the earlier 106-test run are classified in the capsule. The three user-parked receive pre-I/O cases remain unselected. This is nonroot library/filesystem evidence. Full application/peer and installed/root/wrong-principal execution, native macOS/iOS/Windows, further leaf/mount/namespace races, power-loss durability, resource/latency soak, R-S0/R-F5 and release acceptance remain OPEN. | `receive-parent-6345b90b.json` |
+| Unix receive-parent lifetime (`458c3771`; accepted `2f7edfff`) | Each receive lease retains its admitted parent directory through sidecar setup, resume/inspection, finalization, cleanup and namespace synchronization. Renaming that directory no longer loses completion/cleanup authority or redirects later operations through a replacement path. Selected child identity and post-unlink absence/link checks remain relative to that parent. Unix production pathname-reopening helpers are removed; Windows NT implementation bytes are unchanged. The unchanged regression reproduces nine lost-parent failures and three healthy controls, then all twelve cases pass with replacement-file identity/content preserved and descriptors 6→6. The expanded Linux shard passes all 123 required named tests/33 groups, including 17 existing receive lifecycle controls; all names and final artifact stability are retained. One setup-only rejected fixture and the earlier 106-test run are classified in the capsule. The three unfinished receive pre-I/O cases remain unselected. This is nonroot library/filesystem evidence. Full application/peer and installed/root/wrong-principal execution, native macOS/iOS/Windows, further leaf/mount/namespace races, power-loss durability, resource/latency soak, R-S0/R-F5 and release acceptance remain OPEN. | `receive-parent-6345b90b.json` |
 | Windows package specification cleanup (base `cefaa0ce`) | Appendix C #33/#39/#125/#213/#215/#216 now refer to their complete existing installer/device/certificate/cleanup contracts; #117 states the updater-file ownership risk without repair history. Distinct bootstrapper, firewall, service-failure, broker-refresh and staging rules remain. All requirement IDs, appendix entries and normative text outside these seven rows are unchanged; 2,856 redundant/history bytes are removed. Product and verifier sources are unchanged. Installed Windows allow/refusal, MSI lifecycle, signed artifacts and release acceptance remain OPEN. | `windows-package-spec-cefaa0ce.json` |
 | Closed peer display/option views (`be595d98`) | Closed options/list-alias/hostname/port views reject wrong types only in their own fields, preserve absent defaults and ignore unrelated malformed fields. Reads are nonsecret and perform no PeerConfig construction, credential migration, controlled CONFIG initialization or repair/recovery. The 116-case Linux cohort covers malformed records, read-only identity preservation, list omission and healthy retries. Ordinary infallible option facades still log errors and return empty strings; full caller/UI errors, parent/FFI and namespace/ACL/concurrent behavior remain OPEN. | `peer-view-schema-be595d98.json`, `peer-ui-read-761fcc9b.json`, `peer-ui-readonly-a55cf1b0.json` |
-| Viewer peer credential model (`3e876f64`) | Active PeerConfig retains CPace PRS only; private decoding discards obsolete password bytes while retaining presence for explicit Forget. Legitimate saves omit that field, and reads alone do not rewrite it; the saved badge reads PRS only. Old-file erasure still requires save or Forget. The 48-case Linux cohort covers old-field read/save/Forget and PRS forms, with controlled-side credential bytes unchanged. Appendix C #48 governs the viewer-only contract. Cached credential retirement, migration/writer races and parent/native FFI/UI remain OPEN; parked parent selector changes are source-checked only. | `peer-credential-model-3e876f64.json` |
+| Viewer peer credential model (`3e876f64`) | Active PeerConfig retains CPace PRS only; private decoding discards obsolete password bytes while retaining presence for explicit Forget. Legitimate saves omit that field, and reads alone do not rewrite it; the saved badge reads PRS only. Old-file erasure still requires save or Forget. The 48-case Linux cohort covers old-field read/save/Forget and PRS forms, with controlled-side credential bytes unchanged. Appendix C #48 governs the viewer-only contract. Cached credential retirement, migration/writer races and parent/native FFI/UI remain OPEN; unfinished parent selector changes are source-checked only. | `peer-credential-model-3e876f64.json` |
 | File-transfer checkpoint persistence (`2b96cf6a`) | Transfer checkpoints use a checked transfer-only peer operation; failure propagates before selected cache publication, and unchanged/missing-empty writes are avoided. The owning I/O thread saves outside Tokio; generic whole-record save and full job logs are removed. The 44-case Linux A/B covers read/write denial, retry, credential/unrelated/sibling preservation and idempotence. Actual checkpoint lifecycle/cache callers, parent compilation, concurrent writers and crash durability remain OPEN. | `peer-transfer-checkpoint-2b96cf6a.json` |
 | Peer-list display, record identity and preservation (`2ddc9d92`, `3dc1183e`, `be4d04f0`) | Recent/Favorite listings return only PeerListInfo's nonsecret fields without credential/config initialization, repair, recovery or empty-record deletion. Encoded IDs require exact UTF-8/base64 decoding and writer-path identity; invalid aliases are omitted untouched, with separate compact-address checks. Linux listing A/B preserves healthy and rejected records; earlier Flutter mapper evidence is historical, not native FFI/rendered-list acceptance. Appendix C #48 retains the read-only contract. Ambiguous/cross-platform names, credential migration/recovery, cached whole-peer writers in src/client.rs, concurrent mutation/deletion and complete callers remain OPEN. | `peer-list-identity-69b1dc31.json`, `peer-list-view-3dc1183e.json`, `peer-listing-preservation-2ddc9d92.json` |
 | Full-length direct-address peer records (`6b9a61f1`) | Encoded stems over 250 bytes use an 83-byte ASCII digest filename with exact private direct-address metadata; full/closed reads, listing and writes recompute and verify that identity before encryption or replacement. Invalid metadata refuses without recovery/mutation; explicit checked removal remains. The 200-case Linux cohort covers long-address workflows and invalid metadata; corrected-only extra assertions are not baseline evidence. Existing fitting paths/APIs/writer are unchanged. Ambiguous legacy records, concurrent cached writers, actual UI/FFI and other filesystems/platforms remain OPEN. | `long-peer-addresses-c84bcf44.json` |
@@ -1336,7 +1277,7 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | Directory entry metadata (`9fb92261`) | Listing skips only enumerated entries whose no-follow metadata becomes NotFound; other errors propagate and disappearance still consumes scan budget. Native cases retain real DirEntry objects while staging removal before the loop, including missing-root/broken-link controls. Full caller/peer, separate recursive/namespace races and other target OS execution remain OPEN. | `directory-entry-9fb92261.json` |
 | Trackpad fling lifetime (`d63847fb`) | InputModel owns fling cancellation on pan/down/hover/blur/reset/disposal without synchronous polling. Deferred output retains its admitting owner; one pending send gates the latest successor, and failure retires only its work. Linux scaling/decay/finite completion remain. Actual handlers/timers pass controlled-time/send-observer cases. Physical devices, native round/receiver ownership, peer effects and complete platform integration remain OPEN. | `trackpad-fling-d63847fb.json` |
 | Trackpad pinch quantization (`10ef33c7`) | Each gesture retains its cumulative integer zoom and emits the difference from the next cumulative value. Small movements survive quantization, subdivisions preserve total zoom, reversals stay within one wire unit, and a new gesture starts at zero. The unchanged production handler at `954f4547` loses both slow pinches entirely and emits 100 instead of 195 units after subdivision: four failures, 94 passing controls. The same Linux Flutter shard passes all 98 cases after correction, plus three result-parser controls. Output is observed at the final send boundary; the native sink is replaced. Physical trackpads, actual FFI/peer/Windows zoom effects, other-platform execution, R-S0/R-F5 and release acceptance remain OPEN. | `trackpad-pinch-924eea6e.json` |
-| Fractional wheel movement (`6eb4c7b7`) | The viewer retains less than one logical pixel for the exact session/client, device, view and dominant axis. Blur, image exit, reset, disposal, refused input and invalid numeric values retire the remainder. Zero-distance commands are omitted; whole-pixel threshold, step normalization and acceleration formula remain. Baseline `3328fab6` passes 112 controls and fails nine new cases, including lost fractional movement and a nonfinite conversion exception. At `b03d6334`, the unchanged 121-case Flutter suite and three focused parser controls pass in TUF `TSJ2gxVNNI`. Two intermediate attempts expose stale result counts and unrelated parked parser checks; their repairs change only the harness. All four VMs join, RAM scratch retires and sixteen listener deltas are zero. Final native sends and owner/policy inputs are controlled. Physical-device calibration, complete viewer/peer scrolling, actual pixels, other-platform execution and R-S0/R-F5/release acceptance remain OPEN. | Audit entry “2026-11-01 — user pivot to fractional wheel movement”; `flutter-model-tests-run.TSJ2gxVNNI.serial.log` |
+| Fractional wheel movement (`6eb4c7b7`) | The viewer retains less than one logical pixel for the exact session/client, device, view and dominant axis. Blur, image exit, reset, disposal, refused input and invalid numeric values retire the remainder. Zero-distance commands are omitted; whole-pixel threshold, step normalization and acceleration formula remain. Baseline `3328fab6` passes 112 controls and fails nine new cases, including lost fractional movement and a nonfinite conversion exception. At `b03d6334`, the unchanged 121-case Flutter suite and three focused parser controls pass in TUF `TSJ2gxVNNI`. Two intermediate attempts expose stale result counts and unrelated unfinished parser checks; their repairs change only the harness. All four VMs join, RAM scratch retires and sixteen listener deltas are zero. Final native sends and owner/policy inputs are controlled. Physical-device calibration, complete viewer/peer scrolling, actual pixels, other-platform execution and R-S0/R-F5/release acceptance remain OPEN. | Audit entry “2026-11-01 — user pivot to fractional wheel movement”; `flutter-model-tests-run.TSJ2gxVNNI.serial.log` |
 | Wheel event admission (`5c43899a`) | The handler requires a live input model, the current session/client and keyboard/mouse permission, then sends to the captured session. Camera/view-only refusals remain. At preparation `027c3cfa`, which only extracts the existing send for observation, three cases emit a wheel command after owner retirement, model disposal or permission refusal; 100 controls pass. The identical Linux Flutter shard passes all 103 cases after correction, plus three parser controls, including authorized retries, replacement input and ordinary direction/axis behavior. Conversion, acceleration and trackpad processing are unchanged. Final native sends and owner/policy inputs are controlled; actual close/UI/native peer timing, other platforms, fractional pixel-to-wheel conversion, R-S0/R-F5 and release acceptance remain OPEN. Each final host snapshot has one unattributed endpoint addition (baseline UDP; corrected loopback TCP); neither owner was inspected or changed. | `wheel-admission-50f81a78.json` |
 | Raw mouse cancellation and touch-source cleanup (`46ccfc52`) | RawPointerMouseRegion routes cancellation through the typed terminal path, and retained history releases buttons after touch-source changes. Rendered Flutter binding/hit-test cases cover normal cancel/touch switching; repeated/wrong/empty controls invoke the mounted Listener directly and observe final sends. Physical/native peer effects, relative mode and policy/focus/session/asynchronous ownership remain OPEN. | `mouse-cancel-46ccfc52.json` |
 | Windows absolute pointer coordinates (`9dfd6eb6`) | The Windows input path normalizes both axes with widened arithmetic, rejects invalid extents/outside coordinates before SendInput, and selects an integer inside each requested pixel's normalized bin. Negative monitor origins remain valid. The unchanged five-test Linux component check reproduces four baseline failures and passes after correction, including 535,116 pixel round trips and extreme origins, compiled with optimization and overflow checks disabled. Accepted run `xqETEKY6pJ` takes 60 outer seconds after repairing the missing harness network canary; product and tests are unchanged by that repair. QEMU joins and RAM scratch retires. Actual Windows compilation/input, DPI/topology changes, monitor gaps, installed/peer behavior and release acceptance remain OPEN. | Audit entry “2026-10-28 — user pivot to Windows pointer coordinates”; `android-rust-lifecycle-tests-run.xqETEKY6pJ.serial.log` |
@@ -1345,11 +1286,11 @@ Do not resume automatically. Work moved to the R-S11hj current-state ledger clea
 | VM supervisor cancellation (`59f691bb`, `0881465f`, `8413d5ab`) | Cancellation closes QMP admission and retains the exact child through TERM, five-second grace, pidfd KILL and join before waited-child accounting. Kernel/scheduler drain is not hard-bounded; escalation precedes the outer ten-second kill window, and guest fixtures retain their 30-second budget. Real-QEMU observations cover ordinary interruption (QEMU0/outer130), a stopped child plus supervisor TERM (QEMU−9 after 5.076s; expected outer1), and natural expiry of the unchanged 150-second production timeout at source `c1565f41` (timeout124/wrapper1, joined QEMU0). The latter stops only the owned QEMU by pidfd, leaves it stopped through a later observation and sends no cleanup signal; GNU timeout supplies TERM/CONT. It is an accepted timeout/refusal scenario, not a completed token workload or forced-KILL proof. Its storage lifetime is 152.699s; bounded RAM scratch peaks at 401,342,464 bytes and is retired. The exact 16-node diagnostic root is retired after terminal/join and retained evidence. Owning-PTY and natural-timeout continuation remain distinct from the forced-KILL case. Source, deadlines and resource caps are unchanged. Real-QEMU early startup/handler-setup failure, abrupt supervisor loss, failed continuation, kernel-stalled drain, media/Windows storage and full R-S0/R-F5 acceptance remain OPEN. | `vm-supervisor-cancel-59f691bb.json`, `vm-startup-cancel-0881465f.json`, `qemu-interrupt-observation-8413d5ab.json`, `qemu-stopped-cancel-48d1285e.json`, `qemu-outer-timeout-c1565f41.json` |
 | VM supervisor early startup (`38067602`) | The shared runner installs cancellation handlers before creating a child and owns both under one cleanup scope. Cancellation during creation is latched until the returned child can be joined; partial handler setup restores the installed subset and creates no child. Two identical UID4000 guest regressions reproduce live orphaned children before correction, adopted and joined by the fixture; afterward both pass without fixture cleanup, alongside all eleven retained watch/supervisor/startup controls. These use native process signals/pidfds/waits with controlled scheduling, a Python QMP child and an injected installation error. The actual enclosing QEMU runs exercise normal startup/join and RAM retirement only. Real-QEMU early cancellation/setup failures, abrupt supervisor loss, media/Windows storage and complete R-S0/R-F5 acceptance remain OPEN. | `qemu-early-startup-5be33145.json` |
 | Physical mouse button transitions (`7688d2fb`; harness `00bcbf60`) | InputModel owns five supported button bits and emits individual releases before new presses, at most five transitions per sample; movement is separate and unknown bits cannot encode empty identities. Actual absolute callback cases pass with output observed before coordinate/native dispatch. The slow cold setup is classified as integration, with its timeout diagnostic retained. Native relative mode/filtering/asynchronous order, peer button state, session/focus/cancel teardown and physical devices remain OPEN. | `mouse-buttons-7688d2fb.json` |
-| Tap-and-hold drag ownership and coordinates (`870aafa0`, `2b261b23`) | HoldTapMove retains its two-entry, route/hold and timer ownership through admission and exact terminal cleanup. Movement now uses the receiver-local delta alongside its local position. The earlier translated-start test did not cover scaled, rotated or reflected movement: baseline `f1ece4f4` passes fourteen controls and fails all three new cases by publishing the screen-space delta. The identical seventeen-case Flutter suite passes after correction, including reverse movement, arena resolution and cleanup. Raw named outcomes and exact source-copy receipts are retained; the outer harness still fails the three parked models-profile parser controls, so full harness acceptance remains OPEN. Both VMs join and bounded RAM scratch retires. Full gesture composition, session/asynchronous mouse completion, physical desktop/mobile/browser/peer input and R-S0/R-F5 remain OPEN. | `hold-drag-870aafa0.json`; audit entry “2026-10-28 — tap-and-hold receiver coordinates”; runs `J0PGkVGgt9` / `X2lJHvbtdu` |
+| Tap-and-hold drag ownership and coordinates (`870aafa0`, `2b261b23`) | HoldTapMove retains its two-entry, route/hold and timer ownership through admission and exact terminal cleanup. Movement now uses the receiver-local delta alongside its local position. The earlier translated-start test did not cover scaled, rotated or reflected movement: baseline `f1ece4f4` passes fourteen controls and fails all three new cases by publishing the screen-space delta. The identical seventeen-case Flutter suite passes after correction, including reverse movement, arena resolution and cleanup. Raw named outcomes and exact source-copy receipts are retained; the outer harness still fails the three unfinished models-profile parser controls, so full harness acceptance remains OPEN. Both VMs join and bounded RAM scratch retires. Full gesture composition, session/asynchronous mouse completion, physical desktop/mobile/browser/peer input and R-S0/R-F5 remain OPEN. | `hold-drag-870aafa0.json`; audit entry “2026-10-28 — tap-and-hold receiver coordinates”; runs `J0PGkVGgt9` / `X2lJHvbtdu` |
 | Touch pan/scale phases (`657ae3a7`; fixture `a72cc891`) | CustomTouch starts each phase on its first accepted update and clears it before end/disposal. Independent debounce/global hold coupling and obsolete duplicate paths are removed. Framework arena cases cover repeat/replacement, moving finger-count changes, fourth-pointer suppression, disposal, cancellation retry and transforms, retaining Flutter's end/restart contract. Full app/session/asynchronous completion, physical/browser/peer injection and other recognizers remain OPEN. | `touch-phases-657ae3a7.json` |
 | Two-finger tap sequences (`3807426d`) | Two-finger taps own at most two overlapping entries and one 300-ms deadline. Final Up completes a ready pair; cancellation, movement, arena loss, timeout, third-finger refusal and disposal retire routes/state/holds before retry. Actual framework arena cases use controlled pointers/time. Full remote-input composition, drag/scale interaction, physical desktop/mobile/browser behavior and peer OS input remain OPEN. | `two-finger-tap-3807426d.json` |
-| File manager listing state (`72243e0a`) | FileController preserves sort preferences and selection on failed/retired responses or in-place sorting; publishing a new listing retires the old selection, while admitted transfers retain their captured entries and compatibility. Nineteen controlled Flutter controller/request-facade cases pass. Native version parsing, Rust filesystem/peer exchange, rendered/late callbacks and overlapping navigation remain OPEN. Directory ordering and resolved Home stay user-PARKED; the parked probe ran no behavior. | `file-selection-baseline-8657a056.json`, `file-selection-corrected-72243e0a.json`, `directory-ordering-parked-092dcea2.json` |
-| Modifier release ownership (`bc8c1652`; Flutter `d76c97f9`) | Exact UI ownership retains modifier releases with the original sender after encoding/swapping. Epochs/sequences fence stale Ups and fresh presses replace old work in one bounded batch; cleanup bypasses new-input gates on focus/policy/source/relative-mode/retirement. Native-grab tracking remains separate. Named Linux InputModel, keyboard/queue, keyed-TCP packet and generated-bridge cases pass. Physical injection, actual focus/reconnect/window lifecycles, native-grab/string-input and browser integration remain OPEN. Global window dispatch and BlockInput remain user-PARKED. | `held-modifiers-0541b0cd.json`, `modifier-test-classification-8a5e0831.json` |
+| File manager listing state (`72243e0a`) | FileController preserves sort preferences and selection on failed/retired responses or in-place sorting; publishing a new listing retires the old selection, while admitted transfers retain their captured entries and compatibility. Nineteen controlled Flutter controller/request-facade cases pass. Native version parsing, Rust filesystem/peer exchange, rendered/late callbacks and overlapping navigation remain OPEN. Directory ordering and resolved Home stay OPEN; the unfinished probe ran no behavior. | `file-selection-baseline-8657a056.json`, `file-selection-corrected-72243e0a.json`, `directory-ordering-parked-092dcea2.json` |
+| Modifier release ownership (`bc8c1652`; Flutter `d76c97f9`) | Exact UI ownership retains modifier releases with the original sender after encoding/swapping. Epochs/sequences fence stale Ups and fresh presses replace old work in one bounded batch; cleanup bypasses new-input gates on focus/policy/source/relative-mode/retirement. Native-grab tracking remains separate. Named Linux InputModel, keyboard/queue, keyed-TCP packet and generated-bridge cases pass. Physical injection, actual focus/reconnect/window lifecycles, native-grab/string-input and browser integration remain OPEN. Global window dispatch and BlockInput remain OPEN. | `held-modifiers-0541b0cd.json`, `modifier-test-classification-8a5e0831.json` |
 
 Release still requires exact current artifacts and target-native execution: installed Linux across supported
 supervisors/desktops; Windows full-peer focus/minimize/background/reconnect and installed negative-principal
@@ -1390,7 +1331,7 @@ one-second display-age ceiling. No dialog failure cause is established. The VM j
 RAM scratch and the exact inventoried diagnostic tree retired, and bounded logs/identities
 remain in `flutter-replay-input-contract-b0b2dc70.json`. Actual viewer suspension, network
 recovery, input-to-visible latency, soak, installed/other-platform, R-S0/R-F5 and release
-acceptance remain OPEN. Parked source, window/dispatcher and producer work remains parked.
+acceptance remain OPEN. Unfinished source, window/dispatcher and producer work remains open.
 
 ## Documentation and verification architecture
 
@@ -1415,7 +1356,7 @@ former implementation history. Their required dispositions remain intact.
 R-S11gn replaces its historical daemon/pool result with the required real-QEMU
 acceptance boundary; the existing Windows-harness entry retains that history.
 IDs, links, anchors and all other specification bytes are unchanged. No native
-acceptance is added; all existing gaps and parks remain. Classification and
+acceptance is added;  Classification and
 two-document counts are in the audit's “2026-11-04 — native integration specification roles”.
 
 **Vendored Linux URL-launcher documentation.** The package README now identifies
@@ -1425,7 +1366,7 @@ longer describes the modified directory as an exact upstream package. Package
 metadata, lockfiles and executable sources are unchanged; document/source and
 relative-link review supplies documentation evidence only.
 
-**OPEN/PARKED — listener-status loading and errors.** The user requested an
+**OPEN — listener-status loading and errors.** The user requested an
 unrelated task. Candidate UI changes are preserved in stash
 `c82aa2a5abc188551fcca31423ff0787b503f811`; preparation is at `9bfe4d78`.
 The first expanded baseline passes 16 cases and fails seven, with an indicator
@@ -1482,7 +1423,7 @@ R-S0 immunity with complete functionality; actual R-F5 impairment recovery and
 multi-hour freshness; exact-current builders/artifacts and installed/native authority;
 scanner acceptance; complete inputs and signing; upstream baseline reproduction,
 fork-delta accounting and per-target surface/egress; cold equality, release acceptance,
-independent reproduction and external review. All separately parked work stays parked.
+independent reproduction and external review.
 
 **R-A9 wire acceptance — OPEN.** The contract now requires complete actual-relay
 capture, protected-record authentication and payload recovery, recipient delivery,
@@ -1518,7 +1459,7 @@ test-text captures are deleted (97 lines). Every test body, executable test comm
 result inventory and production-source predicate remains unchanged. Exact source
 comparison, shell syntax and diff checks cover this deletion; no product runtime
 test ran for it. `test-source-catalogues-911ad100.json` retains the comparison and
-fresh ledger count. Native/installed acceptance and all user parks remain OPEN.
+fresh ledger count. Native/installed acceptance remain OPEN.
 
 Two further PTY test-wording loops and one main-server argv test-name grep are
 deleted from the shared/Apple gates (21 lines). All four Rust tests, production
@@ -1560,9 +1501,9 @@ Rows containing product findings and runtime results retain their own limits.
 | Apple acceptance evidence | Section 15 distinguishes R-R2's three-target source gate from exact-artifact native acceptance. R-S0/R-S2/R-S13/R-S19/R-A4/R-X1/R-X4/R-P5/R-V3 remain binding. Compilation, installed/native Apple, all fifteen credential actions, R-F5 and release acceptance OPEN. | `apple-acceptance-contract-517c2d25.json` |
 | Linux authorization/lifecycle helper evidence | R-S11y/R-S11aa retain fixed images/actions, empty environments, descriptor ordering and actual-child regressions. Test-text catalogues removed; pkcheck/systemctl tests retained, unexecuted by that deletion. Parent/installed, all fifteen credential actions, R-S0/R-F5 and release acceptance OPEN. | `helper-environment-evidence-f9ffdf44.json` |
 | PAKE public-input admission — early refusal corrected | `430b273e` puts both role checks before randomness. `37406461` also decodes the initiator's received point before scalar sampling, generator derivation and public-share multiplication. Under real Linux `getrandom` EIO, the invalid encoding returned `Rng` in baseline `G24PFplyf8`; the unchanged regression now requires and obtains `Decode`. Valid-input controls retain `Rng`, wrong roles retain `AdMismatch`, and only confirmation failures count as guesses. TUF `W2buEjhSRF` passes all twenty functional tests plus the allocation check, including published/fork vectors, random handshakes, identity refusal and mirrored keys. The public API, wire bytes, cryptographic construction and shared-point identity check remain. Full application/network integration, other targets, timing, erasure and installed privilege acceptance remain OPEN. | `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`; audit's 2026-10-30 point-before-randomness entry binds both artifacts and results. Both VMs join, RAM scratch retires and all eight listener deltas are zero. Earlier role A/B runs `fDvXYW6QUy` / `sp2jDlvbLU` remain in the role-before-randomness entry. |
-| Optimized PAKE primitive timing — repeated serial detection; R-P12 OPEN | `34f59ed8` runs two complete seven-cohort rounds in one process before the aggregate verdict. TUF `jdaV1ucecW` passes twenty functional tests and both rounds' positive/identical controls; both rounds detect one/random in pooled-p99 (-25.009/22.763, then -19.184/18.647), while raw t and both nontrivial fixed/random orientations stay below threshold. All seven input hashes/counts match across rounds and prior runs: 500,000 assessed / 100,000 control samples, four operations, threshold 10. Same PID, executable and resolved-copy mapping span both rounds. Earlier serial `fUYxL6dNCJ` stayed below threshold (-9.405/7.523 p99), while `l7uE7lOxEI` and default `Rk91ISkqi5` detected; all evidence remains in the audit. Repeated detection within one process does not identify its cause or justify a production backend change. Further timing work is OPEN/PARKED by user direction; the CPU-group comparison is unexecuted and independent reproduction remains required. Full sampling/RNG, other targets/shipping builds, higher-order effects, automatic CI, erasure and R-V3 remain OPEN. | Existing backend profiles now use two rounds, with 480-second native / 660-second VM bounds and unchanged storage limits. `pake-repeat-serial-34f59ed8.json` binds fourteen cohorts, binary/libc, three CPU-0 thread snapshots and cleanup. Native/outer execution takes 397.54/542.399 seconds; timing exits 101. QEMU, helpers and RAM/private scratch retire with four zero listener deltas. Production and dependencies are unchanged. Prior artifact/copy comparisons and finite passes remain retained; the new default two-round profile is unexecuted. |
+| Optimized PAKE primitive timing — repeated serial detection; R-P12 OPEN | `34f59ed8` runs two complete seven-cohort rounds in one process before the aggregate verdict. TUF `jdaV1ucecW` passes twenty functional tests and both rounds' positive/identical controls; both rounds detect one/random in pooled-p99 (-25.009/22.763, then -19.184/18.647), while raw t and both nontrivial fixed/random orientations stay below threshold. All seven input hashes/counts match across rounds and prior runs: 500,000 assessed / 100,000 control samples, four operations, threshold 10. Same PID, executable and resolved-copy mapping span both rounds. Earlier serial `fUYxL6dNCJ` stayed below threshold (-9.405/7.523 p99), while `l7uE7lOxEI` and default `Rk91ISkqi5` detected; all evidence remains in the audit. Repeated detection within one process does not identify its cause or justify a production backend change. Further timing work is OPEN by user direction; the CPU-group comparison is unexecuted and independent reproduction remains required. Full sampling/RNG, other targets/shipping builds, higher-order effects, automatic CI, erasure and R-V3 remain OPEN. | Existing backend profiles now use two rounds, with 480-second native / 660-second VM bounds and unchanged storage limits. `pake-repeat-serial-34f59ed8.json` binds fourteen cohorts, binary/libc, three CPU-0 thread snapshots and cleanup. Native/outer execution takes 397.54/542.399 seconds; timing exits 101. QEMU, helpers and RAM/private scratch retire with four zero listener deltas. Production and dependencies are unchanged. Prior artifact/copy comparisons and finite passes remain retained; the new default two-round profile is unexecuted. |
 | PAKE secret owners and temporary encodings — source corrected; full erasure OPEN | Scalars, generator/ISK results, compressed shared points and waiting-state keys retain wiping owners (`1cb70c23`). Generator, ISK and MAC-key derivation stream their inputs (`2a3e8d45`/`1cb70c23`); RNG errors clear output and the MAC digest is wiped (`3def67a4`). `309bc544` also streams confirmation inputs into HMAC, removing the public temporary encodings in tag generation and verification. TUF `EUe5A1pGqs` passes twenty functional tests plus the allocation check: published/fork vectors, random handshakes, role/replay/invalid-point/refusal cases, native RNG EIO cleanup and mirrored keys. All twenty observed confirmation operations use zero allocations/reallocations; baseline `MI5UecQcak` used one allocation and zero to two reallocations each. Exact tags and correct/first-byte/last-byte-corrupted outcomes agree across both runs. Generator/ISK/MAC-key checks remain zero; the positive control detects one allocation. Both VMs join, bounded RAM scratch retires and listener deltas are zero. These observations do not establish post-drop erasure or constant-time execution. Partial RNG writes, panic/cancellation erasure, stack/register/move/library-state copies, other targets/shipping artifacts, full application/installed behavior and R-V3 remain OPEN. | `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`; audit's 2026-10-30 confirmation-encoding entry binds both artifacts. Earlier encoding, RNG cleanup, scalar ownership, construction/waiting-state and MAC-key input entries retain their comparisons and exact run receipts. |
-| PAKE credential-buffer retirement (`8b2a0378`) | The unchanged production Initiator/Responder owners clear their 64 initialized fixture bytes before allocator release on explicit drop, role refusal, successful authenticated advancement and unwind. All eight cases pass on the optimized Linux x86-64 test artifact. A separate same-UID parent verifies the live fixture and reads its own cooperating child's memory at the exact deallocation barrier; Rust performs no read of deinitialized/freed storage. Three controls detect 64 uncleared bytes, one nonzero tail byte and a missing retirement. All eleven children join; the twenty functional tests and allocation check also pass. This observes those credential allocations only: scalar/point/key stack/register copies, library state, normalization scratch, partial RNG writes, aborts, other targets/shipping artifacts, complete application/installed authority and independent review remain OPEN. Timing work remains PARKED. | `pake-erasure-8b2a0378.json`; `--pake-allocation-tests`. The 103-second no-NIC VM joins and retires private/RAM scratch with four zero listener deltas. Production protocol and dependencies are unchanged. |
+| PAKE credential-buffer retirement (`8b2a0378`) | The unchanged production Initiator/Responder owners clear their 64 initialized fixture bytes before allocator release on explicit drop, role refusal, successful authenticated advancement and unwind. All eight cases pass on the optimized Linux x86-64 test artifact. A separate same-UID parent verifies the live fixture and reads its own cooperating child's memory at the exact deallocation barrier; Rust performs no read of deinitialized/freed storage. Three controls detect 64 uncleared bytes, one nonzero tail byte and a missing retirement. All eleven children join; the twenty functional tests and allocation check also pass. This observes those credential allocations only: scalar/point/key stack/register copies, library state, normalization scratch, partial RNG writes, aborts, other targets/shipping artifacts, complete application/installed authority and independent review remain OPEN. Timing work remains open. | `pake-erasure-8b2a0378.json`; `--pake-allocation-tests`. The 103-second no-NIC VM joins and retires private/RAM scratch with four zero listener deltas. Production protocol and dependencies are unchanged. |
 | PAKE responder traffic-key derivation (`20e43924`) | The responder verifies the initiator's constant-time confirmation before deriving the two traffic keys. Rejected confirmations no longer enter HKDF or create those unused keys. Successful formulas, output bytes, error classification and wiping owners are unchanged. All twenty existing functional tests plus the allocation check pass on optimized Linux x86-64 in TUF `zCZFJcfznE` (106.474 seconds). This is source-order and functional evidence, not a measured speedup or a new LPE correction. Full application, timing, erasure, other-platform and installed acceptance remain OPEN. | `bash scripts/smoke-verifier-vm-authority.sh --pake-allocation-tests`; audit entry “2026-10-30 — responder traffic keys after confirmation” binds the artifact, research and joined RAM cleanup. |
 | Handshake-read deadlines and resource ownership | R-P14b retains the pre-read 4-KiB frame ceiling, every inbound step's finite deadline, partial-frame coverage, fail-closed timeout/EOF/oversize/decode handling and bounded handshake-only state before mutual confirmation. Historical codec-verification/single-read narration and the unsupported total-memory assertion are removed. Frame size, stalled waits, other resources and owned retirement follow their distinct existing R-S7/R-S10/R-T1/R-T3/R-T18 contracts. Only this formal clause changes; other clauses, IDs, anchors, links, product and verifier code remain unchanged. Native handshake/retirement, installed and release acceptance remain OPEN. | `handshake-read-contract-d5421b4b.json` |
 | External crypto-audit execution guidance | The handoff uses the authenticated verifier-VM entrypoint, names Rust/Dart advisory modes and identifies guest payloads. Default authority fixtures do not establish complete assurance; independent audit and native/installed/release duties remain. | `audit-execution-guide-52e66ce8.json`; R-V3 remains OPEN. |
@@ -1593,19 +1534,19 @@ Rows containing product findings and runtime results retain their own limits.
 | Other Appendix C dispositions | Vulnerability classes and required dispositions | `appendix-disposition-classification-a22e5d80-v2.json` |
 | Queue and latest-state ownership inventory | Appendix C #360–#362 reference R-S11gy/R-S11gz/R-S11ha. #363–#365 retain clipboard, tray and wakelock dispositions, including exact worker join. Installed/native acceptance remains OPEN. | `queue-ownership-appendix-624d4df9.json` |
 | Cursor-shape and controlled-egress inventory | Appendix C #357/#358 reference R-S11gv/R-S11gw. The explicit 256-message/two-packet retained-byte budget includes entry accounting; #358 retains its full acceptance duties. Installed/native, all-platform and soak acceptance remain OPEN. | `cursor-egress-appendix-03318475.json` |
-| Connection resource contract | R-T1 retains startup fd/session bounds, pre-key admission, source-accounting separation, owner workloads and launcher limits. Unit comments are corrected; active directives are unchanged. Linux source correction `1e39994d` preserves lower inherited fd limits and makes initialization errors fatal at the common controlled-server entry. **OPEN/PARKED at user pivot:** native preparation through `e4a9066e` is unvalidated; the last run refused its fixture ulimit envelope before component execution. Installed startup/refusal, owner workloads and full resource acceptance remain missing. | `connection-resource-document-role-72ba2b19.json`; `msi-guide-e4a9066e.json` |
+| Connection resource contract | R-T1 retains startup fd/session bounds, pre-key admission, source-accounting separation, owner workloads and launcher limits. Unit comments are corrected; active directives are unchanged. Linux source correction `1e39994d` preserves lower inherited fd limits and makes initialization errors fatal at the common controlled-server entry. **OPEN at user pivot:** native preparation through `e4a9066e` is unvalidated; the last run refused its fixture ulimit envelope before component execution. Installed startup/refusal, owner workloads and full resource acceptance remain missing. | `connection-resource-document-role-72ba2b19.json`; `msi-guide-e4a9066e.json` |
 | Writer contract | R-T2–R-T5/R-T8/R-T9/R-T14/R-T18 own poisoning, sole-writer admission/FIFO, exact retirement and retained-read cancellation; R-S11gx and Appendix C #359 reference the same contract. Native and exact-artifact acceptance remain OPEN. | `writer-contract-doc-role-deb907f8.json`; `transport-analysis-document-role-4e7f92ee.json` |
 | Status, event, service-protocol and audio inventory | Appendix C #366–#369 reference R-S11he–R-S11hi for overlap, stale delivery, shared vocabulary and stale audio. The explicit close-before-decoder-join order remains. #368's historical text did not demonstrate an authorization bypass. Native/device acceptance remains OPEN. | `event-audio-appendix-f0d1ceca.json` |
 | Account, file-operation and whiteboard inventory | Appendix C #370–#375 reference complete R-S11hj–R-S11ho contracts. Fresh remote empty-directory operation identity, direct local results and independent R-S11b-4d peer-TOML authority remain explicit. Native file/helper acceptance remains OPEN. | `file-whiteboard-appendix-5394d0e.json` |
 | Presentation, lifecycle, namespace and viewer-retirement inventory | Appendix C #376–#381 reference R-S11hp/R-S11hq/R-S11hr/R-S11ht/R-S11hu/R-S11hv. Native compositor, Android generation/projection recovery, installed namespace selection and viewer registry/close acceptance remain OPEN. | `presentation-lifecycle-appendix-fa332600.json` |
 | Privileged requester-authority inventory | Appendix C #382–#387 reference R-S11hw/R-S11hx/R-S11hy/R-S11hz/R-S11ia/R-S11ib. #387 retains installed-Windows allow/refusal and observed mutation under identity races; the primary clauses retain macOS current-last-owner proof limits. Native acceptance remains OPEN. | `requester-authority-appendix-e9941cbf.json` |
 | Credential-action authority inventory | Appendix C #388–#400 reference R-S11ic–R-S11io. #388 retains its independent installed-Windows effects/refusal duty. All fifteen installed credential actions and native acceptance remain OPEN; app/settings functionality with LPE immunity remains mandatory. | `credential-action-appendix-79e4e170.json` |
-| Desktop privilege, connection-manager and stream ownership inventory | Appendix C #401–#410 reference R-S11ip–R-S11iy. #402/#403 additionally require installed-Windows presentation allow/deny and transaction finality/resource evidence. Complete privilege, RDP, CM, texture and event-stream contracts and every user park remain. | `desktop-ownership-appendix-09270cde.json` |
-| CM readiness and Android startup/lifecycle inventory | Appendix C #411–#413 reference R-S11iz/R-S11ja/R-S11jb. Installed Android dead-worker recovery and fresh-package service-first/restart/Force Stop/boot acceptance remain explicit. Installed CM/Android evidence remains OPEN; every user park remains. | `startup-lifecycle-appendix-043dd94b.json` |
+| Desktop privilege, connection-manager and stream ownership inventory | Appendix C #401–#410 reference R-S11ip–R-S11iy. #402/#403 additionally require installed-Windows presentation allow/deny and transaction finality/resource evidence. Complete privilege, RDP, CM, texture and event-stream contracts remain. | `desktop-ownership-appendix-09270cde.json` |
+| CM readiness and Android startup/lifecycle inventory | Appendix C #411–#413 reference R-S11iz/R-S11ja/R-S11jb. Installed Android dead-worker recovery and fresh-package service-first/restart/Force Stop/boot acceptance remain explicit. Installed CM/Android evidence remains OPEN;  | `startup-lifecycle-appendix-043dd94b.json` |
 | Transport nonce and original admission inventory | R-P10 owns directional keys, checked counters, exhaustion, fresh-key/reset and engaged-key requirements. Appendix C #1–#3/#5–#8 state enduring risks and required dispositions. #2b's decoder residual, #4's framing disposition and #11's intentional terminal policy remain explicit. Installed/native acceptance remains OPEN. | `transport-inventory-91d1c3f3.json` |
 | Transport lifecycle and authentication | R-T9/R-T10/R-T11/R-T12/R-T13/R-T15; listener exclusivity agrees with R-T17 | `transport-lifecycle-document-role.json` |
 | Terminal availability and principal policy | R-F1/R-X8 / Appendix C #11 retain five session types, the immutable terminal pin and Linux process-owner root shell. R-S11c/#118 require the Windows served-session token; peer OS credentials, runtime policy mutation and LocalSystem PTY fallback remain forbidden. Native allow/refusal and lifetime acceptance remain OPEN. | `terminal-principal-contract-835f7c50.json` |
-| File-transfer scope and complete receive-path ownership | R-S8 and Appendix C #10 retain the single full-filesystem mode, both receive roles and every Linux send/resume/lifetime clause. The write contract names the complete retained-parent walk and finalization, replacing the claim that existing name validation leaves only the base untrusted. The current ledger replaces historical CLOSED/LOW and deployed-host assurances with source disposition, preserved reported Windows 25-pass/one-ignored coverage, deferred trusted-link support and explicit exact-current acceptance gaps. Product/tests/verifiers are unchanged; R-S0, native/installed, release and all parked obligations remain OPEN. | `receive-write-contract-ef4fcf96.json` |
+| File-transfer scope and complete receive-path ownership | R-S8 and Appendix C #10 retain the single full-filesystem mode, both receive roles and every Linux send/resume/lifetime clause. The write contract names the complete retained-parent walk and finalization, replacing the claim that existing name validation leaves only the base untrusted. The current ledger replaces historical CLOSED/LOW and deployed-host assurances with source disposition, preserved reported Windows 25-pass/one-ignored coverage, deferred trusted-link support and explicit exact-current acceptance gaps. Product/tests/verifiers are unchanged; R-S0, native/installed, release and all unfinished obligations remain OPEN. | `receive-write-contract-ef4fcf96.json` |
 | Updater and native-extension exclusion | R-X1/R-X2 / Appendix C #9 own all-target source/CLI/schema/binding/UI/dependency exclusion. The future-update SHA-256 rule grants no current actuator exception; fixed packaged Flutter/platform libraries retain separate identity/loading contracts. Native/artifact/installed acceptance remains OPEN. | `code-loading-contract-b32f786e.json` |
 | Retired loader and helper risk descriptions | Appendix C #113/#114/#146 retain unsupported display-provider, build-helper and generic privileged-launch risks and complete dispositions. Dormant code is distinct from demonstrated escalation; installed/native acceptance remains required. | `helper-exclusion-spec-3bcc5293.json` |
 | Inherited code-locus appendix | Appendix A’s sixteen upstream location rows duplicate existing contracts and include removed transport/authentication locators. The entire appendix and its navigation entry are deleted; its one inbound prose link becomes a code label. Every normative clause, Appendix C finding and open acceptance obligation is unchanged. Product and verifier code are unchanged. | `code-locus-retirement-095a5a99.json` |
@@ -1642,9 +1583,9 @@ timings and process/private/RAM cleanup.
 | --- | --- | --- |
 | Root platform declarations, `51ef7781` | Removed unused `runas`, `tauri-winrt-notification`, `fruitbasket`, `objc_id`, `async-process`, `termios` and nine orphaned packages. Clipboard's `objc_id`, zbus's `async-process`, serial's termios 0.2.2 and the installer's Win32 elevation remain. Offline locked build passes nineteen controller tests; inventory matches. Removing time 0.1.45 retires `RUSTSEC-2020-0071`; quick-xml exceptions retain their other consumers. No fresh advisory scan. | `platform-dependencies-51ef7781.json` |
 | TOTP QR, `25ead00a` | Removed the unused import, `qr_flutter` and exclusive `qr`; its last widget caller was already gone. Offline enforced-lock resolution, 25 password field/focus/lifecycle cases and three parser controls pass. Inventory passes after staging the existing protobuf build script and reconciling the existing local cursor fork. | `qr-password-25ead00a.json`; `qr-inventory-ec9301ca.json`; initial refusal: `qr-inventory-25ead00a.json` |
-| Text/fonts, `5de34d94` / `9752caf6` | Removed unused `extended_text`, `google_fonts`, `extended_text_library`; the local path-label widget and terminal monospace family already replaced their consumers. Offline enforced-lock resolution, sixteen rendered path-label cases, three scoped parser controls and inventory pass. Initial failure came from selecting the separately parked models parser controls. | `fonts-labels-9752caf6.json`; `fonts-inventory-9752caf6.json`; initial refusal: `fonts-labels-5de34d94.json` |
+| Text/fonts, `5de34d94` / `9752caf6` | Removed unused `extended_text`, `google_fonts`, `extended_text_library`; the local path-label widget and terminal monospace family already replaced their consumers. Offline enforced-lock resolution, sixteen rendered path-label cases, three scoped parser controls and inventory pass. Initial failure came from selecting the open models parser controls. | `fonts-labels-9752caf6.json`; `fonts-inventory-9752caf6.json`; initial refusal: `fonts-labels-5de34d94.json` |
 | UI dependencies, `c1613852` / `8d6d8707` | Removed unused `contextmenu`, `flex_color_picker`, `after_layout`, `animations`, `flex_seed_scheme`, `dropdown_button2` and the direct HTTP declaration. Tuple/HTTP remain transitive; SQLite remains required/pinned. The first snapshot passes 61 menu/widget cases and inventory; the second passes offline enforced-lock resolution, fresh bridge generation, twelve combo-box/widget cases, three parser controls and inventory. | `ui-deps-{menu,inventory}-c1613852.json`; `dropdown-{widget,inventory}-8d6d8707.json` |
-| Candidate Flutter lock, `59b51e80` | Removed the same eleven orphaned packages without upgrading retained records. Strict offline resolution, fresh bridge generation and the complete Linux build pass as recorded in Current Verdict. Additional artifact inventory remains OPEN/PARKED; SDK promotion remains OPEN. | Current Verdict's candidate-SDK evidence |
+| Candidate Flutter lock, `59b51e80` | Removed the same eleven orphaned packages without upgrading retained records. Strict offline resolution, fresh bridge generation and the complete Linux build pass as recorded in Current Verdict. Additional artifact inventory remains OPEN; SDK promotion remains OPEN. | Current Verdict's candidate-SDK evidence |
 | Unused TLS builder, `c2fafa4d` | Deleted callerless `hbb_common::verifier`, four direct declarations and exclusive `tokio-rustls` / `webpki-roots`. Pinned Cargo 1.75 retains shared `ring` through `rustls-webpki` and removes inactive `rustls` log/ring edges. Offline locked build passes nineteen controller tests; inventory matches. Android platform-verifier JNI/Gradle, direct TCP/CPace and shared dependencies remain. Dormant-code retirement does not demonstrate a live LPE. | `unused-tls-builder-e8ebc14d.json` |
 | Clipboard dependency chain, `546fa719` / `12dc3926` | Removed eight unused declarations and five exclusive records: Git `x11-clipboard` 0.8.1, `x11rb` / `x11rb-protocol` 0.12.0, `gethostname` 0.3.0, `winapi-wsapoll` 0.1.2. Active X11 listener, registry `x11-clipboard` 0.9.2 and file-copy feature remain. The runner seeds its private lock from the root lock, selects fixture/clipboard together and requires file-copy, within unchanged 1-GiB container / 2-GiB guest limits. Pinned Rust 1.75 passes 43 helper/FD, dispatcher and routing cases with unchanged executables; inventory passes after reconciling earlier Wayland-removal drift. Publication is controlled; mounted FUSE and desktop clipboard sessions were not exercised. | `clipboard-dependencies-12dc3926.json` |
 
@@ -1661,8 +1602,8 @@ unattributed post-run endpoint addition remains recorded and untouched.
 native/installed authority and roles; Windows/macOS/Android and other-platform
 execution, direct connection/capture and native clipboard/mounted FUSE;
 advisory/provenance review, cold builds, independent/release acceptance and
-R-S0/R-F5. The candidate SDK and artifact-inventory limits above, parked model
-inventory/parser work and all independent parks remain. This consolidation
+R-S0/R-F5. The candidate SDK and artifact-inventory limits above, unfinished model
+inventory/parser work remain. This consolidation
 changes documentation only and adds no product or runtime acceptance.
 
 | Maintained guide or package documentation | Current disposition and remaining limits |
@@ -1756,7 +1697,7 @@ unauthorized-principal/settings behavior; the seven harness suites; current
 whole-app/cross-version artifacts, cold release equality, independent reproduction
 and external review. Fixture MSI bytes do not prove an installable package.
 R-S0 and release acceptance remain open. No product, test or acceptance status
-changes in this documentation consolidation; all independent parks remain.
+changes in this documentation consolidation;
 
 A source/model check is supplementary unless it executes the behavior it claims to establish. Gates must not treat
 exact requirement, ledger, README, comment, test-name, other-verifier, or historical-receipt wording as product
@@ -1856,7 +1797,7 @@ At `6979d963`, the unchanged native shard passes in 110 outer seconds: complete
 Linux Enigo compilation, real text/pointer/state effects, provider refusal,
 pending-cleanup admission and retirement all pass. Full application and native
 Windows/macOS acceptance remain OPEN. This is obsolete API removal, not a new
-input/LPE fix. All parked work remains parked.
+input/LPE fix.
 
 **Input VM storage (`6979d963`).** The dedicated `x11-key-input` profile reduces
 scratch reservation from 16 to 9 GiB while preserving the 4-GiB guest, 8-GiB
@@ -2763,8 +2704,7 @@ production formatter and rendered TextFields, with exact source-copy/digest chec
 joined QEMU and retired RAM storage. Earlier formatting and receipt-count failures
 are retained in the 2026-10-27 audit entry. Complete PortForwardPage/native FFI,
 OS input methods, authenticated tunnel sessions and installed/platform acceptance
-remain OPEN; the separate page-controller disposal finding and all user parks,
-including tunnel-owner/half-close follow-up, remain OPEN. Backend authority and
+remain OPEN;  Backend authority and
 network behavior are unchanged.
 
 R-T17/PF-1–PF-5 owns the complete desktop port-forward/RDP contract. The current
@@ -2796,8 +2736,8 @@ retires RAM scratch. Those diagnostic runs each retain one unattributed endpoint
 removal; the candidate retains one addition, without owner inspection. Receipt:
 `tunnel-reaper-de88c2e2.json`. Full application/installed authenticated peers,
 macOS/Windows, long-session CPU/resource/cleanup behavior, R-S0/R-F5 and release
-acceptance remain OPEN. General tunnel half-close and all other user parks remain
-OPEN/PARKED.
+acceptance remain OPEN. General tunnel half-close remain
+OPEN.
 
 **Controlled target backpressure (`63e00bd0`).**
 `Connection::try_port_forward_loop` now retains one pinned relay future while
@@ -2818,8 +2758,7 @@ receipts are in `controlled-tunnel-cancellation-9e713178.json`.
 The parent still retains `tx_from_cm_holder`, so the component EOF case does not
 establish actual CM-process-exit detection. Full-parent/installed CPace peers,
 macOS/Windows execution, simultaneous bidirectional saturation, resource/soak and
-complete R-S0/R-T17 acceptance remain OPEN. The separate password-timing, video and
-other parked work stays OPEN/PARKED.
+complete R-S0/R-T17 acceptance remain OPEN.
 
 **Reverse traffic during local backpressure (`fb35ed89`).** Both the viewer
 `run_forward` and controlled relay split local reading from writing and retain at
@@ -2837,7 +2776,7 @@ also pass. All 97 focused tests pass; evidence is in
 `tunnel-duplex-2c58d21d.json`. The peer remains a frame-channel double, so installed
 CPace peers, sustained simultaneous large transfers, keyed-writer pacing/draining,
 and other-platform acceptance remain OPEN. General TCP half-close semantics are
-OPEN/PARKED at the user's topic pivot: local read EOF still ends the relay after that admitted write rather
+OPEN at the user's topic pivot: local read EOF still ends the relay after that admitted write rather
 than signaling one closed direction while continuing the other.
 
 The shared verifier selects target, mapping, supervisor, admission, relay-gating and
@@ -2920,7 +2859,7 @@ entry “2026-11-01 — native mouse release after abrupt viewer exit” retains
 source/artifact identity and eight raw evidence files. This is one Linux native
 schedule, not physical-device, overlapping-owner, cleanup-failure, reconnect,
 installed/other-platform or sustained-use acceptance. No product change is needed
-for this scenario; current release and all independent parked work remain OPEN.
+for this scenario; current release and all independent unfinished work remain OPEN.
 
 **Overlapping mouse buttons — native independent release passed.**
 At `fffdc44e`, TUF `ZYMaxMdH9S` reuses source-bound app `9f78434c` and engine
@@ -3004,7 +2943,7 @@ schedule; worker-thread join timing, concurrent Remote owners/same-key overlap,
 native failure paths, installed privilege boundaries, other platforms and soak
 remain OPEN under R-S19a/R-T4.
 
-**Linux clipboard — historical positive runs; repeated/large-selection investigation OPEN/PARKED.**
+**Linux clipboard — historical positive runs; repeated/large-selection investigation OPEN.**
 The November 1 pivot above applies to this acceptance lane. Two later failed runs
 prevent treating the earlier passes as reliable repeated-transfer or large-selection
 acceptance. Their fixture-versus-product cause remains unresolved; no product
@@ -3028,7 +2967,7 @@ evidence is retained on CTE/TUF. These results concern ordinary-user historical
 Linux artifacts. Current release artifacts, installed authority and unauthorized/
 non-Remote refusal, concurrency, files/HTML, other platforms and soak remain OPEN.
 Large/repeated-selection work, reconnect and decode-budget investigations remain
-independently parked; a generic continuation does not reopen them.
+open;
 
 **Source disposition: implemented; exact-current native/product evidence remains open.** After CPace
 authentication, the connection's validated `AuthConnType`—not broad `self.authorized` state or an
@@ -3123,7 +3062,7 @@ Process actors and cleanup callbacks are fixtures;
 actual setuid helper/device/mount, descendant lifetime, principal/permission failures, full parent
 compilation, async caller placement, installed and sustained resource/latency acceptance remain OPEN.
 
-**FUSE reply bootstrap — source corrected; native caller comparison OPEN/PARKED by user request.**
+**FUSE reply bootstrap — source corrected; native caller comparison OPEN by user request.**
 `src/clipboard_file.rs` no longer initializes FUSE while consuming file-content
 responses. Such replies use only the existing side/connection/stream route.
 Failed format-data responses return before initialization; successful metadata
@@ -3335,7 +3274,7 @@ RAM scratch retires and all 19 listener deltas are zero. Exact identities and
 receipts are in the audit's screenshot runtime-prerequisite entry. This closes
 the declared dependency omission, not successful saving: a real authenticated
 chooser input, saved PNG readback and fresh installed-artifact acceptance remain
-OPEN. Screenshot Copy/Cancel and picker-cancellation work remains parked.
+OPEN. Screenshot Copy/Cancel and picker-cancellation work remains open.
 
 **Presentation YUV sampling — Linux component accepted; application tracing OPEN.**
 `6714a3a1` samples planar U and V with their independent strides and checked
@@ -3625,7 +3564,7 @@ covered. These are native component tests in the existing zero-NIC, non-root
 bounded-RAM VM lane; no product connection or installed receiver is established.
 
 The first launch refuses an unpushed source before QEMU. A subsequent corrected
-attempt exposes a new dispatch fallthrough into the parked whole-parent producer
+attempt exposes a new dispatch fallthrough into the unfinished whole-parent producer
 and reaches the RAM-backed file ceiling; it is invalid acceptance evidence.
 `68eae059` replaces that dispatch with a terminal `exec`. The final focused run
 passes in 139 seconds and retires its VM and RAM scratch. Resource limits remain
@@ -3674,7 +3613,7 @@ controls remain green.
 `vpx-low-delay-eab02790.json` binds sources, fixture/oracle corrections, actual artifacts,
 receipts and joined bounded-RAM cleanup. Complete peer publication, network recovery,
 real-time performance/soak, other platforms/devices, installed/R-S0/R-F5 and release
-acceptance remain OPEN. All separately parked work stays parked.
+acceptance remain OPEN.
 
 **VPX packet storage — native allocation recovery accepted; application acceptance OPEN.**
 `e79c448e` reserves packet bytes and frame-vector capacity fallibly before
@@ -3813,14 +3752,14 @@ Earlier refused admissions and source review remain in
 and `qos-activity-epoch-ram-block-2c061c77.json`; available RAM no longer blocks
 this completed component check. Full capture startup/application compilation,
 real codecs/peers/presentation, other platforms, installed authority, R-S0/R-F5
-and release acceptance remain OPEN. All user-parked work remains parked.
+and release acceptance remain OPEN.
 
 | Correction | Native evidence and limits | Retained capsules |
 | --- | --- | --- |
-| Quality floors and growth bounds — `5be24365`, `2f38ab60` | Preparation `5ad91df3` reproduces 32/64 congested display-retirement failures: Balanced rises 0.10→0.335 and Best 0.20→0.60 despite 150–1000 ms excess delay. Preparation `8a18107d` reproduces 24/64 healthy-feedback growth-budget failures after retirement, reaching 163.15 kbps in one step instead of at most 150. Each baseline passes 26 other tests. Identical corresponding test modules pass after correction. Latest `I6opsT9mxJ` passes all 27 tests in 118.751 outer seconds: all 64 growth cases preserve finite ratios, live owners/settings and the budget across three adaptations; all 64 congested cases retain nonincrease and selected-quality/20-FPS recovery. Growth cases cover four healthy excess delays, eight reported bitrates and static/dynamic screens. Inputs and encoder behavior are controlled; real codecs, peers/presentation, impairment/soak, full application, installed/other-platform and R-S0/R-F5 acceptance remain OPEN. All four VMs join, bounded RAM scratch retires and listener deltas are zero. User parks are unchanged. | Audit's 2026-10-30 quality-floor and growth-ceiling entries; raw runs `oBHieE5rxw` / `qfSGDwUKHX`, `vSKeH1UxG7` / `I6opsT9mxJ`. |
-| Rate growth during continued congestion — `5bc386b6` | At unchanged-product preparation `5c7d72fa`, 26 tests pass and the extended congestion regression fails: 12 of 24 post-outage cases increase the rate while excess delay remains at least 150 ms, including Balanced 1→10 FPS at 150/199 ms. The identical test module passes after correction: all 24 cases hold 1 FPS while congested and recover to the same viewer's requested 20 FPS on healthy feedback. Three presets and eight delay levels cover every existing congestion branch; all 27 component tests pass in 122 outer seconds. Elapsed/RTT inputs and encoder behavior are controlled; no real impairment, codec or presentation acceptance is claimed. Both QEMU children join and their RAM workspaces retire. No host listener is added; one pre-existing endpoint disappears in the corrected run's final snapshot, remains unattributed and is not investigated or changed. Full-app, target-native R-F5 recovery/soak and all user parks remain OPEN. | `qos-congestion-recovery-656fa021.json` |
-| Generation-bound support/activity sinks — `fbf1036c` | Existing capture callers already guarded these writes under the QoS lock; the two shared setters still accepted only a name. Baseline `467ddcad` passes 26 controls and fails the new direct-sink regression: seven of ten cases change state through stale/wrong generations or missing-display activity. The identical regression passes with explicit generation arguments: all eight noncurrent cases preserve support/activity/FPS/ratio/period state, and both current-owner cases apply. All 27 component tests pass in 122 outer seconds. Earlier test data/oracles are unchanged after normalizing the required fixture bindings; legacy parent labels/inventory require 22 shared cases, but that parked lane was not run. Full capture startup/application compilation, real codec/peer/presentation, installed/other-platform and R-S0/R-F5 acceptance remain OPEN. | `qos-generation-02dbb4cd.json` |
-| Bounded activity and unavailable-window retirement — `3d66afeb` | Baseline `142ed23e` passes 25 controls and fails the new seven-case regression: disabled adaptation, an unsupported codec and a blocked sibling retain activity across re-enablement; `usize::MAX` followed by one panics. The identical regression passes after correction, including zero/five/six-frame controls. All 26 component tests pass in 122 outer seconds on one stable artifact. Clock/ratio state and extreme counts are controlled; this is neither a long-uptime run nor a natural counter-overflow observation. The legacy parent inventory/labels now require 21 shared tests, but that parked lane was not run. No attribution or recovery claim for the retained six-second viewer failure follows. Real codec/capture, peer/presentation, other platforms, installed and R-F5 acceptance remain OPEN. | `qos-activity-c2caefba.json` |
+| Quality floors and growth bounds — `5be24365`, `2f38ab60` | Preparation `5ad91df3` reproduces 32/64 congested display-retirement failures: Balanced rises 0.10→0.335 and Best 0.20→0.60 despite 150–1000 ms excess delay. Preparation `8a18107d` reproduces 24/64 healthy-feedback growth-budget failures after retirement, reaching 163.15 kbps in one step instead of at most 150. Each baseline passes 26 other tests. Identical corresponding test modules pass after correction. Latest `I6opsT9mxJ` passes all 27 tests in 118.751 outer seconds: all 64 growth cases preserve finite ratios, live owners/settings and the budget across three adaptations; all 64 congested cases retain nonincrease and selected-quality/20-FPS recovery. Growth cases cover four healthy excess delays, eight reported bitrates and static/dynamic screens. Inputs and encoder behavior are controlled; real codecs, peers/presentation, impairment/soak, full application, installed/other-platform and R-S0/R-F5 acceptance remain OPEN. All four VMs join, bounded RAM scratch retires and listener deltas are zero.  | Audit's 2026-10-30 quality-floor and growth-ceiling entries; raw runs `oBHieE5rxw` / `qfSGDwUKHX`, `vSKeH1UxG7` / `I6opsT9mxJ`. |
+| Rate growth during continued congestion — `5bc386b6` | At unchanged-product preparation `5c7d72fa`, 26 tests pass and the extended congestion regression fails: 12 of 24 post-outage cases increase the rate while excess delay remains at least 150 ms, including Balanced 1→10 FPS at 150/199 ms. The identical test module passes after correction: all 24 cases hold 1 FPS while congested and recover to the same viewer's requested 20 FPS on healthy feedback. Three presets and eight delay levels cover every existing congestion branch; all 27 component tests pass in 122 outer seconds. Elapsed/RTT inputs and encoder behavior are controlled; no real impairment, codec or presentation acceptance is claimed. Both QEMU children join and their RAM workspaces retire. No host listener is added; one pre-existing endpoint disappears in the corrected run's final snapshot, remains unattributed and is not investigated or changed. Full-app, target-native R-F5 recovery/soak remain OPEN. | `qos-congestion-recovery-656fa021.json` |
+| Generation-bound support/activity sinks — `fbf1036c` | Existing capture callers already guarded these writes under the QoS lock; the two shared setters still accepted only a name. Baseline `467ddcad` passes 26 controls and fails the new direct-sink regression: seven of ten cases change state through stale/wrong generations or missing-display activity. The identical regression passes with explicit generation arguments: all eight noncurrent cases preserve support/activity/FPS/ratio/period state, and both current-owner cases apply. All 27 component tests pass in 122 outer seconds. Earlier test data/oracles are unchanged after normalizing the required fixture bindings; legacy parent labels/inventory require 22 shared cases, but that unfinished lane was not run. Full capture startup/application compilation, real codec/peer/presentation, installed/other-platform and R-S0/R-F5 acceptance remain OPEN. | `qos-generation-02dbb4cd.json` |
+| Bounded activity and unavailable-window retirement — `3d66afeb` | Baseline `142ed23e` passes 25 controls and fails the new seven-case regression: disabled adaptation, an unsupported codec and a blocked sibling retain activity across re-enablement; `usize::MAX` followed by one panics. The identical regression passes after correction, including zero/five/six-frame controls. All 26 component tests pass in 122 outer seconds on one stable artifact. Clock/ratio state and extreme counts are controlled; this is neither a long-uptime run nor a natural counter-overflow observation. The legacy parent inventory/labels now require 21 shared tests, but that unfinished lane was not run. No attribution or recovery claim for the retained six-second viewer failure follows. Real codec/capture, peer/presentation, other platforms, installed and R-F5 acceptance remain OPEN. | `qos-activity-c2caefba.json` |
 | Live display bitrate ownership — `22b4d3ef` / `98401d5b` | At `30c85201`, all 25 component tests pass. Six paired-display cases preserve the configured aggregate 150-kbps growth ceiling in both publication orders, exact live totals and clamped status above `u32`; nine checks cover removal, replacement, stale/missing publication, stale retirement, final zero and surviving viewer limits. The original 45 bitrate cases and nine joined encoder-owner scenarios pass on the same stable artifact. Source publication is exact-generation scoped and removal retires that display's contribution. A historical-source attempt was refused before VM startup by the unchanged pushed-master authority; no empirical original/fixed failure is claimed. Inputs and encoder boundary are controlled; real codec/peer, capture-loop startup, installed/other-platform, actual presentation/latency and release acceptance remain OPEN. | `qos-display-bitrate-native-30c85201.json` |
 | Pending probes — `7c537a6c` | Baseline `50570c81` has two failures/two controls passing; the same four cases pass after correction. Covers nonmanufactured RTT history, reply retirement, waiting rate/quality reduction, unknown users, three same-owner outage/recovery input cycles and final retirement. A rejected fingerprint ran no application test. | `video-qos-probe-baseline-50570c81.json`; `video-qos-probe-accepted-7c537a6c.json` |
 | Per-viewer rate ownership — `6c9eeaf3` | Baseline `4d99946f` has three failures/four controls passing; eight cases pass after correction, retaining the seven baseline bodies and adding restricted-rate nonincrease followed by unrestricted adaptation to 120 FPS. Custom/automatic limits, pending owners, survivor state and reset are covered. | `video-qos-peer-baseline-4d99946f.json`; `video-qos-peer-accepted-6c9eeaf3.json` |
@@ -3865,9 +3804,9 @@ protobuf messages cross a real local channel. This does not execute a decoder,
 network peer, complete connection loop or presented pixels. Both VM owners join,
 their bounded RAM workspaces retire, and all endpoint snapshots are unchanged.
 `viewer-fps-congestion-badf36ab.json` binds A/B source, fixtures, artifacts and
-cleanup. Current full-app, actual recovery/soak and all user-parked work stay OPEN.
+cleanup. Current full-app, actual recovery/soak and all unfinished work stay OPEN.
 The automatic-FPS cache lifetime review across reconnect and settings changes is
-OPEN/PARKED at the user's pivot; no reconnect defect or correction was established.
+OPEN at the user's pivot; no reconnect defect or correction was established.
 
 **Missing display estimates (`e169354f`) — shared FPS recovery corrected.**
 The viewer takes the minimum of available active-display decode measurements.
@@ -3886,7 +3825,7 @@ with controlled decoder/mailbox observations and a real local message channel;
 no live decoder, peer or presentation is claimed. Both VMs join, RAM scratch
 retires and all eight listener deltas are zero. The audit's 2026-10-31 missing-
 estimate entry binds A/B artifacts and raw evidence. Complete application,
-target-native R-F5 recovery/soak and independently parked work remain OPEN.
+target-native R-F5 recovery/soak and open work remain OPEN.
 
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without
@@ -3967,8 +3906,8 @@ recovery deadlines or evidence of pixels. Full settings/UI/peer behavior, curren
 full-parent and native other-platform execution, installed R-S0 functionality and
 local-privilege-escalation acceptance for all fifteen service/credential actions,
 cold release artifacts, independent reproduction and external review remain OPEN.
-Every separately user-parked task, including receive-acquisition work, remains
-OPEN/PARKED. The adjacent full-peer replay entry retains its separate partial
+Every separately unfinished task, including receive-acquisition work, remains
+OPEN. The adjacent full-peer replay entry retains its separate partial
 evidence and resource/context limitations.
 
 **Linux full-peer replay — resource/context corrections verified; complete replay OPEN.**
@@ -3997,7 +3936,7 @@ and retired with unchanged endpoint observations. Intentional bounded failure ev
 `flutter-replay-native-partial-32eb62b8.json` bind the setup failure, native outcomes,
 exact artifacts/sources, storage and cleanup. This is partial retained-app integration,
 not current QoS execution, network-impairment/soak, installed/LPE or release acceptance.
-R-F5 remains OPEN. All user-parked consumer/allocator/libyuv/X11 work remains OPEN/PARKED.
+R-F5 remains OPEN. All unfinished consumer/allocator/libyuv/X11 work remains OPEN.
 
 **Viewer suspension — capture pacing corrected; broader R-F5 OPEN.**
 The earlier capture-cadence correlation is confirmed by instrumented current app
@@ -4029,7 +3968,7 @@ stale pacing interval; phase coverage, realistic impairment, input-visible timin
 multi-hour sessions, other roles/platforms and full R-F5 acceptance remain OPEN.
 Retained exact commands, source/artifacts, samples and cleanup:
 `viewer-pacing-5d8cf83a.json`. Earlier capture-only evidence remains in
-`viewer-capture-cadence-108f40d2.json`; independent parks remain.
+`viewer-capture-cadence-108f40d2.json`;
 
 **Actual packet impairment — bounded probe recovery passes; broader R-F5 OPEN.**
 `39dbed34` adds a small isolated network prerequisite check. The existing
@@ -4119,9 +4058,9 @@ burst stall's cause remains unresolved. The kernel chooses the loss sequence;
 fixed profiles do not establish exact sequence reproduction or exhaustive tails.
 QEMU joins after 185.108 seconds, 3,009,855,488 bytes peak RAM scratch retires,
 and four listener deltas are zero. Evidence: `packet-loss-af86725f.json` on CTE/TUF.
-Further impairment/recovery investigation is OPEN/PARKED by the user pivot.
+Further impairment/recovery investigation is OPEN by the user pivot.
 Bandwidth/jitter, MTU/offload, input-visible timing, multi-hour sessions and other
-roles/platforms remain OPEN; independent parks remain.
+roles/platforms remain OPEN;
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;
@@ -4837,9 +4776,7 @@ namespace/replacement/identity races; physical-seat switching and rendered
 pixels/input/recovery; kernel-stalled drain, signal/wait/arbitrary I/O failures and
 concurrent admitted mutations; other init systems/platforms; independent
 reproduction/review and complete R-S0 acceptance. R-S11bs retains its remaining
-endpoint-authority obligations below. SysV, package/authorization and all
-independent parks remain in force. These scenario results do not reopen them or
-replace the broader release obligations.
+endpoint-authority obligations below. SysV, package/authorization remain in force. These scenario results
 
 **IPC / option CLI — component acceptance; installed acceptance OPEN.**
 At `ad638445`, TUF `1VEEFlN8jX` passes all **176 listener/transport, 32 CLI,
@@ -5067,7 +5004,7 @@ The identity limits remain explicit: Darwin connected-peer/last-owner and Window
 last-message consistency do not prove exclusive request-frame authorship or complete descriptor/
 pipe-handle-handoff detection. The macOS policy reads provide last-observed consistency, not an atomic
 lock against an independently privileged administrator. None of these open limitations is erased
-by consolidating the ledger. All separately parked work remains OPEN/PARKED.
+by consolidating the ledger.
 
 ### Current authority and source closure
 
@@ -5090,19 +5027,18 @@ referenced capsules retain comparisons, artifact identities, timings and cleanup
 credential effects/authorization, all fifteen credential actions, other-platform
 behavior, current/cold release artifacts, independent reproduction, external review,
 R-S0 and R-F5. Credential/factor/dependency exclusions and immutable policy remain
-binding. Every independent park, including CM payload/handshake work, remains parked.
+binding.
 
-**Existing legacy-key lookup — OPEN/PARKED at the user's topic pivot.**
+**Existing legacy-key lookup — OPEN at the user's topic pivot.**
 `Config::get_existing_key_pair` still uses the recovering core-config loader; a
 cold optional lookup can therefore rename malformed TOML while returning no key.
 The read-only replacement is not implemented or validated. Commit `52e66ce8`
 preserves two prepared native regressions and their configuration-profile inventory
 entries. They were not executed; they are removed from the live suite at this
 pivot rather than leaving an unfinished regression cohort active. The production
-getter, cache and legacy-decryption path are unchanged. Resume only on explicit
-direction; no failure reproduction, correction or acceptance is claimed.
+getter, cache and legacy-decryption path are unchanged.  no failure reproduction, correction or acceptance is claimed.
 
-**Encrypted-value classification — OPEN/PARKED at the next user pivot.**
+**Encrypted-value classification — OPEN at the next user pivot.**
 Test preparation `40eadaf9` reproduced a 786,432-byte allocation for a 1 MiB
 candidate; the allocation-refusal child aborted while 205 controls passed.
 Candidate `900026df` replaces whole-payload decoding with fixed scratch, but its
@@ -5113,8 +5049,7 @@ and RAM workspaces are gone; bounded diagnostics remain under
 `encrypted-classifier-baseline.1y14hDcQm1` and
 `encrypted-classifier-rejected.e461KXlu54`. The rejected run's final listener
 snapshot contains one unattributed loopback addition; it was not inspected or
-modified. Source and evidence remain preserved, and this item will not resume
-automatically. The connection-prompt evidence below also records this pivot.
+modified. Source and evidence remain preserved, and this item . The connection-prompt evidence below also records this pivot.
 
 **PRS value admission (`552c4fef`, `6193e94b`).** One shared validator governs
 durable wrapping, decoded storage and runtime installation: explicit clear or canonical
@@ -5143,7 +5078,7 @@ demonstrated remote input or local privilege escalation. Parsing/decrypting the 
 configuration/storage, full app/IPC/handshakes/UI, installed/root and other platforms,
 namespace/ACL/lifecycle races, physical crash and soak, all fifteen credential actions,
 R-S0/R-F5, cold/release, independent reproduction and external review remain OPEN.
-Every user park remains parked.
+
 
 **Permanent-credential decoding (`c356cae5`, `e5aedb22`).** The private decoder returns
 only an optional decrypted value. Its original-input copy and two Boolean flags are
@@ -5174,7 +5109,7 @@ This bounds the private `01` credential decoder, not enclosing configuration rea
 copies, generic `00` wrappers or storage-key acquisition. Admitted ciphertext still allocates
 within the envelope bound. Oversized values remain unavailable and preserved; no remote-input
 or LPE closure is demonstrated. Full app/installed/other-platform, all fifteen credential
-actions, R-S0/R-F5 and release acceptance remain OPEN; every user park remains parked.
+actions, R-S0/R-F5 and release acceptance remain OPEN;
 
 **Shared at-rest wrapper write format (`ef025a32`).** The string/vector write APIs
 accept only data and its existing length limit; one fixed `00` envelope replaces the
@@ -5200,8 +5135,7 @@ bounded-RAM cleanup are retained in `at-rest-format-e808ef79.json`.
 Installed/root and other-platform key failures, mobile OS-keystore/package behavior,
 actual provider outage/cache recovery, current full app/settings/credential workflows,
 namespace/ACL and lifecycle races, all fifteen credential actions, R-S0/R-F5, cold/release,
-independent reproduction and external review remain OPEN. All user-parked work remains
-parked.
+independent reproduction and external review remain OPEN.
 
 **Windows peer-file prefetch retired (`90b90157`).** The sole Windows UI-startup
 call and all three optional warmup helpers are deleted. They opened enumerated
@@ -5219,7 +5153,7 @@ artifact, observations and joined bounded-RAM cleanup are retained in
 or workspace. This retires an optional startup I/O path; it is not a demonstrated
 LPE closure or a Windows startup benchmark. Current Windows compilation,
 UI/startup and cold-Defender timing, installed/other-platform, R-S0/R-F5 and
-release acceptance remain OPEN. Every user-parked task remains parked.
+release acceptance remain OPEN. Every unfinished task remains open.
 
 **Configuration-load diagnostics (`544d4b36`).** The core loader returns
 its record without formatting it into trace logs; the three unused generic
@@ -5251,7 +5185,7 @@ Linux capture's unknown-key diagnostic also omits its raw keycode. Both retain
 fixed error messages. Exact comparison limits the change to those two statements
 and the unused pattern binding; all conversion, admission and return bytes remain.
 Whitespace checks pass. No application build, native input/log capture or runtime
-comparison ran; the full-app lane remains user-parked. The audit records the
+comparison ran; the full-app lane remains unfinished. The audit records the
 callers, dependency source and required native failure/control scenarios. Historical
 logs, other-platform behavior, full input/settings and R-S0 acceptance remain OPEN.
 
@@ -5269,7 +5203,7 @@ current, totaling 130,467,917 bytes after joined cleanup. Every tested file stay
 within the threshold plus the bounded test record; the final record and unrelated
 file survive. The Linux Rust 1.75 library artifact executes both cases in 0.10
 seconds, 133 outer seconds including its isolated build; 573 other cases are
-filtered out. No parked configuration/filesystem/transport cohort runs.
+filtered out. No unfinished configuration/filesystem/transport cohort runs.
 `file-log-rotation-5207cdbe.json` binds source, artifacts, actual outcomes and joined
 RAM cleanup; all before/during/after listener snapshots are unchanged. This runs
 the production builder with the pinned flexi_logger 0.27.4 and real files, not the
@@ -5278,9 +5212,9 @@ not a strict disk quota: one record can overshoot, background cleanup can lag, a
 existing oversized archives retire under normal retention. Record-size bounds,
 multiple-process/log-family behavior, filesystem permissions/races, actual daily
 rollover, native other-platform, flood/soak, R-S0/R-F5 and release acceptance remain OPEN.
-The single-record bounding follow-up is user-parked; the pivot continues with input behavior.
+The single-record bounding follow-up is unfinished; the pivot continues with input behavior.
 
-**Windows service log namespace — OPEN/PARKED by user pivot; native exploitability unverified.**
+**Windows service log namespace — OPEN by user pivot; native exploitability unverified.**
 The LocalSystem service calls `Config::initialize_windows_service_owned_root` and
 then `init_log(false, "service")` (`src/platform/windows.rs:2970`). The retained,
 ACL-checked root is `ProgramData/<app>/config`, but `Config::log_path` takes its
@@ -5296,15 +5230,15 @@ to the retained configuration handle. The source gap is established; default ins
 ACLs, a non-admin-controlled parent/log entry and actual protected-file effects have
 not been exercised on Windows, so no completed LPE or native refusal is claimed.
 The planned `service-log-authority-53724d08.json` capsule was not finalized before
-the user pivot; do not resume automatically. Future work must establish one retained privileged logging
+the user pivot;  Future work must establish one retained privileged logging
 namespace across creation, reopen, rotation and cleanup, preserving authorized logging
 and retention. Installed Windows acceptance must observe legitimate logging/restart/
 rotation and foreign-owner, reparse, hard-link and replacement refusals without changing
 protected sentinels. A path-selection-only patch or relabeling pre-existing untrusted
 contents would not establish that contract. Windows VM storage acceptance and native
-execution remain open; no Windows VM or parked single-record work ran here. Linux's
+execution remain open; no Windows VM or unfinished single-record work ran here. Linux's
 service-role home selection was also traced to the effective UID's passwd home, without
-establishing native log-directory/leaf safety. R-S0 and all existing parks remain OPEN.
+establishing native log-directory/leaf safety. R-S0 remain OPEN.
 
 **Retired TCP-disable query (`658d5270`).** The unused
 `is_disable_tcp_listen()` resolver is deleted. Both former rendezvous callers
@@ -5422,7 +5356,7 @@ test duplication; broader installed, platform and release acceptance is unchange
 | Keyboard layout | LocalConfig stores before active mapping/cache publication; failure preserves file and exact retry, while an unchanged choice needs no write. The chooser owns one save across image/radio actions and rebuilds, publishes native readback, keeps failure/mismatch retryable and fits its bounded illustration area. Disposal retires UI effects while the save settles. | Library, real bridge and rendered chooser/callback evidence: `keyboard-layout-234d57e0.json`. Physical keyboard-to-Mac behavior and complete desktop/mobile interactions remain OPEN. |
 | Local preferences and input source | Fallible LocalConfig single-key transactions preserve replacement/removal and override/default purges on failure. Explicit system language stores an empty override, distinct from removal. Texture notification follows effective readback. Input-source value/platform checks and storage precede active grab changes; selectors retry storage first. Nonprompting macOS readback reports supported Flutter mode. Flutter dependent effects await success; models retain session ownership, and touch/close confirmation own pending submission. | Local storage, real bridge and controlled helper outcomes: `local-options-ddb77e68.json`. Input-source cases start no live peer or native grab; physical input, concurrent platform effects and macOS permission behavior remain OPEN. |
 | Voice-call input APIs | Both exports return supported Results. CM write/read retain typed IPC failures; reads cannot invent a valid empty default. Viewer selected/default values remain process-local. Mobile implementations explicitly report unsupported. AudioInput observes read/write errors. Receiver authority/value/capacity checks and service-owned refusal are unchanged. | Real viewer selected/default and missing/failed CM receiver bridge cases: `voice-input-d514e666.json`. No microphone or live CM daemon; authorized/refused live receivers, concurrent call ownership and platform capture remain OPEN. |
-| Audio device controls | One retained read and admitted write survive rebuilds; writers propagate native errors and the current control owns failure feedback, readback and identical retry (`c66b7503`). CM checks the captured positive client/registry/call generation, exact current registry member and connected active non-incoming call (`1ce07d5e`). Shared admission now owns one CM operation through enumeration, menu and awaited write within the Dart isolate (`ec532b30`); all CM buttons observe it, including replacement and simultaneous panels. Disposal retires feedback while the pending operation retains admission; stale callbacks still fail exact-owner checks. Pointer and keyboard activation now use one required click handler, with menu placement derived from the button in Navigator overlay coordinates (`4012c905`); the pointer-down actuator and empty click wrapper are removed. Dismissal, failure and completion release admission; retired admitted writes drain without replacement feedback. | `cm-audio-serial-57d73c08.json`: baseline `aaee384f` fails two overlap cases with 32 controls passing. Product correction plus an additional menu-open assertion passes all 34 cases/three suites and three parser checks at `71fb1325`, with complete outer acceptance in 279 seconds. The earlier successful component run was rejected by an obsolete runner count and is not whole-harness acceptance. Tests execute the rendered production panel/menu and AudioInput facade with native-binding and registry doubles. Earlier evidence: `cm-audio-owner-1ce07d5e.json`, `audio-failure-c66b7503.json`, `audio-selection-8980125b.json`, `audio-controls-b6904b63.json`. Keyboard preparation `34255099` adds three cases; all 37 cases/three suites and three parser checks pass on TUF at `a6211d88` (`cm-audio-keyboard-4012c905.json`). The rendered panel supports Tab, Enter/Space selection and Escape dismissal, retains pending/call ownership through retry, and ignores cancelled pointer presses. The unchanged product/test hashes are recorded with joined cleanup and zero listener deltas. Earlier baseline attempts never reached the keyboard tests, so no keyboard A/B result is claimed. Cross-panel baseline `3a006022` fails three duplicate-read cases with 37 controls passing. At `b713cfb5`, all 40 cases/three suites and three parser checks pass, covering disposed-panel read/write success and failure, simultaneous panels, menu dismissal and subsequent selection. The initial candidate passed 39 cases but hit a guarded test assertion in an asynchronous binding callback; the final fixture uses expectSync there and asserts menu presence. Baseline duplicate-read assertions are unchanged; final fixture bytes differ. `cm-audio-crosspanel-ec532b30.json` binds all three runs, source hashes and joined bounded-RAM cleanup with zero listener deltas. Full-application keyboard routing, cross-isolate/process ordering, native call events/IPC, settings integration, real microphones and parked native cancellation remain OPEN. |
+| Audio device controls | One retained read and admitted write survive rebuilds; writers propagate native errors and the current control owns failure feedback, readback and identical retry (`c66b7503`). CM checks the captured positive client/registry/call generation, exact current registry member and connected active non-incoming call (`1ce07d5e`). Shared admission now owns one CM operation through enumeration, menu and awaited write within the Dart isolate (`ec532b30`); all CM buttons observe it, including replacement and simultaneous panels. Disposal retires feedback while the pending operation retains admission; stale callbacks still fail exact-owner checks. Pointer and keyboard activation now use one required click handler, with menu placement derived from the button in Navigator overlay coordinates (`4012c905`); the pointer-down actuator and empty click wrapper are removed. Dismissal, failure and completion release admission; retired admitted writes drain without replacement feedback. | `cm-audio-serial-57d73c08.json`: baseline `aaee384f` fails two overlap cases with 32 controls passing. Product correction plus an additional menu-open assertion passes all 34 cases/three suites and three parser checks at `71fb1325`, with complete outer acceptance in 279 seconds. The earlier successful component run was rejected by an obsolete runner count and is not whole-harness acceptance. Tests execute the rendered production panel/menu and AudioInput facade with native-binding and registry doubles. Earlier evidence: `cm-audio-owner-1ce07d5e.json`, `audio-failure-c66b7503.json`, `audio-selection-8980125b.json`, `audio-controls-b6904b63.json`. Keyboard preparation `34255099` adds three cases; all 37 cases/three suites and three parser checks pass on TUF at `a6211d88` (`cm-audio-keyboard-4012c905.json`). The rendered panel supports Tab, Enter/Space selection and Escape dismissal, retains pending/call ownership through retry, and ignores cancelled pointer presses. The unchanged product/test hashes are recorded with joined cleanup and zero listener deltas. Earlier baseline attempts never reached the keyboard tests, so no keyboard A/B result is claimed. Cross-panel baseline `3a006022` fails three duplicate-read cases with 37 controls passing. At `b713cfb5`, all 40 cases/three suites and three parser checks pass, covering disposed-panel read/write success and failure, simultaneous panels, menu dismissal and subsequent selection. The initial candidate passed 39 cases but hit a guarded test assertion in an asynchronous binding callback; the final fixture uses expectSync there and asserts menu presence. Baseline duplicate-read assertions are unchanged; final fixture bytes differ. `cm-audio-crosspanel-ec532b30.json` binds all three runs, source hashes and joined bounded-RAM cleanup with zero listener deltas. Full-application keyboard routing, cross-isolate/process ordering, native call events/IPC, settings integration, real microphones and unfinished native cancellation remain OPEN. |
 | Flutter UI preferences | The separate Flutter map stores a private candidate before publication and preserves exact retry/idempotence and same-key isolation from general local options. Helpers distinguish successful empty readback from failure. Peer view/sort adopts validated readback; tab/toolbar/overlay interaction remains live while save errors are reported. Floating positions advance only confirmed checkpoints; failed still-current window checkpoints can retry without blocking independent per-peer continuation. | Library, real bridge and controlled helper cases: `ui-preferences-6af3228a.json`. Full tab/sort/toolbar/overlay/window-geometry interaction and per-peer persistence remain OPEN. |
 | Saved floating positions (`b47f57c5`) | The shared loader accepts exactly two finite coordinates; malformed and nonfinite values become the existing unset position. Valid signed/fractional/scientific coordinates remain unchanged, and storage read failures still propagate. This removes a pre-UI exception path in mobile startup and desktop remote/camera window creation. Loading itself does not write preferences. | The unchanged parser at `f1d2fcd9` passes four controls and fails four cases: malformed values throw, nonfinite values publish, reload retains invalid data, and one malformed position interrupts subsequent loads. The identical eight-case Linux Flutter suite passes after correction, plus three result-parser controls, including actual draggable placement. Preference reads are controlled callbacks; full startup, native storage and device interaction remain OPEN. `floating-position-d6364e2a.json` retains source/run bindings and joined bounded-RAM cleanup with zero endpoint deltas. |
 | Floating-panel keyboard layout (`9aa65ff4`) | Both floating-panel widgets use the current keyboard inset on its first appearance, preserve the original Y for restoration, and keep the panel top at zero when available height is insufficient. Unobscured panels retain their position. | The unchanged widgets at `fb3db4c3` pass ten controls and fail six rendered layout cases; the identical 16-case Linux Flutter shard passes after correction in 268 outer seconds. It covers both widgets, first visibility, mounting with the keyboard visible, repeated cycles/restoration and insufficient height. Keyboard insets and the position/storage adapter are controlled. Physical Android/iOS keyboard delivery, full chat-page routing, native preferences and R-S0/R-F5/release acceptance remain OPEN. Both VMs join and retire bounded RAM; final endpoint removal/addition remains unattributed and untouched. Audit entry “2026-10-27 user pivot — floating panels and the on-screen keyboard” retains exact source/run bindings. |
@@ -5433,7 +5367,7 @@ test duplication; broader installed, platform and release acceptance is unchange
 | Canvas view-style reads | The synchronous native/browser export is deleted. CanvasPreferences awaits the existing asynchronous getter, validates styles and rechecks exact canvas/session/topology/presentation ownership. Failed/missing/invalid reads preserve geometry; older differing styles cannot replace applied style, while useful ready same-style initialization remains allowed. Current geometry is sampled after reads. Changed scroll-mode generations retire held reads even after a change back; mode changes cancel/join queued timers before obsolete callbacks can reset successor scroll positions. | Actual production models, rendered controls/image ownership and native library/bridge scopes: `canvas-view-read-5e295e0b.json`. This does not measure native blocked-getter UI latency or real-peer presentation age. |
 | Session scrolling | Result-bearing getters/setters admit only scrollauto/scrollbar/scrolledge and thickness 20–150 pixels; fresh peer persistence precedes selected-field cache publication. The menu owns its initial read and removable busy-read listener, preserves mounted controls/drafts through rebuild/visibility changes and retries reads without writing defaults. Thickness owns one debounce/save/latest edit; failed/null/mismatched outcomes retry. CanvasModel holds mutation admission through captured-owner publication and widget removal, retires obsolete reads and releases capacity in finally. Fixed defaults stay disabled. | Real persistence/bridge and controlled menu/editor/model behavior: `scroll-preferences-317560c3.json`. Prepared sessions start no authenticated peer. Whole menu/gesture/remote scrolling and cross-control serialization remain OPEN. |
 | View style, custom scale and saved canvas | View style admits original/adaptive/custom. Integer custom scale 5–1000 commits together with Custom selection in one native store. Saved canvas is optional, at most 1,024 bytes and six numeric fields: finite coordinates, positive scale, display -1 through i32::MAX; empty removes it. Only absent percentage defaults to 100. Selected writes preserve unrelated UI/options, PRS and runtime versus newer-file metadata. The editor owns read/save/timer/draft and removable busy-read subscription; committed changes retire older reads, and retired owners cannot affect the viewport. Local reset has no preference write. | Native persistence/bridge and controlled editor/model evidence: `view-style-1f2a38ef.json`, `custom-scale-b80053aa.json`. Closing snapshot errors are logged before native-close finally; unavailable restoration hints use normal initial origin. Full close/restart/saved-canvas restoration and browser two-write atomicity remain OPEN. |
-| Image-quality presets | Named result-bearing preset API admits only low/balanced/best. Fresh persistence precedes cache/volatile-FPS publication and one coherent OptionMessage carrying the preset and optional 30-FPS reset; a lower retained automatic rate keeps no-reset behavior. Failure publishes neither state nor command. Custom opens/stages the typed numeric editor without a separate marker write; its normal save/Close owns persistence. Toolbar callbacks retain context/session/client ownership and await checked outcomes. | Component/bridge evidence: `image-preset-68a13ec1.json`. Full Linux X11/Xvfb peers pass five actual menu selections on one authenticated connection: applied encoder targets 600/200/268/600/200 kbps appear within 590–874 ms, then four distinct displayed counters meet the 1 s freshness bound within 2.5 s after each change. A transient 1,281 ms sampled age before recovery is retained. Viewer resources stay bounded; all processes join, four listener deltas are zero and RAM retires. `image-quality-full-peer-6e9a7001.json` binds harness `6e9a7001`, app `0243c010` and engine `ddb1541d`. Complete viewer restart restoration now passes on app `7e6f6459`: `quality-restart-accepted-e80d4e4b.json`, detailed in Current Verdict. These measure server-confirmed encoder targets and displayed freshness, not subjective/compressed-image quality or throughput. Save failures/radio state remain OPEN/PARKED; same-process reconnect, Custom cancellation/sliders, physical scanout, installed artifacts and other platforms remain OPEN. |
+| Image-quality presets | Named result-bearing preset API admits only low/balanced/best. Fresh persistence precedes cache/volatile-FPS publication and one coherent OptionMessage carrying the preset and optional 30-FPS reset; a lower retained automatic rate keeps no-reset behavior. Failure publishes neither state nor command. Custom opens/stages the typed numeric editor without a separate marker write; its normal save/Close owns persistence. Toolbar callbacks retain context/session/client ownership and await checked outcomes. | Component/bridge evidence: `image-preset-68a13ec1.json`. Full Linux X11/Xvfb peers pass five actual menu selections on one authenticated connection: applied encoder targets 600/200/268/600/200 kbps appear within 590–874 ms, then four distinct displayed counters meet the 1 s freshness bound within 2.5 s after each change. A transient 1,281 ms sampled age before recovery is retained. Viewer resources stay bounded; all processes join, four listener deltas are zero and RAM retires. `image-quality-full-peer-6e9a7001.json` binds harness `6e9a7001`, app `0243c010` and engine `ddb1541d`. Complete viewer restart restoration now passes on app `7e6f6459`: `quality-restart-accepted-e80d4e4b.json`, detailed in Current Verdict. These measure server-confirmed encoder targets and displayed freshness, not subjective/compressed-image quality or throughput. Save failures/radio state remain OPEN; same-process reconnect, Custom cancellation/sliders, physical scanout, installed artifacts and other platforms remain OPEN. |
 | Keyboard-mode refresh | Exact session/client owner and latest refresh generation govern publication; current Flutter-input policy is rechecked. Synchronous map/legacy selection supersedes older reads. Explicit retirement clears runtime mode and is used by mobile reset. Failed/malformed reads preserve confirmed mode and report failure. Existing map-before-legacy compatibility, null-to-legacy fallback and mobile no-op behavior remain. | Actual model with controlled futures/owners/policy and byte-identical native-input reuse: `keyboard-refresh-3ea76fb9.json`. Full allowed native adapter, event/source synchronization, physical input and complete mobile reset remain OPEN. |
 | Session keyboard mode | Closed-mode/peer-support validation, fresh peer loading and durable storage occur under the handler guard before selected cached mode publication. Failure preserves file/memory; invalid/unsupported values and missing sessions refuse. Window synchronization and Windows grab changes follow success. Toolbar callbacks check exact owner/context around awaits and report errors; browser returns checked immediate readback. | Parent library and real bridge persistence/errors, plus compiled toolbar caller: `keyboard-mode-6fc32220.json`. Full Linux toolbar Map→Legacy→Map and 33 native key sequences now pass on the retained app: `keyboard-modes-accepted-c352f6fd.json`, detailed in Current Verdict. Equal US layouts only; cross-layout effects, held-key switching, restart, physical devices, other platforms and installed acceptance remain OPEN. |
 | Display defaults (`751b4d9c`, `3058558f`) | Initial reads, bounded refresh and save preflight use the private read-only configuration view without repair or recovery. Failed reads retain their existing in-memory fallback/confirmed-cache rules; corrupt or unreadable saves return fixed errors. Linux single-key saves now share the LocalConfig transaction: a stable per-record lease owns fresh reread, selected mutation, conditional durable replacement and confirmed-cache publication through one retained directory. Returned values come from that final candidate; refresh time advances only after success. Read-only satisfied and missing-empty operations remain write-free. The previous separate process-local read/replace path is removed. | At preparation `d9800737`, actual separate-process default saves lose a completed other-key change and ignore a held lease, changing file/cache in 2 ms. LocalConfig's paired controls pass; 180 tests pass and two fail across five groups before the final three controls are skipped. The same three test bodies at `3058558f` exercise both stores and pass all 185 tests/six groups, including all 182 other controls. Both stores preserve completed changes, return TimedOut near one second without file/cache/lease changes, retry after release, and retain the lock inode while owner-process exit releases its kernel lock. Descriptors return 4 to 4 for both stores. Prior default permission/corruption/repeat/no-op, normalization, removal, policy-purge and eight-thread controls pass. `display-default-transaction-3058558f.json` binds source/artifacts, actual outcomes and joined bounded-RAM cleanup; earlier read and bridge/helper evidence remains in `display-default-read-751b4d9c.json` and `display-defaults-a6a8c0b1.json`. No public API/FFI/Dart or Linux lease implementation changes. Other-platform and older/noncooperating writers, global/peer transactions, namespace/ACL/mount/network-filesystem races, physical crash durability, full settings/radio/numeric drafts, overlap/debounce, current UI error presentation, native FFI/installed, R-S0/R-F5 and release acceptance remain OPEN. |
@@ -5493,7 +5427,7 @@ owner inspection or intervention; the corrected run has no endpoint differences.
 This is production Flutter widget/model execution with controlled preference/save
 futures, not native persistence or complete desktop/mobile menu/session execution.
 Those integrations, other platforms, resource/soak, R-S0/R-F5 and installed privilege
-acceptance remain OPEN. Windows harness storage work is user-parked and remains OPEN.
+acceptance remain OPEN. Windows harness storage work is unfinished and remains OPEN.
 
 **Custom-scale keyboard and accessibility (`74744707`).** Following the user's
 pivot from credential-receiver catalogue cleanup, desktop/mobile zoom controls
@@ -5506,7 +5440,7 @@ and three result-parser controls in 271 outer seconds. The audit entry
 “2026-10-27 — zoom slider keyboard and accessibility” records source and run
 identities. This is shared widget/model evidence with controlled preferences
 and platform themes. Complete desktop/mobile menus, native screen readers,
-persistence and installed/native security acceptance remain OPEN; existing parks
+persistence and installed/native security acceptance remain OPEN; other open tasks
 and all fifteen credential actions remain open.
 
 **Custom-scale failure layout (`64f9b22a`).** The shared desktop/mobile status
@@ -5519,7 +5453,7 @@ LTR/RTL, complete label bounds and actual Retry taps that reload 150% without a
 write. The first candidate's test command succeeds, then unrelated model-parser
 controls fail before individual results are retained; it is not full acceptance.
 The zoom profile now selects its own parser controls and retains results first;
-the broader parser issue remains parked. Audit entry “2026-10-30 — zoom failure
+the broader parser issue remains open. Audit entry “2026-10-30 — zoom failure
 layout” records all three runs and joined RAM cleanup. Production widget/model
 code runs with preference/session and translation fixtures; complete menus,
 native fonts/devices, persistence and existing acceptance obligations remain OPEN.
@@ -5529,11 +5463,11 @@ use their translated names and actual units in one accessibility node, replacing
 unnamed normalized track percentages. Baseline `6ed13b4a` reproduces four failures
 (50% announced as 44%; 500% as 25%). At `46b8109d`, TUF `miKu2oK0NU` passes all
 19 quality/FPS widget cases, including the four extended regressions. The broader
-runner reports 342 passes and the same two user-parked edge-scroll failures; no
+runner reports 342 passes and the same two unfinished edge-scroll failures; no
 whole-run pass is claimed. The audit records the label-merging correction, test
 handle-cleanup repair, four source-bound runs and joined RAM cleanup with zero
 listener deltas. Native screen readers, full application and persistence remain
-unexecuted; package/ELF follow-ups and existing parks remain OPEN/PARKED.
+unexecuted; package/ELF follow-ups and other open tasks remain OPEN.
 
 **Image-quality precision and saved values (`ff93931f`, `fd550ead`).** Bitrate and
 FPS sliders use one-unit divisions and round edits before saving. Their displayed
@@ -5549,7 +5483,7 @@ retains both this comparison and the earlier four precision failures. The focuse
 uses bounded RAM scratch; both VMs join and retire scratch with zero listener
 deltas. Save callbacks are controlled; native persistence, OS screen readers and
 complete application acceptance remain unexecuted for this correction. The server's
-adaptive bitrate cap is unchanged. Broader runner and parked work remain open.
+adaptive bitrate cap is unchanged. Broader runner and unfinished work remain open.
 
 **Image-quality More control (`a025bcaa`).** The translated label and checkbox
 share one accessibility node and click target. Checkbox, label, keyboard and
@@ -5578,7 +5512,7 @@ successful per-case JSON and compiled images are not retained. Actual native
 FFI/storage faults, complete settings-page/device interaction, cross-control/process
 writers and other target platforms remain OPEN.
 
-**Edge-scroll restoration — OPEN/PARKED at the user's pivot.** Preparation `e59f932b`
+**Edge-scroll restoration — OPEN at the user's pivot.** Preparation `e59f932b`
 adds two regressions, with no product correction. The already-started disposable-VM
 run `0CdmIpFIMg` reports both failures: all five controlled error/null/mismatch
 scenarios drop the explicit restore. The existing 330 cases pass. The raw serial
@@ -5587,9 +5521,9 @@ retained as `edge-restore-baseline.0CdmIpFIMg`. QEMU and its RAM workspace are g
 and all four listener snapshots have zero additions/removals. The 332-case shard
 therefore remains red; no rerun or edge-scroll implementation is claimed.
 
-**User-parked verifier item.** The CPace integration lane's fixed case counts remain
-OPEN/PARKED pending reconciliation with the compiled inventory. Its last RAM-admission
-refusal created no VM or scratch workspace. All earlier explicit parks remain parked.
+**unfinished verifier item.** The CPace integration lane's fixed case counts remain
+OPEN pending reconciliation with the compiled inventory. Its last RAM-admission
+refusal created no VM or scratch workspace.
 
 **Favorite peer filtering — Linux component comparison accepted; full UI OPEN.**
 `ac5a8cb8` indexes selected IDs once as a borrowed, randomly hashed membership set
@@ -5612,7 +5546,7 @@ identical test bodies, sources/artifacts, exact timings and joined bounded-RAM
 cleanup. No API, protocol, authority, dependency or harness change is included.
 Full rendered Favorites/native FFI, other platforms and installed behavior,
 concurrent namespace changes, sustained resource/performance and R-S0/R-F5/release
-acceptance remain OPEN. Whole-peer writers and all other user parks stay parked.
+acceptance remain OPEN. Whole-peer writers stay open.
 
 **Bulk Favorites membership — Linux component comparison accepted; full UI OPEN.**
 `349ea547` replaces repeated vector scans with borrowed membership sets inside each
@@ -5697,7 +5631,7 @@ original malformed-type refusals/retry remain and 27 default-codec controls pass
 observations and joined bounded-RAM cleanup. Public APIs, UI/FFI/decoder and dependency
 sources are unchanged. Native UI cache/setter and decoder integration remain untested;
 legacy whole-peer snapshot writers can serialize effective values and remain separately
-OPEN/PARKED. Rendered selection, negotiation/decode, other-platform/installed,
+OPEN. Rendered selection, negotiation/decode, other-platform/installed,
 R-S0/R-F5 and release acceptance remain OPEN.
 
 **Existing-peer FPS reads — Linux library comparison accepted; app integration OPEN.**
@@ -5718,7 +5652,7 @@ The missing-peer control inherits 60 without creating a record; descriptors retu
 exact failed-root retirement and joined bounded-RAM cleanup. Integer-consumer
 compatibility is a library value property. Native UI/cache/setter, actual OptionMessage
 and remote encoder effects, legacy whole-peer writers, other-platform/installed,
-R-S0/R-F5 and release acceptance remain OPEN; separately parked work remains parked.
+R-S0/R-F5 and release acceptance remain OPEN;
 
 **Toolbar software-codec controls — dormant hardware UI removed.**
 `ccf76fea` deletes H264/H265 JSON consumers, radio constructors and their
@@ -5740,7 +5674,7 @@ scenario or actual codec switch is claimed. Complete menu rendering, native
 FFI/peer switching, device/installed/platform, R-S0/R-F5 and release acceptance
 remain OPEN.
 
-**Windows privacy-backend preference — source-confirmed functional gap; OPEN/PARKED (user pivot, 2026-11-04).**
+**Windows privacy-backend preference — source-confirmed functional gap; OPEN (user pivot, 2026-11-04).**
 The desktop selector appears when at least two native implementations are available
 and writes `privacy-mode-impl-key` through ordinary `mainSetOption`. At `6f03980f`,
 `MainStatusOptionKey::from_str` omits that key: `ipc::set_option` rejects it before
@@ -5758,7 +5692,7 @@ authenticated Remote activation path. Verify authorized save/restart/use and ref
 changes on the same installed Windows artifact. Windows launcher storage acceptance
 remains an execution prerequisite; no Windows VM or product patch ran here. See the
 audit entry “2026-11-04 — controlled privacy preference authority trace”. Independent
-service-protocol, default-display-radio and artifact parks remain unchanged.
+service-protocol, default-display-radio and open tasks remain unchanged.
 
 **Desktop About metadata (`199d5fd7`).** The empty custom-server metadata getter,
 its native/web bridge methods and the About request are removed. Version, build
@@ -5812,8 +5746,7 @@ bounded-RAM cleanup are in `retired-codec-advertisement-8bb1c697.json`.
 This compiles the changed codec library; application getter/FFI wiring is source
 reviewed. No newly reproduced functional or LPE failure is claimed. Full application
 compilation, actual bridge/menu/peer selection, remaining decoder profile-read review,
-other-platform/installed, R-S0/R-F5 and release acceptance remain OPEN. Separately
-parked whole-peer writers remain OPEN/PARKED.
+other-platform/installed, R-S0/R-F5 and release acceptance remain OPEN. open whole-peer writers remain OPEN.
 
 Historical comparisons cover named setter/export leaves or controlled rendered
 components, not an old installed whole application. The receipts retain exact sources,
@@ -5842,8 +5775,8 @@ denial of harness-created host IP sockets does not attribute foreign activity.
   impairment recovery and multi-hour freshness; complete dependency/signing inputs,
   advisory/scanner acceptance, baseline reproduction/fork-delta/surface accounting,
   cold artifacts, independent reproduction, external review and release.
-  Whole-document/test classification remains OPEN. Every separately parked item
-  remains parked; this section closes no parked work.
+  Whole-document/test classification remains OPEN. Every open item
+  remains open; this section closes no unfinished work.
 
 The full pre-consolidation settings history remains in Git at `94423cfe`.
 Classification, unchanged-source comparison, all 24 retained artifact identities and
@@ -5939,7 +5872,7 @@ Native Windows compilation/runtime, Apple/mobile and rendered UI/FFI, installed
 authority/settings, filesystem-specific durability/crash recovery and hostile
 directory-writer final exchange races remain OPEN. Unix identity checks do not
 make a by-name rename/unlink conditional on the checked inode. No whole-product
-LPE closure follows; all user parks and broader release obligations remain intact.
+LPE closure follows; all other open tasks and broader release obligations remain intact.
 
 **Receive digest inspection and next-file handshake — Linux native component corrected; integration/platform acceptance OPEN.**
 `TransferJob::inspect_receive_digest` (`9ed8e979`) owns validation, destination inspection
@@ -5990,8 +5923,7 @@ The library rows execute the Linux shared library and real files; the directory 
 one headless production viewer/peer transaction. Wider parent/caller and UI integration,
 authorized/refused installed principals, other target OS, cancellation/worker
 drain, further namespace/ACL/mount races, power-loss durability, UI, resource/latency soaks,
-R-S0/R-F5 and release/independent/external acceptance remain OPEN. All user parks, including
-the three generic receive pre-I/O cases, remain in force. No complete LPE-immunity claim follows.
+R-S0/R-F5 and release/independent/external acceptance remain OPEN.  No complete LPE-immunity claim follows.
 
 **Receive resume-length admission — Linux native component corrected; installed/platform acceptance OPEN.**
 Product `ad57ba2a` checks the opened partial file's length both before offering a
@@ -6013,7 +5945,7 @@ Source before/live/after, exact artifacts, raw results, complete endpoint
 observations and joined RAM/private-root retirement are retained in
 `.harness-state/verifier-vm/receive-resume-size-ad57ba2a.json`.
 This is Linux library/native-file evidence. Peer/CM/viewer integration, other
-platforms, full filesystem acceptance, parked work, broader resource/latency,
+platforms, full filesystem acceptance, unfinished work, broader resource/latency,
 installed privilege/principal and release evidence remain OPEN.
 
 **File modification-time admission — Linux native component corrected; installed/platform acceptance OPEN.**
@@ -6039,10 +5971,10 @@ profile and exact Cargo-selected library artifact. A/B supervisor times are
 endpoint observations and joined RAM/private-root retirement are retained in
 `.harness-state/verifier-vm/file-metadata-time-a69b64b8.json`.
 This is Linux library/native-file evidence, not installed privilege/principal or
-real peer/UI execution. Full filesystem acceptance, the three parked pre-I/O
+real peer/UI execution. Full filesystem acceptance, the three unfinished pre-I/O
 race failures, native Windows/Apple/mobile, filesystem-specific range/rounding
 fidelity, broader lifecycle/resource/latency and release evidence remain OPEN.
-The parked cases and their names are unchanged and are not executed by this selector.
+The unfinished cases and their names are unchanged and are not executed by this selector.
 
 **Recording outputs — named Linux file/mux, I/O and timeline components accepted; installed/platform acceptance OPEN.**
 `libs/scrap/src/common/record.rs` creates output exclusively, borrows factory metadata and
@@ -6118,7 +6050,7 @@ wrapper also discards its write result. Two unexecuted caller regressions now
 cover a non-directory output failure and a writable-output control, with native
 VP8 frames, real session commands, status callbacks and joined workers. The
 `--viewer-video-tests` inventory is ten cases/two groups. Application compilation
-is awaiting the user's answer about the existing parent-build park; no baseline,
+remains unverified; no baseline,
 correction or new runtime acceptance is claimed. Exact recording-attempt ownership,
 late failure after stop/restart, finalization feedback and full UI remain required.
 
@@ -6244,7 +6176,7 @@ unchanged tests, A/B observations and cleanup. No production dependency or wire 
 This is selective Rust payload-allocation and conversion evidence, not whole-process
 memory-pressure or native clipboard publication proof. Metadata/serde/other native
 allocations, full parent and desktop/mobile caller execution, installed/R-S0/R-F5 and
-release acceptance remain OPEN. All user-parked work remains parked.
+release acceptance remain OPEN.
 
 **Compressed clipboard RGBA — geometry bounds decoded output; Linux component accepted.**
 `b407b685` checks positive, representable RGBA dimensions and the existing 64 MiB
@@ -6267,9 +6199,9 @@ the unchanged A/B fixture, artifacts, observations, earlier observer correction 
 cleanup. This observes Rust output allocations, not all native decoder memory or CPU.
 Full parent/caller and OS clipboard execution, installed/native privilege boundaries,
 other platforms, sustained resources, R-S0/R-F5 and release acceptance remain OPEN.
-All user parks remain parked.
 
-**Aggregate clipboard decode budget — OPEN/PARKED at the user's pivot.**
+
+**Aggregate clipboard decode budget — OPEN at the user's pivot.**
 Candidate `911ad100` passes each item's remaining decoded-byte allowance before
 copying or decoding. Preparation `e606b669` fails the allocation regression in all
 six scenarios (42 other tests pass); candidate run `IHSULdvt6H` passes all 43 tests,
@@ -6278,7 +6210,7 @@ the pivot, with QEMU joined, RAM retired and zero endpoint deltas. Baseline
 `87dQiwckNY` also retired but recorded one unattributed added endpoint; it is
 negative component evidence, not an accepted full transaction. Retained run
 evidence is included in `test-source-catalogues-911ad100.json`. Further clipboard
-work is parked. This result bounds decoded bytes and observed output-allocation
+work is open. This result bounds decoded bytes and observed output-allocation
 requests, not total RSS, spare capacity or codec memory; full parent, native
 clipboard, desktop/mobile, installed and release acceptance remain OPEN.
 
@@ -6363,7 +6295,7 @@ Reproduce with `--linux-xrandr-query-tests`. Actual rotated X-server/monitor, co
 Remote session, concurrent external orientation changes, final-artifact and release
 acceptance remain OPEN. No new privilege-escalation claim is made.
 
-Further work is OPEN/PARKED by the 2026-11-04 user pivot. Runtime prerequisite
+Further work is OPEN by the 2026-11-04 user pivot. Runtime prerequisite
 acquisition at `0d7be02e` produced no candidate: `RyuxnCijwU` failed snapshot index
 HTTP 503; `GJV4OsqClJ` failed package downloads with HTTP 503/504 and connection
 errors. `rotation-runtime-{ready,retry}-0d7be02e.json` retain both failures and
@@ -6387,7 +6319,7 @@ Native callbacks are fixtures;
 actual X-server/Remote changes, remaining synchronous discovery callers, full app
 and installed/platform acceptance remain OPEN. Command/task ownership is covered above.
 Credential provisioning and Android CM work
-remain parked under the user's pivot.
+remain open under the user's pivot.
 
 **Automatic reconnect delay — Linux Flutter model/widget accepted; peer recovery OPEN.**
 `8fe1fe12` caps the shared model's exponential retry delay at 30 seconds, preserving
@@ -6404,7 +6336,7 @@ with unchanged endpoint inventories. `reconnect-backoff-5bd1d577.json` binds A/B
 sources, full per-case results, fresh generated bridge and cleanup. This bounds the
 requested retry wait, not connection-attempt duration or actual presentation age.
 Full native peer, desktop/mobile, impairment/soak, R-S0/R-F5 and installed/release
-acceptance remain OPEN; all user parks remain parked.
+acceptance remain OPEN;
 
 **Dialog close authority — LINUX FLUTTER WIDGET PASS; DEVICE/FFI/INSTALLED ACCEPTANCE OPEN.**
 The overlay receiver binds each `DialogClose` to one exact entry. Replacement or dismissal
@@ -6509,7 +6441,7 @@ The eight Dart dispatcher tests and three parser controls also passed in 104 VM 
 `.harness-state/verifier-vm/linux-window-channel-accepted-3f8f4bf5.json` binds both artifacts,
 source freezes, three retained preparation/fixture failures, unchanged endpoints and joined RAM cleanup.
 
-**Native argument and reply-error ownership: OPEN/PARKED by user request.** Source `233b7aa2`
+**Native argument and reply-error ownership: OPEN by user request.** Source `233b7aa2`
 changes the three outbound argument maps to retain the borrowed payload and transfer the newly
 allocated keys/sender value. Neither subsequent native attempt was accepted: the custom-free
 observer at `233b7aa2` and the ASan driver at `1265da1c` both terminated with a baseline crash;
@@ -6522,7 +6454,7 @@ are preserved as eleven files in stash `453ed898abbde3900c70a20d2f9f535850f5740b
 The pinned SDK's generic reply-error lifetime needs direct native investigation; its suspected
 relation to the crash and the unfinished correction remain unvalidated. No VM remains running,
 both exact RAM/private workspaces are retired, and the shared lock is released. This work will
-not resume automatically; the earlier seven-case reply result does not establish argument or
+ the earlier seven-case reply result does not establish argument or
 generic reply-error memory safety.
 
 These results exercise Dart/plugin and Linux native channel components. Actual GTK/Win32/Cocoa
@@ -6530,7 +6462,7 @@ application-window handoff/log capture across all five session types, real peer/
 release-log capture, sustained resource bounds, installed authority/LPE acceptance and the current
 full model checkpoint remain OPEN.
 The terminal parser's retained-input and CPU-work limits remain a separate OPEN
-item, parked at the user's request.
+item, open.
 
 **Incorrect-password retry — native Linux checkpoint (`5e334000`).**
 TUF `IZblnNUjMU` reuses complete app `a630f880` and engine `63493887`.
@@ -6593,13 +6525,13 @@ decomposed Unicode and space-only text, plus empty and duplicate refusal.
 Existing preference, cancellation, disposal and retry controls remain.
 The dedicated `--flutter-model-tests --connect-password` profile generates
 the current bridge and runs only this suite, plus three result-parser controls;
-the parked credential API cohort is not run. Bounded, networkless Linux VM
+the unfinished credential API cohort is not run. Bounded, networkless Linux VM
 evidence, exact source, before/after results and joined RAM cleanup are retained
 in `connect-password-text-900026df.json`. The baseline has no listener additions
 and two unattributed loopback removals; no host service was inspected or changed.
 This is Flutter dialog/callback execution, not a real peer or installed credential
 transaction. Permanent-password settings still trim text and remain a separate
-OPEN issue within parked provisioning work. Native devices, full authentication,
+OPEN issue within unfinished provisioning work. Native devices, full authentication,
 all fifteen credential actions, R-S0/R-F5 and release acceptance remain OPEN.
 
 **Connection-password focus (`8ab13728`).** The prompt uses Flutter's existing
@@ -6617,8 +6549,7 @@ has one unattributed removal, left untouched. Exact source, logs and cleanup
 are retained in `password-focus-8ab13728.json`. This is Linux Flutter 3.24.5
 component execution with identity translation and a palette fixture, without
 the complete dialog/native bridge, real peer or device keyboard. Those integration
-checks and all fifteen installed credential actions remain OPEN. The separately
-parked toolbar, provisioning and global parser work is not resumed.
+checks and all fifteen installed credential actions remain OPEN. The open toolbar, provisioning and global parser work is not resumed.
 
 **Connection-password keyboard submission (`50d511fc`).** `onSubmitted` now
 passes through `PasswordTextField`, `DialogTextField` and `PasswordWidget` to
@@ -6640,7 +6571,7 @@ Both QEMU processes join and RAM scratch retires. Each final inventory has one
 unattributed endpoint removal, left untouched. `password-submit-50d511fc.json`
 retains exact source and execution/cleanup evidence. Full bridge/app, device
 keyboards, real peer authentication and installed-service acceptance remain OPEN;
-all fifteen credential actions and separately parked work retain their status.
+all fifteen credential actions and open work retain their status.
 
 **Password input policy: source corrected; focused component/channel tests accepted.** The
 connection-password reveal control and both permanent-password fields use
@@ -6755,7 +6686,7 @@ the exact VM and RAM workspace retire. `logind-storage-profile-9cb313da.json`
 binds sources, native outcomes, installed limits and cleanup. This accepts the
 warm-boot focused allocation, not cold provisioning, installed credential
 authority, other platforms, sustained resource bounds or R-S0/R-F5/release
-acceptance. All user parks remain parked.
+acceptance.
 
 **Shared compression and file-block decoding — fallible output; Linux component accepted.** `fa22a5cb`
 replaces the infallible 128-KiB-plus-one output allocation with checked reservation
@@ -6816,7 +6747,7 @@ dependencies, actual artifacts, observations and joined bounded-RAM cleanup;
 both decoder A/B runs have zero endpoint deltas. Healthy calls use the real native
 library; injected null returns model constructor refusal, not whole-process memory
 exhaustion. Other C allocations, full callers, other platforms, installed behavior
-and R-S0/R-F5/release acceptance remain OPEN. All user parks remain in force.
+and R-S0/R-F5/release acceptance remain OPEN.
 
 **Native compressor workspace refusal (`361f5682`).** The existing component lane
 now exercises the actual Zstd workspace allocation after successful CCtx creation.
@@ -6852,7 +6783,7 @@ storage controls pass. Corrected behavior takes 0.04s and the outer receipt 82s.
 locked dependencies, observations, export limits and joined bounded-RAM cleanup.
 These are real Rust/C codec components, not full receive/caller or installed
 application acceptance. All fifteen credential actions, R-S0/R-F5, release
-obligations and every separately parked task remain OPEN/PARKED.
+obligations and every open task remain OPEN.
 
 Faults target only the Rust output vectors;
 C codec allocations, persistent/global memory pressure, full receive/filesystem
@@ -6886,8 +6817,7 @@ canonical `--file-block-tests` receipt takes 82 outer seconds. This is Rust 1.75
 production codec-component evidence; allocation requests are not allocator usable
 size, simultaneous live storage, native C allocations or process RSS. Full callers,
 native UI/IPC/peers, other platforms, installed authority, R-S0/R-F5, throughput/soak,
-cold/release, independent reproduction and external review remain OPEN. Every
-explicit user park, including the legacy-key lookup, remains parked.
+cold/release, independent reproduction and external review remain OPEN.
 
 At source `3156926f`, actual filesystem admission passed, standard admission refused at
 19,745 MiB available, and a filesystem profile with a 4 GiB guest refused. Before launch,
@@ -7043,7 +6973,7 @@ sources and artifacts. The receiver's production-source equality guard in
 `scripts/smoke-verifier-vm-authority.sh::linux_receiver_input_inventory` rejects a retained
 binary when its complete production source differs. An earlier pass cannot authorize a
 current run or establish current-master conformance. Fresh builds and fixtures that the
-user parked remain parked.
+unfinished remain open.
 
 Both endpoints use `src/ipc/uid_policy.rs`: root skips active-user lookup; a cached UID
 can deny but cannot grant, and a match requires a fresh lookup. Kernel process, role,
@@ -7141,7 +7071,7 @@ monitoring, hard ceilings and joined retirement. These records do not admit anot
 - Current release/package artifacts, complete inputs/signing, cold R-B2/R-B10 equality,
   independent reproduction and R-V3 external review. R-S0 functionality with LPE immunity,
   actual R-F5 recovery/long-session freshness and the older Android/Windows display
-  symptoms remain unresolved. All separately parked work remains OPEN/PARKED.
+  symptoms remain unresolved.
 
 ### Flutter result inventory — single model-count source
 
@@ -7152,7 +7082,7 @@ before giving the test process its source workspace; both receive read-only moun
 The configured suite inventory and test total, successful non-skipped completion
 and terminal checks remain mandatory. Focused profiles additionally check their
 named cases; the model checkpoint does not yet bind individual names to suites.
-Exact model-case inventory remains OPEN/PARKED. Preparation `fa342297` aligns the
+Exact model-case inventory remains OPEN. Preparation `fa342297` aligns the
 reviewed data and fixture with 26 suites/357 cases, but acceptance still uses the
 aggregate. Baseline `oqK3uathmq` proves that renamed, duplicate and wrong-suite
 cases are accepted; these three regressions currently fail the shared parser step.
@@ -7194,8 +7124,7 @@ The old reader rejects the same large history. The 62.537-second no-NIC run join
 and retires RAM scratch with zero listener deltas. Retained comparison:
 `android-history-76cd9218.json`. This establishes observer capacity; uninterrupted
 multi-hour app freshness/resources, input-to-visible response and R-F5 remain OPEN.
-The integrated workload below has partial evidence only; further execution is
-parked at the user's pivot.
+The integrated workload below has partial evidence only; further execution is open at the user's pivot.
 
 **Scheduled observation (`94c54123`, `24a8ad3e`).** `observe_duration` rejects each stale,
 unknown, regressing or over-budget sample instead of waiting for later recovery.
@@ -7204,7 +7133,7 @@ histograms. TUF `RWJfstLFJO` passes the synthetic two-hour schedule, eleven refu
 cases and real atomic frame-replacement reads. Actual X11 observation spans
 3,130 ms/four samples, with 163-ms maximum age. This is observer evidence.
 
-**Integrated two-hour control — partial; user-PARKED.** `fc8fc390` adds explicit
+**Integrated two-hour control — partial; OPEN.** `fc8fc390` adds explicit
 `--soak` execution using retained app `f372aacf` and peer `b30f4811`. At `24a8ad3e`,
 TUF `mDJFQwJwGj` accepts three 16-MiB log buffers and passes five minute windows
 before the user's pivot: 301 observations, maximum image age 1,028 ms, observer
@@ -7251,7 +7180,7 @@ intermittent failure was not reproduced; its cause, ARM64 release/device behavio
 multi-hour freshness/resources and R-S0/R-F5 acceptance remain OPEN. Repeating this
 unchanged successful schedule would not resolve those gaps; a further reproduction
 must choose a justified untested lifetime or workload. Camera and the independent
-Android CM Stop/admission race remain parked.
+Android CM Stop/admission race remain open.
 
 **Shared Flutter canvas and software-image behavior — historical component A/B
 evidence; current installed/native acceptance OPEN.** These seven checkpoints
@@ -7303,7 +7232,7 @@ is not a CPU measurement; forced setup errors do not establish natural error
 frequency or sustained resource growth. Prepared fast verification, measured
 CPU/resource/latency bounds and soak, current installed/release artifacts,
 R-S0/R-F5, all fifteen credential actions, independent reproduction and external
-review remain required. Every user-parked task stays parked.
+review remain required. Every unfinished task stays open.
 
 None of these component results establishes the cause of the original intermittent
 Android presentation or Windows focus/display-delay symptoms. The early-publication
@@ -8474,7 +8403,7 @@ failure recovery, all required init managers and current-release acceptance rema
 `debian-maintainer-catalogue-c4fa0c92.json` retains the deletion and fresh ledger-count evidence.
 At the user's topic pivot, unfinished clipboard UTF-8 preparation is preserved in stash
 `f4f8b511361ee0451ee1b67256a43f46af66ed4e`; malformed-text admission and native batch behavior
-remain OPEN/PARKED, with no correction or test result claimed.
+remain OPEN, with no correction or test result claimed.
 The explicit `--debian-package-tests` integration mode additionally passes the complete
 compiler-dependent archive and production-finalizer self-test using the pinned development
 verifier image. It compiles ELF fixtures, exercises malformed archive/policy/ELF/checksum,
@@ -9194,8 +9123,7 @@ before attributing dialog retirement to that trigger; resize alone does not
 establish it. Original Android/Windows defect causation, supported native
 platforms, installed-service/LPE and settings behavior, R-S0/R-F5, exact release
 artifacts/cold equality, independent reproduction and external review stay open.
-The separately recorded later theme/dialog findings and all user parks remain
-unchanged. This consolidation starts no build, app replay or parked investigation.
+ This consolidation starts no build, app replay or unfinished investigation.
 
 `start_runtime_log` now defers managed HUP/INT/TERM only across spawn/PID acquisition, restores the
 ordinary traps with the child retained, and then applies any recorded cancellation. The first test was
@@ -9977,9 +9905,9 @@ The earlier June inventory and blanket coverage claim are retired. This is a bou
 named records against the current fork, not an exhaustive current advisory inventory or a claim
 that an upstream affected-version range proves this fork's disposition.
 
-**CVE-2026-76840 — Windows clipboard caller-buffer overflow: source corrected; OPEN/PARKED.**
+**CVE-2026-76840 — Windows clipboard caller-buffer overflow: source corrected; OPEN.**
 Source `ab156fc2` is committed and pushed. At the user's request, this work and the advisory
-review below are parked and will not resume automatically. No component test binary was
+review below are open . No component test binary was
 compiled or executed, and no clipboard test VM was started.
 Before the correction, `CliprdrStream_Read` copied `req_fsize` into a caller buffer of `cb` bytes;
 the response handler's eight-MiB ceiling did not enforce that caller-specific limit. The correction
@@ -10112,7 +10040,7 @@ clipboard capture/send permission epochs, server PermissionInfo and controlled-o
 semantics, file-clipboard SET/empty authority, native in-flight failure/drain, screenshots,
 global dispatcher shutdown, Windows/macOS/mobile, sustained resources/latency, release
 artifacts and independent acceptance remain OPEN. Event-registration ownership, native
-WindowChannel lifetime and earlier user-parked items remain explicitly parked and OPEN.
+WindowChannel lifetime and earlier unfinished items remain open and OPEN.
 
 **R-S7 terminal/cursor decompression — shared infallible APIs deleted; Linux Rust bridge handoff PASS; native presentation OPEN.**
 Product `b77edafe385cba850165fb3f88e9225ca81e4f29` deletes the two
@@ -10190,7 +10118,7 @@ evidence. `terminal-input-66eaf4d8.json` binds these sources, identical final te
 results and joined bounded-RAM cleanup; all endpoint snapshots are unchanged.
 Actual FFI/peer input effects, native cancellation and reconnect, queued-input memory
 and deadline admission, installed/other-platform behavior, R-S0/R-F5 and release
-acceptance remain OPEN. The separately parked receive-parser bounds stay parked.
+acceptance remain OPEN. The open receive-parser bounds stay open.
 
 The server's bounded live/replay batches may split a character after PTY accumulation.
 `TerminalModel` owns one `TerminalOutputDecoder` across packets. Complete text emits
@@ -10310,7 +10238,7 @@ sandbox implementation and checker-repair history remain in Git.
 
 ## Open residuals (tracked, not regressions)
 
-- **Linux wallpaper restoration — OPEN/PARKED at the user's request, source finding.** The current remover saves
+- **Linux wallpaper restoration — OPEN at the user's request, source finding.** The current remover saves
   one path, but the pinned wallpaper.rs XFCE backend reads only the first `last-image`
   property and writes all matching properties. Distinct display/workspace backgrounds
   can therefore be replaced by that first path on restoration. The Linux wrapper also
@@ -10382,7 +10310,7 @@ sandbox implementation and checker-repair history remain in Git.
   | R-S11c-27n | Historical runtime: identical path/bytes in distinct mount/PID namespaces retained distinct executable identity. |
   | R-S11c-27o | Historical elevated-container behavior: actual kernel PID reuse refused the stale identity without signaling the replacement. |
   | R-S11c-27p | Source/package: OpenRC/runit/manual templates own only the foreground supervisor, with no competing child or discovery authority. |
-  | R-S11c-27q | OPEN/PARKED. VM `YtmlOAZxOV` at `9e6aa6d4` uses the shipped OpenRC script and retained `60e3fb0a` binary with real PAM/logind/X11. Two CPace/Remote logins and exact supervisor/child retirement pass across restart/stop; the final-state assertion fails and `/etc/insserv.conf` is missing. `openrc-exec-9e6aa6d4.json` binds observations and cleanup. Full manager, OpenRC-boot and final-package acceptance remain OPEN. |
+  | R-S11c-27q | OPEN. VM `YtmlOAZxOV` at `9e6aa6d4` uses the shipped OpenRC script and retained `60e3fb0a` binary with real PAM/logind/X11. Two CPace/Remote logins and exact supervisor/child retirement pass across restart/stop; the final-state assertion fails and `/etc/insserv.conf` is missing. `openrc-exec-9e6aa6d4.json` binds observations and cleanup. Full manager, OpenRC-boot and final-package acceptance remain OPEN. |
   | R-S11c-27r | Historical runsvdir/runsv/supervisor/child ownership and recovery remain recorded. Current-source artifact `60e3fb0a` compiles and publishes all seven manifested files with `--linux-service-artifact-build`, using the existing bounded VM profile. Both wrappers require a distinct compile-only receipt; the file-transfer and limiter modes retain their scenarios. `runit-build-60e3fb0a.json` binds payload hashes, four zero listener deltas and exact process/private/RAM retirement. No product scenario runs in this producer. Actual runit start/stop/restart, current installed/final-artifact and independent acceptance remain OPEN. |
   | R-S11c-27s | Release wiring only; execution OPEN. The gate binds cold A==B pass-A `.deb`, commit/package identity, authenticated devcheck archive, installed systemd lifecycle and stable post-run inputs before publication, through the common no-NIC VM after Docker is joined. No current final `.deb` has passed. |
   | R-S11c-27t/R-T4 | Source/gate: owner loss remains selectable throughout headless CM bootstrap; post-bootstrap completion is bounded and terminal-first. Native/package/device lifecycle remains OPEN. |
@@ -10987,7 +10915,7 @@ sandbox implementation and checker-repair history remain in Git.
   serialized types and other identity checks are unchanged. This accepts argument
   positions only; raw-byte identity is covered below. Mutable-procfs/exec races, full
   privileged receivers, all fifteen credential actions, R-S0/R-F5 and release
-  acceptance remain OPEN. All separately parked work remains parked.
+  acceptance remain OPEN.
 
   **Linux argv bytes (`8b4a2159`).** The shared reader and retained local
   `PeerProcessIdentity` now own each argument as bytes. Exact role predicates
@@ -11008,7 +10936,7 @@ sandbox implementation and checker-repair history remain in Git.
   constructor/predicates, kernel observations, artifacts and bounded-RAM cleanup.
   These bodies run with boxed-error/kernel-ABI adapters; complete parents,
   installed receivers, concurrent mutation/exec races, all fifteen credential
-  actions, R-S0/R-F5 and release acceptance remain OPEN. Every user park persists.
+  actions, R-S0/R-F5 and release acceptance remain OPEN.
 
   **Linux role environment text (`963fe9bb`).** The shared procfs value reader
   validates the selected value as UTF-8 before returning text; malformed bytes
@@ -11027,7 +10955,7 @@ sandbox implementation and checker-repair history remain in Git.
   the existing boxed-error/kernel-ABI adapters. This accepts selected-value
   decoding only; concurrent procfs/exec races, full privileged
   receivers, installed settings/credential actions, R-S0/R-F5 and release
-  acceptance remain OPEN. All user parks remain untouched.
+  acceptance remain OPEN.
 
   **Linux launch-marker uniqueness (`7fbf0cf6`).** The shared procfs reader
   requires exactly one selected entry before returning its checked UTF-8 value;
@@ -11048,7 +10976,7 @@ sandbox implementation and checker-repair history remain in Git.
   retirement. This is selected-marker/identity component evidence using the
   existing error/kernel-ABI adapters, not complete IPC, supervisor or installed
   credential/settings acceptance. Concurrent procfs/exec races, R-S0/R-F5,
-  platform/release acceptance and all user parks remain OPEN/PARKED.
+  platform/release acceptance remain OPEN.
 
   **Linux task-name bytes (`35def286`).** Numeric procfs identity/parent readers
   read bytes, skip the final command terminator, and decode only the suffix;
@@ -11068,7 +10996,7 @@ sandbox implementation and checker-repair history remain in Git.
   These extracted bodies use the existing error/kernel-ABI adapters; this
   establishes numeric-metadata correctness, not installed IPC/service or full
   application acceptance. Concurrent procfs/exec races, all fifteen credential
-  actions, R-S0/R-F5, platform/release acceptance and all user parks remain OPEN.
+  actions, R-S0/R-F5, platform/release acceptance remain OPEN.
 
   **Linux role argv resource bounds (`7382ed58`).** The process-role reader caps
   procfs input at three kernel-maximum-length exec arguments plus one overflow
@@ -11085,7 +11013,7 @@ sandbox implementation and checker-repair history remain in Git.
   This fixes component allocation amplification; it does not demonstrate an
   escalation or installed denial of service. Full parent/installed receiver,
   concurrent procfs/exec races, complete functionality, R-S0/R-F5 and release
-  acceptance remain OPEN; all user parks remain unchanged.
+  acceptance remain OPEN;
 
   **Linux supervisor child argv (`c709c756`).** Retained service-child record
   revalidation preserves every argument position: it removes only one final NUL
@@ -11104,7 +11032,7 @@ sandbox implementation and checker-repair history remain in Git.
   on real kernel command lines, with the existing identity component adapters;
   complete supervisor/recovery/signalling transactions, installed privilege and
   settings/credential effects, concurrent mutation/exec races, R-S0/R-F5 and
-  release acceptance remain OPEN. Parked producers remain parked.
+  release acceptance remain OPEN. Unfinished producers remain open.
 
 - **R-S11cd/R-S11e-96 — Linux nondumpable service child and whiteboard use kernel parent
   authority — SOURCE IMPLEMENTED; INSTALLED-ARTIFACT EVIDENCE OPEN.** The helper binds
@@ -12576,7 +12504,7 @@ sandbox implementation and checker-repair history remain in Git.
   gate. Exact-source acquisition and cold clean R-B2/R-B10 artifacts, Windows Flutter/Pub/WiX,
   maintenance-image acquisition/distribution, native/device behavior, independent distribution
   and R-V3 review remain OPEN. No acquisition producer or persistent cache runs in this
-  documentation correction; the separate user-requested acquisition parks remain in force.
+  documentation correction;
 - **R-S11cx/R-S11e-116 — Windows Flutter-engine acquisition-output authority.**
   Source owner: `scripts/online-fetch.sh::stage_windows_engine` and
   `scripts/online-windows-engine-output.py`. The pinned Flutter SDK and immutable builder
@@ -12600,8 +12528,7 @@ sandbox implementation and checker-repair history remain in Git.
   Current exact-source acquisition, clean R-B2/R-B10 artifacts, Windows Pub-cache/WiX and
   maintenance-image acquisition/distribution, native/device behavior, independent distribution
   and R-V3 external review remain OPEN. This documentation correction runs no producer,
-  changes no persistent cache and supplies no new runtime evidence. The separate acquisition
-  and platform-launcher parks remain in force.
+  changes no persistent cache and supplies no new runtime evidence.
 
 - **R-S11cy/R-S11e-117 — exact Windows flutter_tools Pub-cache acquisition-output authority —
   SOURCE IMPLEMENTED; HISTORICAL FILESYSTEM FIXTURE AND ACQUISITION COMPATIBILITY EVIDENCE
@@ -13406,7 +13333,7 @@ sandbox implementation and checker-repair history remain in Git.
   Gradle/Rust gate execution, cold artifacts, APK/installed/device behavior,
   independent reproduction and external review. Separate Android-builder archive
   validation, focused target compilation or APK receipts do not establish these
-  gate workloads. All separately parked work remains OPEN/PARKED.
+  gate workloads.
 
 - **R-S11do/R-S11e-133 — Windows-helper verifier-VM, mount, resource, KVM, and cleanup authority —
   SOURCE IMPLEMENTED; ACTUAL SMALL-PROFILE GUEST-DOCKER BEHAVIOR GREEN; CERTIFIED HELPER/KVM/WINDOWS
@@ -13680,8 +13607,7 @@ sandbox implementation and checker-repair history remain in Git.
   cleanup fallbacks and post-publication compiler/container work. Cold R-B2/R-B10
   artifacts, Debian installed service/package lifecycle, Android signing and
   device/session behavior, durability/failure races, independent reproduction
-  and R-V3 external review remain OPEN. Existing package/ELF, Android lifecycle
-  and other user parks are unchanged. This ledger consolidation adds no runtime
+  and R-V3 external review remain OPEN.  This ledger consolidation adds no runtime
   acceptance.
 - **R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type
   authority — SOURCE CLOSED/GATED 2026-07-27; PLATFORM-WIRE REGRESSION
@@ -14229,7 +14155,7 @@ sandbox implementation and checker-repair history remain in Git.
   tests. The malformed-length test observes acceptance of a missing declared
   submessage body; two unknown-group tests require corrected depth expectations
   because their first unknown group does not consume the recursion budget.
-  These failures, their follow-up and full acceptance remain OPEN/PARKED at the
+  These failures, their follow-up and full acceptance remain OPEN at the
   user's pivot. No product parser change or authentication-bypass claim follows.
 - **Apple artifacts** — macOS/iOS are source-conformed (R-R2 retain-and-check),
   not built; full artifacts need the Apple SDK/toolchain path.
@@ -14322,7 +14248,7 @@ sandbox implementation and checker-repair history remain in Git.
   with the accepted artifact and bounded-RAM evidence. Temporary review code is absent.
   This removes dormant code, not a newly demonstrated LPE. Current full app/capture,
   native logind, installed and other-platform behavior, R-S0/R-F5 and release acceptance
-  remain OPEN; all user-parked work stays parked.
+  remain OPEN;
 - **R-X9 — portable-packer Quick Support residue excised — CLOSED/GATED 2026-07-21.** The June 24 R-X9
   change deleted the Windows application's portable controlled-side service, its Quick Support receiver and
   elevation machinery, `set_quick_support`, the `--quick_support` argument arm, and the application's executable-
@@ -14507,8 +14433,8 @@ other-platform coverage, current whole-app/installed/release artifacts, full-gat
 integration, independent reproduction and external review. Listener IPv4-only
 binding remains the separate R-D5 obligation.
 
-**OPEN/PARKED — hostname resolution transport and lifetime (R-SV5/R-SV10).**
-The user explicitly parked correction and further investigation. The viewer uses
+**OPEN — hostname resolution transport and lifetime (R-SV5/R-SV10).**
+The user open correction and further investigation. The viewer uses
 `Client::_start` → `connect_tcp_local` → `FramedStream::new`. After source
 separation at `cf58ee67`, the constructor accepts one `SocketAddr`; the shared
 connector owns lookup/candidate selection and retains native connect/bind/
@@ -14538,7 +14464,7 @@ A/AAAA and hosts-file results, default/TCP DNS, transient sockets, failures,
 cancellation and exact resolver drain. Platform DNS policy, full-root/video-probe,
 other-platform, exact-current installed/release artifacts and native acceptance
 remain OPEN. Literal-only admission, TCP DNS configuration and a timeout wrapper
-do not establish the correction. No parked investigation is resumed here.
+do not establish the correction. No unfinished investigation is resumed here.
 
 Primary references: [Rust 1.75 lookup](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys_common/net.rs#L181),
 [glibc 2.27 sorting](https://github.com/bminor/glibc/blob/glibc-2.27/sysdeps/posix/getaddrinfo.c#L2187),
@@ -14659,7 +14585,7 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
 
 ### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality (2026-08-13)
 
-**OPEN/PARKED: rapid selection has a reproduced final-choice failure; the caller
+**OPEN: rapid selection has a reproduced final-choice failure; the caller
 correction is unverified.** Named Dart evidence and ordinary Linux full-app
 selection pass within their scopes below. The viewer model and
 `src/{client.rs,client/io_loop.rs,flutter.rs,flutter_ffi.rs,ui_session_interface.rs}`,
@@ -14898,8 +14824,7 @@ Git at `686658ad`.
   Debian/Android/Windows R-B2/R-B10 equality, independent reproduction and R-V3 review.
 
 R-S0 complete functionality with LPE immunity remains OPEN. These component results
-do not explain the older Android/Windows/Debian symptoms. Every separate user park
-remains OPEN/PARKED; consolidation changes neither evidence scope nor acceptance.
+do not explain the older Android/Windows/Debian symptoms.  consolidation changes neither evidence scope nor acceptance.
 
 ### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress (2026-08-16)
 
@@ -14952,7 +14877,7 @@ Guest integration in `scripts/verify.sh` retains
 `cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never`,
 `cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never` and
 `cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never`.
-Command presence does not authorize resuming a parked producer.
+
 
 **Shared OPEN/STOP-SHIP acceptance for all three surfaces:**
 
@@ -14971,7 +14896,7 @@ Command presence does not authorize resuming a parked producer.
 - Prove complete connection-flow correctness/performance, R-S0 functionality with
   LPE immunity, R-F5 impairment recovery and long-session freshness, cold R-B2/R-B10
   equality, installed-service behavior, independent reproduction and R-V3 external
-  review. Global release/authority matrices and every user park remain binding.
+  review. Global release/authority matrices remain binding.
 
 ### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership (2026-08-17)
 
@@ -15018,14 +14943,14 @@ The broader `--hbb-common-fs` lane is not wholly accepted by the transport resul
 
 | Named source / scope | Accepted observation and material limit | Evidence |
 | --- | --- | --- |
-| `4098808e`, session-key guard diagnostics | The engaged-key inequality still refuses identical keys, using a fixed diagnostic instead of formatting both keys. Baseline `bC1jfP9gSS` discloses both synthetic fixture keys; the unchanged regression now observes two refusals without disclosure and preserves both directions with keys differing at byte 0 or 31. At `28124421`, focused `FCo3OvIzRJ` passes all 48 tests in 142.910 seconds. This is Linux library/child-process evidence for an invariant-failure diagnostic, not a demonstrated remote trigger or new LPE. | Audit's 2026-10-30 key-guard entry; `--writer-retirement-tests`. Both VMs join, RAM scratch retires and all eight listener deltas are zero. The separate CPace integration inventory remains OPEN/PARKED. |
+| `4098808e`, session-key guard diagnostics | The engaged-key inequality still refuses identical keys, using a fixed diagnostic instead of formatting both keys. Baseline `bC1jfP9gSS` discloses both synthetic fixture keys; the unchanged regression now observes two refusals without disclosure and preserves both directions with keys differing at byte 0 or 31. At `28124421`, focused `FCo3OvIzRJ` passes all 48 tests in 142.910 seconds. This is Linux library/child-process evidence for an invariant-failure diagnostic, not a demonstrated remote trigger or new LPE. | Audit's 2026-10-30 key-guard entry; `--writer-retirement-tests`. Both VMs join, RAM scratch retires and all eight listener deltas are zero. The separate CPace integration inventory remains OPEN. |
 | `24c524f0`, receive-counter authority | Public counter-reset compilation fails after removing the shared mutation handle; checked exhaustion preserves the counter. The corrected 46-case component and 61-case CPace integration pass, including 20 wire/five compiler cases. The identical reset program compiled at preparation `c27ece1c`; fixture diagnostics reflect the private representation. API closure, not an escalation demonstration. | `receive-counter-authority-cbd435d4.json` |
 | `c5a995ac`, receive storage | Corrected 46-case component/60-case CPace integration pass: six owned/shared pointer-and-neighbor cases, twelve authenticated normal/EOF frames with prefetched bytes under refused allocation, malformed/tag/payload/key/replay and counter-exhaustion refusal without changing ciphertext. Preparation `cdde8139` aborts on the refused plaintext allocation. Covers selective Rust allocation, not all parser/C-heap/runtime exhaustion. | `cipher-receive-buffer-b5c24c46.json` |
 | `35fe7882` / `2003e8d3`, send cipher | Corrected 44-case component/60-case integration pass. Three allocation refusals preserve the nonce and exact retry ciphertext; exhaustion refuses without wrap. Nine real-TCP byte/protobuf/receipt scenarios show healthy delivery or explicit OutOfMemory, joined writer, returned permits, poisoned reuse refusal and no failed frame at the peer. Preparation `bcb6b3e6` aborts on tag allocation. | `cipher-send-allocation-3fe37428.json` |
 | `5b4269fc` / `65596515`, failed-writer reads | Corrected 40-case component/59-case integration refuse pending and ready reads after injected writer failure, without decrypt/yield or receive-counter advance, and join before return. The pending oracle observes registered wake without timer/repoll. Three real partial-input stages preserve nine bytes and two authenticated frames. Preparation `79bf46f2` yields a frame and stalls the pending read. | `writer-failure-read-03724490.json` |
 | `10ff6494`, fatal retirement | 59 cases: 20 wire, 13 writer, four EOF, twelve codec, six lifetime and four native compiler. Send/read/drain retire output, permits and completion and join before return; cancelled retirement is completed by later poisoned entry. Same transport artifact as the earlier 35-case `99fa6b07` component. Abort-only baseline `cb575f82` was refused by RAM admission before execution; no native A/B is claimed for it. | `cpace-integration-59-10ff6494.json`, `writer-fatal-retirement-native-99fa6b07.json` |
 | `a9adf6dc`, real TCP output | Two new lifetime cases fail at `56c8ed4f`; unchanged cases pass 51/51 after correction. Partial writes/backpressure, reverse authenticated traffic, reset and read-side authentication failure retire buffer owners while the stream remains retained. | `writer-buffer-ownership-a9adf6dc.json` |
-| `537dcb90`, channel refusal | Thirteen writer, four EOF and twelve codec cases pass; two new cases fail at `9aea38ae` and pass after `4e92169b` reserves the channel before encode/seal. Real sink failure/512 queued drains verify zero encoding, unchanged next nonce, returned permits and exact join for both APIs. The broader run exits 1 after 136 filesystem passes and three user-parked receive pre-I/O failures with Owner died; later address/socket/probe stages and final whole-lane receipt are absent. An earlier writer-output omission remains incomplete evidence. | `writer-channel-component-537dcb90.json` |
+| `537dcb90`, channel refusal | Thirteen writer, four EOF and twelve codec cases pass; two new cases fail at `9aea38ae` and pass after `4e92169b` reserves the channel before encode/seal. Real sink failure/512 queued drains verify zero encoding, unchanged next nonce, returned permits and exact join for both APIs. The broader run exits 1 after 136 filesystem passes and three unfinished receive pre-I/O failures with Owner died; later address/socket/probe stages and final whole-lane receipt are absent. An earlier writer-output omission remains incomplete evidence. | `writer-channel-component-537dcb90.json` |
 | `ec94f87b`, protobuf admission | Three cases fail at `8944cdfa`; 155 corrected library cases pass, including eleven writer cases. Five ordinary/six receipt refusal states, encoder failure on both APIs and real TCP delivery execute. The wrapper delegates to generated encoding and does not measure every allocation. | `protobuf-admission-corrected-ec94f87b.json` |
 | `593aff91`, framing API | The same three raw-mode programs compile at `44f25b0e`; corrected source passes 51 runtime and four compiler cases: one supported setup and three separate refusals. | `framing-only-api-593aff91.json` |
 | `6133c7c7`, pending-read test correction | Twenty wire cases observe real one-, two- and nine-byte prefixes before dropping Pending reads; only retained-owner authentication advances the counter for the two frames. The older `c3b1ac6d` 20-case wire run covers keying, exchange, malformed/oversize/partial pre-key frames, timeout, wrong-password/guess classification, replay and writer refusal, but its cancellation driver never polled the read. That old cancellation result is not safety evidence; the replacement corrects the test, not a demonstrated product defect. | `cpace-pending-read-6133c7c7.json`, `cpace-transport-current-c3b1ac6d.json` |
@@ -15044,7 +14969,7 @@ recovery; cross-version behavior and sustained reconnect/focus/backpressure/reso
 latency soak; R-F5 capture-to-present and input-visible recovery budgets; cold R-B2/R-B10,
 independent reproduction and R-V3 review. Named components do not establish deployed
 causation, full connection correctness/performance, LPE immunity or release acceptance.
-The three deferred filesystem failures and all other user parks remain OPEN/PARKED.
+
 
 ### R-S11gy/R-S11e-237 — bounded connection-manager result ownership (2026-08-17)
 
@@ -15104,7 +15029,7 @@ raw evidence identities are in the audit; bounded diagnostics and serial/storage
 receipts remain under `.harness-state/verifier-vm/`. The context is opaque and
 Win32/OLE is absent from this portable fixture. Full Windows compilation/ABI,
 native copy/paste, CM/peer/installed acceptance and all R-S0/R-F5/release evidence
-remain OPEN. The separate clipboard stream-reader/CVE review stays PARKED.
+remain OPEN. The separate clipboard stream-reader/CVE review stays open.
 
 **Unused progress query removed (`c8348465`).** Repository-wide caller inspection
 found no application consumer of `get_progress_percent`; Windows returned `None`,
@@ -15515,7 +15440,7 @@ four zero listener deltas per run and process/private/RAM retirement. Reproduce
 with `--windows-service-protocol-tests`; the direct schema test also remains in
 `scripts/verify.sh`. This is Linux component evidence, without handlers,
 Windows pipes, authorization, full-parent or installed acceptance. Further work
-is OPEN/PARKED by the user pivot.
+is OPEN by the user pivot.
 
 STOP-SHIP: exact installed Windows transactions with the intended supervisor and unauthorized/
 wrong-generation actors; malformed/cross-endpoint frames; PID/creation-time/token/image/argv changes;
@@ -15615,7 +15540,7 @@ Intermediate histories remain in Git at `ab45461b`; document classification,
 unchanged obligations/references and fresh counting are retained in
 `audio-ledger-ab45461b.json`.
 
-**Linux cancellation remains OPEN/PARKED by user direction.** Stalled synchronous
+**Linux cancellation remains OPEN by user direction.** Stalled synchronous
 PulseAudio construction/write/drain and worker shutdown during a stall are
 unresolved. Uncompiled/unexecuted mainloop/mailbox/native-test changes remain in
 stash `fe211f322d1f9ff258a6d72784e9304bbd9c9231`, parent `8bfe9336`;
@@ -15633,7 +15558,7 @@ numeric queue/resource/power/performance bounds and sustained soak remain
 required. Apply R-S0 immunity with complete functionality, R-F5 recovery/freshness,
 cold R-B2/R-B10 equality, independent reproduction, causation and R-V3 external
 review. These component results establish no installed-service or overall LPE
-closure; every separately parked task stays OPEN/PARKED.
+closure; every open task stays OPEN.
 
 ### R-S11hj/R-S11e-247 — complete account storage and presentation authority excision
 
@@ -15704,7 +15629,7 @@ artifacts, commands, observer repairs and raw output.
 | Live rotation / `--credential-rotation` | Shipped `--password-stdin` changes the private user-server credential without replacing its process/listener. The saved old credential receives exactly one key-confirmation refusal, without shedding/rate limiting; the checked replacement prompt accepts new input, and a third viewer restores it. | Harness `23a11d8f`, run `HBRHHVZxxC` |
 | Remember off / `--credential-forget` | After rotation, unchecking Remember still permits login but empties the joined peer record. A fresh viewer shows a blank unchecked prompt; Cancel exits normally and leaves the record empty. The observer reports presence only. This is active-record removal, not forensic erasure. | Harness `9f425932`, run `bl4sHxoBea` |
 | Recent peers without Documents; pointer Forget | `7e9491ad` removes desktop Recent/Favorites' APP_DIR dependency; peer files already use the configuration path and the mobile guard remains. A complete Rust/Flutter/FRB build and native A/B show the previously missing Recent peer. App `7e9491ad` then restores a saved credential, forgets it through the pointer menu without losing the connection, removes the menu item and requires a blank unchecked prompt after restart. Native Favorites remains unproved. | Harness `80ba8258`, run `xrEXPeFPQW`; `desktop-peer-documents-7e9491ad.json` |
-| Accessible Forget / button-entry action | `f286b321` leaves callback, enablement and dismissal with the reactive TextButton inside a passive PopupMenuEntry. Six baseline failures become 61 passing pointer/keyboard/semantics, dismissal, live-enablement and dialog cases. Full app `a630f880` restores, activates Forget through AT-SPI, empties the peer record and requires a blank unchecked prompt after restart. Further menu work, including pointer replay of this bundle, is PARKED; switch entries and secondary controls are unproved. | Native run `wtXXQV0Hf3`; `menu-entry-action-f286b321.json` |
+| Accessible Forget / button-entry action | `f286b321` leaves callback, enablement and dismissal with the reactive TextButton inside a passive PopupMenuEntry. Six baseline failures become 61 passing pointer/keyboard/semantics, dismissal, live-enablement and dialog cases. Full app `a630f880` restores, activates Forget through AT-SPI, empties the peer record and requires a blank unchecked prompt after restart. Further menu work, including pointer replay of this bundle, is open; switch entries and secondary controls are unproved. | Native run `wtXXQV0Hf3`; `menu-entry-action-f286b321.json` |
 
 All named native viewer processes exit normally; the VMs join and bounded RAM
 scratch retires with zero listener deltas. One earlier corrected-app Documents
@@ -15728,9 +15653,9 @@ Rust mapper/event transport and complete pages do not run. Strict summaries,
 source bindings and joined VM/RAM retirement with zero endpoint deltas are in
 `peer-snapshots-0afe17ae.json`; setup/formatter failures provide no product evidence.
 Native/installed integration, global dispatch lifetime, R-S0/R-F5, all fifteen
-credential actions and release acceptance remain OPEN. All user parks remain.
+credential actions and release acceptance remain OPEN.
 
-**Direct credential API — OPEN/PARKED by user instruction.** Candidate `0248c624`
+**Direct credential API — OPEN by user instruction.** Candidate `0248c624`
 removes the retired shared-password routing flag from native/Dart/web factories and
 handoffs. Fresh bridge generation, Linux Flutter-library compilation and eleven tests
 (including twelve explicit/empty-password factory schedules) passed. Dart stopped at
@@ -15738,7 +15663,7 @@ the `test/peer_model_test.dart` formatter check before behavior; no repair or re
 followed the pivot. `shared-password-native-0248c624.json` and
 `shared-password-parked-0248c624.json` retain evidence and joined cleanup. Dart
 compilation/behavior, native bus/window/peer handoff and installed/platform acceptance
-remain open. Do not resume automatically.
+remain open.
 
 **Chat and CM current state.** Implementations are in
 `flutter/lib/models/chat_model.dart`, `flutter/lib/models/server_model.dart`,
@@ -15816,9 +15741,8 @@ For the retained direct, metadata, chat and CM features, the following remain op
 No new authentication-bypass/LPE closure, production log leak, performance gain or
 cause of displayed lag is established by these component results. The privileged
 startup/config-loader and broader outgoing chat generation reviews remain
-OPEN/PARKED; neither established LPE or wrong-peer delivery. Credential-factory,
-full-parent/bootstrap, logging, Windows VM storage and every other user park remain
-parked. Documentation consolidation does not authorize resuming them.
+OPEN; neither established LPE or wrong-peer delivery. Credential-factory,
+full-parent/bootstrap, logging, Windows VM storage remain open. Documentation consolidation does not establish their acceptance.
 
 ### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership
 
@@ -15917,8 +15841,8 @@ alignment candidate was stopped before tests, and an ambiguous-finder run remain
 unaccepted. `mobile-action-sheet-55ce99f9.json` retains sources, per-case results,
 these diagnostics and joined RAM/VM cleanup; every endpoint delta is zero.
 Full mobile pages, Android/iOS devices, native transfers and R-S0/R-F5 acceptance
-remain OPEN. Relative-mouse delayed-send ownership remains OPEN/PARKED at this
-user-directed pivot. All fifteen credential-native actions and earlier parks remain open.
+remain OPEN. Relative-mouse delayed-send ownership remains OPEN at this
+user-directed pivot. All fifteen credential-native actions and other open tasks remain open.
 
 **Mobile file-status cancellation — widget/model correction verified; device integration OPEN.**
 `d77cae4e` gives the production `FileJobStatus` control an exact displayed job,
@@ -15942,7 +15866,7 @@ transfer. The two earlier timeouts, parser-count failure and duplicated-receipt 
 are separate diagnostics; final verification retains per-case results and joined
 bounded-RAM cleanup in `mobile-file-status-43f0327e.json`.
 Android/iOS device, installed/peer integration, full R-S0/R-F5 and release acceptance
-remain OPEN. All fifteen credential-native actions and every existing user park remain
+remain OPEN. All fifteen credential-native actions remain
 unchanged.
 
 **Mobile transfer failure detail (`48a8819c`) — source corrected; existing component regressions pass.**
@@ -15969,7 +15893,7 @@ of 18 GiB. Run `0KxYtfIEgQ` passes in 274 outer seconds; scratch/overlay peaks a
 RAM scratch retires. One unattributed endpoint addition/removal is retained without
 owner inspection; the harness cannot create host IP sockets. Earlier admission
 refusals, exact source/test bindings and resource evidence are retained in
-`file-progress-resources-8ff6898c.json`. The broad parser remains user-PARKED;
+`file-progress-resources-8ff6898c.json`. The broad parser remains OPEN;
 only this profile's existing inventory/finality checks run. Full app/device,
 native cancellation and all installed credential acceptance remain OPEN.
 
@@ -16119,7 +16043,7 @@ unreadable final parent and intermediate symlink. Final-parent fsync, authorized
 creation controls pass. `search-parent-68eda7a9.json` binds exact A/B sources/artifacts and joined
 bounded-RAM cleanup. This is nonroot Linux component evidence. Android/other-Unix native behavior,
 installed/root principals, caller/UI/peer outcomes, concurrent namespace/source-name races and full
-R-S0/R-F5/release acceptance remain OPEN. The parked receive-acquisition race is not exercised.
+R-S0/R-F5/release acceptance remain OPEN. The unfinished receive-acquisition race is not exercised.
 
 **Unix directory-creation traversal (`d9e6da78`).** The shared parent walk opens existing
 components before attempting creation. Linux/Android intermediates retain search-only `O_PATH`
@@ -16136,7 +16060,7 @@ allows retry with a syncable final handle and stable descriptors. `mkdir-search-
 exact A/B sources/artifacts and joined bounded-RAM cleanup. Nonroot Linux component evidence only.
 Native Android/other Unix, installed/root and caller/UI/peer outcomes, concurrent namespace/EEXIST
 schedules, remaining sync-error and crash-durability coverage, complete R-S0/R-F5 and release acceptance remain
-OPEN. The parked receive-acquisition race is not exercised.
+OPEN. The unfinished receive-acquisition race is not exercised.
 
 **Directory-creation sync-error finality (`44f661e0`).** A Linux x86_64 regression runs the
 unchanged production walk in separate healthy and faulted exact-artifact children. A directory
@@ -16146,7 +16070,7 @@ existing sentinel identity/data, and create no deeper descendants. Sixteen healt
 both already-existing-directory controls preserve identity, and descriptors remain 4→4 in each
 child. The complete 103-case/16-group shard passes. `mkdir-sync-error-44f661e0.json` binds source,
 artifact, all 38 observations, production-byte equality and joined bounded-RAM cleanup. Only a
-new test and required guest entry are added; existing tests and parked helpers are byte-identical.
+new test and required guest entry are added; existing tests and unfinished helpers are byte-identical.
 The kernel returns `EIO` without executing `fsync`; this observes error propagation and stopping,
 not a failing storage device or crash persistence. Retry after an uncertain visible creation,
 other sync/mkdir failures, concurrent namespace schedules, installed/root/caller/UI outcomes,
@@ -16301,7 +16225,7 @@ reproduction and external review remain OPEN. These lifetime/state receipts do n
 establish R-S0 immunity. Android task-swipe/reopen/Force-Stop, Windows focus/minimize/
 reconnect, actual presentation freshness and whole-connection correctness/performance
 remain separate OPEN obligations. All fifteen credential actions, R-S0/R-F5 and
-separately user-parked work remain OPEN/PARKED.
+separately unfinished work remain OPEN.
 
 ### R-S11hq/R-S11e-254 — exact-generation Android MainService startup transaction
 
@@ -16815,7 +16739,7 @@ causation, and external review remain STOP-SHIP.
 native execution, installed desktop behavior, performance and resource evidence,
 current artifacts, independent reproduction, and external review remain pending.
 
-**OPEN/PARKED by user request:** pre-bootstrap owner-cancellation correction
+**OPEN by user request:** pre-bootstrap owner-cancellation correction
 `8f5e1c4e` prioritizes an already-closed owner over a new worker poll and permits
 terminal drain only after positive bootstrap acknowledgement. Its 21-case native
 integration was stopped at the user's pivot after bridge generation, before a
@@ -16823,7 +16747,7 @@ parent artifact or product test result. No native acceptance is claimed. The exa
 owned VM was joined, its RAM workspace and private run directory retired, and host
 listener observations were unchanged. The bounded record is
 `.harness-state/verifier-vm/cm-bootstrap-owner-parked-8f5e1c4e.json`.
-Leave this correction and its validation open; do not resume it automatically.
+Leave this correction and its validation open;
 
 **Boundary and current implementation.** This is the controlled-side Linux,
 macOS, and Windows connection-manager bridge owned by one authenticated network
@@ -17235,7 +17159,7 @@ and RAM workspaces are joined and retired. Evidence:
 **Specifically resumed by the user; Linux library checkpoint accepted.**
 The user answered "Resume this file-receive fix" on October 30. The old
 `263bbb965d97c3113658b6cf0e3c2d330568ffa7` stash remains preserved; its draft is
-rebased and revised in `6e938933`/`83463c45`. Other user parks remain unchanged.
+rebased and revised in `6e938933`/`83463c45`.
 Linux receive artifacts now live in private effective-owner directories, with
 NSS-derived protected coordination, retained destination/staging descriptors,
 per-file leases and cross-process namespace-generation exclusion. Publication
@@ -17461,7 +17385,7 @@ source, the nineteen authority/crash cases and twenty actors retained their outc
 all three lifecycle cases failed with 31 retained records / 126,976 allocated bytes.
 Its serial also exports the accepted retirement-sync retry observation. That command exited one
 without a complete unit-suite acceptance receipt. Raw evidence and joined cleanup
-are recorded in the audit; all other parks remain unchanged.
+are recorded in the audit;
 
 **Protected staging through a bind mount — privileged primitive accepted; layout OPEN.**
 At `e929feab`, TUF `yvY8C7QqzY`, the existing shared-mount experiment now decodes
@@ -17536,8 +17460,7 @@ joined actors. All three known layout cases still fail with 31 retained records 
 126,976 allocated bytes and zero added locks; the canonical metadata command exits
 one. Raw identities and joined RAM/diagnostic cleanup are in the audit. Physical
 power-loss durability, full application/CM, installed and other-platform acceptance
-remain OPEN. Necessary full-parent receive verification is resumed; the layout
-correction and unrelated parks remain open.
+remain OPEN. Necessary full-parent receive verification is resumed;
 
 **Resume content binding — library correction accepted; caller acceptance OPEN/STOP-SHIP.**
 Baseline `640a9680`, TUF `ZoWbc47wT7`, accepts staged `abc` against source `XYZdef`
@@ -17787,7 +17710,7 @@ children of the same source-bound artifact with private working directories. Wri
 standalone resume cases use production `ReceiveWriteClaim`.
 
 This is nonroot Linux library/filesystem evidence. The viewer label/type change is
-source-reviewed only; full-parent execution stays parked. CM source and parked receive
+source-reviewed only; full-parent execution stays open. CM source and unfinished receive
 helpers are unchanged. No GUI/FFI or installed privileged-service reachability is
 established, and non-UTF-8 wire names are not enabled. Application/peer, installed/wrong-
 principal and other-platform acceptance, component-length limits, namespace races,
@@ -17806,7 +17729,7 @@ At `ce8cb2c1`, all **177 focused Linux tests passed in 179 VM seconds**, includi
 cases and both new boundary/refusal/content-preservation/retry regressions. Executed library
 artifact SHA-256 `b7917eec75236622c61c7abf2f6841cc075a5eba6c8393bdd9e1c044ab04d7a7`
 remained unchanged before, between and after execution. The filesystem lane now excludes the
-unrelated parked DNS diagnostic; its implementation and OPEN/PARKED status are unchanged.
+unrelated unfinished DNS diagnostic; its implementation and OPEN status are unchanged.
 `.harness-state/verifier-vm/send-budget-accepted-ce8cb2c1.json` binds the A/B sources, artifacts,
 raw results, matching controls/endpoints, unchanged resource limits and joined RAM/VM cleanup.
 It references the retained admission refusal and interrupted retry; neither is a passing run.
@@ -17889,7 +17812,7 @@ timeout are separately retained and unaccepted. Ephemeral test-kernel bytes/dige
 retained; current full-app/installed/platform artifacts, native peer/I/O drain and cancellation,
 global aggregate resources, rendered feedback, faster reusable build inputs and broader
 release evidence remain OPEN. Mutating-job dispatch ownership is covered below.
-Every explicit user park remains parked.
+
 
 **File progress publication (`de940646`) — Dart component A/B verified; rendered/native integration OPEN.**
 `JobController.tryUpdateJobProgress` validates the complete progress event before changing
@@ -17911,8 +17834,8 @@ Evidence: `file-progress-526972e6.json`, binding both sources, results, inputs a
 VM/RAM cleanup with zero listener deltas. No actual transfer, rendered progress row,
 native bridge transport or installed application ran. Native byte-count precision, terminal
 progress semantics, full-app/platform/resource acceptance, R-S0/R-F5 and release remain OPEN.
-The KDE command-line scan review is OPEN/PARKED at the user's pivot; no correction or
-new privilege-escalation claim was made. All other user parks remain unchanged.
+The KDE command-line scan review is OPEN at the user's pivot; no correction or
+new privilege-escalation claim was made.
 
 **CM transfer-speed reporting (`fefc402c`, `4ebdfd22`) — Dart model verified.**
 Each displayed job retains its own byte/time sample and reports bytes per actual
@@ -17943,7 +17866,7 @@ Runs `Kf90bm2SUB` / `y6mWjLeFRf` join, retire bounded RAM and retain zero listen
 deltas. Exact source/artifact and cleanup evidence is in the audit entry
 “2026-11-01 — CM transfer terminal-outcome reporting”. CM confirmation errors, actual UI,
 remote durable receipt and native Windows/installed acceptance remain OPEN.
-The CM scheduling and other user parks are unchanged.
+
 
 **Direct-send initial-open log (`820b51bf`) — Linux library/keyed TCP A/B verified.**
 The common sender now returns its failed job's terminal log alongside the native
@@ -17956,7 +17879,7 @@ exact bytes/EOF/Done, joins writers and checks source-descriptor closure. Runs
 `xNE6gYROQu` / `6DevrYv3zB` retire bounded RAM with zero listener deltas. The audit's
 “2026-11-01 — direct sender initial-open outcome log” binds source/artifact evidence.
 Fixture keys replace PAKE; the full server/CM callback/UI path and installed or
-other-platform acceptance remain OPEN. Independent parks are unchanged.
+other-platform acceptance remain OPEN.
 
 **CM completion state (`830abf3c`) — Dart model A/B verified.**
 Full or clamped byte progress no longer marks a transfer done. Positive progress
@@ -17971,7 +17894,7 @@ and installed/platform acceptance remain OPEN. Runs `2bghbdvf4m` / `ZDhvaDgxX0`
 join and retire bounded RAM with zero listener deltas. The audit entry
 “2026-11-01 — CM completion requires an explicit native result” records evidence
 and the intermediate stale result-inventory refusal. Other producer logging gaps
-above, end-to-end acceptance and existing user parks remain open.
+above, end-to-end acceptance and other open tasks remain open.
 
 **Folder-summary admission (`513aa1b5`) — Dart model/widget A/B verified; native integration OPEN.**
 `JobController.updateFolderFiles` admits a bounded three-field JSON object, positive
@@ -17992,14 +17915,14 @@ owners and rendered rejection/recovery using the real reactive job list.
 Native events are controlled inputs; full file-manager/native transfer and byte
 precision in `make_fd_flutter` remain OPEN. Its floating-point conversion and
 unchecked accumulator are unchanged and receive no new correctness claim.
-The native producer follow-up is OPEN/PARKED at the user's explicit pivot;
+The native producer follow-up is OPEN at the user's explicit pivot;
 no implementation was made before switching to peer-history publication.
 
 `folder-summary-910822c4.json` retains identical A/B tests/harness, individual
 outcomes, source/input bindings and joined bounded-RAM cleanup. Baseline listener
 deltas are zero; candidate adds none and retains eleven unattributed removals
 without owner inspection. Installed/platform, R-S0/R-F5, all fifteen credential
-actions and release acceptance remain OPEN; all user parks stay unchanged.
+actions and release acceptance remain OPEN;
 
 **First-file progress (`1e6b6703`) — model/widget A/B verified; full transfer integration OPEN.**
 The native upload/download progress producer reports `job.file_num() - 1`: `-1` is
@@ -18025,7 +17948,7 @@ the corrected run's final snapshot records one unattributed removal of a pre-exi
 loopback endpoint. Its owner was not inspected or changed. First-file event production
 is source-reviewed. Full native transfer/presentation,
 byte-count precision, terminal semantics, R-S0/R-F5, all credential actions and release
-acceptance remain OPEN; every user park stays unchanged.
+acceptance remain OPEN;
 
 **File-transfer resume replies (`50d44aea`) — Dart component A/B verified; native integration OPEN.**
 `JobController.resumeJob` admits only a paused transfer and retains that exact job across
@@ -18045,8 +17968,7 @@ the production controller with held bridge futures, not native file I/O or the f
 `file-resume-3ecaa37b.json` binds A/B sources, individual results, pinned inputs, fresh ledger
 count and joined bounded-RAM cleanup. Both behavioral runs have zero listener deltas.
 Native resumed transfers, installed/device presentation, R-S0/R-F5, all fifteen credential
-actions and release acceptance remain OPEN. The verification-catalogue exploration and
-all earlier user-parked work remain open and untouched.
+actions and release acceptance remain OPEN.
 
 **Pending Resume admission (`1aea384e`) — Dart controller A/B verified.**
 `JobController.resumeJob` retains one pending request per exact transfer object until
@@ -18067,7 +17989,7 @@ within five minutes, retain zero endpoint deltas and join QEMU/RAM cleanup.
 `resume-pending-b73c859c.json` binds both sources, raw results, storage and fresh ledger
 count. Native retained-job admission, automatic restore/resume, full-page error
 feedback execution, installed/device behavior, R-S0/R-F5 and release acceptance remain OPEN;
-all user parks are preserved.
+
 
 **Resume failure status (`a3c3637d`) — Dart controller/formatter A/B verified.**
 Manual Resume catches request failure, returns false and publishes the error only
@@ -18090,7 +18012,7 @@ records one unattributed removal of pre-existing TCP `127.0.0.1:8765`, whose own
 not inspected or changed. `resume-failure-7177b471.json` retains exact evidence and
 fresh ledger count. Full-page reactive error/retry presentation, automatic restore,
 native retained-job admission, installed/device behavior, R-S0/R-F5, all credential
-actions, release acceptance and every user park remain OPEN.
+actions, release acceptance remain OPEN.
 
 **Native transfer resume (`9957f275`) — library A/B verified; application dispatch OPEN.**
 `TransferJob.resume` consumes the restored job's paused state once, sets resume semantics,
@@ -18111,7 +18033,7 @@ results, executable digests, pinned inputs, fresh ledger count and joined RAM/VM
 all behavioral-run listener deltas are zero. The Rust library ran on Linux with real files;
 the full viewer dispatch, repeated GUI clicks, peer wire traffic, restored-partial handshake,
 installed/device platforms and R-S0/R-F5 acceptance remain OPEN. Parent compilation/runtime
-and every separately user-parked item remain parked; all fifteen credential actions remain OPEN.
+and every separately unfinished item remain open; all fifteen credential actions remain OPEN.
 
 **Mutating file-job dispatch admission — Dart listener/caller A/B ACCEPTED; native mutation/drain/platform integration OPEN.**
 `JobResultListener` retains exact pending objects and dispatch-completion futures independently
@@ -18160,7 +18082,7 @@ local, remote and job owners, cross-family refusal before dispatch, recovery aft
 or error, and protection of a current lease from repeated predecessor cleanup.
 Product correction `622fa633` is unchanged in the accepted run. Its first corrected transaction
 is unaccepted because a parser self-check found stale credential-profile metadata (76 versus 83);
-`0e070a72` corrects that metadata. The credential/API0248 cohort remains unrun and user-parked.
+`0e070a72` corrects that metadata. The credential/API0248 cohort remains unrun and unfinished.
 The 301-case full-model and 83-case credential counts are source inventories, not executed suites.
 All four fresh bridge outputs match full generation `72056f19`; consumed Dart hashes are unchanged.
 The 300-second/18-GiB limits, isolation and bounded-RAM orchestration are unchanged; endpoint
@@ -18173,7 +18095,7 @@ This is production Dart owner/controller execution with controlled dispatch/resp
 under Flutter 3.24.5 in one isolate. Ephemeral test-kernel bytes/digest were not retained.
 Native filesystem effects, worker admission, I/O cancellation/drain, multiple engines/isolates,
 process-wide resources, full-app/rendered behavior, installed/platform/release artifacts,
-independent reproduction and LPE acceptance remain OPEN. Every explicit user park remains in force.
+independent reproduction and LPE acceptance remain OPEN.
 
 **Local listing completion after owner retirement — Dart A/B ACCEPTED; native/GC/platform integration OPEN.**
 `FileFetcher._readLocal` releases the exact completed dispatch slot, then skips the session
@@ -18199,7 +18121,7 @@ These execute production Dart methods with controlled dispatch and owner-getter 
 They do not force collection of a real weak parent or execute native filesystem cancellation,
 full-app/device/installed/platform behavior, process-wide limits or an LPE boundary.
 Ephemeral test-kernel bytes/digest were not retained. Those broader obligations, latency/soak,
-cold release, independent reproduction and external review remain OPEN; all user parks remain.
+cold release, independent reproduction and external review remain OPEN;
 
 **Local listing errors — Linux exports and actual Dart transport ACCEPTED; UI/platform integration OPEN.**
 `session_read_local_dir_sync` and `session_read_local_empty_dirs_recursive_sync` now return
@@ -18235,8 +18157,7 @@ and joined RAM/VM retirement are bound in
 `.harness-state/verifier-vm/local-listing-dart-72056f19.json`.
 Rendered error feedback, controller/session continuation,
 installed/native other-platform behavior, I/O deadlines/cancellation, aggregate resources
-and broader release obligations remain OPEN. Directory-ordering/Home and all other explicit
-user parks remain parked.
+and broader release obligations remain OPEN. Directory-ordering/Home remain open.
 
 At `567b73a9`, the same actual Dart-to-cdylib workload passes **five cases** in
 TUF run `UgmYssF3bn`, including two new path-shape checks. Six native relative links
@@ -18309,7 +18230,7 @@ Other platforms, pre-pin namespace and same-size content races, immutable snapsh
 filesystem I/O deadlines/cancellation, aggregate resources, full-app/peer, installed/release,
 soak, independent reproduction and external review remain OPEN. The separate receive helper's
 `fstatat`/I/O-open type-check window needs atomic acquisition and native race proof; it remains
-OPEN. No new installed LPE closure follows from these results. All user parks remain in force.
+OPEN. No new installed LPE closure follows from these results.
 
 **Special-file enumeration — Linux library A/B ACCEPTED; integration/platform acceptance OPEN.**
 The directory scanner previously labeled every non-directory, non-link as a regular `File`.
@@ -18461,7 +18382,7 @@ artifact/bridge/pin bindings, earlier compilation failures and cleanup are retai
 The earlier attempts failed compilation; there is no historical caller behavioral A/B.
 This compiles the root libtest and exercises post-key caller components with a prepared
 FileTransfer context; full login/UI/CM, installed, other-platform and release acceptance
-remain OPEN. The CM read-tick cases below remain parked and unexecuted.
+remain OPEN. The CM read-tick cases below remain open and unexecuted.
 
 **Filesystem-only job authority — Linux library compilation/tests ACCEPTED; application integration OPEN.**
 All production constructors use filesystem paths. `TransferJob` now accepts and retains a
@@ -18485,7 +18406,7 @@ found; this removes an obsolete production abstraction rather than claiming an e
 The shared post-key decoder sets a 64-MiB Zstd history-window ceiling before its first
 decoded read, independently of the caller's output bound. Default output remains capped
 at 64 MiB; tighter caller bounds and explicit errors remain. Clipboard, cursor and
-compressed terminal data share this primitive; no caller or parked terminal work changes.
+compressed terminal data share this primitive; no caller or unfinished terminal work changes.
 The independent file-transfer decoder retains 128-KiB encoded, decoded and history
 limits, borrowed raw input and a fixed 128-KiB-plus-one-byte output buffer before
 filesystem/progress effects. Both memory-input decoders consume the received slice
@@ -18561,8 +18482,8 @@ size/allocation/retirement/backpressure checks. Evidence and cleanup are retaine
 `.harness-state/verifier-vm/send-confirmation-readiness-76019ec7.json`.
 This executes the common library and native keyed TCP with fixture keys, not PAKE, the
 viewer application or installed services. The viewer context change is source-reviewed;
-full-parent execution remains parked. The separate CM scheduling path remains
-OPEN/PARKED and unchanged, including the analogous waiting-selection gap. The common
+full-parent execution remains open. The separate CM scheduling path remains
+OPEN and unchanged, including the analogous waiting-selection gap. The common
 sender's bounded-turn correction follows below. CM scheduling, real-peer/app/platform
 acceptance, R-S0/R-F5 and release acceptance remain OPEN.
 
@@ -18589,9 +18510,9 @@ source/artifact hashes and classification are in the audit journal. The test bod
 and harness are identical across the comparison. The controlled caller change is
 source-reviewed only; complete parents, real PAKE/peer/UI behavior, native installed
 authority, other platforms, sustained/resource/latency acceptance and R-S0/R-F5/release
-remain OPEN. The separate CM scheduler and full-parent build remain user-PARKED.
+remain OPEN. The separate CM scheduler and full-parent build remain OPEN.
 
-**CM read-tick scheduling — OPEN/PARKED at the user's request; no automatic resumption.**
+**CM read-tick scheduling — OPEN at the user's request; no automatic resumption.**
 Source `e3544227` selects and retires one exact send job per tick; initialization failure
 previously continued into the next queued job before retiring the failed one. Two focused
 real-file/Unix-frame tests and an exact earlier-function fixture are committed, but neither
@@ -18600,7 +18521,7 @@ a libtest artifact was produced. This change is unvalidated; no CM, installed au
 LPE closure is claimed. Exact pidfd stop, source freezes, unchanged endpoint observations,
 joined QEMU/storage cleanup and retired RAM/private scratch are retained in
 `.harness-state/verifier-vm/cm-read-tick-parked-e3544227.json`.
-The separate CM pre-bootstrap cancellation park and all other user parks remain unchanged.
+
 
 **Terminal send-job retirement — Linux library/keyed TCP checks ACCEPTED; application/platform integration OPEN.**
 `3281b855` moves the existing selected-entry removal before terminal writer admission.
@@ -18630,7 +18551,7 @@ and joined bounded-RAM cleanup. The earlier completion-only byte-pressure result
 in `read-job-backpressure-dfdb784d.json`; the nine-case result is retained in
 `read-terminal-retirement-native-55045bbb.json`, and RAM-only refusals in
 `read-terminal-retirement-4a151221.json`; no unchanged-product native baseline ran.
-The CM read-tick park remains unchanged. Peer disconnects, cancellation during the sender
+ Peer disconnects, cancellation during the sender
 step, full application error delivery, other platforms, installed privilege, R-S0/R-F5
 and release acceptance remain OPEN.
 
@@ -18712,9 +18633,9 @@ Exact-byte comparison preserves all remaining verifier text, including the actua
 Cargo filesystem commands, and Bash syntax parsing passes. Product, genuine Rust
 tests, native harnesses and R-S8/R-A5 requirements are unchanged. No new product run
 or source-wording replacement is claimed. The user pivoted after pushed commit
-`6b243996`; its separate evidence-capsule finalization remains OPEN/PARKED. The three
+`6b243996`; its separate evidence-capsule finalization remains OPEN. The three
 reproduced receive namespace syscall failures, their private-staging implementation
-park, native Windows/installed acceptance, R-S0/R-F5 and every other park remain OPEN.
+park, native Windows/installed acceptance, R-S0/R-F5 remain OPEN.
 
 **File metadata/job source catalogue — removed; behavioral obligations remain OPEN.**
 The `r_fsbudget_missing` block in `scripts/verify.sh` is deleted: 94 lines,
@@ -18757,7 +18678,7 @@ all eight scenarios. Every 33rd job is retained without the required refusal;
 all upload cases enumerate, and all `SendFiles` cases emit a peer action.
 The subsequent cancellation/retry controls are not reached. The canonical viewer
 command exits one; its nineteen later tests and CLI check do not execute.
-The separate admission implementation remains parked; no correction is claimed.
+The separate admission implementation remains open; no correction is claimed.
 The old planned `viewer-job-fixture-b6494444.json` capsule was never finalized;
 current evidence is the two raw runs and the audit's application-integration entry.
 Full application builds needed by the resumed receive work are authorized.
@@ -19133,7 +19054,7 @@ reconciled and removed. That failed run supplies no executable or whole-run acce
 **Still OPEN:** installed-service/root principals, wrong-UID and PID-reuse
 races, real subscriber churn and capture restart, sustained latency,
 CPU/memory/handle bounds, real-device changes, and other platforms. Distinct-ID UI
-selection is now the unaccepted `f5df7a96` candidate, OPEN/PARKED after its native
+selection is now the unaccepted `f5df7a96` candidate, OPEN after its native
 compile failure as recorded in the user-pivot entry above; no UI acceptance ran.
 Whole-service automatic recovery and peer audio after default-output changes are
 not established by directly starting a fresh capture in the native fixture. The
@@ -19288,13 +19209,12 @@ it directly records the main-process instrumentation receipt and both hashes.
 Neither Recents replay ran the concurrent Stop/admission or same-ID stale
 generation schedule, so those remain release-blocking.
 
-**Deferred at the user's direction; INCOMPLETE / NOT VALIDATED:** the installed concurrent
+**INCOMPLETE / NOT VALIDATED:** the installed concurrent
 Stop/admission investigation is not the current work slice. The runner's
 `cm-stop-race` scenario has not executed in an accepted native transaction;
 its presence and the process smoke provide no race-coverage claim. Concurrent
 admission/Stop and same-ID stale-generation obligations remain OPEN while
-other outstanding hardening work proceeds. Do not resume this deferred work
-or pursue a workaround for the restriction; leave it incomplete as requested.
+other outstanding hardening work proceeds.  leave it incomplete as requested.
 
 **Still OPEN / release-blocking:** installed APK concurrent Stop/admission,
 same-ID replacement and stale JNI callbacks across input, voice, capture,

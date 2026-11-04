@@ -1696,6 +1696,7 @@ linux_receiver_input_inventory() {
         "$REPO_ROOT/libs/hbb_common/src/config.rs" \
         "$REPO_ROOT/examples/probe_client.rs" "$REPO_ROOT/examples/smoke_readiness.rs" \
         "$REPO_ROOT/res/com.carriez.RustDesk.policy" "$REPO_ROOT/res/rustdesk.service" \
+        "$REPO_ROOT/res/service-managers/openrc/rustdesk" \
         "$REPO_ROOT/libs/libxdo-sys-stub/native/"{build.py,xdo.c,xdo.h,xdo_version.h,COPYRIGHT,SOURCE.txt}; do
         [ -f "$file" ] && [ ! -L "$file" ] || fail 'Linux receiver source is absent or ambiguous'
         verify_committed_test_source "$file"
@@ -4910,6 +4911,7 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         "repo/libs/hbb_common/src/config.rs=$REPO_ROOT/libs/hbb_common/src/config.rs"
         "repo/libs/libxdo-sys-stub/native=$REPO_ROOT/libs/libxdo-sys-stub/native"
         "repo/res/com.carriez.RustDesk.policy=$REPO_ROOT/res/com.carriez.RustDesk.policy"
+        "repo/res/service-managers/openrc/rustdesk=$REPO_ROOT/res/service-managers/openrc/rustdesk"
         "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
         "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
         "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"

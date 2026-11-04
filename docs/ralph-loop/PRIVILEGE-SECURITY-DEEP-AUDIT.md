@@ -138891,3 +138891,15 @@ The VM still boots systemd; OpenRC alone controls this RustDesk process, with no
 RustDesk systemd unit. This tests OpenRC manager integration, not a full OpenRC
 boot, final Debian package, unauthorized actors, rendered pixels or release.
 Shell/Python syntax and diff review pass; native execution is next.
+
+Initial CTE j46YvLH02k at 2f64dada stops before OpenRC/product execution:
+the guest source check finds the template missing from the explicitly enumerated
+ISO payload. Add that committed regular source to the existing input inventory
+and ISO grafts; the product and scenario are unchanged. Capsule
+openrc-first-2f64dada.json (13,158 bytes, SHA-256
+3a0cce98f5c7d6c6af4b96a3e0bc91882162b3ff686ab72715f78700c803aad0)
+retains diagnostics and exact private inventory. Wrapper/QEMU absence, three zero
+listener deltas and private/RAM retirement are verified under the shared lock;
+scratch peaks at 1,229,430,784 bytes. The supplemental child capture missed this
+short failed run; helper joins rely on the harness completion record. The
+196-byte retirement receipt is retained. No manager or product pass is claimed.

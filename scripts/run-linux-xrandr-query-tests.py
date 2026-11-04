@@ -3,6 +3,7 @@
 
 import errno
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -44,10 +45,12 @@ def main():
     lifetime = len(sys.argv) == 4
     test_file = "scripts/test-linux-resolution-lifetime.rs" if lifetime else "scripts/test-linux-xrandr-query.rs"
     input_names = INPUTS + (("src/server/connection.rs", "src/server/connection/resolution_work.rs",
-                            "src/platform/linux/xrandr_command.rs", test_file) if lifetime else ())
+                            "src/platform/linux/xrandr_command.rs", test_file) if lifetime else (
+        "src/platform/mod.rs", "src/server/display_service/resolution_restore.rs",
+        "scripts/test-linux-resolution-rotation.rs", "scripts/verify-linux-service-password-ipc.py"))
     inputs = {name: (repo / name).read_bytes() for name in input_names}
     receipt = "LINUX_RESOLUTION_LIFETIME" if lifetime else "LINUX_XRANDR_QUERY"
-    tests = 24 if lifetime else 8
+    tests = 24 if lifetime else 21
     root_lock = tomllib.loads(inputs["Cargo.lock"].decode("utf-8"))
     records = {(p["name"], p["version"]): p for p in root_lock["package"] if "source" in p}
     with socket.socket() as canary:
@@ -63,7 +66,30 @@ def main():
         fixture = Path(temporary)
         dependencies = ('libc = "=0.2.171"\nlog = "=0.4.22"\n'
                         'tokio = { version = "=1.44.2", features = ["rt", "sync", "time", "macros"] }\n'
-                        if lifetime else "")
+                        if lifetime else 'anyhow = "=1.0.103"\nlog = "=0.4.22"\n')
+        if not lifetime:
+            spec = importlib.util.spec_from_file_location("query_parser", repo / "scripts/verify-linux-service-password-ipc.py")
+            parser = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = parser
+            spec.loader.exec_module(parser)
+            extracted = []
+            for path, names in (
+                ("src/platform/linux.rs", ("get_width_height_from_captures", "resolutions", "current_resolution", "change_resolution_directly")),
+                ("src/platform/mod.rs", ("change_resolution",)),
+            ):
+                source = parser.RustSource.parse(path, inputs[path].decode())
+                for name in names:
+                    starts = [i for i, token in enumerate(source.tokens[:-1])
+                              if token.text == "fn" and source.tokens[i + 1].text == name
+                              and source.brace_parent[i] is None]
+                    bodies = source.functions(name, parent=None)
+                    if len(starts) != 1 or len(bodies) != 1:
+                        raise ValueError(f"ambiguous production query function: {name}")
+                    extracted.append(source.text[source.tokens[starts[0]].offset:source.tokens[bodies[0].end].offset + 1])
+            functions = fixture / "functions.rs"
+            functions.write_text("\n".join(extracted))
+            os.environ["RUSTDESK_XRANDR_FUNCTIONS"] = str(functions)
+            os.environ["RUSTFLAGS"] = os.environ.get("RUSTFLAGS", "") + " --cfg xrandr_rotation_probe"
         (fixture / "Cargo.toml").write_text(
             f'[package]\nname = "{PACKAGE}"\nversion = "0.0.0"\nedition = "2021"\n'
             '[dependencies]\nregex = "=1.11.1"\n' + dependencies +

@@ -1,8 +1,13 @@
 extern crate self as hbb_common;
 pub extern crate regex;
+pub extern crate log;
 
 #[path = "../src/platform/linux/xrandr_query.rs"]
 mod xrandr_query;
+
+#[cfg(xrandr_rotation_probe)]
+#[path = "test-linux-resolution-rotation.rs"]
+mod rotation;
 
 #[cfg(test)]
 mod tests {

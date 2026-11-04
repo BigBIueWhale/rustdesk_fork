@@ -137832,3 +137832,32 @@ pake-erasure-ledger-62b424e1.json is 5,180 bytes, SHA-256
 This audit-only receipt leaves the counted ledger unchanged. The credential-buffer
 erasure checkpoint is complete; remaining secret representations and target/release
 acceptance stay open, as do the overall goal and independent user parks.
+
+## 2026-11-04 — user pivot; rotated Linux resolution changes and restoration
+
+The user explicitly pivots away from PAKE retirement. Further secret-erasure work
+is OPEN/PARKED before pending-confirmation implementation or execution; the accepted
+credential-buffer evidence remains valid. Other independent parks remain in force.
+Select R-T4/R-S0 resolution correctness over further evidence-ledger compression:
+Linux offers unrotated mode dimensions but saves the visible display dimensions for
+restoration. Its setter forwards those visible dimensions unchanged as an xrandr
+mode name. Left/right rotation therefore mixes two coordinate conventions.
+
+Review connection::apply_resolution_change, platform::change_resolution, Linux
+query/enumeration/setter and the exact restoration registry. X.Org's xrandr manual
+distinguishes mode selection from rotation; upstream xrandr.c prints CRTC geometry
+and current rotation separately, while mode dimensions are unrotated. References:
+https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man1/xrandr.1.html
+https://gitlab.freedesktop.org/xorg/app/xrandr/-/raw/master/xrandr.c
+The latter was read directly after the web renderer could not retrieve it.
+
+Prepare a focused comparison using the exact five production resolution functions,
+the real parser module and restoration registry. Query text, command execution,
+protobuf value and descriptor setup are controlled adapters; no monitor or actual
+xrandr mutation is claimed. The cases cover offered visible dimensions, exact mode
+argv for change/restoration, normal/inverted/reflected orientations, no-op and missing
+output/query refusal. Existing query subprocess and six registry cases remain.
+The existing bounded, networkless TUF VM runs this component; no host display or
+service is used. Preparation leaves production unchanged. The correction sought is
+one visible-size convention with conversion only at the Linux mode boundary;
+native X-server/physical-monitor, complete Remote and release acceptance remain OPEN.

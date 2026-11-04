@@ -8393,13 +8393,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linu
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
     mapfile -t xrandr_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'LINUX_XRANDR_QUERY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$'
+            'LINUX_XRANDR_QUERY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=21 unchanged=before-after$'
     )
     [ "${#xrandr_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'LINUX_XRANDR_QUERY_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'xrandr-query artifact receipt is absent, malformed or duplicated'
     require_exact_fixed_receipt \
-        "LINUX_XRANDR_QUERY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=8 target=linux-x86_64 scope=production-query-result-and-output-identity rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "LINUX_XRANDR_QUERY_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=21 target=linux-x86_64 scope=production-query-result-and-output-identity rust=1.75.0 vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Linux xrandr-query receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'xrandr-query cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
@@ -10106,7 +10106,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'LINUX_RESOURCE_LIMITS_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=1 cases=16 scope=production-linux-fd-initializer app=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
-        printf 'LINUX_XRANDR_QUERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=8 scope=production-query-result-and-output-identity network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'LINUX_XRANDR_QUERY_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=21 scope=production-query-result-and-output-identity network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = installer-package ]; then
         printf 'INSTALLER_PACKAGE_VM_OUTER=pass host_uid=%s commit=%s tree=%s target=linux-x86_64 scope=production-encoder-decoder-and-cli-contract windows=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

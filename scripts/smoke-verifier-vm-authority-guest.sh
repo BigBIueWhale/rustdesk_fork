@@ -5989,6 +5989,8 @@ run_focused_rust_tests() {
                 Cargo.lock src/platform/linux.rs src/platform/linux/xrandr_query.rs
                 libs/hbb_common/src/lib.rs scripts/test-linux-xrandr-query.rs
                 scripts/run-linux-xrandr-query-tests.py
+                src/platform/mod.rs src/server/display_service/resolution_restore.rs
+                scripts/test-linux-resolution-rotation.rs scripts/verify-linux-service-password-ipc.py
             )
             required_tests=(
                 tests::successful_query_preserves_geometry_and_mode_lines
@@ -5999,6 +6001,19 @@ run_focused_rust_tests() {
                 tests::supported_modes_belong_to_the_exact_output
                 tests::output_names_are_literal_regex_text
                 tests::output_identity_cannot_continue_on_another_line
+                rotation::left_rotation_offers_applies_and_restores_visible_sizes
+                rotation::right_rotation_offers_applies_and_restores_visible_sizes
+                rotation::normal_rotation_preserves_mode_sizes
+                rotation::inverted_rotation_preserves_mode_sizes
+                rotation::reflection_does_not_change_axis_conversion
+                rotation::current_visible_size_is_a_noop
+                rotation::unavailable_output_refuses_mutation
+                rotation::resolution_restore::tests::r_s11iu_r_t4_remembers_first_original_until_success
+                rotation::resolution_restore::tests::r_s11iu_r_t4_failed_restore_retains_for_retry
+                rotation::resolution_restore::tests::r_s11iu_r_t4_invalid_originals_refuse_callback
+                rotation::resolution_restore::tests::r_s11iu_r_t4_identical_republication_survives_inflight_restore
+                rotation::resolution_restore::tests::r_s11iu_r_t4_removed_and_republished_record_survives_old_completion
+                rotation::resolution_restore::tests::r_s11iu_r_t4_callback_unwind_retains_record_without_poisoning
             )
         elif [ "$RUST_TEST_PROFILE" = input-lifetime ]; then
             source_fingerprints+=(
@@ -7598,7 +7613,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-resource-limits ]; then
         printf 'LINUX_RESOURCE_LIMITS_PROFILE=linux-resource-limits stage=container-start tests=1 cases=16 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
-        printf 'LINUX_XRANDR_QUERY_PROFILE=linux-xrandr-query stage=container-start tests=8 bridge=absent\n'
+        printf 'LINUX_XRANDR_QUERY_PROFILE=linux-xrandr-query stage=container-start tests=21 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
         printf 'INSTALLER_PACKAGE_PROFILE=installer-package stage=container-start tests=18 bridge=absent\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = whiteboard-helper-lifetime ]; then
@@ -8491,7 +8506,7 @@ PY
             || fail 'resource-limit artifact or native observations differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'xrandr-query summary count differs'
-        [ "$(grep -Ec '^LINUX_XRANDR_QUERY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=8 unchanged=before-after$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^LINUX_XRANDR_QUERY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=21 unchanged=before-after$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'LINUX_XRANDR_QUERY_ARTIFACT=' "$output")" -eq 1 ] \
             || fail 'xrandr-query artifact receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = installer-package ]; then
@@ -9254,7 +9269,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = linux-xrandr-query ]; then
-            grep -E '^test tests::.* \.\.\. ok$|^LINUX_XRANDR_QUERY_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
+            grep -E '^test (tests|rotation)::.* \.\.\. ok$|^LINUX_XRANDR_QUERY_(ARTIFACT|DEPENDENCIES|INPUT)=' "$output"
             printf 'LINUX_XRANDR_QUERY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-query-result-and-output-identity rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral offline_canary=pass root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"

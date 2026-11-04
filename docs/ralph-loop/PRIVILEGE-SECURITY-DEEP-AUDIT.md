@@ -136521,3 +136521,14 @@ eleven bounded files match both hosts. No product behavioral patch or new tests
 were needed. The ledger records this production-graph checkpoint and the codec
 pivot, preserving the separately pinned candidate-SDK, full application, advisory,
 installed/native, final release and all parked acceptance gaps. Fresh count follows.
+
+Ledger checkpoint 15d1955b passes fresh count FfHJC5hBe7 in 27 seconds:
+399,259 tokens / 1,826,510 bytes, input SHA-256
+ac081a0499b0a94768ca1d17657e12417814368cf5fa1d80e8a5c0ed5097fd29.
+Seven controls, whole-input round trip, 42 modes / 81 admissions / five refusals
+and three zero listener deltas pass. Exact processes/helpers/private/RAM retire;
+scratch peaks at 402,853,888 bytes. fonts-ledger-15d1955b.json is 5,077 bytes,
+SHA-256 9993006dd4da3a3e9fbcf534a077e36eda530d18eed651a076bc021c8086f979.
+Twelve bounded files match both hosts. This audit-only receipt preserves the
+counted ledger. The production dependency cleanup is complete at its scoped
+checkpoint; no owned job remains, and codec/model-inventory plus other parks remain.

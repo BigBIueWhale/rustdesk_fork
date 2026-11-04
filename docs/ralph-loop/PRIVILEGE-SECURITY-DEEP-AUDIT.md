@@ -138679,3 +138679,23 @@ commands and required receipts. No product, test body, storage profile or live
 instruction changes. All three shell syntax checks and diff checks pass. The
 next checkpoint is an authenticated current-source artifact for runit replay;
 compilation alone will not close R-S11c-27r or installed/release acceptance.
+
+CTE d1DsQGacPM at 60e3fb0a completes in 285.175 outer seconds (281-second
+workload receipt). The actual RustDesk target and three Rust/two C/one shared-library
+fixtures compile with pinned Rust 1.75 and the unchanged offline dependency closure.
+Both wrappers accept the compile-only receipt; no file-transfer or limiter scenario
+receipt occurs. All seven payloads, totaling 117,280,856 bytes, match the manifest
+SHA-256 4342aae47b179ae8ba558e8df54b579c18289c8b512e2ad7b564fd6ef377e24d.
+The source-bound artifact is retained in the existing peer cache, now two of four
+generations; no prior artifact is removed.
+
+Four listener deltas are zero. Wrapper, QEMU and six captured children are absent
+by pidfd ESRCH; private state and RAM are absent under the shared lock. Scratch
+peaks at 5,880,352,768 bytes and no owned run remains. Capsule
+runit-build-60e3fb0a.json (8,064 bytes, SHA-256
+9fdc14c86f5a21bddc3a783651fb930a92310eec93ca4a832423603554626f9f)
+binds thirteen raw/control/manifest records and a 274-byte retirement receipt.
+This completes the selected artifact prerequisite. Next use the pinned runit
+binaries and shipped run script in the zero-NIC VM, retaining exact manager,
+supervisor and child identities through readiness, stop/start/restart and cleanup.
+Actual runit, current installed, cross-platform and release acceptance remain OPEN.

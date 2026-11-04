@@ -48,6 +48,9 @@ OPEN/PARKED. Its six-case rendered-component correction remains valid;
 full-application and OS screen-reader acceptance remain unproved. Work moves
 to consolidation of documentation history below. Independent parks remain.
 
+**Current work — runit lifecycle:** R-S11c-27r's current-source artifact is
+ready; actual manager lifecycle and installed/release acceptance remain OPEN.
+
 **User pivot (2026-11-04):** The four single-Rust-test execution guards remain
 OPEN/PARKED before implementation. Independent parks remain.
 
@@ -10369,7 +10372,7 @@ sandbox implementation and checker-repair history remain in Git.
   | R-S11c-27o | Historical elevated-container behavior: actual kernel PID reuse refused the stale identity without signaling the replacement. |
   | R-S11c-27p | Source/package: OpenRC/runit/manual templates own only the foreground supervisor, with no competing child or discovery authority. |
   | R-S11c-27q | Source/package plus historical native OpenRC manager/stale-state behavior; exact-artifact VM reproduction remains OPEN. |
-  | R-S11c-27r | Source/package plus historical runsvdir/runsv/supervisor/child ownership and recovery; exact-artifact VM reproduction remains OPEN. |
+  | R-S11c-27r | Historical runsvdir/runsv/supervisor/child ownership and recovery remain recorded. Current-source artifact `60e3fb0a` compiles and publishes all seven manifested files with `--linux-service-artifact-build`, using the existing bounded VM profile. Both wrappers require a distinct compile-only receipt; the file-transfer and limiter modes retain their scenarios. `runit-build-60e3fb0a.json` binds payload hashes, four zero listener deltas and exact process/private/RAM retirement. No product scenario runs in this producer. Actual runit start/stop/restart, current installed/final-artifact and independent acceptance remain OPEN. |
   | R-S11c-27s | Release wiring only; execution OPEN. The gate binds cold A==B pass-A `.deb`, commit/package identity, authenticated devcheck archive, installed systemd lifecycle and stable post-run inputs before publication, through the common no-NIC VM after Docker is joined. No current final `.deb` has passed. |
   | R-S11c-27t/R-T4 | Source/gate: owner loss remains selectable throughout headless CM bootstrap; post-bootstrap completion is bounded and terminal-first. Native/package/device lifecycle remains OPEN. |
   | R-S11c-27u | Current debug exact-binary `Spe5rPjrqj` verifies live/no-pidfd and wrong-generation/ordinary-role native/unavailable-pidfd refusals, preserved records and live actors, with installed CPace positive control. Unverifiable records, kernel ENOSYS and final-artifact acceptance remain OPEN. |

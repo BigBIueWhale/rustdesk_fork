@@ -138306,3 +138306,42 @@ dfe5005c3891371f5f50784420ca97b19e588334795ccc101727390adefe5a8d;
 its retirement receipt and ten raw/control records remain. No owned runtime job
 remains. This documentation checkpoint adds no product/native acceptance; the
 release goal remains active with all acceptance gaps and independent parks intact.
+
+## 2026-11-04 — global event evidence reconciliation
+
+The preceding IPC-history turn made verified progress at c62dd0e7/35f3eb37.
+Review R-S11hf's current dispatcher, complete test suite, native/web adapters and
+registered producers before selecting new runtime work. Existing cases exercise
+FIFO, replacement, capacity, failure and exact-binding retirement. A possible
+multi-handler failure question does not establish a reachable product defect;
+current registered producers do not justify a speculative behavior patch. Actual
+native/browser bridge routing and lifecycle acceptance remain missing. No product
+or test change is selected, and no new runtime acceptance is claimed.
+
+The review does establish two false live-ledger statements. Its R-S11hf paragraph
+still claims dispatcher/tests match d0a13c7a, but both changed in 0625112a and now
+match accepted 1a0b612bd6200a1efa36f56e5dd54e29910e1b70 byte-for-byte. Current
+dispatcher SHA-256 is be6989a5b1abdd02456e38149de4294d410ee01a3528d0b09ec26e4d08f60228;
+test SHA-256 is 71d9c45e8ee8fc8988ba5d50e1cc4d1bee58c7c586680b2d98cfc5812f7bb7fd.
+Capsule peer-event-owner-0625112a.json matches its recorded 29,598 bytes/SHA-256
+1d96a2d32415e18e387b84b17a52bf039a17b413a64e3d3722a61b14dd0df6a0.
+All 21 entries in its files inventory match size/hash (222,908 bytes). The accepted
+8DmykJOpct serial confirms 113 cases/seven suites and three parser controls; its
+twelve-case dispatcher suite belongs to that existing accepted result.
+
+The capsule and decoded listener records also contradict the earlier assertion
+that all twelve new-run listener deltas were zero. Accepted 8DmykJOpct has four
+zero deltas. Excluded g684Esy2gj's final record contains one removal (19 bytes);
+excluded zyEpIR8Hio's final record contains two additions (36 bytes). All twelve raw records
+match their recorded SHA-256, and decoded added/removed payload sizes and hashes
+match, as do the independently recomputed baseline/snapshot differences. The
+previous 2026-10-29 audit assertion is superseded by this correction; the failed
+attempts remain excluded. Only retained records were read; no endpoint owner is
+inferred and no live endpoint inspection or mutation was performed.
+
+Correct only those two live-ledger claims, preserving all runtime/platform gaps
+and parks. The substantive next-blocker question is pending because the loop
+explicitly preserves independent user parks; silence does not reopen them.
+Recommend installed Linux settings authorization, whose allowed-effect/refusal
+evidence is release-critical. That question does not block this authorized evidence
+repair or change the active goal status. Fresh ledger count remains pending.

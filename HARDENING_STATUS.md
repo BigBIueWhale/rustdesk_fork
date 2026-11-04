@@ -43,6 +43,15 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Retired account-store native observation is
+OPEN/PARKED. Run `s51zTJQ9dT` reports both observers and the inner peer scenario
+successful, but the guest wrapper rejects the product verdict and exits 1.
+No overall acceptance or repair/rerun follows the pivot. Exact processes, RAM
+and private scratch retire with four zero listener deltas; bounded evidence is
+in `account-stores-parked-79fb7864.json`. Existing source/Linux ABI acceptance
+remains valid. Work moves to R-X2 Linux artifact component verification below;
+complete address-page testing and all independent parks remain.
+
 **User pivot (2026-11-04):** Mobile **Reverse mouse wheel** is OPEN/PARKED.
 The Android/iOS preference exclusion remains a source finding. The in-progress
 baseline was cancelled before a compilation/behavioral result; exact VM/RAM cleanup
@@ -14438,6 +14447,19 @@ sandbox implementation and checker-repair history remain in Git.
 R-P1, R-P5, R-G1, R-G2, R-G4a, R-G6, R-G9, R-S12, R-S17, R-S19, R-X7, R-X9, R-SV4a, R-SV5, R-SV5a, and
 R-SV6a through R-SV6d. Git history retains the original findings, implementation sequence, source counts, and
 per-run gate receipts; this section retains only present disposition and evidence limits.
+
+**R-X2 Linux artifact inventory (`a3192591`).** Read-only inspection of the
+runner and all eleven bundled libraries verifies their manifest hashes. The
+runner links exactly eight packaged Flutter platform components; all eight
+registration imports match the corresponding library's defined export.
+Their SONAMEs and application-relative search paths agree with the build recipe.
+All thirteen historical RustDesk extension bridge names are absent, while the
+226 current wire exports remain. Retired installer/framework byte spellings are
+absent from these twelve ELF files; NativeAssetsManifest has no entries.
+`native-components-a3192591.json` retains exact dependencies, symbols and limits.
+This adds named-artifact inventory/ABI evidence, not whole-program absence,
+native loader behavior or installed acceptance. Final packages, other targets,
+independent review and release acceptance remain OPEN.
 
 | Finding / requirement | Current source disposition |
 | --- | --- |

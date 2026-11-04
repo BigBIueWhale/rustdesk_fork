@@ -136243,3 +136243,55 @@ actual isolated replay using app manifest
 e20a16fa280d39996a65a625b8802b5315269d17cf6737e0aa21b92c68651f09.
 The native account-store, Android, installed/release and independent parked
 obligations remain OPEN pending their actual results.
+
+## 2026-11-04 — user pivot; Linux packaged native-component inventory
+
+The user explicitly requests a different aspect. Account-store observation is
+OPEN/PARKED without repair or replay. Its already-exited s51zTJQ9dT run at
+79fb7864 returns 1: both role observers and the inner direct-peer scenario report
+success, but the guest rejects the product verdict as absent or duplicated.
+This is not overall acceptance. The unchanged product and prepared fixture remain.
+Launcher 1699464 and QEMU 1700520 are absent by pidfd; exact virtiofsd helpers
+are absent. RAM run.w2mzk_ym identity 29:45112 is gone. All four decoded listener
+inventories have zero additions/removals. Under the shared lock, private files
+are inventoried, bounded diagnostics preserved, and 3,521,252 temporary bytes
+retired; no owned run remains. account-stores-parked-79fb7864.json (22,880 bytes,
+SHA-256 3ce241cba3d01cc92de069352bdf5637b723de51c576e6995aedf34f34742b2c)
+and its retirement receipt bind cleanup. Thirty-five evidence files match CTE/TUF.
+
+The initial direct-address candidate is already explicitly parked at the complete
+page boundary; no investigation or execution resumes it. The selected permitted
+requirement is R-X2's artifact-side native-extension exclusion. The existing
+a3192591 app enables a concrete component/ABI inventory without another build.
+This reduces a distinct artifact-evidence gap beyond historical source-only
+excision; it takes priority over comment cleanup or repeating known bridge builds.
+
+History f91dcb92 and 42e40ba2 distinguishes the deleted RustDesk runtime extension
+framework from required build-packaged Flutter libraries. The original ffi source
+has thirteen plugin APIs, including plugin_feature_is_enabled. Current source
+and the retained build have identical product inputs; the historical directories,
+feature/CLI/API path are absent. The fixed texture, engine and private-XDO loading
+sites retain their separate requirements. They are not reclassified as forbidden
+extensions merely because they use library-loading APIs or plugin filenames.
+Primary references: https://sourceware.org/binutils/docs/binutils/readelf.html
+and https://docs.flutter.dev/packages-and-plugins/developing-packages .
+Dynamic symbols and DT_NEEDED expose ABI/direct-link metadata; neither alone
+proves every dynamic load, transitive dependency or installed filesystem boundary.
+
+Read-only inspection verifies hashes of the runner plus eleven actual ELF libraries
+against manifest e20a16fa280d39996a65a625b8802b5315269d17cf6737e0aa21b92c68651f09.
+All eight runner registration imports match defined symbols in their respective
+packaged Flutter components. Each has its exact SONAME and $ORIGIN path; the
+runner uses $ORIGIN/lib. The thirteen retired wire names and seventeen historical
+API/installer/framework byte spellings are absent from all twelve files. The Rust
+library still has exactly the 226 authored wire exports. NativeAssetsManifest
+contains no native assets. GNU readelf outputs and bounded structured evidence
+are preserved; no library, product, compiler or test runs on either host.
+
+native-components-a3192591.json is 20,569 bytes, SHA-256
+f92d81ee8a12da73c676f95edc8abcd77c5a8c372982af670da219ef17ba0bd7.
+Fourteen bounded files match both hosts. This closes only the named Linux
+inventory/export checkpoint. Native loader behavior, final Debian/other-target
+artifacts, installed authority, independent review and release acceptance remain
+OPEN. No product correction was established or manufactured. The ledger records
+the pivot and bounded evidence; its required fresh token count follows.

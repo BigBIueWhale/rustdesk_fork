@@ -10547,8 +10547,8 @@ sandbox implementation and checker-repair history remain in Git.
 - **Desktop GPU texture-upload display** — #2b-adjacent native viewer surface
   (`texture_rgba_renderer`), restored 2026-06-28 (f0b9966 revert); accepted
   alongside #2b — already-validated pixels, no parser, viewer/desktop-only.
-- **R-S11bh/R-S11e-74 — mobile at-rest key authority — ANDROID API34 KEY-ENVELOPE COMPONENT VERIFIED;
-  FULL APPLICATION/DEVICE MIGRATION OPEN.** `5354a130` validates the stored Android envelope before key
+- **R-S11bh/R-S11e-74 — mobile at-rest key authority — ANDROID API34 COMPONENT AND HEALTHY FULL-APP
+  RELOAD VERIFIED; MIGRATION/DEVICE ACCEPTANCE OPEN.** `5354a130` validates the stored Android envelope before key
   creation, requires its existing AES wrapping key, and preserves occupied or incompatible aliases.
   Wrapping-key creation requires absent envelope/key state. On StrongBox-capable API levels, fallback to
   ordinary AndroidKeyStore requires documented StrongBox unavailability and an unoccupied alias;
@@ -10574,8 +10574,17 @@ sandbox implementation and checker-repair history remain in Git.
   Rust and supplies no Swift compiler or native Keychain runner. Current iOS compilation and real Keychain
   error/invalid-data refusal, concurrent creation, failed random/add/readback, ordinary creation and
   durable reload remain required; no Linux model or wording check substitutes for them.
+  Full-app healthy reload at `c3dbf65a` passes on retained test APK `aca3df16` with real UI
+  password provisioning and CPace before/after Force Stop. Ordinary UID 10141 processes
+  2229 and 2965 use unchanged private key-envelope/config contents, identities and modes;
+  three read-only snapshots validate encrypted formats. The fresh process needs capture
+  consent but no new password. ADB returns to shell UID 2000; emulator/container/QEMU,
+  private state and RAM retire, with five zero host listener deltas. The native run takes
+  431 outer seconds without a rebuild. `android-storage-c3dbf65a.json` binds the artifacts,
+  results and cleanup; the audit retains two fixture corrections and rejected runs.
+  This adds complete Kotlin/JNI/Rust healthy-reload evidence for that APK only.
   Legacy plaintext/PRS refusal, authorized rewrap and credential
-  reload through the complete app, unavailable/invalidated providers, other API levels, physical hardware,
+  reload after migration through the complete app, unavailable/invalidated providers, other API levels, physical hardware,
   current signed packages, iOS Keychain and broader R-S0/R-F5 acceptance remain OPEN.
 - **R-S11bi/R-S11e-75 — macOS launchd lifecycle is domain-qualified and postcondition-checked — SOURCE
   IMPLEMENTED; NATIVE APPLE AND EXACT SIGNED-ARTIFACT EVIDENCE OPEN.** The privileged scripts address the
@@ -14176,7 +14185,7 @@ sandbox implementation and checker-repair history remain in Git.
   refusal without URL events or connection creation. Signed packages, installed authority,
   cleanup/resources, independent reproduction and external review remain OPEN.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
-  SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
+  SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; PHYSICAL-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
   Appendix C #14. `libs/hbb_common/src/lib.rs::at_rest_storage_key()` on mobile
   returns only an already-installed 32-byte process key accepted by `set_mobile_at_rest_storage_key()`;

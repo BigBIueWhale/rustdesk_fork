@@ -137664,3 +137664,28 @@ android-storage-cfeed6a2.json is 11,413 bytes, SHA-256
 34b3abb4103501c03bd24438484813be0e59ace84be098207bb1f90d1ed5459c.
 Exact launcher/QEMU retirement, five zero listener deltas and private/RAM cleanup
 pass; scratch peaks at 4,494,995,456 bytes. Reuse the same APK for the corrected run.
+
+Accepted B71F0WjHld at c3dbf65a passes the complete scenario in 431 outer seconds.
+The real UI provisions the credential; CPace passes in PID 2229, Force Stop retires
+that process/service, and ordinary startup creates PID 2965 under the same UID
+10141. UI start plus fresh capture consent needs no password provisioning; CPace
+passes again. Three snapshots retain the exact 353-byte mode-0600 config and
+252-byte mode-0660 key envelope (both owned/grouped to UID/GID 10141), unchanged
+inodes and SHA-256 digests. The observer validates both permanent-credential
+wrappers and the AES-GCM envelope without logging their values. ADB unroot returns
+UID 2000, the app remains stable for five seconds, final rendering and exact
+emulator/ADB/container retirement pass. Five host listener deltas are zero.
+
+The retained APK is aca3df16, SHA-256
+28c7bc382a45cc662a7e5193bc942365974e169ea353260601b17583affdb8d4, paired with
+its matching instrumentation APK and unchanged source-bound Linux probe 89828922.
+MainApplication, MobileAtRestStorageKey, complete config.rs/permanent_password.rs,
+password_security.rs and Android native directory initialization are unchanged
+from that source; current release-artifact acceptance is still separate.
+android-storage-c3dbf65a.json is 7,416 bytes, SHA-256
+58603ab446bec497829f67dc6b23b925d81f7facef1f7d82a50c864cc9334e99.
+Its retirement receipt and twelve raw/control files match on CTE/TUF. No owned
+run remains; 4,494,995,456 peak RAM-scratch bytes and private state are retired.
+Record only healthy full-app reload as demonstrated. Migration, provider failures,
+physical devices/other APIs, iOS, final artifacts and broader acceptance stay OPEN.
+No product correction or rebuild was needed. Fresh ledger-budget validation follows.

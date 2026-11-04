@@ -136344,3 +136344,31 @@ focus/reconnect and unrelated parked investigations are not resumed. Shell synta
 and diff checks pass; actual C compilation and runtime acceptance are pending.
 TUF's shared lock is available, no run/RAM workspace remains, and about 42 GiB
 is available. Canonical replay admission still decides resource eligibility.
+
+Preparation 47aff5d9 is pushed; native replay 6HE2kvmjNd passes on its first run.
+The three drivers compile twice byte-identically; controller SHA-256 is
+9bfa8d1f4eb7c2082eea600a582ec4090bf5ed67b455cd932eb4b7686f91a838.
+The retained app remains a3192591 with manifest
+e20a16fa280d39996a65a625b8802b5315269d17cf6737e0aa21b92c68651f09;
+product inputs match current source and no application build occurs.
+Actual password entry uses XTest, with 22 characters observed only as a count.
+The prompt retires and four current frames appear (181 ms first-fresh observation,
+328 ms maximum observed age in that initial sample). These are this run's samples,
+not a long-session latency guarantee. Viewer PID 234 remains process/start/pidfd
+bound. Both snapshots match all twelve files on device fe:1, with the renderer
+inode 143120 and executable mapping present. All three wrong-expectation controls
+return their specific refusal; another four current frames and unchanged TCP
+identity/bounded resources pass. The final viewer exit is zero after native close.
+
+Outer workload reports 109 seconds; capture including final cleanup takes 116.75.
+Launcher 1736220 and QEMU 1738214 are absent by pidfd, helpers are gone, and the
+shared lock is reacquired with no private run. RAM run.ymcqv49j identity 29:45182
+is retired; peak scratch is 3,020,599,296 bytes, within the admitted 7 GiB.
+All four independently decoded listener deltas are zero. Exact application,
+driver, source, container and VM receipts pass; account-store work never runs.
+native-runtime-47aff5d9.json is 12,909 bytes, SHA-256
+56b20a347809183a36645c2f6a00ff5cda203469b3e1cc408309caca681ae392.
+Twelve bounded files match CTE/TUF. The ledger replaces the obsolete missing-inode
+statement with this named native checkpoint, preserving installed Debian, final
+release, other-platform, cold-build, independent-review and continuous-trace limits.
+No product patch was necessary. The required fresh ledger count follows.

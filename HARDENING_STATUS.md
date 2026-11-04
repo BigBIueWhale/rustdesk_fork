@@ -52,6 +52,12 @@ in `account-stores-parked-79fb7864.json`. Existing source/Linux ABI acceptance
 remains valid. Work moves to R-X2 Linux artifact component verification below;
 complete address-page testing and all independent parks remain.
 
+**Linux native component identity verified (`47aff5d9`).** The retained
+`a3192591` app completes a real direct session with current displayed frames.
+Two kernel mapping snapshots match all twelve packaged native file identities;
+three wrong-expectation controls refuse. Exact cleanup and four zero listener
+deltas pass. R-S11gf below records scope and the remaining installed/release gap.
+
 **User pivot (2026-11-04):** Mobile **Reverse mouse wheel** is OPEN/PARKED.
 The Android/iOS preference exclusion remains a source finding. The in-progress
 baseline was cancelled before a compilation/behavioral result; exact VM/RAM cleanup
@@ -12214,7 +12220,7 @@ sandbox implementation and checker-repair history remain in Git.
   explicit stop-ship boundaries.
 
 - **R-S11gf/R-S11e-218 Linux Flutter texture-plugin load authority — SOURCE IMPLEMENTED;
-  NAMED BUNDLE PIXELS OBSERVED; INSTALLED AND CURRENT-RELEASE EVIDENCE OPEN.** The former bare
+  NAMED BUNDLE MAPPED IDENTITY VERIFIED; INSTALLED AND FINAL-RELEASE EVIDENCE OPEN.** The former bare
   `dlopen("libtexture_rgba_renderer_plugin.so")` delegated viewer renderer identity to ambient ELF
   search. `src/flutter.rs::load_linux_texture_plugin` now resolves the current executable, derives
   only its clean absolute sibling `lib/libtexture_rgba_renderer_plugin.so`, and opens that path;
@@ -12223,16 +12229,20 @@ sandbox implementation and checker-repair history remain in Git.
   path construction, not loader behavior. The old desktop-texture and workspace mutation verifiers
   named in the historical entry were deleted; they are not current acceptance gates.
 
-  The retained source-bound app `a3755044` descends from the loader correction, and its manifest
-  inventories the renderer at the exact bundle path. Its `7f6649f0` no-NIC real-peer replay
-  observed Flutter/X11 pixels through six viewer lifecycles and eighteen focus/reconnect cycles;
-  the complete 511,118-byte serial and digest are recorded in the named app entry above. This is
-  stronger than the earlier source/compile receipt but does not separately attest the mapped plugin
-  inode, execute an installed `.deb`, or test current-master/final-release artifacts. An exact
-  installed package, native loader identity, current release, broader OS/lifecycle/soak, cold
-  R-B2/R-B10 equality, independent reproduction, and external review remain OPEN. No installed
-  root-service exploitation or local privilege escalation was demonstrated by the old bare-name
-  defect.
+  Native replay `6HE2kvmjNd` at `47aff5d9` uses source-matched app `a3192591`
+  without rebuilding it. The real password dialog authenticates a direct peer and presents
+  current X11 frames. Two kernel snapshots, separated by four further current frames, match
+  the absolute path, device and inode of the runner and all eleven packaged libraries,
+  including the renderer. Expected files remain descriptor-bound on the authenticated
+  read-only bundle mount; process directory/start identity and pidfd bind the same viewer.
+  Wrong expected inode/device and an unmapped path receive their specific refusal results.
+  The TCP connection stays unchanged and resources remain within the existing bounds.
+  Three drivers compile twice byte-identically. Viewer/server/source/Xvfb/container/VM/RAM
+  cleanup and four zero listener deltas pass. `native-runtime-47aff5d9.json` binds evidence.
+  This proves the named non-installed bundle's sampled native identity and real pixels,
+  not every load or in-memory byte. Installed Debian ownership/loading, final release,
+  other OS/lifecycle/soak, cold R-B2/R-B10 equality, independent reproduction and external
+  review remain OPEN. No installed root-service exploitation or LPE is demonstrated.
 
 - **R-S11gc/R-S11e-216 Linux full-peer presentation — NAMED PRODUCT RUNTIME EVIDENCE;
   PUBLICATION-AGE ORACLE, CURRENT ARTIFACT, INSTALLED, CROSS-PLATFORM, AND SOAK EVIDENCE OPEN.**

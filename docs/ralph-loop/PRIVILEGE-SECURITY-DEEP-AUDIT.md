@@ -135751,3 +135751,16 @@ whole-product pixels and release/independent acceptance as OPEN. The next
 decisive integration step is complete source-bound peer capture/presentation
 with X server cookie authentication enabled; actual session-manager provisioning
 and service authority remain additional obligations. All user parks persist.
+
+Fresh ledger count mgL1jsFSmN at 7cb6eec9 passes seven controls and the complete
+byte round trip in 28 outer seconds: 397,931 tokens / 1,820,872 bytes, SHA-256
+518f49c237779754f63ed64629877e989763a53f496871b2a212e9971de5c863.
+It remains 2,069 tokens below budget. All 42 workload modes, 81 admissions and
+five refusals pass; three listener deltas are zero and exact process/helper/
+private/RAM retirement passes, with 402,714,624 bytes peak scratch. Twelve bounded
+files match CTE/TUF; capture-auth-ledger-7cb6eec9.json is 5,106 bytes, SHA-256
+1031c3624019a143a7eeba1a6433833efa3680504b90c6181ee4d59fa0af662a.
+The final diff contains only the focused capture fixture/orchestration and
+status/audit records. Product, dependencies, normative requirements and live
+instructions remain byte-identical to 6fc7bc9e. No owned run remains; this
+audit-only count receipt leaves the measured ledger unchanged.

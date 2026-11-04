@@ -22,6 +22,8 @@ spec.loader.exec_module(result)
 
 
 SINGLE_PROFILE = None
+if len(sys.argv) > 1 and sys.argv[1] == "--cm-duration":
+    SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] == "--reconnect":
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] in ("--direct-address", "--connection-page"):
@@ -96,6 +98,9 @@ class ResultTests(unittest.TestCase):
         elif profile == "password-fields":
             suites = sorted(result.PASSWORD_FIELD_SUITES)
             names = sorted(set().union(*result.PASSWORD_FIELD_SUITES.values()))
+        elif profile == "cm-duration":
+            suites = ["cm_duration_probe_test.dart"]
+            names = sorted(result.CM_DURATION_TESTS)
         elif profile == "window-dispatch":
             suites = ["desktop_window_dispatch_test.dart"]
             names = sorted(result.WINDOW_DISPATCH_TESTS)
@@ -290,7 +295,7 @@ class ResultTests(unittest.TestCase):
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 52, "peer-search": 36,
                                   "restart-dialog": 9, "desktop-theme": 56,
-                                  "settings-sidebar": 6, "custom-scale": 42}[SINGLE_PROFILE]))
+                                  "settings-sidebar": 6, "custom-scale": 42, "cm-duration": 8}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),

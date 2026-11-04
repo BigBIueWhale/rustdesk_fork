@@ -62,6 +62,7 @@ elif [[ "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:connect-pass
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:terminal-output \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:settings-navigation \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:settings-sidebar \
+    || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:cm-duration \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:desktop-theme \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:peer-data \
     || "${MODE:-}:${FLUTTER_TEST_PROFILE:-}" = flutter-model-tests:custom-scale \

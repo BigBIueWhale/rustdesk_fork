@@ -1949,8 +1949,20 @@ AUDIO_MUTE_TESTS = {
 }
 
 
+CM_DURATION_TESTS = {
+    'CM duration starts at zero for a fresh connection',
+    'CM duration is absent before authorization',
+    'CM duration renders an existing connection on first mount',
+    'CM duration catches up from the latest snapshot after delayed repaint',
+    'CM duration survives header recreation for the same owner',
+    'CM duration retains the final disconnected sample',
+    'CM duration replacement uses the new owner sample',
+    'CM duration keeps hours beyond one day',
+}
+
+
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -2035,6 +2047,10 @@ def parse_result(path, profile="models"):
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
+    elif profile == "cm-duration":
+        expected_suites = {"cm_duration_probe_test.dart"}
+        expected_tests = len(CM_DURATION_TESTS)
+        expected_names = CM_DURATION_TESTS
     elif profile == "window-dispatch":
         expected_suites = {"desktop_window_dispatch_test.dart"}
         expected_tests = len(WINDOW_DISPATCH_TESTS)
@@ -2289,7 +2305,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -2317,6 +2333,7 @@ def main():
         "connection-page": "FLUTTER_CONNECTION_PAGE_TEST_JSON",
         "status-refresh": "FLUTTER_STATUS_REFRESH_TEST_JSON",
         "share-rdp": "FLUTTER_SHARE_RDP_TEST_JSON",
+        "cm-duration": "FLUTTER_CM_DURATION_TEST_JSON",
         "window-dispatch": "FLUTTER_WINDOW_DISPATCH_TEST_JSON",
         "modifier-release": "FLUTTER_MODIFIER_RELEASE_TEST_JSON",
         "auto-disconnect": "FLUTTER_AUTO_DISCONNECT_TEST_JSON",

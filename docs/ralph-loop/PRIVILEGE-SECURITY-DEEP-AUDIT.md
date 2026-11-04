@@ -138751,3 +138751,27 @@ scratch peaks at 402,817,024 bytes. Capsule cm-duration-ledger-46395b71.json
 0ea3cca18bf60bc3f178c095fa6e761cf568f2f5602ea1b2cbfcbfb384962193)
 binds eleven raw/control records and a 248-byte retirement receipt. This count
 validates documentation maintenance only; product behavior remains unexecuted.
+
+## 2026-11-04 — connection-duration rendered comparison preparation
+
+Continue the selected R-S0 duration finding. The prior turn made progress by
+identifying the callback counter and recording the user pivot; no behavioral
+pass was claimed. Native CM Client owns exact registry generations and the
+existing Flutter refresh loop obtains full snapshots. Its current payload has
+no duration. The intended correction is native connection-owned elapsed time,
+sampled through that existing path, with a final value retained at disconnect.
+UI timers must not invent elapsed time or transfer it between connections.
+
+Add a focused --flutter-model-tests --cm-duration shard using the existing
+4-GiB guest/storage profile, generated bridge and confined nonroot test runner.
+The probe appends only a native binding installer and an accessor for the exact
+private header in the isolated copy; it verifies every other Dart source byte.
+Eight rendered cases cover zero/unauthorized controls, initial elapsed sample,
+delayed repaint, remount, disconnect, replacement and durations beyond one day.
+Remount first observes the existing 42-second counter, then recreates the header;
+replacement uses a fresh zero-duration owner after five seconds. Other samples
+are prospective native metadata supplied by the fixture, not actual Rust elapsed
+measurements. Those cases specify the required UI contract without proving the
+native producer. The parser requires the exact named inventory and terminal result.
+Shell syntax, Python parsing, inventory and diff review pass. Product source is
+unchanged; the unchanged-header baseline is next. All independent parks remain.

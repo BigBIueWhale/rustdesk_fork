@@ -4775,7 +4775,7 @@ those obligations.
 <a id="linux-ipc-components"></a>
 
 **Installed Linux IPC startup (`674573db`).** The shipped systemd unit and
-retained debug/headless binary `154f69db` pass four native cases in TUF
+debug/headless binary `154f69db` pass four native cases in TUF
 `eCAUBD6TmW`: foreign-owned and symlinked `/run/RustDesk-service` parents
 refuse readiness without changing their identity, metadata or sentinel contents;
 fresh creation and a subsequent stop/start become ready with root-owned 0711
@@ -4788,6 +4788,8 @@ authorization, replacement races, other init systems or complete R-S0 acceptance
 Those remain OPEN. `--linux-service-startup-tests` reuses the canonical bounded
 VM. The audit records the initial unit-result observer repair, exact artifacts,
 four-case raw receipts and correction of the outer summary's inherited counts.
+That superseded binary was retired after manifest/hash verification to admit the
+current build; its bounded evidence remains retained.
 
 **Installed live-endpoint preservation (`753d594a`).** TUF `nsuFGI7S20`
 passes six cases on the same source-matched binary and shipped unit. An
@@ -4850,8 +4852,23 @@ ordinary stop pass, with exact process/cgroup/record/PAM/Xvfb/user retirement.
 Three host listener deltas are zero and VM/RAM/private cleanup passes.
 `linux-crash-f4a443dc.json` binds evidence. No product correction or rebuild was
 needed. This verifies the combined application/systemd installed-layout crash
-path, not independent parent-death attribution, live stale-record recovery,
-pixels/input, final packages, other init systems or other platforms; those remain OPEN.
+path. Independent parent-death evidence follows; live stale-record recovery,
+pixels/input, final packages, other init systems and other platforms remain OPEN.
+
+**Manual supervisor parent-death cleanup (`89828922`).** Fresh source-matched
+debug/headless artifact `89828922` passes TUF `Q4fBwL1Fcy` with actual logind/X11
+and no RustDesk service unit. Supervisor-only pidfd SIGKILL causes the selected
+UID-4001 child to terminate by SIGKILL and be reaped by the living fixture in
+5.723 ms. Its listener disappears; the unrelated sibling survives, and durable
+credential and record bytes remain unchanged. Explicit manual restart recovers
+the dead record with a new generation, preserves the credential and stops cleanly.
+Both generations complete UID-4002 CPace/Remote PeerInfo login. Desktop, VM/RAM
+and private cleanup pass, with three zero host listener deltas. Same-artifact
+systemd regression `UYXdauLLMZ` passes automatic restart, both logins and cleanup.
+The `linux-parent-death-{build,accepted,crash-control}-89828922.json` capsules
+bind source, artifacts and results. No product correction was needed. This proves
+the named manual lifecycle scenario; final packages, other init-manager
+integration, pixels/input and complete R-S0 acceptance remain OPEN.
 
 **Live-record recovery refusal (`da985dbc`).** TUF `Spe5rPjrqj` passes five
 exact-binary cases on `fdbab046`: live matching record with pidfds forced
@@ -10500,13 +10517,13 @@ sandbox implementation and checker-repair history remain in Git.
 
   | ID | Disposition and evidence boundary |
   | --- | --- |
-  | R-S11c-27a | Source: retained direct child and supervisor-death binding. Current combined application/systemd crash retirement passes above; independent mechanism and final-artifact acceptance remain OPEN. |
+  | R-S11c-27a | Retained-child ownership and supervisor-death binding pass manual `Q4fBwL1Fcy` without manager cleanup, plus systemd regression `UYXdauLLMZ`. Final-artifact acceptance remains OPEN. |
   | R-S11c-27b | Source: root-only lease, durable identity record and pidfd-first recovery. Current installed-layout sessionless/active-desktop exclusivity, retained-connection login and automatic supervisor-crash recovery pass above; arbitrary live-record recovery and final artifacts remain OPEN. |
   | R-S11c-27c | `e0c73321` fixes the reproduced post-reap TERM retry; native `AJQ8LuAUHy` passes the exact record-removal fault. Same-artifact `JO4qAZvARA` preserves stopped-child/record ownership, retires the tree in 8.265 seconds and completes fresh-start CPace. Other I/O/kernel failures, uncertain drain and final-artifact acceptance remain OPEN. |
   | R-S11c-27d | Historical focused behavior: parent death, lease release, stale-record removal and exact live-record recovery. |
   | R-S11c-27e | Historical focused behavior: executed-inode identity across rename/unlink, without pathname/argv authority. |
-  | R-S11c-27f | Historical debug/container: manual/non-systemd restart, graceful/forced stop and unrelated portable survival. |
-  | R-S11c-27g | Current debug/headless installed-layout `kljRzPGxIE`: supervisor SIGKILL, old child/connection retirement, one automatic fresh generation and real Remote login pass. Combined systemd/application evidence; final artifacts and independent parent-death attribution remain OPEN. |
+  | R-S11c-27f | Current debug/headless VM `Q4fBwL1Fcy`: manual supervisor crash, exact child reap, dead-record recovery, preserved credential, two Remote logins and graceful stop pass; unrelated sibling survives. Other manager integrations/final artifacts remain OPEN. |
+  | R-S11c-27g | Systemd `kljRzPGxIE` and current-artifact `UYXdauLLMZ` pass child/connection retirement, one automatic fresh generation and both Remote logins. Independent manual parent death passes `Q4fBwL1Fcy`; final artifacts remain OPEN. |
   | R-S11c-27h | Source plus historical elevated-container behavior: descriptor-bound UID/GID/groups, bounded environment, empty live capabilities and no-new-privileges. |
   | R-S11c-27i | Historical runtime: seven malformed/ambiguous record classes refused without signal or replacement authority. |
   | R-S11c-27j | Historical separate-Docker behavior: the unrelated sibling survived until its own harness drained it. |

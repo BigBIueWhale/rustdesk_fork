@@ -137422,3 +137422,64 @@ complete another login and stop normally with child/record/listener retirement.
 All actors and the desktop then join. This establishes only the named debug/headless
 installed-layout scenario if it passes; final packages, other init managers and
 complete R-S0/R-F5 acceptance remain open. No product patch or rebuild is needed.
+
+Admission correction: the initial source comparison above covered the supervisor
+path, not the complete required compiled-source set. The canonical launcher refuses
+e0c73321 at current HEAD before guest execution because that full set differs.
+No source gate was relaxed. Run xre9RZGjXf exits 1; its exact launcher is absent and
+the RAM workspace retired. Under the shared lock, the three exact residual storage
+markers were checked and removed. Six bounded records match CTE/TUF; the capsule
+linux-parent-death-admission-89828922.json has SHA-256
+a0ac1835f56969c6c8bfb1f0282c5ebb43d5a85b2892f2dbf534a2f8ae971591.
+
+The four-entry artifact cache required retirement before a fresh build. Superseded
+154f69db's exact manifest and seven inert payload hashes/types/owners/modes matched
+the retained evidence; no run was active. Retirement removes 117,257,122 bytes,
+preserving b30f4811, fdbab046 and e0c73321, all canonical inputs and source. The
+original manifest and two bounded retirement records match CTE/TUF. Capsule
+linux-peer-retire-154f69db.json SHA-256:
+5f19324d0be09951175500db6a1cd9e0f8ee7bb510999dc542b11f83c787cf72.
+
+Fresh headless service build PoSpJLzUkq at 8982892266a2dcdd3f0b7f5a8f8f3830bfff0879
+passes in 263.610 capture seconds, including existing file-type/source controls.
+The seven inert artifacts total 117,277,490 bytes including the manifest. Manifest
+SHA-256 ea8ecc86e4a47af44f3e529d909311f76f86b9c8b2c9d8e442cb8fd42921a9ef;
+rustdesk SHA-256 d9842fea3dfe3877e57eeaf998574a6649d296357dbb33dfa461fc52586a8eec;
+probe SHA-256 2fb7969b6800f67fb6ea21d84a303f1aca00f511c226cfcf1a87f345fc457af8.
+Exact source/tree, seven payloads and manifest are verified. Four listener deltas
+are zero; launcher/QEMU 1869180/1869651 are absent by pidfd. The 5,854,040,064-byte
+peak bounded RAM workspace, private state and helpers retire. All thirteen bounded
+records match CTE/TUF. Capsule linux-parent-death-build-89828922.json is 6,705 bytes,
+SHA-256 db542857cd3f18ad2aacbbe706c873e7b1c21f8a3e9b50c8fea1a67cf29a21cd.
+
+Native Q4fBwL1Fcy passes on that exact artifact in 61.117 capture seconds. With no
+RustDesk unit and the supervisor sharing the live fixture's cgroup, a supervisor-
+only pidfd SIGKILL retires child 7877 by SIGKILL; subreaper waitpid proves exact reap
+within 0.005723 seconds. Its listener disappears; sibling remains alive and
+credential/record bytes remain unchanged. Manual restart creates supervisor 7996 /
+child 8005 with a new generation, recovers the dead record and preserves credential.
+Real UID-4002 CPace and encrypted Remote PeerInfo login pass in both generations.
+The second supervisor exits zero on TERM; child, record and listener retire.
+PAM/Xvfb/users retire. Three listener deltas are zero; exact launcher/QEMU
+1870166/1871911 are absent and the 4,108,697,600-byte peak RAM workspace, private
+state and helpers retire. Twelve bounded records match CTE/TUF. Capsule
+linux-parent-death-accepted-89828922.json is 6,127 bytes, SHA-256
+aac5b16027d6ee43faf3b9f45eaf37c48d508866d2fe5422cbb87f175b8b45e1.
+
+The optional supervisor parameter changes two shared fixture helpers, so existing
+systemd crash profile UYXdauLLMZ is replayed once on the same artifact. It passes
+in 63.652 capture seconds: accepted-connection EOF 0.002485 seconds, exact old tree
+retirement 0.022683 seconds, automatic recovery and login 5.385459 seconds. One
+manager restart, both real logins, preserved credential and final process/cgroup/
+record/desktop cleanup pass. Three listener deltas are zero; launcher/QEMU
+1872501/1874244 are absent and the 4,064,722,944-byte peak RAM workspace, private
+state and helpers retire. Twelve records match CTE/TUF. Capsule
+linux-parent-death-crash-control-89828922.json is 12,004 bytes, SHA-256
+8e0e56121bbf0d0fa2ab8be4acaa91b772c3a0f15143da39b52e894b9b5e656e.
+
+This closes the named current-artifact manual parent-death evidence gap without
+a product correction. It does not establish final Debian packaging, other init
+manager integration, display/input recovery or complete R-S0 acceptance. The
+parked startup-failure topic and all unrelated parks remain untouched. The ledger
+now records the new evidence and artifact retirement; fresh whole-ledger counting
+follows. No host product or test executable ran; no owned runtime remains.

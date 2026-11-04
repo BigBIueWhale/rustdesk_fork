@@ -139124,3 +139124,24 @@ platform and logo are controlled doubles; no Android/iOS device acceptance is
 claimed. The new mobile-build-date selector runs only these four cases through
 the existing bounded settings VM profile, exact-source checks and result parser.
 Existing unrelated settings cases remain available but are not selected here.
+
+CTE zVJ8WIUhNo at cdc1eb29 passes all four rendered cases in 12.595 test-runner
+seconds including suite loading (1.819 seconds after loading). Outer capture is
+293.422 seconds; the workload reports 286 seconds including authenticated input
+preparation and fresh bridge generation. Three result-parser controls and the
+exact-source preparation/postchecks pass. Actual date text is visible without a
+forced rebuild after completion; each mounted page performs exactly one read.
+Both replaced states are disposed before their old reply completes, and current
+text remains unchanged. No product edit or device/FFI acceptance is claimed.
+
+Under the shared lock, exact wrapper/QEMU/captured children are absent by pidfd
+ESRCH, private and RAM workspaces are absent, and all four host endpoint deltas
+are zero. Scratch peaks at 6,383,845,376 bytes in the admitted RAM workspace and
+is retired. No owned run remains. Twelve raw/control records and source digests
+are bound by mobile-date-cdc1eb29.json (10,564 bytes, SHA-256
+9151a17551fb3f5e0ba14a6ffaec0db7d4b3894116891fbec7b196db808fc8fd).
+The 560-byte retirement receipt has SHA-256
+ef7f3d2a5c281c31c5f407e4a343d26dba0d7212a23bc3a83bb58094e19a3701.
+Record the named rendered-page acceptance in the existing ledger row and run
+its mandatory fresh isolated token count. Pre-dispatch disposal, native errors,
+device behavior, complete settings and release acceptance remain OPEN.

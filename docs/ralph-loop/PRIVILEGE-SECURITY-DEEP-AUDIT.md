@@ -136194,3 +136194,52 @@ account-abi-accepted-ledger-bf987a5a.json is 5,137 bytes, SHA-256
 2158c987cd83e08b245fa6e0b9d1d599fbe8b875891b49f78bd44152d29a094d.
 No owned job remains. This audit-only receipt preserves the counted ledger;
 the Linux application/ABI checkpoint is complete with the stated remaining gaps.
+
+## 2026-11-04 — retired account-store native observation preparation
+
+Previous turn is progress: source-bound Linux app/ABI acceptance is complete at
+19f660c5, both hosts are clean and no owned job remains. R-S11hj still requires
+existing *_ab/*_group bytes to stay unread and unchanged. The fresh a3192591
+app and ddb1541d engine permit native coverage without another build. This
+takes priority over more symbol checks or documentation cleanup because it
+tests a still-unproved filesystem behavior during actual direct sessions.
+
+Historical Ab::path/Group::path at 3d95fd71's parent resolve RustDesk_ab and
+RustDesk_group directly beneath Config::path, without a .toml extension.
+Current non-installed Linux path selection resolves the private role home
+under .config/rustdesk. Source/ABI absence cannot alone prove those files
+are untouched in a running app. The fixture seeds nonempty inert bytes
+at those exact names in both private viewer/server homes before app launch.
+
+Primary Linux inotify documentation:
+https://man7.org/linux/man-pages/man7/inotify.7.html .
+Open/access/modify/attribute/rename events and watch loss are relevant.
+Notifications may coalesce, overflow and lack actor identity; mmap writes
+are not directly reported. Therefore the observer uses event presence,
+rejects overflow/lost watches, controls every watched file before launch,
+and separately compares exact inode/metadata/bytes after the main app joins.
+No product inherits an already-open fixture-file descriptor. The observer
+does not claim syscall-complete behavior for arbitrary files or all platforms.
+Only the fixture and exact application roles use these private store paths.
+
+The focused --account-stores replay reuses the existing full peer controller:
+one viewer lifecycle, four server generations, three authenticated reconnects,
+real displayed-frame/focus/resource checks and joined shutdown. It runs one
+outer cycle instead of the general replay's six. No product mode or feature
+changes. Each observer first proves read, same-byte write, attribute and rename
+notifications on both files, then requires zero product-period events,
+unchanged metadata and bytes. Readiness precedes app startup; the stage owns
+and joins the exact observer on success/error. Both role results are mandatory.
+The watcher uses bounded nonblocking reads, a fixed deadline and explicit
+completion input. Source parsing/shell syntax and diff review pass; these
+are preparation checks, not native acceptance.
+
+The five touched scripts add the observer and pass its named replay selector
+through the existing host/guest/runtime pipeline. Storage admission, source/
+artifact authentication, isolation and cleanup remain mandatory. TUF currently
+has about 45 GiB available; the existing replay profile decides admission.
+No old cache or new VM is allocated by this preparation. The next step is the
+actual isolated replay using app manifest
+e20a16fa280d39996a65a625b8802b5315269d17cf6737e0aa21b92c68651f09.
+The native account-store, Android, installed/release and independent parked
+obligations remain OPEN pending their actual results.

@@ -31,7 +31,7 @@ case "$PEER_SCENARIO" in
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
-  focus-reconnect-resource) EXPECTED_RESTARTS=3 ;;
+  focus-reconnect-resource|account-stores) EXPECTED_RESTARTS=3 ;;
   view-only|view-only-save-failure) EXPECTED_RESTARTS=0 ;;
   viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-modes|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
@@ -48,6 +48,47 @@ INPUT_RESPONSE=0
 case "$PEER_SCENARIO" in viewer-soak|input-soak) LONG_SOAK=1 ;; esac
 case "$PEER_SCENARIO" in input-latency|input-soak) INPUT_RESPONSE=1 ;; esac
 readonly LONG_SOAK INPUT_RESPONSE
+ACCOUNT_STORE_PID= ACCOUNT_STORE_START=
+
+start_account_store_watch() {
+  [ "$PEER_SCENARIO" = account-stores ] || return 0
+  local role=$1 ready
+  coproc ACCOUNT_STORE_CHANNEL {
+    exec python3 -I -S /source/scripts/flutter-peer-account-stores.py "$role"
+  }
+  ACCOUNT_STORE_PID=$ACCOUNT_STORE_CHANNEL_PID
+  ACCOUNT_STORE_START=$("$READY" --identity "$ACCOUNT_STORE_PID")
+  IFS= read -r -t 10 -u "${ACCOUNT_STORE_CHANNEL[0]}" ready \
+    || fail 'account-store observer did not become ready'
+  [ "$ready" = "ACCOUNT_STORES_READY role=$role files=2 controls=8" ] \
+    || fail 'account-store observer readiness differs'
+}
+
+cleanup_account_store_watch() {
+  [ -n "$ACCOUNT_STORE_PID" ] || return 0
+  if "$READY" --is-running "$ACCOUNT_STORE_PID" "$ACCOUNT_STORE_START"; then
+    "$READY" --stop "$ACCOUNT_STORE_PID" "$ACCOUNT_STORE_START" || return 1
+  fi
+  wait "$ACCOUNT_STORE_PID" 2>/dev/null || true
+  ACCOUNT_STORE_PID= ACCOUNT_STORE_START=
+}
+
+finish_account_store_watch() {
+  [ "$PEER_SCENARIO" = account-stores ] || return 0
+  local role=$1 result=/tmp/account-store-observation.json
+  "$READY" --is-running "$ACCOUNT_STORE_PID" "$ACCOUNT_STORE_START" \
+    || fail 'account-store observer exited before completion'
+  printf 'finish\n' >&"${ACCOUNT_STORE_CHANNEL[1]}"
+  wait "$ACCOUNT_STORE_PID" || fail 'retired account-store observation failed'
+  ACCOUNT_STORE_PID= ACCOUNT_STORE_START=
+  [ -f "$result" ] && [ ! -L "$result" ] \
+    && [ "$(stat -c '%u:%g:%a:%h' "$result")" = "$(id -u):$(id -g):600:1" ] \
+    && [ "$(stat -c %s "$result")" -le 4096 ] \
+    || fail 'account-store observation result differs'
+  cat "$result"
+  printf 'FLUTTER_PEER_ACCOUNT_STORES_OK role=%s files=2 controls=8 events=0 bytes=unchanged metadata=unchanged observer=joined\n' "$role"
+}
+
 case "$PEER_SCENARIO" in
   credential-rotation|credential-forget) ROTATE_CREDENTIAL=1 ;;
   *) ROTATE_CREDENTIAL=0 ;;
@@ -1098,6 +1139,7 @@ PY
         "$READY" --stop "$XVFB_PID" "$XVFB_START" || cleanup_status=$?
         wait "$XVFB_PID" 2>/dev/null || true
       fi
+      cleanup_account_store_watch || cleanup_status=1
       [ "$cleanup_status" -eq 0 ] || status=125
       exit "$status"
     }
@@ -1157,6 +1199,7 @@ PY
     "$READY" --wait-log "$SOURCE_PID" "$SOURCE_START" "$COORD/frame-source.log" \
       'FLUTTER_PEER_SOURCE_READY display=:98 dimensions=640x480 interval_ms=250 identity=counter32 rows=4 bars=24 wrap=refused' \
       'peer source readiness'
+    start_account_store_watch server
     start_server_generation 1
     "$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START" "$SERVER_LOG" \
       "$PROBE" "$(id -u)"
@@ -1503,6 +1546,7 @@ PY
     XVFB_PID= XVFB_START=
     [ "$(tcp_listener_count)" -eq 0 ] && [ "$(udp_socket_count)" -eq 0 ] \
       || fail 'server retained an INET listener or UDP socket after teardown'
+    finish_account_store_watch server
     printf 'server=joined source=joined xvfb=joined listener=closed replacements=%s\n' \
       "$completed_restarts" \
       > "$COORD/server.result.tmp"
@@ -1582,6 +1626,7 @@ PY
         "$READY" --stop "$XVFB_PID" "$XVFB_START" || cleanup_status=$?
         wait "$XVFB_PID" 2>/dev/null || true
       fi
+      cleanup_account_store_watch || cleanup_status=1
       [ "$cleanup_status" -eq 0 ] || status=125
       exit "$status"
     }
@@ -1658,6 +1703,7 @@ for address, alias, user, host in (
 print('FLUTTER_PEER_RECENT_SEARCH_ENV seeded=3 credentials=absent app=not-started')
 PY
     fi
+    start_account_store_watch viewer
     for viewer_generation in $(seq 1 "$viewer_generations"); do
     if [ "$PEER_SCENARIO" = theme-restart ]; then
       # Change the desktop only after the preceding app process has joined.
@@ -2493,6 +2539,7 @@ PY
     wait "$XVFB_PID" 2>/dev/null || true
     XVFB_PID= XVFB_START=
     result_name=viewer.result
+    finish_account_store_watch viewer
     [ "$PEER_ROLE" != slow ] || result_name=slow.result
     printf '%s\n' "$viewer_result" > "$COORD/$result_name.tmp"
     mv "$COORD/$result_name.tmp" "$COORD/$result_name"

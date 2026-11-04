@@ -103,6 +103,7 @@ case "$#:${1:-}" in
         --session-close) PEER_SCENARIO=session-close ;;
         --monitor-switch) PEER_SCENARIO=monitor-switch ;;
         --recent-search) PEER_SCENARIO=recent-search ;;
+        --account-stores) PEER_SCENARIO=account-stores ;;
         --monitor-burst) PEER_SCENARIO=monitor-burst ;;
         --wake-lock) PEER_SCENARIO=wake-lock ;;
         --background-close) PEER_SCENARIO=background-close ;;
@@ -374,6 +375,11 @@ elif [ "$PEER_SCENARIO" = viewer-suspend ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined suspension_cycles=3 stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = account-stores ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1 2 3 4'
+  SERVER_REPLACEMENTS=3
+  VIEWER_RESULT='viewer=joined xvfb=joined stable_focus_connection=true reconnects=3 resources=bounded'
 else
   RUNTIME_CYCLES=6
   SERVER_GENERATIONS='1 2 3 4'
@@ -1502,6 +1508,14 @@ server_status="$(peer_vm_docker inspect --format '{{.State.ExitCode}}' "$SERVER_
 
 [ "$viewer_status" -eq 0 ] || exit "$viewer_status"
 [ "$server_status" -eq 0 ] || die "controlled peer stage exited $server_status"
+if [ "$PEER_SCENARIO" = account-stores ]; then
+  for role in server viewer; do
+    role_log=$SERVER_LOG
+    [ "$role" != viewer ] || role_log=$VIEWER_LOG
+    [ "$(grep -Fxc "FLUTTER_PEER_ACCOUNT_STORES_OK role=$role files=2 controls=8 events=0 bytes=unchanged metadata=unchanged observer=joined" "$role_log")" -eq 1 ] \
+      || die "retired account-store observation is missing for $role"
+  done
+fi
 grep -Fxq "FLUTTER_PEER_VIEWER_RUNTIME_OK $VIEWER_RESULT" \
   "$VIEWER_LOG" || die 'viewer terminal verdict is missing'
 grep -Fxq "FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined listener=closed replacements=$SERVER_REPLACEMENTS" \

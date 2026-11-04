@@ -136563,3 +136563,38 @@ https://api.flutter.dev/flutter/material/TextButton-class.html supports the
 existing grouped-card action and onPressed activation model. No new dependency,
 authentication path, native audio or Android/device evidence is claimed. The
 baseline must distinguish a rendered missing action from a fixture/build failure.
+
+The user's next pivot parks incoming voice controls. Baseline auakRqgWeC at
+af311435 exits 1: the forty existing cases pass, but none of the nine new voice
+cases execute and the exact-count validator refuses the result. No rendered
+voice defect or correction is established. The uncommitted receipt-shape edit
+is preserved in stash 30f00f9937dcd85032694cf9a1bbf9fc2630a913; no repair/rerun
+follows. voice-controls-before-af311435.json is 9,645 bytes, SHA-256
+7b929b2bfd3f1f8ff688b62922e0ce33ef6bc9ab66569080006266e8fe4b5432.
+Launch/QEMU 1787570/1788057 are absent; RAM run.zkrlrp28 identity 29:45569
+retires after a 4,481,126,400-byte peak. Exact private diagnostics and the
+inventoried extracted helper package retire with four zero listener deltas.
+Thirty-one bounded evidence files match CTE/TUF. All independent parks remain.
+
+## 2026-11-04 — Windows service protocol component acceptance
+
+Select R-S11hg/R-S11e-245's existing executable wire regression, which the
+current ledger explicitly records as unexecuted. Establishing the actual
+production serialization/refusal behavior takes priority over further unused
+dependency cleanup. This is a separate platform/protocol aspect from the parked
+mobile voice controls; no Windows privileged-action or parent-build park is resumed.
+
+Use a focused profile in the existing zero-NIC VM and non-root, capability-free
+container. Reuse the main-config-key resource admission without increasing its
+limits. Compile the five exact production type definitions and unchanged existing
+test body with root-locked dependencies; only generic Data::Close uses a disclosed
+one-variant fixture. Require the named test, exact count, artifact identity before
+and after execution, source hashes and joined cleanup. No Windows process, pipe,
+authorization, installed artifact or overall release acceptance is claimed.
+
+Serde's official container-attribute and enum-representation contracts
+(https://serde.rs/container-attrs.html and https://serde.rs/enum-representations.html)
+distinguish unknown fields from the declared adjacent content field. Execute the
+existing assertions before deciding whether a failure belongs to production or
+to an incorrect test expectation. Product types and assertions remain unchanged
+for this initial run; a source annotation alone does not establish decoder behavior.

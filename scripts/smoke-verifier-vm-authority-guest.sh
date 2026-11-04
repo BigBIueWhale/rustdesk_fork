@@ -226,7 +226,7 @@ case "$#:${8:-}" in
         [[ "${13}" = --clipboard || "${13}" = --whiteboard-presentation \
             || "${13}" = --whiteboard-display-lifetime || "${13}" = --whiteboard-client \
             || "${13}" = --whiteboard-helper-lifetime || "${13}" = --input-revocation || "${13}" = --input-release || "${13}" = --input-lifetime \
-            || "${13}" = --installer-package || "${13}" = --linux-password-admission \
+            || "${13}" = --installer-package || "${13}" = --linux-password-admission || "${13}" = --windows-service-protocol \
             || "${13}" = --pake-allocation || "${13}" = --pake-timing || "${13}" = --pake-backend-default || "${13}" = --pake-backend-serial || "${13}" = --main-config-key || "${13}" = --language-selection || "${13}" = --windows-pointer || "${13}" = --linux-resource-limits || "${13}" = --linux-xrandr-query || "${13}" = --resolution-restoration \
             || "${13}" = --linux-resolution-lifetime || "${13}" = --audio-mailbox \
             || "${13}" = --recording-output || "${13}" = --viewer-video || "${13}" = --video-qos || "${13}" = --video-vpx || "${13}" = --video-qos-controller || "${13}" = --option-ack || "${13}" = --resolution-parent || "${13}" = --file-receive-caller || "${13}" = --remote-restart || "${13}" = --viewer-credentials || "${13}" = --viewer-resume || "${13}" = --local-file-listing \
@@ -1386,6 +1386,7 @@ cases.extend([('hbb-common-fs', {'HBB_LOGIND_NATIVE': '1'}, 'linux-logind'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'peer-search'}, 'flutter-peer-search'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'clipboard-keystrokes'}, 'flutter-credential-dialog'),
               ('flutter-model-tests', {'FLUTTER_TEST_PROFILE': 'file-search'}, 'flutter-credential-dialog'),
+              ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'windows-service-protocol'}, 'main-config-key'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'pake-timing'}, 'pake-timing'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'pake-backend-default'}, 'pake-timing'),
               ('android-rust-lifecycle-tests', {'RUST_TEST_PROFILE': 'pake-backend-serial'}, 'pake-timing'),
@@ -5888,6 +5889,14 @@ run_focused_rust_tests() {
                     required_tests+=(timing_tests::backend_long_timing_evidence)
                 fi
             fi
+        elif [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
+            container_name=rustdesk-windows-service-protocol-tests
+            memory=1g
+            memory_bytes=1073741824
+            tmpfs_size=64m
+            source_fingerprints=(Cargo.lock src/ipc.rs scripts/verify-linux-service-password-ipc.py
+                scripts/run-windows-service-protocol-tests.py)
+            required_tests=(test::windows_service_credential_and_control_channels_use_closed_directional_protocols)
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
             container_name=rustdesk-main-config-key-tests
             memory=1g
@@ -7111,7 +7120,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                         fi
                         if [[ "$RUST_TEST_PROFILE" = pake-allocation || "$RUST_TEST_PROFILE" = pake-timing \
                             || "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial \
-                            || "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = main-config-key ]]; then
+                            || "$RUST_TEST_PROFILE" = language-selection || "$RUST_TEST_PROFILE" = main-config-key \
+                            || "$RUST_TEST_PROFILE" = windows-service-protocol ]]; then
                             python3 -I -S -c '\''import errno, socket
 with socket.socket() as canary:
     try:
@@ -7131,6 +7141,10 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
                             fi
                             if [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
                                 /bin/bash /source/scripts/run-pake-timing-tests.sh "--${RUST_TEST_PROFILE#pake-}"
+                                exit 0
+                            fi
+                            if [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
+                                python3 -B -I -S /source/scripts/run-windows-service-protocol-tests.py
                                 exit 0
                             fi
                             if [ "$RUST_TEST_PROFILE" = main-config-key ]; then
@@ -7554,6 +7568,8 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=24\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
         printf 'PAKE_TIMING_PROFILE=%s stage=container-start tests=21 cohorts=4 fixtures=1 samples=500000 control_samples=100000\n' "$RUST_TEST_PROFILE"
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
+        printf 'WINDOWS_SERVICE_PROTOCOL_PROFILE=windows-service-protocol stage=container-start tests=1 windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         printf 'MAIN_CONFIG_KEY_PROFILE=main-config-key stage=container-start tests=3 app=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = language-selection ]; then
@@ -8419,6 +8435,12 @@ PY
             && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-(vartime-prepared-one-random|multiply-prepared-one-one) seed:[0-9a-f]{16} samples:100000 ' "$output")" -eq 2 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-multiply-prepared-(one-random|random-one) seed:[0-9a-f]{16} samples:500000 ' "$output")" -eq 2 ] \
             || fail 'PAKE backend extended measurements differ'
+    elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
+        [ "${#result_lines[@]}" -eq 1 ] || fail 'service protocol summary count differs'
+        [ "$(grep -Ec '^WINDOWS_SERVICE_PROTOCOL_ARTIFACT=pass sha256=[0-9a-f]{64} tests=1 unchanged=before-after$' "$output")" -eq 1 ] \
+            && [ "$(grep -Fc 'WINDOWS_SERVICE_PROTOCOL_ARTIFACT=' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^WINDOWS_SERVICE_PROTOCOL_SOURCE=pass ipc=[0-9a-f]{64} types=[0-9a-f]{64} test=[0-9a-f]{64} lock=[0-9a-f]{64} data=close-variant-fixture$' "$output")" -eq 1 ] \
+            || fail 'service protocol artifact or source receipt differs'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'main config-key summary count differs'
         [ "$(grep -Ec '^MAIN_CONFIG_KEY_ARTIFACT=pass sha256=[0-9a-f]{64} tests=3 unchanged=before-after$' "$output")" -eq 1 ] \
@@ -9183,6 +9205,11 @@ PY
             printf 'PAKE_BACKEND_VM=pass commit=%s tree=%s selection=%s tests=21 target=linux-x86_64 scope=optimized-backend-timing rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "${RUST_TEST_PROFILE#pake-backend-}" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
+            [ "$tests_passed" -eq 1 ] || fail 'service protocol test count differs'
+            grep -E '^test test::.* \.\.\. ok$|^WINDOWS_SERVICE_PROTOCOL_(ARTIFACT(_BEFORE)?|SOURCE)=' "$output"
+            printf 'WINDOWS_SERVICE_PROTOCOL_VM=pass commit=%s tree=%s tests=1 target=linux-x86_64 scope=production-wire-schema windows=unexecuted data=close-variant-fixture rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = main-config-key ]; then
             grep -E '^test tests::.* \.\.\. ok$|^MAIN_CONFIG_KEY_(ARTIFACT(_BEFORE)?|LOCK)=' "$output"
             printf 'MAIN_CONFIG_KEY_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-key-schema rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \

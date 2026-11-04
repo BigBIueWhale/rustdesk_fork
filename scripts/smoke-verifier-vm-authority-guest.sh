@@ -5891,7 +5891,8 @@ run_focused_rust_tests() {
                     tests::isk_order_independent tests::generator_padding_and_length_boundaries
                 )
                 if [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
-                    source_fingerprints+=(libs/pake/src/allocation_probe.rs scripts/verify.sh)
+                    source_fingerprints+=(libs/pake/src/allocation_probe.rs scripts/verify.sh
+                        scripts/observe-pake-retirement.py)
                     required_tests+=(allocation_probe::no_transient_secret_heap_copies)
                 else
                     required_tests+=(timing_tests::backend_long_timing_evidence)
@@ -8423,6 +8424,7 @@ PY
             && [ "$(grep -Fxc 'PAKE_ALLOCATION_CASE=generator allocations=0 reallocations=0' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'PAKE_ALLOCATION_CASE=isk allocations=0 reallocations=0' "$output")" -eq 1 ] \
             && [ "$(grep -Fxc 'PAKE_ALLOCATION_CASE=mac-key allocations=0 reallocations=0' "$output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'PAKE_ERASURE=pass cases=11 production=8 controls=3 observer=owned-child-proc-mem scope=initialized-credential-bytes-before-system-free cleanup=joined' "$output")" -eq 1 ] \
             || fail 'PAKE allocation observations or artifact differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'PAKE timing summary count differs'
@@ -9216,7 +9218,7 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = pake-allocation ]; then
-            grep -E '^test (tests|allocation_probe)::.* \.\.\. ok$|^PAKE_(ALLOCATION|TIMING)_' "$output"
+            grep -E '^test (tests|allocation_probe)::.* \.\.\. ok$|^PAKE_(ALLOCATION|TIMING|ERASURE)(_|=)' "$output"
             printf 'PAKE_ALLOCATION_VM=pass commit=%s tree=%s tests=%s target=linux-x86_64 scope=production-generator-isk-mac-no-heap rust=1.75.0 vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = pake-timing ]; then

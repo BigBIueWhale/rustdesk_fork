@@ -137759,3 +137759,44 @@ lifecycle-ledger-ba9d77d4.json is 5,169 bytes, SHA-256
 The counted ledger remains unchanged; only this audit receipt is appended.
 This consolidation checkpoint is complete. Android boot-first remains parked;
 whole-document classification and the complete release objective remain open.
+
+## 2026-11-04 — PAKE credential retirement observed outside the allocator
+
+Previous turn made verified documentation progress. Select R-P12/R-T15's missing
+secret-erasure evidence over further ledger compression: existing optimized tests
+prove construction/confirmation results and allocation counts, but do not observe
+credential bytes at retirement. PAKE timing, Android boot-first and all independent
+parks remain parked. Production protocol and state ownership stay unchanged.
+
+Review the production Initiator/Responder credential owners and consuming success,
+role-refusal and drop paths, the pinned zeroize 1.8.1 Vec/Zeroizing implementations,
+and the isolated optimized runner. Rust's GlobalAlloc contract says dealloc
+deinitializes allocation contents before handing them to the allocator; volatile
+reads still require initialized values. Therefore an in-allocator Rust byte scan
+would not be valid evidence. Primary references:
+https://doc.rust-lang.org/std/alloc/trait.GlobalAlloc.html
+https://doc.rust-lang.org/std/ptr/fn.read_volatile.html
+https://docs.kernel.org/filesystems/proc.html
+
+Extend only the test allocator's owned-pointer retirement barrier. It performs no
+allocation, unwinding or byte inspection and pauses before System.dealloc. A
+separate same-UID parent reads its own unreaped child's fixed public fixture bytes
+through one retained /proc/PID/mem descriptor. The child announces its exact live
+Vec pointer/initialized length/capacity; the parent first requires an exact live
+fixture match, then reads those same bytes at retirement. No external PID selector,
+unrelated process, actual credential, host process or capability grant is used.
+
+The closed eleven-case observer covers both roles on explicit drop, role refusal,
+successful authenticated advancement and unwind. Ordinary uncleared and tail-only
+buffers demonstrate nonzero detection; an unreleased control must provide no
+retirement observation. A missing observation cannot satisfy erasure. Each owned
+child has a ten-second deadline, bounded output and exact wait/kill cleanup.
+The existing twenty functional tests and allocation check remain; timing is not
+selected. Source fingerprints include the new observer, and acceptance requires
+its separate eleven-case receipt before the existing artifact result.
+
+This is prepared verification, not a product defect or a passed erasure claim.
+Only initialized credential bytes in these exact optimized Linux test processes
+can be established; scalar/point/key stack/register copies, library internals,
+normalization scratch, partial RNG writes, aborts, other targets/shipping artifacts,
+full application/installed authority and independent review remain OPEN.

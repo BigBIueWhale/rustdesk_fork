@@ -97,6 +97,7 @@ if [ "$allocation_probe" -eq 1 ]; then
         --skip nfc_normalization_tests:: --skip timing_tests:: --test-threads=1 --color never --show-output
     timeout --signal=TERM --kill-after=5s 30s taskset -c "$cpu" "$test_executable" \
         --exact allocation_probe::no_transient_secret_heap_copies --test-threads=1 --color never --show-output
+    python3 -B -I -S /source/scripts/observe-pake-retirement.py "$test_executable"
     [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
     printf 'PAKE_ALLOCATION_ARTIFACT=pass sha256=%s tests=21 optimized=true unchanged=before-after\n' "$artifact_sha"
     exit 0

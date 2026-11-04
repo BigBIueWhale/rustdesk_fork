@@ -137906,3 +137906,36 @@ This audit-only receipt leaves the counted ledger unchanged. The component corre
 checkpoint is complete; actual rotated-display/native application acceptance remains
 open. PAKE retirement and independent user parks remain parked; the release goal
 remains active.
+
+## 2026-11-04 — rotated-display native runtime prerequisite
+
+Previous turn made verified product/component progress. Continue R-T4/R-S0 with
+actual XRandR mode changes and restoration, ahead of more component checks or
+ledger compression. Read-only source inspection establishes that Xvfb only exposes
+RR_Rotate_0; it cannot decide the rotated-display condition. Xephyr exposes all
+rotations/reflections and is a real nested X server. The X server's RandR adapter
+routes CRTC changes to its implemented screen-configuration callback. Primary sources:
+https://gitlab.freedesktop.org/xorg/xserver/-/blob/master/hw/vfb/InitOutput.c
+https://gitlab.freedesktop.org/xorg/xserver/-/blob/master/hw/kdrive/ephyr/ephyr.c
+https://gitlab.freedesktop.org/xorg/xserver/-/blob/xorg-server-21.1.7/randr/rrcrtc.c
+https://manpages.debian.org/bookworm/xserver-xephyr/Xephyr.1.en.html
+
+TUF has the authenticated Xvfb fixture but no Xephyr or xrandr runtime candidate.
+CTE retains the earlier 169,609-byte xrandr-only candidate; preserve it. Extend the
+existing isolated xrandr acquisition operation to obtain Xephyr plus the missing
+dependency closure for the exact recorded development image. Debian publishes
+Xephyr 2:21.1.7-3+deb12u13 as 3,295,176 bytes, SHA-256
+ef776e53dbf43b2c40d8ce8324efdc2050bbafa7a0b1670abf96affedefe975f:
+https://packages.debian.org/bookworm/amd64/xserver-xephyr/download
+Use a fixed November 4 signed snapshot and repeat both entry package digest/size/
+version/architecture checks inside the acquisition VM. The older-version snapshot
+metadata request timed out and supplied no authority; it is not used.
+
+The numeric nonroot container only downloads packages; no installation or display
+execution occurs during acquisition. Accepted output is limited to 64 packages/
+64 MiB and 16 MiB per package, and binds the base dpkg manifest, package hashes
+and snapshot/keyring identities. Publish under the new xrandr-rotation archive name
+without replacing the older candidate or canonical inputs. Shared storage admission,
+monitoring, network topology and joined cleanup remain mandatory. Acquiring this
+prerequisite does not establish native product behavior; the intended next check
+uses both X servers solely inside the networkless disposable runtime.

@@ -125920,6 +125920,27 @@ Android UI or full-peer scrolling claim. Production behavior remains unchanged
 for the baseline. Shell syntax, Python parsing and whitespace checks pass;
 Android compilation and behavioral execution are pending.
 
+Preparation ca70a84d is pushed. Admission prTHakvLFC refuses before VM creation
+because the Android cache already contains four generations. After the exact
+launcher exits, the shared lock guards retirement of superseded 1ee23828's
+verified two APKs and sidecars (47,762,653 bytes). Newer f372aacf, aca3df16 and
+33fc2bdb remain. Historical hashes and results survive; the old binaries are
+no longer replayable without rebuilding. The three-file failed private root
+and absent RAM workspace are reconciled. Six bounded records match both hosts;
+android-scroll-cache-ca70a84d.json is 3,355 bytes, SHA-256
+a4192f8b054865d69b7a3b562508a4f973d69e2c45a8fd2a417e849fa1fe6078.
+
+Retry PBktN2SkWU is admitted at the same source. Its controller is
+.harness-state/android-scroll-admitted-ca70a84d-control, launcher PID 1680731
+start ticks 314334911, QEMU PID 1681300 start ticks 314335369. The 20 GiB guest
+uses the existing bounded android-app profile; initial listener deltas are zero.
+The process is observed live; no compilation or behavioral success is claimed.
+The two-line product correction is prepared in CTE's working tree, removing only
+the Android/iOS exclusions from the existing native preference application.
+TUF stays at ca70a84d throughout the unchanged-product baseline. Do not sync,
+replace or restart this owned run merely because its quiet build takes time;
+collect its actual exit and cleanup before replaying the candidate.
+
 ### 2026-11-01 — pivot to native camera identity
 
 The user redirected work after read-only session-type input-confinement research.

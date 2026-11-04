@@ -53,19 +53,15 @@ OPEN/PARKED before native fixture implementation or execution. The verified
 `60e3fb0a` service artifact remains available; manager and installed/release
 acceptance remain unproved. Independent parks remain.
 
-**Current work — connection-manager duration (R-S0), source finding.**
-`_CmHeaderState` starts at zero and increments once per periodic callback while
-the client is authorized and connected. Dart permits missed callbacks, so this
-counts UI scheduling events rather than elapsed connection time. Header recreation
-also discards the counter. The existing Dart client retains exact owner identity
-through same-generation snapshots, but neither its model nor the native CM
-snapshot supplies an elapsed duration. No product correction or runtime result
-is claimed. Next exercise the actual duration widget through delayed callbacks,
-remount, disconnect and replacement; elapsed time must follow the exact connection
-and freeze on disconnect, while a new owner starts separately. Full-session timing
-across CM startup/restart needs authoritative connection timing; a local stopwatch
-alone cannot establish it. Service, CM read-tick, file, voice and other parked work
-remain separate.
+**User pivot (2026-11-04):** Connection-manager duration (R-S0) is
+OPEN/PARKED. The unchanged-product rendered baseline at `0d3365e2` passes
+two controls and fails six cases, including header recreation and connection
+replacement. Other cases use prospective duration samples; native elapsed-time
+production and timing across CM startup/restart remain unproved. The unverified
+six-file correction is preserved in stash
+`f78e5d91eec30c4d6f90b780e54bd08cafbb1a44`. Evidence and joined cleanup:
+`cm-duration-before-0d3365e2.json`. Work moves to dependency-evidence
+consolidation below; all independent parks remain.
 
 **User pivot (2026-11-04):** The four single-Rust-test execution guards remain
 OPEN/PARKED before implementation. Independent parks remain.
@@ -1595,98 +1591,41 @@ Rows containing product findings and runtime results retain their own limits.
 | Verification clauses | Source, artifact and target-native evidence have separate scopes | `verification-clause-classification-a5946201.json` |
 | Audit and authentication authority | R-A6; no CM operator-accept authority under R-S2/R-S18; credential-unavailable parking and socket retirement remain required | `audit-contract-document-role-313c3d27.json` |
 | Retired host identity | R-S17 remains reserved/retired under the password-only contract | `host-identity-document-role-1ba44a05.json` |
-| Dependency inventory and unused dependencies | `51ef7781` removes six zero-caller root platform declarations: `runas`, `tauri-winrt-notification`, `fruitbasket`, `objc_id`, `async-process` and `termios`. Nine exclusively orphaned packages leave the lockfile, reducing 853 records to 844. Twelve shared dependencies remain; clipboard's `objc_id`, zbus's `async-process`, serial's termios 0.2.2, the protected installer's Win32 elevation verb and all product source are preserved. Three now-unambiguous time/termios references retain the same dependency targets/order; every retained version/source/field remains. The offline locked workspace build passes nineteen controller tests; the isolated inventory matches, with only its Cargo count/digest expectations changed and 31 Git packages/22 Git source URLs retained. Removing time 0.1.45 retires `RUSTSEC-2020-0071` (39 exceptions become 38); the two quick-xml reasons drop the removed Windows notification consumer, retaining their other dispositions. No fresh advisory scan is claimed. Prior ZIP/file-block, Wake-on-LAN/interface/OpenSSL removal and inventory reconciliation remain in linked evidence. Authenticated retained inputs/build images are unchanged. Current full-parent/installed/native-role, Windows/macOS execution, direct-connection/capture, advisory/provenance, native artifact closure, cold and release acceptance remain OPEN. | `dependency-inventory-drift-dac06f59.json`; `dependency-inventory-accepted-9b1c643f.json`; `webm-writer-accepted-b3cc5328.json`; `wol-dependency-23983d0e.json`; `interface-dependencies-2c6b45b1.json`; `openssl-dependency-e360a3e1.json`; `zip-dependency-4e29e754.json`; `platform-dependencies-51ef7781.json` |
 
-**Retired TOTP QR dependencies (`25ead00a`).** The unused dialog import,
-`qr_flutter` declaration and exclusive `qr_flutter`/`qr` lock records are removed;
-the only widget consumer disappeared with TOTP setup in `dbbb152a`. Direct Flutter
-dependencies fall 58 to 57 and locked packages 198 to 196; every retained lock
-record is byte-identical. TUF `wGPi8NmlU2` passes pinned offline enforced-lock
-resolution, 25 existing password field/focus/lifecycle cases and three parser
-controls in 99 seconds. Inventory `fliANfori0` passes after `ec9301ca` stages the
-already-existing protobuf build script and reconciles eight build scripts / 832
-Cargo records plus the existing local cursor fork. No dependency is upgraded.
-Receipts `qr-password-25ead00a.json` and `qr-inventory-ec9301ca.json` bind results
-and exact VM/RAM cleanup; all seven listener deltas are zero. The initial missing
-inventory input and retired diagnostics are preserved in `qr-inventory-25ead00a.json`.
-Full-app/final-artifact, advisory, installed/native and release acceptance remain
-OPEN; all independent parks remain unchanged.
+**Dependency retirements — historical component evidence.** The following
+results belong to the named source snapshots; their package totals are not a
+fresh current inventory or a combined test run. Retained versions, sources and
+checksums were preserved, with only the stated removed/reclassified dependency
+edges. Authenticated caches and build inputs were retained. Capsules are relative
+to `.harness-state/verifier-vm/` and retain exact results, intermediate failures,
+timings and process/private/RAM cleanup.
 
-**Unused text/font dependencies (`5de34d94`).** Remove `extended_text`,
-`google_fonts` and exclusive `extended_text_library` from the production graph;
-`5e28b6c4` already replaced their only consumers with the local path-label widget
-and terminal monospace family. Direct dependencies fall 57 to 55 and locked
-packages 196 to 193; all retained records are byte-identical. At `9752caf6`,
-TUF `rvJkckKzBF` passes pinned offline enforced-lock resolution, sixteen rendered
-path-label cases and three parser controls in 91 outer seconds. `ps16X1ZWWN`
-passes the dependency inventory in nine seconds. Capsules
-`fonts-labels-9752caf6.json` and `fonts-inventory-9752caf6.json` bind exact source,
-results and VM/RAM retirement; all seven listener deltas are zero. Initial
-`pGvvBHd9zY` failed the already-parked models parser controls because the shard
-selected all profiles; the repair selects the existing exact path-label controls.
-Its diagnostics and cleanup are retained in `fonts-labels-5de34d94.json`.
-The separately pinned candidate-SDK closure, full-app/final artifacts, advisory
-and release acceptance remain OPEN; model-inventory and all other parks remain.
+| Retirement / source | Current disposition and demonstrated scope | Evidence |
+| --- | --- | --- |
+| Root platform declarations, `51ef7781` | Removed unused `runas`, `tauri-winrt-notification`, `fruitbasket`, `objc_id`, `async-process`, `termios` and nine orphaned packages. Clipboard's `objc_id`, zbus's `async-process`, serial's termios 0.2.2 and the installer's Win32 elevation remain. Offline locked build passes nineteen controller tests; inventory matches. Removing time 0.1.45 retires `RUSTSEC-2020-0071`; quick-xml exceptions retain their other consumers. No fresh advisory scan. | `platform-dependencies-51ef7781.json` |
+| TOTP QR, `25ead00a` | Removed the unused import, `qr_flutter` and exclusive `qr`; its last widget caller was already gone. Offline enforced-lock resolution, 25 password field/focus/lifecycle cases and three parser controls pass. Inventory passes after staging the existing protobuf build script and reconciling the existing local cursor fork. | `qr-password-25ead00a.json`; `qr-inventory-ec9301ca.json`; initial refusal: `qr-inventory-25ead00a.json` |
+| Text/fonts, `5de34d94` / `9752caf6` | Removed unused `extended_text`, `google_fonts`, `extended_text_library`; the local path-label widget and terminal monospace family already replaced their consumers. Offline enforced-lock resolution, sixteen rendered path-label cases, three scoped parser controls and inventory pass. Initial failure came from selecting the separately parked models parser controls. | `fonts-labels-9752caf6.json`; `fonts-inventory-9752caf6.json`; initial refusal: `fonts-labels-5de34d94.json` |
+| UI dependencies, `c1613852` / `8d6d8707` | Removed unused `contextmenu`, `flex_color_picker`, `after_layout`, `animations`, `flex_seed_scheme`, `dropdown_button2` and the direct HTTP declaration. Tuple/HTTP remain transitive; SQLite remains required/pinned. The first snapshot passes 61 menu/widget cases and inventory; the second passes offline enforced-lock resolution, fresh bridge generation, twelve combo-box/widget cases, three parser controls and inventory. | `ui-deps-{menu,inventory}-c1613852.json`; `dropdown-{widget,inventory}-8d6d8707.json` |
+| Candidate Flutter lock, `59b51e80` | Removed the same eleven orphaned packages without upgrading retained records. Strict offline resolution, fresh bridge generation and the complete Linux build pass as recorded in Current Verdict. Additional artifact inventory remains OPEN/PARKED; SDK promotion remains OPEN. | Current Verdict's candidate-SDK evidence |
+| Unused TLS builder, `c2fafa4d` | Deleted callerless `hbb_common::verifier`, four direct declarations and exclusive `tokio-rustls` / `webpki-roots`. Pinned Cargo 1.75 retains shared `ring` through `rustls-webpki` and removes inactive `rustls` log/ring edges. Offline locked build passes nineteen controller tests; inventory matches. Android platform-verifier JNI/Gradle, direct TCP/CPace and shared dependencies remain. Dormant-code retirement does not demonstrate a live LPE. | `unused-tls-builder-e8ebc14d.json` |
+| Clipboard dependency chain, `546fa719` / `12dc3926` | Removed eight unused declarations and five exclusive records: Git `x11-clipboard` 0.8.1, `x11rb` / `x11rb-protocol` 0.12.0, `gethostname` 0.3.0, `winapi-wsapoll` 0.1.2. Active X11 listener, registry `x11-clipboard` 0.9.2 and file-copy feature remain. The runner seeds its private lock from the root lock, selects fixture/clipboard together and requires file-copy, within unchanged 1-GiB container / 2-GiB guest limits. Pinned Rust 1.75 passes 43 helper/FD, dispatcher and routing cases with unchanged executables; inventory passes after reconciling earlier Wayland-removal drift. Publication is controlled; mounted FUSE and desktop clipboard sessions were not exercised. | `clipboard-dependencies-12dc3926.json` |
 
-**Unused UI dependencies.** `c1613852` removes `contextmenu`, `flex_color_picker`
-and exclusive `after_layout`, `animations`, `flex_seed_scheme`; `tuple` remains
-transitive. Its 61 menu/widget cases and inventory pass are retained in
-`ui-deps-{menu,inventory}-c1613852.json`. `8d6d8707` additionally removes callerless
-`dropdown_button2` and the unused direct HTTP declaration. HTTP remains transitive;
-SQLite remains required and pinned. Current totals are 50 direct / 187 locked
-Flutter packages, with unchanged 832 Cargo records/eight build scripts. Retained
-versions, sources and hashes are unchanged; only tuple/HTTP become transitive.
-No application implementation changes.
-`wvKdKLyZEy` passes offline enforced-lock resolution, fresh bridge generation,
-twelve existing combo-box/widget cases and three parser controls in 248 seconds;
-`Ih4tN6HIGB` passes inventory in ten. `dropdown-{widget,inventory}-8d6d8707.json`
-bind evidence and exact process/private/RAM retirement with seven zero listener
-deltas. The candidate lock at `59b51e80` removes the same eleven orphaned packages
-without upgrading retained records (196 to 185); strict offline resolution, fresh
-bridge generation and the complete Linux build pass as recorded in the current
-verdict. Additional artifact inventory is OPEN/PARKED; SDK promotion, native/installed,
-other-platform and release acceptance remain OPEN. All independent parks remain.
+Earlier inventory reconciliation, WebM, Wake-on-LAN, interface, OpenSSL and ZIP
+retirements remain in `dependency-inventory-drift-dac06f59.json`,
+`dependency-inventory-accepted-9b1c643f.json`,
+`webm-writer-accepted-b3cc5328.json`, `wol-dependency-23983d0e.json`,
+`interface-dependencies-2c6b45b1.json`, `openssl-dependency-e360a3e1.json`
+and `zip-dependency-4e29e754.json`.
+The named QR/font/UI transactions have zero listener deltas; clipboard's
+unattributed post-run endpoint addition remains recorded and untouched.
 
-**Retired unused TLS client builder (`c2fafa4d`).** The callerless 196-line
-`hbb_common::verifier` module and its compatibility API are deleted; Git history
-`5e37492f` removed its last proxy caller. Four direct dependency declarations and
-the exclusive `tokio-rustls`/`webpki-roots` records leave the graph (844 to 842).
-The exact pinned Cargo 1.75 offline resolver retains shared `ring` through
-`rustls-webpki` and removes only the inactive `rustls` log/ring edges. Every retained
-version/source/checksum is preserved. The normal offline locked build passes all
-nineteen unchanged production-controller tests; the isolated inventory matches
-with only its Cargo count/digest expectations changed. Android platform-verifier
-JNI/Gradle, shared dependencies, direct TCP/CPace and authenticated inputs remain.
-The temporary private-copy resolver diagnostic is removed. Evidence:
-`unused-tls-builder-e8ebc14d.json`. This removes dormant code, not a demonstrated
-live LPE. Full-parent/native Android and other-platform, installed, advisory/cold
-artifact and R-S0/R-F5/release acceptance remain OPEN; parked producers stay parked.
-
-**Unused clipboard dependency chain (`546fa719`).** Root and clipboard manifests
-remove eight unused declarations for the older `x11-clipboard`/`x11rb` stack,
-`once_cell` and `percent-encoding`. Five exclusively orphaned lock records disappear:
-Git `x11-clipboard` 0.8.1, `x11rb`/`x11rb-protocol` 0.12.0, `gethostname` 0.3.0 and
-`winapi-wsapoll` 0.1.2. Packages fall from 836 to 831, Git records from 31 to 30,
-and distinct Git source URLs from 22 to 21. The active X11 listener, registry
-`x11-clipboard` 0.9.2, shared dependencies, file-copy feature and all product Rust
-sources remain. Retained versions, sources, checksums and resolved edges are unchanged
-apart from the eight removed root/clipboard edges. The inventory also reconciles
-preexisting drift from the earlier five-package Wayland removal; its old 841-record
-expectation was reproduced as a failing isolated check before this change.
-The clipboard component runner now seeds its private lock from the root lock,
-selects the fixture and clipboard together, and requires the compiled file-copy
-feature. This preserves pinned offline resolution within the existing 1 GiB
-container and 2 GiB guest limits; no storage limit is raised.
-All 43 existing helper, dispatcher and file-copy routing tests pass in 154 outer
-seconds on pinned Rust 1.75; the separate dependency inventory passes. The three
-executables remain byte-identical through execution. These are real helper/FD
-lifecycles and compiled clipboard/dispatcher components with controlled publication,
-not a mounted filesystem or desktop clipboard session. QEMU owners join and RAM
-workspaces retire. One post-run endpoint addition is retained as unattributed;
-no process investigation or host mutation was performed.
-Evidence: `clipboard-dependencies-12dc3926.json`. This removes unused build inputs;
-full-app/native clipboard publication, mounted FUSE, other-platform compilation,
-installed authority, advisory/cold/release and R-S0/R-F5 acceptance remain OPEN.
+**OPEN:** exact-current full-parent/full-app and final-artifact dependency closure;
+native/installed authority and roles; Windows/macOS/Android and other-platform
+execution, direct connection/capture and native clipboard/mounted FUSE;
+advisory/provenance review, cold builds, independent/release acceptance and
+R-S0/R-F5. The candidate SDK and artifact-inventory limits above, parked model
+inventory/parser work and all independent parks remain. This consolidation
+changes documentation only and adds no product or runtime acceptance.
 
 | Maintained guide or package documentation | Current disposition and remaining limits |
 | --- | --- |

@@ -138775,3 +138775,40 @@ measurements. Those cases specify the required UI contract without proving the
 native producer. The parser requires the exact named inventory and terminal result.
 Shell syntax, Python parsing, inventory and diff review pass. Product source is
 unchanged; the unchanged-header baseline is next. All independent parks remain.
+
+## 2026-11-04 — user pivot; dependency evidence consolidation
+
+The user explicitly requests another aspect. Connection-duration correction is
+OPEN/PARKED. Its six unfinished files, including the untracked native runner,
+are preserved in stash f78e5d91eec30c4d6f90b780e54bd08cafbb1a44. Each saved
+file's SHA-256 matches the pre-stash bytes; the worktree is clean afterward.
+The candidate was not compiled or tested and is not a completed correction.
+
+Retain the preceding unchanged-product baseline: CTE 0t49LvBuy2 at 0d3365e2
+passes two rendered controls and fails six cases. The 42-second observation
+passes before header recreation fails; fresh-owner replacement also fails.
+Other cases supply prospective duration metadata and do not test the Rust clock.
+Source verification passes before and after execution; parser controls are not
+reached after the expected test failure. Outer duration is 255.677 seconds.
+The prior reconciliation proves wrapper/QEMU/five captured children absent by
+pidfd ESRCH, four zero listener deltas and retired private/RAM state under the
+shared lock. Scratch peak is 6,385,094,656 bytes. Capsule
+cm-duration-before-0d3365e2.json is 29,583 bytes, SHA-256
+5662243705b77b3063dbda18574ca17a5dc8cd3bdb55d189eb7008b5ad11d86f;
+its retirement receipt is 261 bytes, SHA-256
+53e65c3b6d801ea1bab01f7990f63d604b341be41fd89d04e01ad8d2c2cc3b46.
+No duration scenario is resumed on this pivot; all independent parks remain.
+
+Select a bounded documentation-architecture slice over opening another product
+investigation: the live ledger is at 398,186 tokens and its dependency history
+mixes multiple snapshot totals with current-state wording. Consolidate only the
+platform/QR/font/UI/TLS/clipboard retirement block. Preserve every cited capsule,
+the named behavioral scopes, active dependencies/features, advisory limits,
+candidate-SDK and parser parks, and all native/installed/release gaps. Replace
+historical package counts and repeated timings/cleanup narratives with explicit
+source-bound rows and evidence references; those details remain in the capsules,
+this journal and Git history. Do not promote the separate runs to an aggregate
+inventory or fresh test result. Requirements, production code, dependencies,
+fixtures and runtime commands are unchanged. The only other ledger edit records
+the user pivot and baseline accurately. Exact scope/reference comparison and
+diff review precede the mandatory fresh isolated ledger count.

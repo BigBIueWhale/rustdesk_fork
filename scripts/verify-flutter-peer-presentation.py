@@ -158,7 +158,7 @@ def validate(sources: dict[str, str]) -> None:
         (
             '--connect 127.0.0.1',
             'VIEWER_START=$("$READY" --identity "$VIEWER_PID")',
-            'controller_args=(:98 :99 "$VIEWER_PID" "$VIEWER_START")',
+            'controller_args=(:98 "$VIEWER_DISPLAY" "$VIEWER_PID" "$VIEWER_START")',
             '"$CONTROLLER" "${controller_args[@]}"',
             'if [ "$controller_status" -ne 0 ]; then',
             'exit "$controller_status"',

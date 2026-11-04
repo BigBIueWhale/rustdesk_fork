@@ -139322,3 +139322,29 @@ f5b08061ee802f9be678d9f6f4d14823b307a0b9196cb028d6f75cb0231a0078.
 The exact-file reader correction and focused comparison are complete; broader
 integration, target artifacts and release acceptance remain OPEN. Goal progress
 continues from this checkpoint with TUF reachable and the existing parks intact.
+
+## 2026-11-04 — release integration: selected viewer display
+
+Previous goal turn: progress, correcting exact fork-version bytes and passing all
+28 unchanged cases. Continue the remaining integration prerequisite: the broader
+authority smoke stops at the Flutter presentation source contract before its
+release workspace/build/publication fixtures can run. Resolve the demonstrated
+false refusal before considering another product change or artifact rebuild.
+
+At fc15c249, source review traces the mismatch to dd485c06: the two-viewer
+scenario introduced VIEWER_DISPLAY, fixed to :99 except viewer-isolation:slow
+which uses :97; all other role combinations refuse. The stage validates DISPLAY,
+starts Xvfb on that selected display and passes it with the exact newly launched
+VIEWER_PID/VIEWER_START to the actual controller. Timeout/nonzero status still
+fails the stage before receipt acceptance. Existing complete-app evidence
+viewer-isolation-1bb6b8ea.json and video-mailbox-replay-84c39a88.json observes
+separate stopped/healthy viewers and actual pixels; no new native run is claimed.
+
+The supplementary contract still hardcodes :99 in its four-argument assertion.
+Update that single expected expression to the maintained selected display while
+retaining the exact PID/start-time tuple, controller invocation, failure outcome,
+isolation, source binding and renderer checks. This preserves a live wiring
+invariant; no new wording catalogue, alternate fixture or product change is
+needed. Run the existing isolated authority integration with the unchanged
+28-case metadata suite. TUF's existing SSH master is rechecked as active; this
+small CTE run does not require remote resources or reopen parked product topics.

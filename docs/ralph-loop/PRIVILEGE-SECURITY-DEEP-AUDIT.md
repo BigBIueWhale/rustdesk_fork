@@ -137483,3 +137483,14 @@ manager integration, display/input recovery or complete R-S0 acceptance. The
 parked startup-failure topic and all unrelated parks remain untouched. The ledger
 now records the new evidence and artifact retirement; fresh whole-ledger counting
 follows. No host product or test executable ran; no owned runtime remains.
+
+Fresh ledger count mVOjegdH2N at 43527d49 passes: 399,611 tokens / 1,828,140 bytes,
+input SHA-256 908d187189d016607a5bf71314884039408829219d78a7124c2cb9c43068de66.
+Seven controls, whole-input round trip and 82 storage admissions/five refusals
+pass in 30.930 capture seconds. Exact launcher/QEMU 1874952/1876368 are absent;
+private state, helpers and the 402,796,544-byte peak RAM workspace retire, with
+three zero listener deltas. All twelve bounded records match CTE/TUF. Capsule
+linux-parent-death-ledger-43527d49.json is 5,205 bytes, SHA-256
+3b37dd7a90b2219aaae052a8bf2b186172b46c6613ca8bc9e059d3c70a6567e5.
+This audit-only receipt leaves the counted ledger unchanged. Checkpoint complete;
+no owned job remains. Required final-artifact and other-manager acceptance stays open.

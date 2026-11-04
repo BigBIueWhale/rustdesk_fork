@@ -43,6 +43,10 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Further password-derivation work is OPEN/PARKED.
+The independent 17-case component result remains valid. Work moves to bounded
+release-ledger consolidation; broader acceptance and independent parks remain.
+
 **User pivot (2026-11-04):** Further peer-version work is OPEN/PARKED.
 The optimized library result remains valid; its separate TUF reinspection/evidence
 copy remains pending. Work moves to independent Unicode NFC conformance below;
@@ -5032,116 +5036,26 @@ by consolidating the ledger. All separately parked work remains OPEN/PARKED.
 
 ### Current authority and source closure
 
-**Main request schema acceptance (`33abe10a`).** The existing root/UID-4001
-socket scenarios now each reject 24 malformed requests and decode 18
-schema-valid controls across all eight Linux main request variants. They cover
-unknown/duplicate/missing fields, invalid unit payloads, wrong payload types and
-retired operations; controls preserve both envelope field orders and valid reads
-after refusals. Descriptor cleanup precedes the verdict. Production schemas and
-handlers are unchanged: this adds observed parser coverage, not a product fix.
-Handler effects, installed authorization, exhaustive nested-type admission and
-other-platform acceptance remain OPEN; parked CM payload work is unchanged.
+The following checkpoints retain source disposition and observed coverage. They
+are evidence at the named sources, not fresh aggregate acceptance. The audit and
+referenced capsules retain comparisons, artifact identities, timings and cleanup.
 
-**Main response field admission (`dabb54fe`).** The response envelope and
-status/readiness snapshot structs reject unknown fields. Previously the framed
-reader accepted all 38 tested extra-field replies under root and UID 4001; both
-unchanged scenarios now reject them and preserve ten valid controls each,
-including both tag/content orders and valid reuse after malformed frames.
-Valid encodings, values, limits and authorization are unchanged. This is production
-schema/reader evidence on Unix sockets; full application, installed and other-OS
-acceptance remain OPEN. The separately parked CM payload/handshake work is unchanged.
-The audit retains the baseline, exact artifacts and cleanup evidence.
+| Surface / checkpoint | Source disposition and observed evidence |
+| --- | --- |
+| Main request schema (`33abe10a`) | Production schemas/handlers unchanged. Each root/UID-4001 socket scenario rejects 24 malformed requests and decodes 18 controls across eight Linux variants: unknown/duplicate/missing fields, invalid unit payloads, wrong types and retired operations; both envelope orders and valid reads after refusal survive. Descriptors retire before verdict. Handler effects and exhaustive nested-type admission remain OPEN. |
+| Main response fields (`dabb54fe`) | Envelope and status/readiness structs reject unknown fields. Both root/UID-4001 Unix-reader scenarios reject the 38 extra-field replies previously accepted and retain ten controls each, both field orders and reuse. Valid encodings, values, limits and authorization are unchanged. Baseline/artifacts/cleanup are in the audit. |
+| Windows pipe handle ownership (`87aca7c8`) | The opener returns Tokio's consuming constructor; the redundant registration-error close of Mio's already-owned handle/import is removed. Rights, flags, retries and authorization are unchanged. TUF `HRUDLlAOB0` passes the focused source check and 246 IPC/14 directory cases in 91.263 seconds with joined cleanup/unchanged listeners, **on Linux**. Native Windows registration-failure, successful I/O and handle cleanup remain OPEN; the audit retains the dependency ownership chain and required native scenario. |
+| Retired uinput payloads | Four orphaned keyboard/response/mouse/resolution enums and their `Data` variants are deleted from `src/ipc.rs` (49 lines); their sole producer/consumer disappeared in `fb40e9d2`. R-X13 checks their absence. Reference, shell-syntax, whitespace and old/new source-pattern checks pass; exact deletion comparison preserves all other IPC bytes and the active backend. No reachable actuator/LPE was demonstrated; no parent build, protocol runtime or installed/native test ran. |
+| Main config-query schema (`45944c71`, `4ddb02ea`) | Five nonsecret empty-struct variants reject unknown fields, preserving tags/handlers. Twenty extra-field queries accepted before correction become 34 malformed refusals; three tests cover round trips, retired/unknown keys and malformed inputs. Root/UID-4001 framed requests/responses reject an extra nested field then accept a valid reply on the same socket. `main-config-key-shape-45944c71.json` retains comparison. The frozen old enum/wrapper and historical-only fourth test are deleted; the runner compiles `src/ipc/main_config.rs` directly. Its three unchanged tests pass in `ossteXBIgn` (67.593 seconds), with artifact/cleanup under `android-rust-lifecycle-tests-run.ossteXBIgn.*`. Production/dependencies/other profiles are unchanged by that deletion. Shared/Apple constructor checks were adjusted; full catalogs did not run. Complete receiver/status/configuration flows and parent compilation remain OPEN. |
+| Retired ID query (`9c8dc194`) | Unused ID query, IPC-to-local fallback, snapshot ID/length failure and unread UI cache are removed; option/file-transfer synchronization remains. `vTvK0nAk5E` and its legacy-ID audit retain evidence. Its unattributed endpoint addition remains untouched. |
+| Retired lock-state queries (`50f9b5e9`) | Last authentication caller removed in `d5aec5bc`; unused Linux/macOS/Windows `is_locked`, Linux `LockedHint`, macOS `ioreg` launcher/constant and Windows query/FFI are deleted. Two descriptor gates and R-S11t/R-S11z lose retired references. Live authentication, credential receivers, input/screen-lock, session selection, tests and dependencies remain unchanged outside deletions. Fifteen Linux component tests and seven real PAM/logind scenarios pass on the changed library (119 seconds); shell syntax passes, full catalogs/native Apple/Windows builds did not run. `retired-lock-queries-5fecf369.json` retains source/history, artifact, observations, pre-VM unpushed-source refusal and joined RAM cleanup. This is obsolete-path removal, not a demonstrated LPE correction. |
+| Permanent-password policy (`0ad23cde`, `53f873fa`) | Unreachable dual-password/click/combined-approval enums, permissive fallbacks and redundant resolvers are removed. `permanent_enabled` reads verification policy through the unconditional config funnel; `hide_cm` combines funnel-derived approval, permanent policy and visibility. Desktop IPC/mobile FFI, pins, credential storage and privileged receivers remain unchanged. At the named source, 206 Linux library tests/seven groups pass (142 seconds), including 24 stored/default/overwrite combinations of empty/retired/unknown/current values and both visibility choices; policy stays pinned, visibility follows its option and reads preserve stored bytes. One assertion follows effective approval rather than the deleted enum; other test bodies/orchestration are unchanged. `approval-policy-model-f200e7f4.json` and earlier `permanent-policy-model-27526c3f.json` retain comparisons/artifacts/observations/joined RAM cleanup. R-S16/R-X7/R-A6 retain consumers and Appendix C #8 the actual keys. This removes obsolete models, not a demonstrated bypass/LPE. |
 
-**Windows pipe client handle ownership (`87aca7c8`).** The opener now returns
-Tokio's consuming constructor directly. Its registration-error path previously
-closed a handle already owned and closed by Mio. The redundant close/import are
-removed; opening rights, flags, retries and peer authorization are unchanged.
-The focused source check excludes that second close. TUF `HRUDLlAOB0` passes it
-and the existing 246 IPC/14 directory cases in 91.263 seconds, with joined cleanup
-and unchanged host listeners. These execute on Linux; Windows registration-failure
-and successful-I/O/handle-cleanup acceptance remain OPEN. The audit records the
-pinned dependency ownership chain and required native failure/control scenario.
-
-**Retired uinput IPC payloads.** The four orphaned keyboard, keyboard-response,
-mouse and resolution-control payload enums and their `Data` variants are removed
-from `src/ipc.rs` (49 lines). Their sole producer/consumer was the uinput module
-removed by `fb40e9d2`; tracked-source review finds no current caller or handler.
-The existing R-X13 absence gate now includes those type names. Exact deletion
-comparison preserves every other IPC source byte, including the remaining tagged
-protocol and its live helper messages; the active input backend is unchanged.
-Reference, shell-syntax and whitespace checks pass, and the extended source pattern
-distinguishes the old declarations from their absence. This removes dormant
-deserialization vocabulary; no reachable input actuator or new LPE was demonstrated.
-No parent build, protocol runtime or installed/native test ran for this deletion.
-Those acceptance obligations and all separately parked work remain OPEN.
-
-**Main-IPC config-query schema.** `45944c71` gives the five nonsecret query keys
-empty struct variants with unknown-field rejection. All five tag encodings and
-handler bodies are preserved. The unchanged negative test accepts twenty
-extra-field queries before correction; afterward all 34 malformed inputs are
-rejected. Three production-schema tests pass, covering valid round trips,
-retired/unknown-key refusal and malformed inputs. The root/UID-4001
-framed cases additionally reject an extra nested key field in both requests and
-responses, then accept a valid reply on the same socket. This is schema and
-reader evidence; full receiver/status/configuration flows, parent compilation,
-installed and other-platform acceptance remain OPEN. Shared/Apple gate literals
-follow the new Rust constructors; their full catalogs did not run. Comparison:
-`main-config-key-shape-45944c71.json`.
-
-`4ddb02ea` removes the frozen pre-removal enum and its test wrapper. Their fourth
-test exercised only historical source. The focused runner now compiles
-`src/ipc/main_config.rs` directly; its three unchanged tests pass in TUF run
-`ossteXBIgn` (67.593 seconds). Artifact and cleanup receipts are retained under
-`android-rust-lifecycle-tests-run.ossteXBIgn.*`; the audit records the deletion.
-Production code, dependencies and other test profiles are unchanged.
-
-`9c8dc194` removed the unused ID query, IPC-to-local fallback, snapshot ID/length
-failure and unread UI cache. Status synchronization retains option/file-transfer
-state. Earlier run `vTvK0nAk5E` and its legacy-ID audit entry retain that evidence;
-its unattributed endpoint addition remains untouched. Parked work is unchanged.
-
-**Retired desktop lock-state queries (`50f9b5e9`).** The last connection-authentication
-caller was removed by `d5aec5bc`; current source has no consumer. The Linux/macOS/Windows
-`is_locked` APIs, Linux `LockedHint` query variant, macOS `ioreg` launcher and constant,
-and Windows C++ query/FFI declaration are deleted. Both descriptor source gates drop
-the obsolete macOS query requirement and update the remaining output-call inventory.
-R-S11t/R-S11z lose only the retired query references. Live authentication, credential
-receivers, input/screen-lock actions, session selection, test bodies and dependencies
-are byte-identical outside those deletions; this is obsolete-path removal, not a
-demonstrated LPE correction.
-
-The unchanged fifteen Linux component tests and seven real PAM/logind scenarios pass
-on the changed shared library in 119 outer seconds. Both edited shell sources parse;
-their full catalogs and native Apple/Windows builds did not run. Exact source/history,
-artifact, observations, the pre-VM unpushed-source refusal and joined bounded-RAM
-cleanup are retained in `retired-lock-queries-5fecf369.json`. Full application and
-installed settings/credential behavior, all fifteen credential actions, other-platform
-and release acceptance, R-S0/R-F5 and every user-parked task remain OPEN/PARKED.
-
-**Permanent-password policy consumers (`0ad23cde`, `53f873fa`).** The dual-password
-and click/combined-approval enums, permissive fallbacks and redundant resolvers are
-deleted. `permanent_enabled` compares the effective verification value from the
-unconditional configuration funnel; `hide_cm` reads the approval value through the
-same funnel and combines it with permanent-password policy and its visibility option.
-Desktop IPC and mobile FFI callers, policy pins, credential storage and privileged
-receivers are unchanged. The removed states were already unreachable under the pins;
-this is obsolete-model removal, not a demonstrated authentication bypass or LPE fix.
-
-At the named source, the Linux library passed all 206 tests/seven groups in 142 outer seconds.
-Twenty-four policy combinations exercise stored/default/overwrite layers,
-empty/retired/unknown/current values and both visibility choices. Password approval
-and permanent-password policy remain effective, visibility follows its option, and
-reads preserve stored bytes. One assertion now checks the effective approval value
-instead of the removed enum; all other test bodies and VM orchestration are unchanged.
-`approval-policy-model-f200e7f4.json` binds source/history, artifact, native observations
-and joined bounded-RAM cleanup. Earlier identical-test dual-password-model comparisons
-remain in `permanent-policy-model-27526c3f.json`.
-
-R-S16/R-X7/R-A6 name the retained consumers; Appendix C #8 names the actual option
-keys. Credential/factor/dependency exclusions, immutable policy and acceptance
-obligations remain. Full app/CM UI, installed and other-platform behavior, all fifteen
-credential actions, R-S0/R-F5, cold/release, independent reproduction and external
-review remain OPEN. Every user park remains parked.
+**Shared acceptance remains OPEN:** full application/CM UI, installed settings and
+credential effects/authorization, all fifteen credential actions, other-platform
+behavior, current/cold release artifacts, independent reproduction, external review,
+R-S0 and R-F5. Credential/factor/dependency exclusions and immutable policy remain
+binding. Every independent park, including CM payload/handshake work, remains parked.
 
 **Existing legacy-key lookup — OPEN/PARKED at the user's topic pivot.**
 `Config::get_existing_key_pair` still uses the recovering core-config loader; a

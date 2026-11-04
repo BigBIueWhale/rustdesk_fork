@@ -138257,3 +138257,30 @@ prs-ledger-399db80e.json is 5,142 bytes, SHA-256
 Whitespace checks pass. The independent derivation slice reaches its validation
 checkpoint. No owned runtime job remains active; the broader release goal stays
 active with all remaining acceptance obligations and user parks intact.
+
+## 2026-11-04 — completed IPC history consolidation
+
+Honor the user pivot by parking further password-derivation work while preserving
+its independent 17-case checkpoint. Select the binding ledger-size prerequisite:
+the last measured input has 398,852 tokens, only 1,148 below the required budget.
+Consolidate the bounded completed-history range under "Current authority and source
+closure", stopping before the independently parked legacy-key lookup. This makes
+room for subsequent release evidence without reopening parked product work.
+
+Classify the selected material as completed implementation/component checkpoints,
+source-only deletions, named historical comparisons and repeated acceptance limits.
+Replace 7,863 bytes with an eight-row 5,806-byte table and shared limits. Keep every
+commit, run/capsule reference, requirement ID and distinct open observation in that
+range. Retain the difference between actual Unix/library execution, source checks
+and missing installed/native acceptance. Windows handle behavior remains unproved
+on Windows; no obsolete-model deletion becomes a demonstrated escalation fix.
+Main-config, pipe-opener and policy-consumer source reads agree with the retained
+dispositions. Referenced capsules are present on CTE; no external document or
+verifier depends on the replaced prose headings. Historical detail remains in Git
+and the existing audit rather than a new evidence catalogue.
+
+Product, tests, requirements and live instruction files are unchanged. Review the
+whole diff, reference inventory and exact bytes outside the selected range/new
+pivot before committing. A fresh isolated count is still required before claiming
+the resulting budget. Reuse the admitted zero-NIC counter and its pinned method;
+retain bounded evidence and verify exact process/private/RAM retirement.

@@ -139307,3 +139307,18 @@ through it, both exit zero with BatchMode enabled. TUF access is available again
 do not carry the earlier missing-socket condition forward as a current blocker.
 No key, password, SSH configuration or reconnection service is created or changed.
 The selected CTE comparison remains local; independent user parks still apply.
+
+Fresh isolated ledger count at 5dd78528, CTE eFW6wMuN3k: 398,349 tokens /
+1,819,550 bytes, SHA-256
+068e4c0e42f66f6979879c6427dc3fe063b26b504b1e7c14287fdfb722f4fa86.
+Seven tokenizer controls, whole-input round trip and 84 workload controls/five
+refusals pass in 28 workload seconds. Three zero listener deltas, exact process
+absence and private/RAM retirement are verified under the shared lock; no owned
+run remains. Peak scratch is 402,829,312 bytes. Eleven records are bound by
+fork-version-ledger-5dd78528.json (7,612 bytes, SHA-256
+8c288ad5bf196136bbd49d94911b2865ffa290426d53d452f7b01c5f85b09c06),
+with a 456-byte retirement receipt, SHA-256
+f5b08061ee802f9be678d9f6f4d14823b307a0b9196cb028d6f75cb0231a0078.
+The exact-file reader correction and focused comparison are complete; broader
+integration, target artifacts and release acceptance remain OPEN. Goal progress
+continues from this checkpoint with TUF reachable and the existing parks intact.

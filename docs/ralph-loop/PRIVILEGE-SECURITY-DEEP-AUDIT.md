@@ -137735,3 +137735,16 @@ the complete ledger decreases from 1,827,662 to 1,822,197 bytes; its new SHA-256
 Normative requirements, product code, tests, launchers and live instructions are
 unchanged. Full diff review and git diff --check pass. Fresh isolated counting
 follows before this documentation checkpoint is reported complete.
+
+Count uX2H3furZO at a6c18e96 passes seven controls and the whole-input round trip:
+398,243 tokens, 1,256 fewer than the prior ledger. All workload admissions/refusals
+pass. Launcher/QEMU 1902047/1903466, private state and RAM retire; three listener
+deltas are zero. Twelve bounded evidence files match CTE/TUF. Capsule
+lifecycle-ledger-a6c18e96.json is 5,169 bytes, SHA-256
+da7be387a1abc08f0f7f6c3b4fcbf8ba0680a16d07ed7d8cb81f07bdc28b62a2.
+Final wording review separates the manual test's two successful logins from the
+restarted supervisor's clean stop; the first supervisor was deliberately killed.
+That clarification changes the ledger to 1,822,222 bytes, SHA-256
+fe055066d1ef3d3f634fd7dce1409268d6c5412fb6933bc29c7c0973dcf624f1.
+A new count is required for this final input; the earlier receipt remains valid
+only for its recorded bytes. No product or native test is rerun.

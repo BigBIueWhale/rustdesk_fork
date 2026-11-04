@@ -137159,3 +137159,14 @@ requirements, live instructions, product sources, tests and launchers are unchan
 No product check is repeated for prose. Fresh isolated whole-ledger counting is
 the remaining validation for this documentation checkpoint; the broader
 documentation classification and release obligations remain OPEN.
+
+Fresh count 9qw0z2YopT at 9998bb07 passes: 398,839 tokens, down 1,107,
+over the exact 1,824,738-byte input above. Seven controls, whole-input byte
+round trip and all 82 storage admissions/five refusals pass. Capture exits zero
+after 30.717 seconds. Processes 1853703/1855124 are absent by pidfd; helpers,
+private state and RAM scratch retire, with three zero listener deltas and
+402,792,448 bytes peak scratch. direct-ledger-9998bb07.json is 5,157 bytes,
+SHA-256 ade38a85fdeac98515185222e9ee7bf6637b1d6e6e2cf0cba43fcfa9dd4620b2.
+All twelve bounded files match CTE/TUF. This audit-only receipt leaves the counted
+ledger unchanged. The documentation checkpoint is complete; no product claim
+changes, no owned job remains, and the Android task plus independent parks remain.

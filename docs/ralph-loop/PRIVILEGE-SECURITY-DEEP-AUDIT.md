@@ -137213,3 +137213,60 @@ Required result: fresh bridge/full-app build and the existing controls, complete
 manifest/hash agreement, current native component inventory and removal of unused
 package assets. Native sessions/settings, other platforms, final installed/cold
 release artifacts, independent reproduction and external review remain OPEN.
+
+## 2026-11-04 — user pivot; release verification guidance
+
+The user requests a different aspect. Further Linux application dependency/artifact
+validation is OPEN/PARKED. Preserve the completed aMRuM2TUs8 build at 59b51e80:
+strict offline candidate resolution, fresh bridge, full Linux bundle, thirteen
+widget and two native command controls pass. Its 73 payload files total 70,332,436
+bytes and match the manifest. Capture exits zero after 1,068.014 seconds.
+Launcher 1855853 and QEMU 1856481 are absent by pidfd; helpers, private state and
+RAM workspace run.sp5d9w_t retire. Peak RAM scratch is 11,895,672,832 bytes and
+all four independently decoded listener deltas are zero. The 6,537-byte capsule
+dependency-app-build-59b51e80.json has SHA-256
+9d581d541587be5b3e381bb5c3be4f311a89cbec2c4d722f5af7372eaac2f9f2.
+Thirteen bounded capsule/manifest/raw files now match CTE/TUF. The separate
+native/asset inventory observer stopped at an assertion before writing an
+acceptance receipt; it is neither repaired nor rerun after this pivot.
+
+The prerequisite discovery-lock transformation preserved the old exact lock and
+changed only the reviewed candidate copy under the shared/candidate locks;
+dependency-candidate-lock-59b51e80.json retains that provenance. The superseded
+27bf28eb artifact was retired only after checking every payload hash and retaining
+its manifest/inventory: 70,357,837 file bytes removed. The designated 7e6f6459
+baseline, a3192591 and parked 0ccb2a7e were preserved. The dependency-app-retire/
+retired-27bf28eb receipts retain this bounded cleanup. No canonical input or
+authenticated cache was replaced. This preserves completed work, not permission
+to continue the parked artifact observer or Android build.
+
+Selected separate R-B2 task: make the operator's release-verification procedure
+match the existing release producer, publisher and Android signature checks.
+The prior guide referred to four artifacts without naming the set, omitted the
+canonical checksum layout and source-epoch comparison, and left the APK check
+outside the numbered sequence without the required v2 result. Correcting those
+actionable instructions takes priority over another history-compression pass.
+Success is a source-accurate procedure with independent manifest authentication,
+complete layout/content verification and APK signer/scheme verification before
+installation. This changes guidance, not a product or release acceptance verdict.
+
+Review covers build-release.sh's canonical assets/write_manifest and source pins,
+publish-github-release.sh's strict_manifest_proof, build-android.sh's signing
+assertions, the unchanged R-B2 contract and Android minSdk 24. The guide now gives
+all five files, the exact nine-line manifest, two-space checksum syntax and epoch
+comparison against the identified commit. It requires successful checksum exit
+plus all four results, then apksigner -Werr with v1 false/v2 true/v3 true and the
+source-pinned certificate comparison before installation. Independent trust and
+unchanged verified bytes remain required; native/installed acceptance stays open.
+
+Primary references consulted: GNU Coreutils checksum options at
+https://www.gnu.org/software/coreutils/manual/coreutils.html#cksum-common-options,
+https://developer.android.com/tools/apksigner and
+https://source.android.com/docs/security/features/apksigning/v2. Checksum syntax
+validation does not enforce the fork's inventory/metadata; general APK signature
+verification and the expected signer/scheme results are distinct checks. No
+unnecessary product test or build is run for this documentation-only change.
+Review of the complete diff and local links passes. Fresh isolated whole-ledger
+counting remains the validation for the updated current-state ledger. Product,
+tests, launchers, normative requirements and live instructions are unchanged;
+every independent park and release obligation remains.

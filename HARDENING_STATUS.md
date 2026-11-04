@@ -43,6 +43,13 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Further Linux application dependency/artifact
+validation is OPEN/PARKED. Build `aMRuM2TUs8` at `59b51e80` completes with
+thirteen widget/two native command controls and all 73 payload hashes verified.
+`dependency-app-build-59b51e80.json` binds exact process/private/RAM retirement
+and four zero listener deltas. The additional native/asset inventory observer
+has no accepted result. Work moves to release-verification guidance; independent parks remain.
+
 **User pivot (2026-11-04):** Further Android account-API artifact validation is
 OPEN/PARKED. Run `CQ4XBSwjHA` was cancelled before a build/native-test verdict;
 `account-android-build-af8f69cb.json` binds exact process/private/RAM retirement
@@ -1572,8 +1579,11 @@ No application implementation changes.
 twelve existing combo-box/widget cases and three parser controls in 248 seconds;
 `Ih4tN6HIGB` passes inventory in ten. `dropdown-{widget,inventory}-8d6d8707.json`
 bind evidence and exact process/private/RAM retirement with seven zero listener
-deltas. Candidate-SDK closure, complete app, native/installed artifacts and release
-acceptance remain OPEN; all parks remain.
+deltas. The candidate lock at `59b51e80` removes the same eleven orphaned packages
+without upgrading retained records (196 to 185); strict offline resolution, fresh
+bridge generation and the complete Linux build pass as recorded in the current
+verdict. Additional artifact inventory is OPEN/PARKED; SDK promotion, native/installed,
+other-platform and release acceptance remain OPEN. All independent parks remain.
 
 **Retired unused TLS client builder (`c2fafa4d`).** The callerless 196-line
 `hbb_common::verifier` module and its compatibility API are deleted; Git history
@@ -10051,8 +10061,13 @@ are logical process-restart proofs, not physical power-loss simulation. The invo
 cooperative; root, kernel, trusted storage, and ext4 remain trusted. `RELEASE OK` is emitted only from signal-excluded
 EXIT finalization after publication reconciliation, descriptor-bound private-workspace deletion, and final parent sync.
 
-`docs/RELEASE-VERIFICATION.md` makes the manifest itself an independently authenticated input and rejects
-same-host package/checksum substitution, partial sets, identity mismatch, or any unsigned override.
+`docs/RELEASE-VERIFICATION.md` requires independent authentication of the manifest,
+the exact five-file set and nine-line format, source-pinned epoch and every artifact
+checksum. Android signature success, the builder's v1/v2/v3 results and certificate
+pin comparison precede installation. The guide distinguishes these checks from
+GNU checksum syntax validation and from native/installed release acceptance.
+Document/source and primary tool-reference review support this guidance correction;
+no fresh release set, signing or installation is claimed.
 `docs/ANDROID-SIGNING-RECOVERY.md` closes the Android break-glass obligation: verified offline backup is the
 only loss recovery for the existing identity; suspected compromise retires that package identity and requires
 a new package name, new key/pin, clean build, authenticated notice, and data-wiping uninstall/reinstall. The

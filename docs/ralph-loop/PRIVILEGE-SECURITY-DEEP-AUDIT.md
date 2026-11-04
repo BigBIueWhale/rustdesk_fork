@@ -135933,3 +135933,15 @@ workflow capsules remain present with recorded hashes. Classification receipt
 retained-account-ledger-ede1b15d.json is 1,228 bytes, SHA-256
 3011c4261ebc85fce0fd0b017103c2ce4540a772c8f0fda9e7d4eb0bbca36bcd.
 Actual token measurement follows; byte reduction alone is not a token count.
+
+Pushed b043b87a passes fresh isolated count y0LEMCdKUW in 28 outer seconds:
+397,440 tokens / 1,818,243 bytes, SHA-256
+6b2d9bec92eeb04523b72e4ed08ea04020cad53b0d4691278e1f5b905f9b17f0.
+That is 653 fewer tokens and 2,560 below budget. All seven token controls and
+the whole-input round trip pass, together with 42 workload modes, 81 admissions
+and five refusals. Three listener deltas are zero; exact processes/helpers and
+private/RAM state retire, with 402,780,160 bytes peak scratch. Twelve bounded
+files match CTE/TUF; account-ledger-b043b87a.json is 5,085 bytes, SHA-256
+c761294d9ead0ad6d210e865f17748d8e02e0ed938f4b8b2027ba485a3ca5493.
+The classification capsule is also hash-verified on both hosts. No owned run
+remains. This audit-only receipt leaves the counted ledger unchanged.

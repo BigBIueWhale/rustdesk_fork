@@ -40,15 +40,14 @@ fork_version() {
     fork_version_error "FORK_VERSION must be a regular file ($version_file)"
     return 1
   fi
-  if [ "$(wc -l < "$version_file")" -ne 1 ] \
-     || [ "$(tail -c 1 "$version_file" | od -An -tx1 | tr -d ' \n')" != 0a ]; then
-    fork_version_error "FORK_VERSION must contain exactly one newline-terminated line"
-    return 1
-  fi
   IFS= read -r fv < "$version_file" || {
     fork_version_error "could not read $version_file"
     return 1
   }
+  if ! cmp -s -- "$version_file" <(printf '%s\n' "$fv"); then
+    fork_version_error "FORK_VERSION must contain exactly the parsed newline-terminated value"
+    return 1
+  fi
 
   cargo="$(awk '
     $0 == "[package]" { in_package = 1; next }

@@ -139265,3 +139265,21 @@ Require exact success bytes or nonzero refusal with no identity output. Run as
 UID/GID 4000 without capabilities in the existing zero-NIC authority VM; temporary
 files and children are joined inside the guest. This is metadata correctness,
 not evidence of a local privilege escalation or release readiness.
+
+CTE Tf2inoOdn6 at db7c8f09 completes all 28 checks in 11.958 outer seconds:
+20 controls pass and all eight NUL refusal cases fail, returning exit zero and
+the cleaned identity. Both public shell entry points show the same behavior.
+fork-version-before-db7c8f09.json (18,575 bytes, SHA-256
+43487fac2ec719176c733c62cad003fb43573bd4c14c4330a80e1ba5c238a6db)
+binds eleven raw/control records and the failed private inventory. Three host
+listener deltas are zero; exact wrapper/QEMU/children are absent by pidfd ESRCH,
+and RAM/private state is retired under the shared lock. Peak scratch is
+403,693,568 bytes; retirement receipt is 404 bytes, SHA-256
+5c7e77155e9e006e40da8d1a7fa7524eeef3c1b98df38b881d062117bd452ff1.
+
+Replace the line-count/final-byte pipeline with an exact cmp against the parsed
+value plus one newline. This checks bytes that Bash read cannot preserve and
+retains rejection of extra lines and missing final newline. Canonical grammar,
+base equality and complete changelog-history validation remain unchanged.
+Replay the identical 28 cases, then let the existing authority integration
+smoke continue because the reader is shared by build and publication entry points.

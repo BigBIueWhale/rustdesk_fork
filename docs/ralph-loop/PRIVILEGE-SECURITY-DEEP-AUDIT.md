@@ -138431,3 +138431,18 @@ Shared verifier sources do not depend on the removed history phrases. HTML
 structure/identifier/link inspection and whitespace checks pass. Product, tests,
 verifiers and live instructions are unchanged. Fresh counts for both documents
 are pending; native/release obligations and all user parks remain OPEN.
+
+Fresh CTE two-document count P4lVyb7eGT at pushed 1e3d5c38 completes in
+27 outer seconds. Requirements: 366,673 tokens / 1,673,759 bytes, down 108
+tokens; the SHA-256 matches the reviewed after input above. Ledger: 398,786
+tokens / 1,823,928 bytes, SHA-256
+50e83ee1672726b4b109bc61bfbe36ce565cc1d1d81e9728a4bb9764d2afd2b7,
+leaving 1,214 tokens of headroom. Both use the same pinned method/artifacts and
+pass seven controls and exact byte round trips. Existing 42-mode/82-control/
+five-refusal admission passes. All three listener deltas are zero; exact wrapper/
+QEMU, helpers, private state and RAM retirement are verified under the shared
+lock. Scratch peaks at 402,825,216 bytes and is retired. Capsule
+desktop-spec-ledger-1e3d5c38.json is 6,084 bytes, SHA-256
+ec12ef5071e9fc294dd428e0ee0dbfc19f746c5f941f730addaf8fc7b35883f9,
+with ten raw/control records and its retirement receipt. No owned job remains.
+This documentation checkpoint is complete; the release objective remains active.

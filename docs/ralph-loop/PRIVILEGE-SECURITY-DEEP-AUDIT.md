@@ -135764,3 +135764,54 @@ The final diff contains only the focused capture fixture/orchestration and
 status/audit records. Product, dependencies, normative requirements and live
 instructions remain byte-identical to 6fc7bc9e. No owned run remains; this
 audit-only count receipt leaves the measured ledger unchanged.
+
+## 2026-11-04 — user pivot; mobile scroll-preference diagnosis
+
+The user explicitly requests another aspect. Further X11 authenticated-capture
+integration is OPEN/PARKED before any implementation or run. Accepted native
+component evidence remains valid. CTE starts clean at caac416d; the existing
+password SSH master remains live. Android permission workflows and all other
+independently parked topics stay parked.
+
+Selected requirement is R-S0's complete settings functionality. Source review
+finds a concrete mobile Reverse mouse wheel mismatch, taking priority over
+another evidence-only desktop scenario or ledger consolidation. This is an
+ordinary viewer preference, not privileged administration or an escalation claim.
+
+The mobile Remote menu in flutter/lib/mobile/pages/remote_page.dart constructs
+ReverseMouseWheelControl when keyboard input is available. The shared control
+uses ReverseMouseWheelPreferences and the generated typed native setter with
+both exact owner identifiers. src/flutter_ffi.rs::session_set_reverse_mouse_wheel
+selects that exact UI owner; Session::save_reverse_mouse_wheel delegates to the
+checked persistence operation in src/client.rs, which commits before updating
+the selected cached field. These operations have no mobile exclusion.
+
+InputModel.scroll and wheel dispatch call sessionSendMouse. The Rust bridge
+routes wheel/trackpad commands into Session::send_mouse, which calls
+get_scroll_xy for those two event types. In src/ui_session_interface.rs, both
+is_scroll_reverse_mode and the conditional inversion in get_scroll_xy are
+compiled only outside Android/iOS. The mobile implementation therefore returns
+the original coordinates regardless of the saved value. No second reversal
+consumer was found in the Flutter input path. The prior October 19 acceptance
+explicitly preserved this mobile cfg and established Linux command behavior
+plus rendered controls with a substituted store; it does not establish mobile
+native effects.
+
+Primary references: Rust's conditional-compilation reference
+https://doc.rust-lang.org/reference/conditional-compilation.html explains that
+cfg selects compiled source, not a runtime preference. Flutter's PointerScrollEvent
+API https://api.flutter.dev/flutter/gestures/PointerScrollEvent-class.html
+identifies wheel events and their scroll deltas; it supplies no automatic
+application of RustDesk's peer preference. These references support the source
+interpretation, not device execution.
+
+Required regression: on an actual Android-target artifact, observe emitted wheel
+and trackpad coordinates with the preference off/on/off, both axes and signs,
+and unchanged ordinary pointer motion. Preserve desktop behavior and the existing
+checked persistence/owner refusal controls. The intended correction applies the
+same saved preference in the native scroll path on every supported viewer;
+hiding the mobile control or reporting a successful inert write is insufficient.
+Native Android execution, complete authenticated peer effects and iOS evidence
+remain separate acceptance obligations. No product patch, simulated-mobile
+execution, new harness, emulator, or full application build is claimed here.
+The current ledger records this source finding and the explicit X11 park.

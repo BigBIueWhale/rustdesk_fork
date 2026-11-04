@@ -138479,3 +138479,16 @@ records and settings-current-1fedb57d.json, 35,597 bytes, SHA-256
 8140fd4ae3dc2ab9fa35a8c814339917ddf3229caebe04777462e1b6fee9cdbf,
 plus its 196-byte retirement receipt. Product, tests, harness and live instructions
 are unchanged. Record the partial result truthfully; a fresh ledger count follows.
+
+Fresh CTE count p0mUUo2hBZ at pushed a2e4baa2 completes in 28 outer seconds:
+398,963 tokens / 1,824,827 bytes, SHA-256
+39c9823227236246040a5ef602f505a59b263e6f6bc8764e631c72b4b429986a.
+The pinned token method, seven controls, exact byte round trip and existing
+42-mode/82-control/five-refusal admission pass. Three listener deltas are zero;
+exact wrapper/QEMU, helper, private and RAM absence are verified under the shared
+lock. Scratch peaks at 402,759,680 bytes and is retired. Capsule
+settings-ledger-a2e4baa2.json is 5,162 bytes, SHA-256
+ff4968a2ce95da7342f9f31d269b06ee35346c9107d3360d7df4630a0ff53c63,
+with ten raw/control records and its retirement receipt. No owned job remains.
+The partial navigation checkpoint is recorded; complete harness, target-native
+settings and release acceptance remain OPEN, with independent parks intact.

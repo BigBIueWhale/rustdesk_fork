@@ -138046,3 +138046,29 @@ an empty or wrong selection. Shell/Python syntax and whitespace inspection pass.
 The optimized runtime verdict is pending. Even success would establish this Linux
 library behavior only, not a final shipping artifact, packet/FFI/app integration,
 other platforms, installed privilege authority or full release acceptance.
+
+TUF `LwFiKqTokZ` at pushed `7a8b4cc2` exits zero in 197 outer seconds. The exact
+test passes (one test, 611 filtered out): fourteen compatibility/boundary controls
+and all seven range cases return their expected results, with zero mismatches.
+Cargo-profile admission and the before/between/after artifact check pass for
+SHA-256 0bfc9bcbbcc7bbe1fcd0983d222c6feaac1e1d3e033bb0363deff895f3a0fd87.
+The four listener records report zero additions/removals. The captured storage
+result records QEMU 1983745 reaped with status zero, 200.176 monitored seconds,
+3,030,048,768-byte RAM-workspace peak and workspace identity 29:47199. The host
+orchestrator reports joined cleanup; its exact process/RAM/private reinspection
+and full evidence copy remain pending because the password SSH master closed
+after the successful run and raw-result read. The missing control target is
+`/home/user/.ssh/tuf-reconnect/repair.sock`, reached by `/tmp/cm199.sock`.
+Restoration was requested using password authentication without creating a key;
+the test will not be rerun solely because its evidence copy is pending.
+
+The complete 1,977-byte native result already returned by the read-only tool is
+preserved on CTE as `hbb-common-fs-run.LwFiKqTokZ.serial.log`, mode 0400. Its bytes
+hash to f5d5c01adb15192142d2510280c57c1ad01a6b2af5ad2ae5e6e3db71c44ea44f,
+exactly matching the TUF harness's retained-output receipt. This salvages the
+actual observed result rather than reconstructing a test pass from source.
+CTE has the pinned tokenizer/boot inputs, no owned run/RAM markers and sufficient
+available memory for the existing bounded count profile. Perform the fresh ledger
+count there while remote access is unavailable. Product behavior is unchanged;
+the narrowed optimized-library evidence does not close the remaining integration,
+shipping-artifact, other-platform, installed or independent-review obligations.

@@ -138837,3 +138837,19 @@ the guest emits one stable completion receipt and the host requires it exactly.
 A failed case still prevents completion. No storage admission, allocation limit,
 product scenario or parked investigation changes. Shell syntax, embedded Python
 parsing and exact diff review precede replay of the same ledger-count command.
+
+Fresh CTE replay tYxtW421uE at ff5aa517 passes in 28 workload seconds:
+397,560 tokens / 1,816,607 bytes, SHA-256
+922f92ec38320bcb1b35e4a3a248641ab3617355c88476ee472dc20db489a688.
+The final ledger is 626 tokens / 3,016 bytes smaller than the pre-pivot version.
+All 83 workload controls and five refusals, seven tokenizer controls and the
+whole-input round trip pass. Three listener deltas are zero; wrapper, QEMU and
+four captured children are absent by pidfd ESRCH. Private/RAM state is absent
+under the shared lock, scratch peaks at 402,620,416 bytes and no owned run remains.
+Capsule dependency-ledger-ff5aa517.json (5,655 bytes, SHA-256
+cafc9ababdbeb12363a8759249f9ed32ca0e871e4e8995135c219a03f8c0b291)
+binds eleven raw/control records and a 248-byte retirement receipt, SHA-256
+f087c93ff47c81012aaf3578f846a3f33b49d048cabf4fd84ede9844a7338bc1.
+This bounded documentation slice and its count prerequisite are complete;
+whole-document classification, product/release acceptance and all parked work
+remain OPEN. No product test or new product acceptance is claimed.

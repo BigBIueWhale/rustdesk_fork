@@ -137005,3 +137005,13 @@ seccomp 2. Peak RAM scratch is 3,337,764,864 bytes; QEMU host block writes are
 4,096 bytes; four listener deltas are zero. Production and dependencies remain
 unchanged. The current ledger replaces its timing row, retaining prior evidence
 and all open requirements; fresh counting follows.
+
+Fresh count wiFBUW1TuB at 954f9053 passes: 399,822 tokens / 1,828,690 bytes,
+input SHA-256 f3aa46e401a932f95a4bf20db5125ce752dea1476d1111d5a024f0904bff2f80.
+Seven controls, whole-input round trip and 82 workload admissions/five refusals
+pass. Processes 1845366/1846783, helpers, private state and RAM scratch retire;
+three listener deltas are zero and scratch peaks at 402,796,544 bytes.
+pake-repeat-ledger-954f9053.json is 5,177 bytes, SHA-256
+675e7b1d214c056a95f9867b540cd75d22e39c24eda62391144297c11c1ae8d7.
+Twelve bounded files match CTE/TUF. This audit-only receipt preserves the
+counted ledger. No owned job remains; R-P12 and the complete release goal stay OPEN.

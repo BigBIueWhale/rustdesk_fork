@@ -138446,3 +138446,36 @@ desktop-spec-ledger-1e3d5c38.json is 6,084 bytes, SHA-256
 ec12ef5071e9fc294dd428e0ee0dbfc19f746c5f941f730addaf8fc7b35883f9,
 with ten raw/control records and its retirement receipt. No owned job remains.
 This documentation checkpoint is complete; the release objective remains active.
+
+## 2026-11-04 — pivot to current desktop settings integration
+
+Honor the user pivot. Initial password-form inspection finds provisioning already
+parked; make no change there. Select R-S0 settings functionality: current desktop
+navigation, close/reopen, scrolling and About-page rendering. The page differs from
+the earlier 243294d9 navigation checkpoint by 153 additions and 108 deletions.
+Run the existing rendered settings profile against clean, pushed 1fedb57d without
+adding a test or forcing a product change. This checks integration after those
+changes; it does not reopen independently parked product topics.
+
+CTE ViPUkukEi0 completes in 264.658 outer seconds / 264.087 monitored seconds.
+All twelve selected navigation/scrolling/sidebar/metadata cases report success.
+The complete 84-case profile reports 62 successes and 22 errors: the parked mobile
+theme failed-save case leaves its three-second toast timer pending, and 21 parked
+mobile-Boolean cases fail their existing assertions. Retain those outcomes rather
+than diagnosing or changing those areas during this pivot. The selected profile
+was broader than the intended navigation slice; its failure means no full harness
+acceptance, and no result-parser controls or final source-copy check were reached.
+The preparation receipt matches the exact current settings page and test hashes.
+Native calls, parent, platform and outer-tab routing are explicit fixture doubles;
+real settings persistence, platform integration and release acceptance remain OPEN.
+
+Wrapper 2206558 and QEMU 2207291 are absent by pidfd ESRCH. Under the shared lock,
+verify four zero listener deltas, RAM absence, helper absence and exact private
+inventory. Console/output duplicates and their concatenated results match the
+retained logs before inode/hash-checked retirement of the private tree. Scratch
+peaks at 6,382,809,088 bytes in the admitted RAM workspace and is retired; observed
+QEMU block writes are 4,096 bytes. No owned run remains. Retain eleven raw/control
+records and settings-current-1fedb57d.json, 35,597 bytes, SHA-256
+8140fd4ae3dc2ab9fa35a8c814339917ddf3229caebe04777462e1b6fee9cdbf,
+plus its 196-byte retirement receipt. Product, tests, harness and live instructions
+are unchanged. Record the partial result truthfully; a fresh ledger count follows.

@@ -27,6 +27,19 @@ def encode(*messages):
 
 
 class ArtifactSelectionTests(unittest.TestCase):
+    def test_nfc_conformance_uses_the_exact_pake_integration_target(self):
+        artifact = copy.deepcopy(ARTIFACT)
+        artifact["manifest_path"] = "/source/libs/pake/Cargo.toml"
+        artifact["target"] = {"name": "nfc_conformance", "kind": ["test"],
+                              "src_path": "/source/libs/pake/tests/nfc_conformance.rs"}
+        artifact["executable"] = "/cargo-target/debug/deps/nfc_conformance-0123456789abcdef"
+        self.assertEqual(select_artifact(encode(artifact, FINISHED), "nfc_conformance"),
+                         artifact["executable"])
+        for field in ("manifest_path", "target", "profile", "executable"):
+            value = {"test": False} if field == "profile" else ARTIFACT[field]
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                select_artifact(encode(dict(artifact, **{field: value}), FINISHED), "nfc_conformance")
+
     def test_optimized_artifact_requires_compiler_reported_settings(self):
         profile = {"test": True, "opt_level": "3", "debug_assertions": False,
                    "overflow_checks": False}

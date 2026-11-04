@@ -191,6 +191,15 @@ every valid Unicode scalar in bounded batches, stable equal-class ordering,
 fixed storage, and a measured linear-work bound. This is mandatory audit scope,
 not delegated curve math.
 
+`bash scripts/smoke-verifier-vm-authority.sh --nfc-conformance-tests` executes
+`tests/nfc_conformance.rs` against the production normalizer in the networkless
+Linux VM. It uses the complete Unicode 15.1 NormalizationTest corpus already
+present in the authenticated vendor closure, pins its digest, and checks the five
+NFC column identities, unlisted scalars and the fork's case/space preservation.
+Expected bytes come from that corpus, not the implementation's Unicode tables.
+This establishes normalization behavior only; derivation, UI input and native
+cross-platform authentication require their own acceptance evidence.
+
 **Empty-PRS guard (`normalize_prs`).** PRS = NFC(password) (an NFC-only
 subset of RFC 8265 OpaqueString, no case-fold, R-P1); rejected if empty after
 normalization. CPace itself has no empty-PRS guard, so the fork adds one

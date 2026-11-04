@@ -27,6 +27,23 @@ def encode(*messages):
 
 
 class ArtifactSelectionTests(unittest.TestCase):
+    def test_optimized_artifact_requires_compiler_reported_settings(self):
+        profile = {"test": True, "opt_level": "3", "debug_assertions": False,
+                   "overflow_checks": False}
+        artifact = dict(ARTIFACT, profile=profile)
+        self.assertEqual(select_artifact(encode(artifact, FINISHED), optimized=True), EXECUTABLE)
+        for field, values in [("opt_level", [None, "0", "2", 3]),
+                              ("debug_assertions", [None, True, 0, "false"]),
+                              ("overflow_checks", [None, True, 0, "false"])]:
+            for value in values:
+                candidate = dict(profile, **{field: value})
+                if value is None:
+                    del candidate[field]
+                with self.subTest(field=field, value=value), self.assertRaises(ValueError):
+                    select_artifact(encode(dict(artifact, profile=candidate), FINISHED),
+                                    optimized=True)
+        self.assertEqual(select_artifact(encode(ARTIFACT, FINISHED)), EXECUTABLE)
+
     def test_key_transition_target_is_separate_from_handshake(self):
         artifact = copy.deepcopy(ARTIFACT)
         artifact["manifest_path"] = "/source/libs/cpace_it/Cargo.toml"

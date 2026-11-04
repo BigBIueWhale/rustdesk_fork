@@ -138012,3 +138012,37 @@ f2728844718b622fc8ea0999dd5ebd687acd3b261d5965b77852177bdecd4189.
 `git diff --check` passes. The fourteen-row consolidation reaches its checkpoint;
 whole-document classification/compression remains OPEN. All product acceptance
 gaps and user parks remain in force; the goal stays active.
+
+## 2026-11-04 — optimized peer-version arithmetic validation
+
+Previous turn made verified documentation progress at `58ffb5b3`/`560e08fd`.
+Select the explicit optimized/overflow-checks-disabled evidence gap in the shared
+peer-version row (R-S0 functional correctness). The helper feeds peer compatibility
+and the version FFI; its existing checked arithmetic and twenty-one cases have
+development-profile evidence, but no accepted optimized execution. This focused
+functional check takes priority over further completed-history compression. The
+display pivot and every independent park remain; no transport tests are selected.
+
+Reuse the existing networkless `hbb-common-fs` VM/container path with a fixed
+`--version-number-tests` entrypoint. Compile the actual production library and run
+only its existing exact `test::test_get_version_number`: fourteen compatibility/
+boundary controls and seven unrepresentable inputs must retain their expected
+values without panic. No function extraction, product edit or new Rust test is
+needed. Use optimization level 3, disabled overflow checks/debug assertions,
+disabled incremental output and two compile jobs. Preserve the existing 6-GiB
+guest, 6-GiB RAM scratch, 4-GiB file ceiling, five-minute deadline, monitored
+admission and joined retirement; inspection found no owned jobs and about 44 GiB
+available host memory before admission.
+
+Primary research: Cargo documents test-profile inheritance/overrides at
+https://doc.rust-lang.org/cargo/reference/profiles.html and compiler-artifact
+profile fields at https://doc.rust-lang.org/cargo/reference/external-tools.html.
+The existing artifact selector must additionally require Cargo's exact opt_level
+"3", overflow_checks false and debug_assertions false before returning the
+executable. Twelve wrong/missing/type-confused field controls supplement its
+existing target/completion tests. The runtime receipt binds the verified profile
+to the same before/after artifact hash; exact named test/summary admission refuses
+an empty or wrong selection. Shell/Python syntax and whitespace inspection pass.
+The optimized runtime verdict is pending. Even success would establish this Linux
+library behavior only, not a final shipping artifact, packet/FFI/app integration,
+other platforms, installed privilege authority or full release acceptance.

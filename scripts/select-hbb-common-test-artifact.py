@@ -9,7 +9,7 @@ import sys
 MAX_OUTPUT = 4 * 1024 * 1024
 
 
-def select_artifact(output, package="hbb_common", source_root="/source"):
+def select_artifact(output, package="hbb_common", source_root="/source", *, optimized=False):
     manifest_package, executable_dir = package, "/cargo-target/debug/deps"
     if package in ("descriptor_lifetime", "receive_authority") and source_root == "/source":
         manifest_package = "hbb_common"
@@ -58,6 +58,10 @@ def select_artifact(output, package="hbb_common", source_root="/source"):
                 and target.get("kind") == kind
                 and target.get("src_path") in sources
                 and profile.get("test") is True):
+            if optimized and (profile.get("opt_level") != "3"
+                              or profile.get("debug_assertions") is not False
+                              or profile.get("overflow_checks") is not False):
+                raise ValueError("Test artifact lacks the required optimized unchecked profile")
             artifacts.append(message.get("executable"))
     if len(finished) != 1 or finished[0] is not True:
         raise ValueError("Cargo build lacks one successful completion")
@@ -71,10 +75,11 @@ def select_artifact(output, package="hbb_common", source_root="/source"):
 
 if __name__ == "__main__":
     try:
-        if len(sys.argv) not in (2, 3):
-            raise ValueError("Expected Cargo output and optional closed package identity")
+        if len(sys.argv) not in (2, 3, 4) or (len(sys.argv) == 4 and sys.argv[3] != "--optimized"):
+            raise ValueError("Expected Cargo output, optional package identity and --optimized")
         with open(sys.argv[1], "rb") as stream:
             print(select_artifact(stream.read(MAX_OUTPUT + 1),
-                                  sys.argv[2] if len(sys.argv) == 3 else "hbb_common"))
+                                  sys.argv[2] if len(sys.argv) >= 3 else "hbb_common",
+                                  optimized=len(sys.argv) == 4))
     except (OSError, ValueError, IndexError) as error:
         sys.exit(f"hbb_common artifact selection failed: {error}")

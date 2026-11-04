@@ -188,6 +188,7 @@ case "$#:${8:-}" in
             --file-send-log) RUST_TEST_PROFILE=file-send-log ;;
             --file-metadata) RUST_TEST_PROFILE=file-metadata ;;
             --writer-retirement) RUST_TEST_PROFILE=writer-retirement ;;
+            --version-number) RUST_TEST_PROFILE=version-number ;;
             --guess-limiter) RUST_TEST_PROFILE=guess-limiter ;;
             --config-options) RUST_TEST_PROFILE=config-options ;;
             --compression) RUST_TEST_PROFILE=compression ;;
@@ -4353,6 +4354,9 @@ run_focused_rust_tests() {
         if [[ "$RUST_TEST_PROFILE" = writer-retirement || "$RUST_TEST_PROFILE" = guess-limiter ]]; then
             source_fingerprints+=(libs/hbb_common/src/cpace.rs)
         fi
+        if [ "$RUST_TEST_PROFILE" = version-number ]; then
+            required_tests=(test::test_get_version_number)
+        fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             required_tests=(
                 test::test_get_version_number
@@ -6581,12 +6585,20 @@ run_focused_rust_tests() {
                         if [ "$RUST_TEST_PROFILE" = file-logging ]; then
                             export CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=false
                         fi
+                        artifact_options=()
+                        if [ "$RUST_TEST_PROFILE" = version-number ]; then
+                            export CARGO_BUILD_JOBS=2 CARGO_INCREMENTAL=0 \
+                                CARGO_PROFILE_TEST_OPT_LEVEL=3 CARGO_PROFILE_TEST_DEBUG=0 \
+                                CARGO_PROFILE_TEST_DEBUG_ASSERTIONS=false \
+                                CARGO_PROFILE_TEST_OVERFLOW_CHECKS=false
+                            artifact_options+=(--optimized)
+                        fi
                         cargo test --offline --locked -p "$test_package" "${test_target[@]}" --no-run \
                             --message-format=json-render-diagnostics --color never \
                             >/cargo-target/hbb-common-build.json
                         test_executable="$(python3 -I -S \
                             /source/scripts/select-hbb-common-test-artifact.py \
-                            /cargo-target/hbb-common-build.json "$test_identity")"
+                            /cargo-target/hbb-common-build.json "$test_identity" "${artifact_options[@]}")"
                         [ -f "$test_executable" ] && [ ! -L "$test_executable" ] \
                             && [ -x "$test_executable" ] \
                             && [ "$(stat -c "%u:%g:%h" -- "$test_executable")" = 1000:1000:1 ] \
@@ -6783,6 +6795,18 @@ run_focused_rust_tests() {
                                     exit "$group_status"
                                 fi
                             done
+                        elif [ "$RUST_TEST_PROFILE" = version-number ]; then
+                            printf "VERSION_NUMBER_PROFILE=pass opt_level=3 overflow_checks=false debug_assertions=false artifact_sha256=%s\n" "$artifact_sha"
+                            group_status=0
+                            timeout --signal=TERM --kill-after=5s 20s \
+                                "$test_executable" test::test_get_version_number --exact \
+                                --color never --test-threads=1 --show-output || group_status=$?
+                            [ "$(sha256sum "$test_executable" | cut -d " " -f 1)" = "$artifact_sha" ]
+                            if [ "$group_status" -ne 0 ]; then
+                                printf "VERSION_NUMBER_ARTIFACT_STOP=observed sha256=%s status=%s unchanged=before-after\n" \
+                                    "$artifact_sha" "$group_status"
+                                exit "$group_status"
+                            fi
                         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
                             for group in tcp::writer_receipt_tests:: tcp::eof_tests:: \
                                 bytes_codec::tests:: tcp::writer_lifetime_tests:: test::test_get_version_number test::test_try_into_v4 socket_client::tests:: tcp::exclusive_listener_tests:: \
@@ -7785,6 +7809,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
         if [ "$HBB_SEND_DIGEST_TESTS" -eq 1 ]; then expected_groups=$(( ${#required_tests[@]} - 2 )); fi
         if [ "$RUST_TEST_PROFILE" = file-metadata ]; then expected_groups=39; fi
         if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then expected_groups=12; fi
+        if [ "$RUST_TEST_PROFILE" = version-number ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = guess-limiter ]; then expected_groups=1; fi
         if [ "$RUST_TEST_PROFILE" = compression ]; then expected_groups=2; fi
         if [ "$RUST_TEST_PROFILE" = file-logging ]; then expected_groups=1; fi
@@ -7843,7 +7868,13 @@ PY
                 || fail 'filesystem worker descriptor lifetime receipt differs'
         fi
         fi
-        if [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
+        if [ "$RUST_TEST_PROFILE" = version-number ]; then
+            [ "$(grep -Ec '^test result: ok\. 1 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in .+s$' "$output")" -eq 1 ] \
+                && [ "$(grep -Ec '^test [[:alnum:]_:]+ [.][.][.] ok$' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc "VERSION_NUMBER_PROFILE=pass opt_level=3 overflow_checks=false debug_assertions=false artifact_sha256=$hbb_test_artifact_sha" "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc 'VERSION_NUMBER_RANGE=observed cases=7 mismatches=0 controls=14' "$output")" -eq 1 ] \
+                || fail 'optimized peer version test or compiler profile differs'
+        elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             local group count
             [ "$(grep -Fxc 'test test::test_get_version_number ... ok' "$output")" -eq 1 ] \
                 || fail 'peer version number test differs'
@@ -8911,6 +8942,9 @@ PY
         elif [ "$RUST_TEST_PROFILE" = config-options ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'option persistence total differs'
             grep -E '^test (config|password_security)::[[:alnum:]_:]+ [.][.][.] ok$|^OPTION_COMMIT_' "$output"
+        elif [ "$RUST_TEST_PROFILE" = version-number ]; then
+            [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'optimized peer version test total differs'
+            grep -E '^test test::test_get_version_number [.][.][.] ok$|^VERSION_NUMBER_(OVERFLOW|RANGE|PROFILE)=' "$output"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'writer retirement test total differs'
             grep -E '^test (tcp::(writer_receipt_tests|eof_tests|writer_lifetime_tests|exclusive_listener_tests|seal_tests|open_tests)|cpace::(seal_tests|open_tests)|bytes_codec::tests|socket_client::tests)::[[:alnum:]_]+ [.][.][.] ok$|^test test::(test_get_version_number|test_try_into_v4) [.][.][.] ok$|^DIRECT_ADDRESS_NORMALIZATION=|^VERSION_NUMBER_(OVERFLOW|RANGE)=|^WRITER_(FATAL_RETURN|RETIRE_CANCEL|BUFFER_LIFETIME|FAILURE_READ)=|^READ_JOB_BACKPRESSURE(_CASE)?=|^(CIPHER_SEAL_ALLOCATION|TCP_SEAL_ALLOCATION|CIPHER_KEY_GUARD|RECEIVE_CIPHER|RECEIVE_CODEC)' "$output"
@@ -8980,6 +9014,10 @@ PY
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = writer-retirement ]; then
             printf 'WRITER_RETIREMENT_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+                "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
+                "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
+        elif [ "$RUST_TEST_PROFILE" = version-number ]; then
+            printf 'VERSION_NUMBER_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s rust=1.75.0 vendor=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" "$hbb_test_artifact_sha" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = guess-limiter ]; then

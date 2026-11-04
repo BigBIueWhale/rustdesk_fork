@@ -139187,3 +139187,25 @@ unhandled asynchronous error. Both SettingsList visual styles run, retaining
 the four healthy/replacement controls. Observe the unchanged-product result
 before correction. No unrelated parked settings, native artifacts or isolation
 limits change. Device execution remains separate from these controlled replies.
+
+Baseline CTE GdZCenFldI at 5abbc087 completes all eight tests: four healthy controls
+pass and all four injected-error cases fail. Each error reaches the Flutter test
+framework as an unhandled StateError; both mounted-page cases additionally lack
+the Failed value. This is direct rendered-page failure behavior with a controlled
+bridge reply, not a native getter failure. Test runner total is 10.471 seconds.
+The failed run's full private inventory, twelve raw/control records and exact
+outcomes are retained in mobile-date-errors-before-5abbc087.json (31,556 bytes,
+SHA-256 e27323f79b7d9edbafb6e7adeb997b69b43cc90589b18e6fe5e89c509fcb397a).
+Exact wrapper/QEMU/captured children are absent by pidfd ESRCH, all four endpoint
+deltas are zero, and private/RAM state is retired under the shared lock. Scratch
+peaks at 6,383,276,032 bytes. The 534-byte retirement receipt has SHA-256
+6ec26d07577fcf5ac7a6efaebcf26210385881c9ff069d618b55f13df0a3d93a.
+
+Correct only the page-owned callback: catch/report the bridge error, then update
+an error flag only if the page remains mounted. The date row renders the existing
+translated Failed label; a new page initializes fresh state and performs its own
+read. Keep the one-read lifetime, existing successful update and mounted checks.
+A FutureBuilder attached only to the lazily displayed row would not by itself
+own an error arriving while that row is unmounted, so retain ownership in the
+page that starts the read. No bridge ABI or native getter change is necessary.
+Run the unchanged eight-case suite against this product correction.

@@ -51,6 +51,7 @@ class _SettingsState extends State<SettingsPage> {
   var _autoRecordOutgoingSession = false;
   var _allowAutoDisconnect = false;
   var _buildDate = "";
+  bool _buildDateFailed = false;
   var _autoDisconnectTimeout = "";
   var _preventSleepWhileConnected = true;
   bool _savingPreventSleep = false;
@@ -79,11 +80,19 @@ class _SettingsState extends State<SettingsPage> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
-      final buildDate = await bind.mainGetBuildDate();
-      if (!mounted) return;
-      if (_buildDate != buildDate) {
+      try {
+        final buildDate = await bind.mainGetBuildDate();
+        if (!mounted) return;
+        if (_buildDate != buildDate) {
+          setState(() {
+            _buildDate = buildDate;
+          });
+        }
+      } catch (error) {
+        debugPrint('Failed to read build date: $error');
+        if (!mounted) return;
         setState(() {
-          _buildDate = buildDate;
+          _buildDateFailed = true;
         });
       }
     });
@@ -368,7 +377,7 @@ class _SettingsState extends State<SettingsPage> {
                 title: Text(translate("Build Date")),
                 value: Padding(
                   padding: EdgeInsets.symmetric(vertical: 8),
-                  child: Text(_buildDate),
+                  child: Text(_buildDateFailed ? translate('Failed') : _buildDate),
                 ),
                 leading: Icon(Icons.query_builder)),
             // R-G8 / §19 (de-brand): no "Privacy Statement" link to rustdesk.com — a sovereign

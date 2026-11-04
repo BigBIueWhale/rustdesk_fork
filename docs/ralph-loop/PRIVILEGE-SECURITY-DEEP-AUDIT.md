@@ -136372,3 +136372,15 @@ Twelve bounded files match CTE/TUF. The ledger replaces the obsolete missing-ino
 statement with this named native checkpoint, preserving installed Debian, final
 release, other-platform, cold-build, independent-review and continuous-trace limits.
 No product patch was necessary. The required fresh ledger count follows.
+
+Acceptance checkpoint d4ec385a is pushed. Fresh count F9kJy8Pp4r passes in
+27 seconds: 398,633 tokens / 1,823,939 bytes, input SHA-256
+b00d0ef80990a14dadca63a3deb489f95530d3be867344a9d3c4905f04e240b8.
+Seven controls, whole-input round trip, 42 modes / 81 admissions / five refusals
+and three zero listener deltas pass. Exact processes/helpers/private/RAM retire;
+scratch peaks at 402,849,792 bytes. native-runtime-ledger-d4ec385a.json is
+5,114 bytes, SHA-256 61fcc0024cdfe4709796fde64f3b4396352d439413819d4a737acbe9057e6792.
+Twelve bounded files match both hosts. This audit-only receipt preserves the
+counted ledger. No owned job remains. The native bundle identity checkpoint is
+complete; installed Debian identity remains the next distinct acceptance gap,
+and account-store plus all independent parks remain unchanged.

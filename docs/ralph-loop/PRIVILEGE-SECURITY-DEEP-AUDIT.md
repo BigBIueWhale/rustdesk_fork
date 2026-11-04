@@ -136629,7 +136629,7 @@ The ledger records that boundary and the voice pivot; fresh whole-ledger count f
 
 The first count attempt hc0hgSmLSu stops before tokenization because the storage
 self-check still expects 81 admissions after this slice adds its 82nd case.
-All 82 admissions and five refusals pass. Update only the two expected-total
+All 82 admissions and five refusals pass. Update only the three guest/host expected-total
 literals; keep every case and resource limit. winprotocol-ledger-before-5f2be0bb.json
 retains the failure and exact process/private/RAM cleanup with three zero listener
 deltas; 29 bounded files match both hosts. The ledger input is unchanged for replay.

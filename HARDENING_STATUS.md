@@ -55,15 +55,17 @@ The current R-S11hj checkpoint verifies retained Linux/Android asset inventories
 and removes two unused source fonts; complete account-removal and release
 acceptance remain OPEN.
 
-**Account-login device metadata — source removal; rebuilt ABI pending.** The
-retained Linux/Android libraries both still export `wire_main_get_login_device_info`.
-Its account-login callers were deleted; the unused Rust type/getters, native bridge
-method and authored web method are now removed. Seventeen other retired account APIs
-are absent from both symbol tables; all 227 existing wire exports match the unchanged
-pre-correction FFI source. `account-abi-before-44083a47.json` binds that inspection.
-Next: regenerate/build the complete Linux app and verify that only this bridge
-export disappears, retaining the other 226. This finding is unused account metadata
-construction, not a demonstrated egress or privilege escalation.
+**Account-login device metadata — Linux build and ABI verified (`a3192591`).**
+The unused Rust type/getters, native bridge and web method are removed. Fresh bridge
+generation and the complete isolated Linux application build pass thirteen widget
+and two native command checks. The actual library has exactly 226 defined global
+wire exports: only `wire_main_get_login_device_info` disappears from the preserved
+227-name baseline. All eighteen inventoried retired account APIs are absent; GNU
+readelf and an independent ELF reader agree. All 74 bundle files match their manifest.
+`account-metadata-build-a3192591.json` and `account-abi-after-a3192591.json` bind
+the build, export comparison and joined VM/RAM cleanup. The retained Android library
+still contains the old export; rebuilt Android ABI, full account storage/egress,
+native/installed and release acceptance remain OPEN.
 
 **User pivot (2026-11-04):** Android permission native-workflow acceptance is
 OPEN/PARKED; the accepted Kotlin callback correction below remains valid.
@@ -15708,7 +15710,7 @@ closure; every separately parked task stays OPEN/PARKED.
 
 ### R-S11hj/R-S11e-247 — complete account storage and presentation authority excision
 
-**Source corrected; focused historical component checks accepted; current application,
+**Source corrected; Linux application build and bridge ABI accepted; native,
 package and installed-artifact acceptance OPEN.** The direct-only fork has no account,
 address-book or group control plane. Inherited records/raw stores, save/load/clear
 bridges, account options and status variants, credential-provenance fields, recursive
@@ -15733,19 +15735,20 @@ These are retained Linux-bundle and test-signed x86_64 APK observations, not nat
 asset loading, glyph rendering, ABI/storage absence or final Debian/Android aarch64,
 Windows/Apple acceptance. Those obligations remain OPEN.
 
-**Account metadata bridge — correction awaiting compiled confirmation.** Historical
-account login/OIDC request construction consumed `LoginDeviceInfo`; the current
-tree retains only its getter/JSON/FFI chain and a web equivalent with no caller.
-Those implementations and their now-unused imports are deleted without a stub.
-Inspection of actual Linux `27bf28eb` and Android test APK `33fc2bdb` finds 843/500
-dynamic symbols and the same 227 defined global function exports prefixed `wire_`,
-including the orphan metadata entry. Every wire name matches the source API;
-seventeen other retired account names are absent. Linux GNU readelf independently
-agrees with the bounded ELF reader used for both files. Source declarations match
-both build commits; raw output, library/APK hashes and full wire inventories are in
-`account-abi-before-44083a47.json`. Expected correction is exactly 226 retained
-wire exports after fresh generation/build. Artifact execution, new Android library,
-complete storage/egress absence and final-release acceptance remain OPEN.
+**Account metadata bridge — rebuilt Linux absence verified (`a3192591`).** Historical
+account login/OIDC construction consumed `LoginDeviceInfo`; its orphan Rust
+type/getters/FFI, web method and unused imports are deleted. Baseline Linux `27bf28eb`
+and Android test APK `33fc2bdb` expose the same 227 wire functions, including that
+metadata entry; `account-abi-before-44083a47.json` retains both full inventories.
+The freshly generated and compiled Linux library has 842 dynamic entries and exactly
+226 defined GLOBAL/FUNC/DEFAULT wire exports. Only `wire_main_get_login_device_info`
+is removed; no export is added and all seventeen earlier retired names stay absent.
+GNU readelf and the bounded ELF reader agree. The complete app passes thirteen widget
+and two native command checks; all 74 payload hashes and manifest/source identity
+match. `account-metadata-build-a3192591.json` and `account-abi-after-a3192591.json`
+bind artifacts, exact ABI delta, four zero listener deltas and joined VM/RAM cleanup.
+Live device ID/name and direct-session profile consumers remain. Native session,
+rebuilt Android, complete storage/egress and final-release acceptance remain OPEN.
 
 The tables describe current source and the evidence for the named historical commits.
 They do not establish fresh validation of the current tree. All capsules are retained

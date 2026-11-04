@@ -136130,3 +136130,56 @@ artifact and joined-cleanup evidence, then inspect the new generated ABI
 against the preserved 227-name baseline. No build, corrected native-export,
 Android or broader release acceptance is claimed at this checkpoint. This
 audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-11-04 — account metadata removal: Linux application and compiled ABI accepted
+
+Previous turn is progress: source removal a3192591, fresh ledger count, exact
+obsolete-cache retirement and the admitted integration job are committed/pushed.
+Continue that selected R-SV6a/R-S11hj checkpoint before choosing another item.
+The existing controller/session is polled; its live PID/start identity and
+actual phase output confirm progress. No job is relaunched because output is
+buffered. Independently parked topics remain parked.
+
+Run EfGtfxlrSd exits zero after 1,062 capture seconds (1,055 outer seconds)
+on frozen source a3192591, tree 19530eae82938675e873b80c2784fef21b4f1e6d.
+Fresh FRB generation, thirteen view-mode widget controls, the release Rust
+library, two native command controls, support executable and complete release
+Flutter app pass. These existing controls establish their named behaviors;
+they are not account-storage, egress, full-session or privilege acceptance.
+The build consumes the unchanged authenticated ddb1541d engine, offline inputs
+and canonical isolated recipe. No new product, test or harness change is needed.
+
+Independent inspection verifies the exact 74 payload files / 70,340,674 bytes
+against the 13,067-byte manifest, SHA-256
+e20a16fa280d39996a65a625b8802b5315269d17cf6737e0aa21b92c68651f09.
+The new librustdesk.so is 26,981,016 bytes, SHA-256
+fc1fa5c96a09ea8512861b9b5709d4bb76c6b4755d74ae09be34d25db2024745.
+It has 842 dynamic entries and 226 defined global/default function exports
+prefixed wire_. The sole delta against the preserved actual 227-name Linux
+baseline is deletion of wire_main_get_login_device_info. No export is added;
+every retained name and all five positive controls survive. All eighteen
+inventoried retired account exports are absent. GNU readelf agrees exactly
+with the bounded ELF reader. Neither library is loaded or executed on a host.
+
+Source review distinguishes live neighboring metadata: native_model.dart
+initializes mainDeviceId/mainDeviceName; mobile create_login_msg and the
+username/hostname helpers consume that state. Those direct-session consumers
+remain. The removed LoginDeviceInfo family has no remaining authored source
+reference. This preserves the required distinction between account control
+plane and local/session metadata; it is not complete mobile runtime evidence.
+
+Four decoded listener deltas are zero. Exact launcher/QEMU pidfds report
+absence, matching helpers/private/RAM are gone, and the shared run lock is
+reacquired. Peak RAM scratch is 11,892,318,208 bytes within the 16 GiB profile.
+The new bounded app remains reusable. Fifteen evidence files match CTE/TUF:
+account-metadata-build-a3192591.json is 6,329 bytes, SHA-256
+4db0829598d1ee23f51d41f5db827899441dd6f66108d6ddd832e94af85a3e85;
+account-abi-after-a3192591.json is 11,300 bytes, SHA-256
+cc61dbe0d85ec123672db8d282228e46011c4fafd2e77bee00b0206786b1cda0.
+Their raw logs, manifest and 72,600-byte readelf output retain the exact proof.
+
+The ledger advances only source-bound Linux compilation and dynamic-ABI
+absence. The retained Android APK still has the old export; Android rebuild,
+native session behavior, full storage/egress absence, final packages and
+cross-platform/installed/release acceptance remain OPEN. No mobile-scroll or
+other parked scenario ran. The required fresh count follows the ledger edit.

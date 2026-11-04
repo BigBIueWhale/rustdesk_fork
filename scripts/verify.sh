@@ -914,7 +914,6 @@ echo "$user_owned_main_server_auth_block" | grep -Fq 'user_owned_main_server_arg
 grep -Fq 'async fn connect_user_owned_password_main' src/ipc.rs || r_s11="$r_s11 user-owned-password-main-connector-missing"
 grep -Fq 'ensure_user_owned_main_server_is_trusted(&connection)' src/ipc.rs || r_s11="$r_s11 user-owned-password-main-connector-not-authenticated"
 grep -Fq 'user_owned_permanent_password_is_writable' src/ipc.rs || r_s11="$r_s11 user-owned-password-writable-auth-query-missing"
-grep -Fq 'test_user_owned_main_server_argv_is_exact' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-argv-test-missing"
 if ! python3 - <<'PY'
 from pathlib import Path
 src = Path("src/ipc.rs").read_text()
@@ -6786,16 +6785,6 @@ check_r_s11e34_helper_contract "$portable_pty_spawn" \
 if grep -qF 'close_random_fds' <<<"$portable_pty_unix"; then
   r_s11e34="$r_s11e34 obsolete-portable-pty-best-effort-close-present"
 fi
-for pty_test_binding in \
-  'fn unix_child_descriptor_limit_is_bounded()' \
-  'fn pty_child_exec_failure_is_reported()' \
-  'the PTY spawn hid its post-fork exec failure from the parent' \
-  'fn pty_child_excludes_injected_nonstdio_descriptor()' \
-  'the intermediate PTY test image must prove the injected descriptor object' \
-  'the final PTY test image inherited the injected descriptor object'; do
-  grep -qF "$pty_test_binding" <<<"$portable_pty_unix" \
-    || r_s11e34="$r_s11e34 portable-pty-regression-binding-missing"
-done
 grep -qF 'portable-pty = { path = "libs/portable_pty" }' Cargo.toml \
   || r_s11e34="$r_s11e34 portable-pty-root-path-binding-missing"
 grep -qF '"libs/portable_pty"' Cargo.toml \

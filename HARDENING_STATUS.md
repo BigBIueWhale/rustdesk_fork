@@ -1440,6 +1440,12 @@ comparison, shell syntax and diff checks cover this deletion; no product runtime
 test ran for it. `test-source-catalogues-911ad100.json` retains the comparison and
 fresh ledger count. Native/installed acceptance and all user parks remain OPEN.
 
+Two further PTY test-wording loops and one main-server argv test-name grep are
+deleted from the shared/Apple gates (21 lines). All four Rust tests, production
+predicates and executable commands remain unchanged. Exact deletion comparison
+and shell syntax pass; no runtime acceptance is added. The audit entry
+“2026-11-04 — remaining PTY and role test-wording inventories” records scope.
+
 **Retired whole-config protocol verification.** The shared and Apple gates now
 check the four relevant protocol declarations for `SyncConfig`. Their former
 whole-file scans falsely rejected the existing framed negative test that sends

@@ -138359,3 +138359,27 @@ private/RAM retirement are verified under the shared lock. Scratch peaks at
 ten raw/control records and the retirement receipt remain. Diff/whitespace review
 passes. No owned job remains; the evidence repair is complete and the broader
 release goal stays active. The pending scope question has no answer yet.
+
+## 2026-11-04 — remaining PTY and role test-wording inventories
+
+The previous turn corrected authoritative evidence at 8bde24de/d5c6e901. Select
+the binding deletion work while independently parked product investigations remain
+parked. The shared and Apple R-S11t/R-S11e-34 gates each search for three PTY test
+names and three assertion messages; the shared main-IPC gate also searches for one
+argv-test name. These checks can pass without executing a child or assertion, and
+changing diagnostic prose can fail them without changing behavior. They preserve
+no additional production invariant or truthful runtime observation.
+
+Delete precisely those two ten-line loops and the one-line grep. Keep the four
+actual Rust tests, production descriptor/role predicates, provenance checks,
+dependencies and all executable Cargo invocations. The main auth-module Cargo
+selection remains. This slice does not add a PTY runner or execute the separately
+parked child-teardown preparation. R-S11t's required actual-child descriptor and
+exec-error observations, target-native compilation/execution and broader installed
+acceptance remain binding and OPEN; source inventories never established them.
+
+Both edited shell files pass parse-only inspection and whitespace review. Verify
+their complete remaining bytes against HEAD after only the classified deletions;
+the real Rust source/test files must match HEAD. No product or live instruction
+file changes, new tests, full source catalog or native scenario are needed for
+this deletion-only correction. Fresh ledger count is pending.

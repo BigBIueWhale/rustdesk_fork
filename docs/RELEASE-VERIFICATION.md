@@ -47,7 +47,7 @@ independent of the artifact host, or be reproduced from a trusted clean build of
    sha256sum --check --strict SHA256SUMS
    ```
 
-   Require successful exit and an `OK` result for each of the four named artifacts.
+   Require successful exit and a passing result for each of the four named artifacts.
    GNU checksum verification checks listed file contents; `--strict` also rejects malformed
    checksum lines. It does not enforce this release's names, complete inventory or metadata,
    so the directory and manifest comparisons above are required.

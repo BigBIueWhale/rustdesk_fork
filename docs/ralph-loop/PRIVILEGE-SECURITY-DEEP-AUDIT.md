@@ -137270,3 +137270,15 @@ Review of the complete diff and local links passes. Fresh isolated whole-ledger
 counting remains the validation for the updated current-state ledger. Product,
 tests, launchers, normative requirements and live instructions are unchanged;
 every independent park and release obligation remains.
+
+Fresh count 1pb8Xj6A7A at 8f62b29c passes: 399,075 tokens / 1,825,854 bytes,
+input SHA-256 9a88883e0f704f28074ebe3aa868b14b73654657ad13355a1fd9378e763d5f5e.
+Seven controls, whole-input round trip and 82 storage admissions/five refusals
+pass. Capture exits zero after 30.815 seconds. Processes 1859966/1861383 are
+absent by pidfd; helpers, private state and RAM scratch retire. Three listener
+deltas are zero and scratch peaks at 402,661,376 bytes. The 5,185-byte capsule
+release-guide-ledger-8f62b29c.json has SHA-256
+aa22703266a017e05d4e977ed2e6c2711990f27e897a9859f8d8a55ec01c49c3;
+all twelve bounded evidence files match CTE/TUF. Final guide wording asks for a
+passing checksum result without assuming the operator's output locale. The counted
+ledger is unchanged. This documentation checkpoint is complete; no owned job remains.

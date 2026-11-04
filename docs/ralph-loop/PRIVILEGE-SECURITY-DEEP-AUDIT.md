@@ -138963,3 +138963,20 @@ the observed failed checkpoint and explicit park. No product, tests, requirement
 or live instructions change. Exact diff/reference review and a fresh isolated
 whole-ledger count are required for this documentation checkpoint; no product
 execution or new product acceptance is sought.
+
+The classified block shrinks from 4,632 to 3,499 bytes; its requirement references
+and both existing capsule links are retained. Including the necessary OpenRC
+status update, the whole ledger is 351 bytes smaller. At committed source
+654996df, CTE WBGjevKGg5 passes the fresh count in 28 workload seconds:
+397,563 tokens / 1,816,256 bytes, SHA-256
+31269c8c95564d544fdd07c9715a651a2d0d881aa5548fa139c4b71eeec0c731.
+The net token count increases by three and remains below 400,000. Seven tokenizer
+controls, whole-input round trip and all 83 workload controls/five refusals pass.
+Three listener deltas are zero; wrapper, QEMU and captured children are absent
+by pidfd ESRCH; private/RAM state is retired and no owned run remains. RAM scratch
+peaks at 402,886,656 bytes. Capsule classifier-ledger-654996df.json (7,608 bytes,
+SHA-256 2347f9d2f6775d8c697647738b806d350928d2dc81e9551cd1fdde31cc8d60b1)
+binds eleven raw/control records and a 456-byte retirement receipt, SHA-256
+9c34e01d4c391a381183e63149d167ca538c13171ff3a9cb07ab97dd3b25d360.
+Diff/reference review and whitespace checks pass. This documentation checkpoint
+is complete; whole-document classification and all product/release gaps remain OPEN.

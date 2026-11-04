@@ -1164,14 +1164,6 @@ class RustdeskImpl {
     return js.context.callMethod('getByName', ['envvar', key]);
   }
 
-  // Use the global variable as the environment variable in web.
-  void mainSetEnv({required String key, String? value, dynamic hint}) {
-    js.context.callMethod('setByName', [
-      'envvar',
-      jsonEncode({'name': key, 'value': value})
-    ]);
-  }
-
   Future<void> mainSetLocalOption(
       {required String key, required String value, dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', [

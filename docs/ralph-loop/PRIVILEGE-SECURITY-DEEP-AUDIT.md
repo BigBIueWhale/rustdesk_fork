@@ -139413,3 +139413,37 @@ with a 456-byte retirement receipt, SHA-256
 87196b88b503165b47c4ce3e258b8e7e8936aa581f17895ece760354d143a1da.
 This completes the selected integration checkpoint. The full release objective
 remains active; current-artifact/native acceptance and independent parks remain.
+
+## 2026-11-04 — retire orphan environment mutation bridge
+
+Continue after the passing release-authority integration checkpoint. TUF's
+existing password-authenticated SSH master is available; no key, SSH setting or
+reconnection service is introduced. Credential-diagnostic source review finds
+that the reviewed password-dialog and config-parser error paths already omit
+their payloads. This bounded review establishes no new secret disclosure or LPE.
+
+One concrete leftover is main_set_env in src/flutter_ffi.rs: a generic process
+environment mutation export whose invalid-key/value diagnostics interpolate the
+input. The full tracked-code search finds no caller; 84d33ecd removed the sole
+mainSetEnv invocation and its terminal-admin feature on 2026-06-23. Its native
+definition and web bridge counterpart survived. R-X8 keeps normal Terminal and
+receiver-owned principal selection; it does not require this retired selector.
+R-S0 requires preserving supported workflows while removing unsafe surplus APIs.
+Removing this classified orphan takes priority over further speculative logging
+changes or rebuilding unrelated parked artifacts.
+
+Rust's official std::env::set_var and remove_var documentation explains that
+process environment mutation on non-Windows systems requires excluding concurrent
+environment readers/writers, including library internals. The existing generic
+runtime bridge offers no such lifecycle guarantee. References:
+https://doc.rust-lang.org/std/env/fn.set_var.html and
+https://doc.rust-lang.org/std/env/fn.remove_var.html . This is design evidence,
+not a demonstrated call, race or exploit in this fork.
+
+Delete the two uncalled definitions, including their input-bearing diagnostics.
+The used main_get_env/mainGetEnv read remains. Extend the existing generated-API
+absence check by the two retired names, without adding a replacement API or a
+new verifier catalogue. Validate fresh Rust/Dart bridge generation and the
+existing fourteen connection-password dialog cases in the admitted zero-NIC VM.
+No new scenario or product execution on either host is needed. Full application,
+web runtime, native device and installed release acceptance remain OPEN.

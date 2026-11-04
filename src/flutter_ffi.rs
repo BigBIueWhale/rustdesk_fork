@@ -1268,35 +1268,6 @@ pub fn main_get_env(key: String) -> SyncReturn<String> {
     SyncReturn(std::env::var(key).unwrap_or_default())
 }
 
-// Dart does not support changing environment variables.
-// `Platform.environment['MY_VAR'] = 'VAR';` will throw an error
-// `Unsupported operation: Cannot modify unmodifiable map`.
-//
-// And we need to share the environment variables between rust and dart isolates sometimes.
-pub fn main_set_env(key: String, value: Option<String>) -> SyncReturn<()> {
-    let is_valid_key = !key.is_empty() && !key.contains('=') && !key.contains('\0');
-    debug_assert!(is_valid_key, "Invalid environment variable key: {}", key);
-    if !is_valid_key {
-        log::error!("Invalid environment variable key: {}", key);
-        return SyncReturn(());
-    }
-
-    match value {
-        Some(v) => {
-            let is_valid_value = !v.contains('\0');
-            debug_assert!(is_valid_value, "Invalid environment variable value: {}", v);
-            if !is_valid_value {
-                log::error!("Invalid environment variable value: {}", v);
-                return SyncReturn(());
-            }
-            std::env::set_var(key, v);
-        }
-        None => std::env::remove_var(key),
-    }
-
-    SyncReturn(())
-}
-
 pub fn main_set_local_option(key: String, value: String) -> Result<()> {
     let is_texture_render_key = key.eq(config::keys::OPTION_TEXTURE_RENDER);
     let is_d3d_render_key = key.eq(config::keys::OPTION_ALLOW_D3D_RENDER);

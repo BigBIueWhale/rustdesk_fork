@@ -136421,3 +136421,21 @@ Commit 074ccdda added it and the sole extra Cargo record, protobuf_it;
 every retained Cargo record matches inventory commit 546fa719. Admit that tracked
 file and reconcile eight build scripts / 832 Cargo records. This is inventory
 bookkeeping only; parked protobuf behavior and all other parks remain untouched.
+
+Failed inventory processes 1774193/1775691 are absent, RAM run.6nd61czv retires,
+and three decoded listener deltas are zero. Eighteen small private diagnostic
+files are copied and hash-checked before exact private-directory retirement.
+The first cleanup observation compared atime too; reading changed it. Resumption
+verifies retained content and stable identity/mode/size/mtime/ctime before cleanup.
+qr-inventory-25ead00a.json and all 29 bounded files match CTE/TUF.
+
+Corrected ec9301ca inventory fliANfori0 passes in nine outer seconds: eight build
+scripts, 832 Cargo records, 57 direct Flutter dependencies and 196 locked packages.
+The projected source/index remain unchanged. Processes 1775920/1777444 are absent;
+401,539,072 peak RAM bytes retire, helpers/private state are absent, and all three
+listener deltas are zero. qr-inventory-ec9301ca.json is 8,180 bytes, SHA-256
+9687c0dafd942893f68fac7b1635fa7b19bfa9d944bfa5449c4f98d940bb380b;
+its eleven files match both hosts. Password receipt qr-password-25ead00a.json is
+4,301 bytes, SHA-256 9610b157e971dc0528f94f802b11edf8721841f13f9e08f2da29410769f0d31b.
+No application rebuild or broader authentication/platform acceptance is claimed.
+The ledger records the completed deletion and scoped evidence; fresh count follows.

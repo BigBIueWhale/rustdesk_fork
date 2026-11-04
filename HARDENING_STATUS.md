@@ -1497,6 +1497,21 @@ and fresh ledger count. Current native/installed and release acceptance remain O
 | Retired host identity | R-S17 remains reserved/retired under the password-only contract | `host-identity-document-role-1ba44a05.json` |
 | Dependency inventory and unused dependencies | `51ef7781` removes six zero-caller root platform declarations: `runas`, `tauri-winrt-notification`, `fruitbasket`, `objc_id`, `async-process` and `termios`. Nine exclusively orphaned packages leave the lockfile, reducing 853 records to 844. Twelve shared dependencies remain; clipboard's `objc_id`, zbus's `async-process`, serial's termios 0.2.2, the protected installer's Win32 elevation verb and all product source are preserved. Three now-unambiguous time/termios references retain the same dependency targets/order; every retained version/source/field remains. The offline locked workspace build passes nineteen controller tests; the isolated inventory matches, with only its Cargo count/digest expectations changed and 31 Git packages/22 Git source URLs retained. Removing time 0.1.45 retires `RUSTSEC-2020-0071` (39 exceptions become 38); the two quick-xml reasons drop the removed Windows notification consumer, retaining their other dispositions. No fresh advisory scan is claimed. Prior ZIP/file-block, Wake-on-LAN/interface/OpenSSL removal and inventory reconciliation remain in linked evidence. Authenticated retained inputs/build images are unchanged. Current full-parent/installed/native-role, Windows/macOS execution, direct-connection/capture, advisory/provenance, native artifact closure, cold and release acceptance remain OPEN. | `dependency-inventory-drift-dac06f59.json`; `dependency-inventory-accepted-9b1c643f.json`; `webm-writer-accepted-b3cc5328.json`; `wol-dependency-23983d0e.json`; `interface-dependencies-2c6b45b1.json`; `openssl-dependency-e360a3e1.json`; `zip-dependency-4e29e754.json`; `platform-dependencies-51ef7781.json` |
 
+**Retired TOTP QR dependencies (`25ead00a`).** The unused dialog import,
+`qr_flutter` declaration and exclusive `qr_flutter`/`qr` lock records are removed;
+the only widget consumer disappeared with TOTP setup in `dbbb152a`. Direct Flutter
+dependencies fall 58 to 57 and locked packages 198 to 196; every retained lock
+record is byte-identical. TUF `wGPi8NmlU2` passes pinned offline enforced-lock
+resolution, 25 existing password field/focus/lifecycle cases and three parser
+controls in 99 seconds. Inventory `fliANfori0` passes after `ec9301ca` stages the
+already-existing protobuf build script and reconciles eight build scripts / 832
+Cargo records plus the existing local cursor fork. No dependency is upgraded.
+Receipts `qr-password-25ead00a.json` and `qr-inventory-ec9301ca.json` bind results
+and exact VM/RAM cleanup; all seven listener deltas are zero. The initial missing
+inventory input and retired diagnostics are preserved in `qr-inventory-25ead00a.json`.
+Full-app/final-artifact, advisory, installed/native and release acceptance remain
+OPEN; all independent parks remain unchanged.
+
 **Retired unused TLS client builder (`c2fafa4d`).** The callerless 196-line
 `hbb_common::verifier` module and its compatibility API are deleted; Git history
 `5e37492f` removed its last proxy caller. Four direct dependency declarations and

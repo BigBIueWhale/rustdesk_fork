@@ -136669,3 +136669,34 @@ The pinned 1.44.2 timeout contract cancels a yielding future at expiry, without
 preempting synchronous work (https://docs.rs/tokio/1.44.2/tokio/time/fn.timeout.html).
 Claims are limited to these methods and real Linux framing; Windows pipes,
 process/token authority, handlers, full application and release acceptance remain OPEN.
+
+## 2026-11-04 — user pivot; retire unused Flutter UI dependencies
+
+The user requests a different aspect. Further Windows service protocol work is
+OPEN/PARKED. Finished run l4CtjTkvvt at b81452e0 passed all seven schema/framed
+component cases in 67 seconds, including twelve wrong routes, boundary frames,
+deadlines and EOF. No product change was needed. winprotocol-io-b81452e0.json
+is 5,549 bytes, SHA-256
+675fdb3e842d7ac3f86f4c99e4f950d65bf2209ef612f72f8e3f11cac7aa656b.
+Exact processes 1799003/1799462, helpers, private state and RAM scratch retire;
+peak scratch was 3,412,631,552 bytes. Four listener deltas are zero and twelve
+bounded files match both hosts. Windows/installed acceptance remains OPEN.
+
+Select production dependency minimization and R-R1/R-B5a locked-source closure.
+The application has no imports of contextmenu, flex_color_picker or tuple.
+The first two have no remaining package consumers; their exclusive after_layout,
+animations and flex_seed_scheme dependencies can also leave the graph. The
+authenticated flutter_rust_bridge 1.80.1 manifest still requires tuple, so retain
+its exact lock record as transitive. The application's tuple consumer disappeared
+in cdeb22ce. No executable application source or required feature changes.
+
+Official Pub guidance (https://dart.dev/tools/pub/dependencies and
+https://dart.dev/tools/pub/cmd/pub-get) distinguishes immediate/transitive
+dependencies and preserves retained versions during removal. Delete three direct
+declarations and five exclusive lock records; change only tuple's classification.
+Independently parse and compare every retained record, then use the existing
+offline enforced-lock resolver/menu-widget cohort and isolated inventory. This
+removes actual unused acquisition/build surface rather than adding another
+source catalogue. Do not reopen menu/toolbar behavioral development or other parks.
+The separately pinned candidate-SDK closure and authenticated cache stay unchanged;
+full-app/current release, native/installed and independent acceptance remain OPEN.

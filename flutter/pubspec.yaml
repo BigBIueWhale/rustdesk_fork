@@ -31,7 +31,6 @@ dependencies:
   path_provider: ^2.1.1
   external_path: ^2.2.0
   provider: ^6.0.5
-  tuple: ^2.0.0
   wakelock_plus: ^1.1.3
   package_info_plus: ^4.2.0
   url_launcher: ^6.3.1
@@ -64,7 +63,6 @@ dependencies:
       ref: eb3964990cf19629c89ff8cb4a37640c7b3d5601
   get: ^4.6.5
   visibility_detector: ^0.4.0+2
-  contextmenu: ^3.0.0
   desktop_drop: ^0.4.4
   scroll_pos: ^0.4.0
   debounce_throttle: ^2.0.0
@@ -86,7 +84,6 @@ dependencies:
   dropdown_button2: ^2.0.0
   uuid: ^3.0.7
   auto_size_text_field: ^2.2.1
-  flex_color_picker: ^3.3.0
   dynamic_layouts:
     git:
       url: https://github.com/rustdesk-org/dynamic_layouts.git

@@ -14,14 +14,6 @@ packages:
     description: dart
     source: sdk
     version: "0.3.2"
-  after_layout:
-    dependency: transitive
-    description:
-      name: after_layout
-      sha256: "95a1cb2ca1464f44f14769329fbf15987d20ab6c88f8fc5d359bd362be625f29"
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.2.0"
   analyzer:
     dependency: transitive
     description:
@@ -30,14 +22,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "6.7.0"
-  animations:
-    dependency: transitive
-    description:
-      name: animations
-      sha256: d3d6dcfb218225bbe68e87ccf6378bbb2e32a94900722c5f81611dad089911cb
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.0.11"
   archive:
     dependency: transitive
     description:
@@ -246,14 +230,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.18.0"
-  contextmenu:
-    dependency: "direct main"
-    description:
-      name: contextmenu
-      sha256: e0c7d60e2fc9f316f5b03f5fe2c0f977d65125345d1a1f77eea02be612e32d0c
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.0"
   convert:
     dependency: transitive
     description:
@@ -439,22 +415,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.1"
-  flex_color_picker:
-    dependency: "direct main"
-    description:
-      name: flex_color_picker
-      sha256: "12dc855ae8ef5491f529b1fc52c655f06dcdf4114f1f7fdecafa41eec2ec8d79"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.6.0"
-  flex_seed_scheme:
-    dependency: transitive
-    description:
-      name: flex_seed_scheme
-      sha256: "7639d2c86268eff84a909026eb169f008064af0fb3696a651b24b0fa24a40334"
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.4.1"
   flutter:
     dependency: "direct main"
     description: flutter
@@ -1191,7 +1151,7 @@ packages:
     source: hosted
     version: "2.3.0"
   tuple:
-    dependency: "direct main"
+    dependency: transitive
     description:
       name: tuple
       sha256: a97ce2013f240b2f3807bcbaf218765b6f301c3eff91092bcfa23a039e7dd151

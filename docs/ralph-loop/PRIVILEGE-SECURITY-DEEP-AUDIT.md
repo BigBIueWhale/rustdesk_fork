@@ -139504,3 +139504,19 @@ preference/submission callbacks and platform styles; no full Rust library,
 browser, native device or installed receiver is validated. The existing TUF
 master also completes a remote /usr/bin/true with new authentication disabled.
 Record this checkpoint and perform the required fresh ledger count.
+
+Fresh isolated count at 99b55ac7, CTE UT65Qn08R2: 398,616 tokens /
+1,820,873 bytes, SHA-256
+37fee8f74e102944af72c420b11204450761831e2a60dad7fb709aaaeab7317b.
+Seven tokenizer controls, whole-input round trip, nine native artifact-cache
+controls and 84 workload controls/five refusals pass in 28 workload seconds.
+The first two endpoint deltas are zero; the final snapshot has two unattributed
+additions, retained without foreign-process inspection or mutation. Exact owned
+processes and private/RAM state retire under the shared lock. No owned run remains.
+Peak scratch is 402,833,408 bytes. Eleven records are bound by
+environment-bridge-ledger-99b55ac7.json (7,994 bytes, SHA-256
+cf45b2988d8e2abda37262fd9a901b006938d335d75390242b089de7a21578ab).
+Its 469-byte retirement receipt has SHA-256
+63a1043147135eb42f4ee90fb0cd6d7ee0f9f7bd8d480055ae127fd831297d3d.
+The selected API-retirement checkpoint is complete; the full release objective
+remains active with native/installed acceptance and independent parks open.

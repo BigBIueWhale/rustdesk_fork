@@ -136598,3 +136598,19 @@ distinguish unknown fields from the declared adjacent content field. Execute the
 existing assertions before deciding whether a failure belongs to production or
 to an incorrect test expectation. Product types and assertions remain unchanged
 for this initial run; a source annotation alone does not establish decoder behavior.
+
+Baseline vj1TMESzC9 at 6901f4fc compiles the exact five types and unchanged
+regression, then fails the assertion that Shutdown with declared null content
+must be rejected. The adjacent content key is known and its unit value carries
+no additional operation or authority. Correct that test expectation: explicitly
+retain the equivalent Shutdown decoding and require refusal of an actual unknown
+extra field. All production type definitions, endpoint handlers, authorization,
+serialization and other assertions remain unchanged. This corrects the gate;
+it is not a product vulnerability or a reason to change protocol compatibility.
+
+winprotocol-before-6901f4fc.json is 9,611 bytes, SHA-256
+a004d3e6e863694b64fc2bc476da58d9be70d8453c79715a86aa60d24b68db13.
+Processes 1791553/1792019 are absent; RAM peaks at 3,428,376,576 bytes and
+retires. Private diagnostics and the inventoried extracted helper retire under
+the shared lock, with four zero listener deltas. Thirty-one bounded evidence
+files match both hosts. Replay uses the same source-extraction and execution recipe.

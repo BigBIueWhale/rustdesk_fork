@@ -11197,8 +11197,15 @@ mod test {
         assert!(
             serde_json::from_slice::<WindowsServiceCredentialRequest>(&control_request).is_err()
         );
+        assert_eq!(
+            serde_json::from_slice::<WindowsServiceControlRequest>(
+                br#"{"t":"Shutdown","c":null}"#
+            )
+            .unwrap(),
+            WindowsServiceControlRequest::Shutdown
+        );
         assert!(serde_json::from_slice::<WindowsServiceControlRequest>(
-            br#"{"t":"Shutdown","c":null}"#
+            br#"{"t":"Shutdown","extra":true}"#
         )
         .is_err());
 

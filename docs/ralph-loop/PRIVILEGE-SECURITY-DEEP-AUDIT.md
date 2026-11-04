@@ -138638,3 +138638,15 @@ remain, with repeated R-S0/R-F5 references covered by the shared qualification.
 The ledger loses 8,666 bytes (1,826,534 to 1,817,868); its SHA-256 is
 629905c3590b98b938112961dc500374b873e653abdba538461fa1c386b281df.
 The audit is append-only and no other tracked file changes. Diff checks pass.
+
+Fresh CTE count OI8W5z9AFL at fe665e9b passes in 31 workload seconds:
+397,829 tokens, a reduction of 1,474, for the exact ledger bytes/hash above.
+The pinned method, seven controls, whole-input round trip and existing storage
+admission pass. All three listener deltas are zero; wrapper, QEMU and four
+captured children are absent by pidfd ESRCH. Under the shared lock, private/RAM
+state is absent and no owned run remains. Scratch peaks at 402,681,856 bytes.
+Capsule ledger-contract-index-fe665e9b.json (5,440 bytes, SHA-256
+c6c6f6a1433ae464a83c5f341a3c390afd1950101c58dd983651f64ca4a6e9b6)
+binds eleven raw/control records and a 248-byte retirement receipt. This bounded
+consolidation is complete; whole-document classification and release acceptance
+remain OPEN, with sidebar follow-ups and all independent parks preserved.

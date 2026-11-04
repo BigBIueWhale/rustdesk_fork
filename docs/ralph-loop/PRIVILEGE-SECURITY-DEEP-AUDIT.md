@@ -137800,3 +137800,23 @@ Only initialized credential bytes in these exact optimized Linux test processes
 can be established; scalar/point/key stack/register copies, library internals,
 normalization scratch, partial RNG writes, aborts, other targets/shipping artifacts,
 full application/installed authority and independent review remain OPEN.
+
+Native crdYlrHte5 at 8b2a0378 passes in 103 outer seconds. The exact Rust 1.75
+Linux x86-64 artifact uses opt=3, LTO, one codegen unit and unwind; SHA-256
+b6ae032f0ab0af443d83fce2aed2602dfbce35b94beb1d6bb548b9dc7d37ed95 is unchanged
+before/after. All eight production paths expose the matching 64-byte live public
+fixture and then zero nonzero bytes before System.dealloc. The ordinary Vec and
+tail controls retain 64/1 nonzero bytes; the unreleased control has no retirement
+observation. Every child exits successfully and is joined. Both successful-flow
+cases complete confirmation and prove mirrored traffic keys. The twenty existing
+functional cases and allocation observation pass on that same executable.
+
+The unchanged production ownership therefore passes this bounded erasure check;
+no product correction or vulnerability is claimed. Exact launcher/QEMU
+1906106/1906574 are absent, private/RAM state and owned helpers retire, and all
+four listener deltas are zero. RAM scratch peaks at 3,343,564,800 bytes; retained
+host evidence is bounded. Thirteen records match CTE/TUF. Capsule
+pake-erasure-8b2a0378.json is 6,273 bytes, SHA-256
+5ce5fda452376fbe0896869a374082ab5b6eaeb22c4ce100ad45416f86fa0860.
+Update only the named evidence row; broader R-P12/R-S0, current release and
+independent-review obligations remain open. Fresh ledger counting follows.

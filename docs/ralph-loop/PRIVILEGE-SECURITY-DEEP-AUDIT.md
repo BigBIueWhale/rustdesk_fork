@@ -136092,3 +136092,41 @@ host product execution, new launcher or enlarged verifier is authorized by this
 plan. Android rebuilt ABI and final/platform/runtime acceptance remain OPEN;
 the parked mobile scroll regression is not resumed. The ledger records source
 removal with compiled confirmation pending, not completion.
+
+Source correction a3192591 is pushed. Fresh isolated ledger count Clrwe2vi3g
+passes in 27 seconds: 398,101 tokens / 1,821,412 bytes, SHA-256
+ef5fc547ee3603ee1e3eb4cb14a005fc20739b03d0d7098e25d829bd31fd3f90.
+Seven controls, whole-input round trip and 42 workload modes / 81 admissions /
+five refusals pass. Three listener deltas are zero. Exact launcher/QEMU/helpers,
+private state and RAM retire; peak scratch is 402,784,256 bytes. Twelve bounded
+files match CTE/TUF. account-abi-ledger-a3192591.json is 5,102 bytes, SHA-256
+ec6750c75959bc9b5291a81793e9e329aaa3cbef8f8b5ec96db3f23936682317.
+
+The first app-build launch CYxWajswjM refuses the existing four-generation
+cache before QEMU or compilation. Its monitor retires zero-byte RAM scratch;
+the exact launcher is absent and all four private files are retained as bounded
+evidence before directory retirement. Under the shared run lock, the complete
+manifest and all 74 payload hashes identify superseded app 2ed4dd37. It is not
+claimed byte-identical to newer 27bf28eb. Its manifest/inventory are retained,
+then exactly 93 files/directories and 70,353,741 file bytes are removed.
+The designated 7e6f6459 baseline, newer 27bf28eb and parked pending 0ccb2a7e
+generation remain unchanged. The first retirement preparation assumes the
+parked candidate has a published artifact pathname and stops before deleting
+any app file; inspecting its actual pending pathname resolves that observer
+assumption. The bounded account-metadata-build-a3192591-refused.json,
+account-metadata-retire-2ed4dd37.json and account-metadata-retired-2ed4dd37.json
+plus five raw records match both hosts. The cache ceiling is unchanged.
+
+The retry is LIVE at this checkpoint, not accepted: run EfGtfxlrSd on frozen
+a3192591, controller .harness-state/account-metadata-build-admitted-a3192591-control,
+tool session 85745. Launcher PID/start ticks 1694897/314556953; QEMU
+1695561/314557452; RAM /dev/shm/rustdesk-fork-vm-1000/run.rp0s8qz0,
+identity 29:45043. The admitted linux-flutter-build profile retains 20 GiB
+guest RAM, 16 GiB scratch, 12 GiB per-file ceiling and live monitoring.
+Three initial host endpoint deltas are zero. Guest boot and pinned Git
+initialization have started. Do not synchronize TUF while this owned job is
+live. Poll the existing controller/session; on completion retain exact build,
+artifact and joined-cleanup evidence, then inspect the new generated ABI
+against the preserved 227-name baseline. No build, corrected native-export,
+Android or broader release acceptance is claimed at this checkpoint. This
+audit-only receipt leaves the counted ledger unchanged.

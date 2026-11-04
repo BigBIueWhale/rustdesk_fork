@@ -138578,3 +138578,24 @@ Four listener deltas are zero, exact processes/children are absent by pidfd,
 and RAM plus inode/hash-checked failed private diagnostics retire. Capsule
 sidebar-fixed-57fb3185.json retains this partial comparison and cleanup. Rerun
 the same focused subset to complete parser controls and source-copy checks.
+
+CTE pUrBnhxmPX at 35fa6f2e completes the same six cases, all three result-parser
+controls and exact source-copy checks successfully in 299.579 outer seconds
+(292-second workload receipt). Product and rendered test hashes match the prior
+six-pass run. Four listener deltas are zero; exact wrapper/QEMU and five captured
+children are absent by pidfd ESRCH. Private state and RAM scratch are absent
+under the shared lock; scratch peaks at 6,385,971,200 bytes and no owned run remains.
+The 8,557-byte sidebar-accepted-35fa6f2e.json capsule has SHA-256
+38a3f638de9d97f7e75323128df60525d11f1b1490f738a9783bb1ff26a4f700,
+binds twelve raw/control records and both prior comparisons, and has a 261-byte
+retirement receipt. Reproduce with
+`bash scripts/smoke-verifier-vm-authority.sh --flutter-model-tests --settings-sidebar`.
+This closes the selected rendered-component correction. Full application,
+OS screen readers, target platforms, settings authority and release acceptance
+remain OPEN; no independent park is reopened. Update the ledger and count it.
+
+Primary design contracts: Flutter's [selected semantics](https://api.flutter.dev/flutter/semantics/SemanticsProperties/selected.html),
+[button semantics](https://api.flutter.dev/flutter/semantics/SemanticsProperties/button.html),
+[focus groups](https://api.flutter.dev/flutter/widgets/FocusTraversalGroup-class.html)
+and [reading-order traversal](https://api.flutter.dev/flutter/widgets/ReadingOrderTraversalPolicy-class.html).
+The actual comparison uses the repository's pinned Flutter 3.24.5 SDK.

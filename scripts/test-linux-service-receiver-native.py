@@ -3000,6 +3000,10 @@ def service_openrc(commit, binary_sha, probe_sha):
               "stdout": result.stdout, "stderr": result.stderr}, sort_keys=True), flush=True)
 
     def capture():
+        nonlocal active
+        deadline = time.monotonic() + 5
+        while not pidfile.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
         metadata = pidfile.lstat()
         if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
                 or metadata.st_uid != 0 or metadata.st_mode & 0o022 or not 1 <= metadata.st_size <= 32):
@@ -3013,15 +3017,22 @@ def service_openrc(commit, binary_sha, probe_sha):
         proc = Path(f"/proc/{pid}")
         fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
         status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
-        if (fields[0] in (b"Z", b"X") or status["PPid"].strip() != str(os.getpid())
-                or status["Uid"].split() != ["0"] * 4
-                or (proc / "cmdline").read_bytes() != b"/usr/bin/rustdesk\0--service\0"
-                or digest(proc / "exe") != binary_sha or unit.exists()
-                or select.select([fd], [], [], 0)[0]):
-            raise RuntimeError("OpenRC supervisor identity differs")
-        owned = {"pid": pid, "start": int(fields[19]), "fd": fd,
-                 "record": None, "child_fd": None, "reaped": False}
-        return owned
+        if status["PPid"].strip() != str(os.getpid()) or status["Uid"].split() != ["0"] * 4:
+            raise RuntimeError("OpenRC background process parent or principal differs")
+        active = {"pid": pid, "start": int(fields[19]), "fd": fd,
+                  "record": None, "child_fd": None, "reaped": False}
+        expected = PRIMARY.stat()
+        while time.monotonic() < deadline:
+            if select.select([fd], [], [], 0)[0]:
+                raise RuntimeError("OpenRC background process exited before RustDesk exec")
+            executable = (proc / "exe").stat()
+            if (executable.st_dev, executable.st_ino) == (expected.st_dev, expected.st_ino):
+                if ((proc / "cmdline").read_bytes() != b"/usr/bin/rustdesk\0--service\0"
+                        or digest(proc / "exe") != binary_sha or unit.exists()):
+                    raise RuntimeError("OpenRC supervisor role or image differs")
+                return active
+            time.sleep(0.01)
+        raise RuntimeError("OpenRC background process did not exec the exact RustDesk image")
 
     def ready(owned):
         deadline = time.monotonic() + 25
@@ -3111,9 +3122,13 @@ def service_openrc(commit, binary_sha, probe_sha):
         print("LINUX_OPENRC_STOPPED=" + json.dumps({"exit": stopped.returncode,
               "stdout": stopped.stdout, "stderr": stopped.stderr}, sort_keys=True), flush=True)
     finally:
+        manager_error = None
         try:
             if script.exists() and (runtime / "started/rustdesk").exists():
-                manager("stop")
+                try:
+                    manager("stop")
+                except BaseException as error:
+                    manager_error = error
             if active is not None:
                 if not active["reaped"]:
                     if not select.select([active["fd"]], [], [], 5)[0]:
@@ -3132,6 +3147,8 @@ def service_openrc(commit, binary_sha, probe_sha):
                 os.close(fd)
             if libc.prctl(36, 0, 0, 0, 0) != 0:
                 raise OSError(ctypes.get_errno(), "cannot restore OpenRC subreaper state")
+        if manager_error is not None:
+            raise manager_error
     script.unlink()
     runlevel.rmdir()
     shutil.rmtree(runtime)

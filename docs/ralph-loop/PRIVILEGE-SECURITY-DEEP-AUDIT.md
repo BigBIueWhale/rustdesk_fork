@@ -138903,3 +138903,25 @@ listener deltas and private/RAM retirement are verified under the shared lock;
 scratch peaks at 1,229,430,784 bytes. The supplemental child capture missed this
 short failed run; helper joins rely on the harness completion record. The
 196-byte retirement receipt is retained. No manager or product pass is claimed.
+
+CTE YLUcZoV22y at 18f14455 stages and executes 78 pinned OpenRC runtime files
+(manifest 2487760174e491cfb180e7853fcc2b5cf63554d05a3f7703d51c35947aa896b6).
+OpenRC reports start success; immediate process capture refuses its identity
+before child readiness or login. Cleanup's manager stop reports no matching
+executable. OpenRC also reports missing /etc/insserv.conf; retain that runtime-
+closure observation for follow-up. No lifecycle pass or product defect is proved.
+Upstream 0.45.2 start-stop-daemon.c forks, writes the pidfile, closes descriptors
+and execs in the background child without requiring a startup wait in the parent:
+https://raw.githubusercontent.com/OpenRC/openrc/0.45.2/src/start-stop-daemon/start-stop-daemon.c
+The observer now waits at most five seconds on the same retained pidfd for the
+exact installed image, then requires the unchanged role/hash checks. Parent and
+root principal are checked before retention. This fixes a premature assertion;
+the next run must determine whether any subsequent startup failure remains.
+Failed-manager cleanup must still reap retained children before reporting failure.
+
+Capsule openrc-payload-18f14455.json (13,197 bytes, SHA-256
+d66c730bb444129b17c8ee2428958beb51778b758f6758842f5480eeffe72e18)
+binds eleven records. The automatically captured wrapper children and QEMU are
+absent by pidfd ESRCH; three listener deltas are zero, private/RAM state is
+retired and scratch peaks at 4,068,327,424 bytes. Retirement receipt: 443 bytes,
+SHA-256 da830b46243139dfa3aced9068c32c069e78bf9e4ff68f3c32a7e6d32a5d3236.

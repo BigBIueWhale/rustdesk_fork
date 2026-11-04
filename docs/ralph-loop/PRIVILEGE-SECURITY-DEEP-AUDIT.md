@@ -139056,3 +139056,43 @@ binds eleven records and the 456-byte retirement receipt, SHA-256
 fb68a6d93c3b41f13b703d9e020f4f84effa16413e5e2649736927310a819e64.
 The focused installed-layout validation checkpoint is complete. Product bytes
 remain unchanged; broader R-S10/R-S0 and release acceptance remain OPEN.
+
+## 2026-11-04 — authenticated session continuity during password throttling
+
+Previous turn: progress, completing the installed-layout recovery checkpoint and
+its ledger validation. Continue the same R-S10/R-S0 behavior at its adjacent
+unproved boundary: an already-authenticated owner's connection must remain
+usable while new wrong-password attempts from that source trigger admission
+throttling. This adds session continuity to the prior sequential-login evidence;
+it takes priority over further ledger consolidation. Independent parks remain.
+
+The existing login probe returns after PeerInfo. A held pre-login proxy barrier
+cannot prove an already-admitted application session, so add a fixed VM-only
+remote-live probe mode. It accepts only the fixed guest-loopback destination and
+source with the verifier marker and sole loopback interface. After real CPace
+and current-protocol PeerInfo, it sends 45 distinct TestDelay nonces at two-second
+intervals on that same keyed stream, validates every exact echo and answers the
+server's own latency probes. Four-second read/send/round-trip deadlines, 256
+messages per reply, a 100-second overall bound and bounded progress output keep
+this a finite health check. src/server/connection.rs echoes client TestDelay
+without constructing a new connection; PeerInfo must precede the first probe.
+Primary timeout semantics: https://docs.rs/tokio/1.44.2/tokio/time/fn.timeout.html
+The helper awaits its I/O/timers; a timeout drops this failed probe's stream.
+
+The installed limiter scenario starts that UID-4002 Remote connection before
+its prior 21 outcomes and twelve EOF controls. The child must stay live through
+the recovered logins and complete all 45 correlated exchanges over 88 seconds,
+then join before service shutdown. Total successful Remote logins become nine.
+Original threshold, other-source access, finite recovery, exact service/child/
+listener/credential continuity and retirement checks remain unchanged. This is
+encrypted connection liveness, not decoding, displayed pixels or input delivery.
+
+Only the test probe, native scenario and its host receipt change. The probe's
+new behavior needs a fresh source-bound payload; use the existing compile-only
+bounded service-artifact producer, with no product scenario in that build.
+The cache currently holds two of four generations; no retained artifact needs
+removal. The fixed producer admits an 8-GiB guest, 7-GiB RAM scratch, 6-GiB host
+headroom and overhead before allocation. Current available memory exceeds that
+requirement; live admission/monitoring still decides execution. Product source,
+dependencies, service unit, storage limits and live instructions are unchanged.
+Shell syntax, native Python AST and diff review pass before compilation.

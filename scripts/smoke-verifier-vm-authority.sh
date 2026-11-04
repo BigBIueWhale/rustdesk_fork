@@ -6009,7 +6009,7 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
     require_exact_fixed_receipt 'verify-linux-service-password-ipc: source checks passed' 'supplementary password IPC source checks'
     if [ "$LINUX_RECEIVER_PROFILE" = limiter ]; then
-        require_exact_fixed_receipt "LINUX_SERVICE_LIMITER_NATIVE=pass cases=21 logins=8 eof=12 threshold=10 checkpoints=0,20,40 recovered=64s source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout unit=shipped logind=actual generation=unchanged credential=preserved cleanup=joined" 'installed service limiter recovery'
+        require_exact_fixed_receipt "LINUX_SERVICE_LIMITER_NATIVE=pass cases=21 logins=9 live_roundtrips=45 eof=12 threshold=10 checkpoints=0,20,40 recovered=64s source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout unit=shipped logind=actual generation=unchanged credential=preserved cleanup=joined" 'installed service limiter recovery'
         require_exact_fixed_receipt 'LINUX_SERVICE_DESKTOP_SESSION=retired logind=actual x11=owned users=removed' 'owned desktop session retirement'
     elif [ "$LINUX_RECEIVER_PROFILE" = openrc ]; then
         for generation in 1 2; do
@@ -9854,7 +9854,7 @@ elif [ "$MODE" = ledger-token-count ]; then
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$ledger_input_sha" "$ledger_recipe_sha" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     if [ "$LINUX_RECEIVER_PROFILE" = limiter ]; then
-        printf 'LINUX_SERVICE_LIMITER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s cases=21 logins=8 eof=12 fixture=installed-layout unit=shipped logind=actual network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+        printf 'LINUX_SERVICE_LIMITER_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s cases=21 logins=9 live_roundtrips=45 eof=12 fixture=installed-layout unit=shipped logind=actual network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
             "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$vm_elapsed_seconds"

@@ -15,6 +15,8 @@
 //!                `connection refused` display error. Its
 //!                `my_id` is the ASCII canary `PLAINTEXT-CANARY-DEADBEEF` so the R-A9 wire-capture
 //!                test can assert it NEVER appears on the wire (the post-key frame is AEAD-sealed);
+//!   - `remote-live` : VM-only Remote PeerInfo login followed by 45 correlated encrypted
+//!                round trips over the same connection, spaced two seconds apart;
 //!   - `inject` : R-A8/R-T7 — after keying, corrupt the engaged SEND key, then send a frame
 //!                and send a forged frame; the server's AEAD MUST reject it (`decryption error`);
 //!   - `filetransfer` : R-F1/R-F2 — send a FileTransfer `LoginRequest`, then a `ReadDir("")`, and
@@ -323,6 +325,94 @@ async fn send_probe_message(stream: &mut FramedStream, message: Message) -> Resu
         .send_raw(bytes)
         .await
         .map_err(|error| format!("send: {error}"))
+}
+
+async fn remote_live_reply(stream: &mut FramedStream, nonce: Option<i64>) -> Result<(), String> {
+    use hbb_common::tokio::time::{timeout_at, Duration, Instant};
+    let deadline = Instant::now() + Duration::from_secs(4);
+    for _ in 0..256 {
+        let bytes = timeout_at(deadline, stream.next())
+            .await
+            .map_err(|_| "remote live reply timed out")?
+            .ok_or("remote live peer closed")?
+            .map_err(|error| format!("remote live read: {error}"))?;
+        let message = Message::parse_from_bytes(&bytes)
+            .map_err(|error| format!("remote live parse: {error}"))?;
+        match message.union {
+            Some(message::Union::LoginResponse(response)) => {
+                if nonce.is_none()
+                    && matches!(response.union.as_ref(), Some(login_response::Union::PeerInfo(peer))
+                        if peer.video_frame_receipt_version == hbb_common::VIDEO_FRAME_RECEIPT_VERSION)
+                {
+                    return Ok(());
+                }
+                return Err("remote live login did not return the expected PeerInfo".into());
+            }
+            Some(message::Union::TestDelay(delay)) if delay.from_client => {
+                if nonce == Some(delay.time) {
+                    return Ok(());
+                }
+                return Err("remote live reply correlation differs".into());
+            }
+            Some(message::Union::TestDelay(delay)) => {
+                let mut reply = Message::new();
+                reply.set_test_delay(delay);
+                timeout_at(deadline, send_probe_message(stream, reply))
+                    .await
+                    .map_err(|_| "remote live server-probe reply timed out")??;
+            }
+            _ => {}
+        }
+    }
+    Err("remote live reply exceeded the message budget".into())
+}
+
+async fn probe_remote_live(stream: &mut FramedStream) -> Result<(), String> {
+    use hbb_common::message_proto::{LoginRequest, TestDelay};
+    use hbb_common::tokio::time::{sleep_until, timeout, Duration, Instant};
+    use std::io::Write;
+
+    let mut request = LoginRequest::new();
+    request.username = "127.0.0.1:21118".into();
+    request.my_id = "installed-remote-continuity-probe".into();
+    request.my_name = "probe".into();
+    request.version = "1.4.0".into();
+    request.my_platform = "Linux".into();
+    request.video_frame_receipt_version = hbb_common::VIDEO_FRAME_RECEIPT_VERSION;
+    let mut login = Message::new();
+    login.set_login_request(request);
+    timeout(Duration::from_secs(4), send_probe_message(stream, login))
+        .await
+        .map_err(|_| "remote live login send timed out")??;
+    remote_live_reply(stream, None).await?;
+
+    let started = Instant::now();
+    for sequence in 0..45_u64 {
+        sleep_until(started + Duration::from_secs(sequence * 2)).await;
+        let nonce = 1_000_000 + sequence as i64;
+        let mut ping = Message::new();
+        ping.set_test_delay(TestDelay {
+            time: nonce,
+            from_client: true,
+            ..Default::default()
+        });
+        timeout(Duration::from_secs(4), async {
+            send_probe_message(stream, ping).await?;
+            remote_live_reply(stream, Some(nonce)).await
+        })
+        .await
+        .map_err(|_| "remote live round trip timed out")??;
+        let elapsed = started.elapsed().as_millis();
+        if elapsed >= u128::from(sequence * 2 + 4) * 1000 {
+            return Err("remote live round trip exceeded its scheduled deadline".into());
+        }
+        if sequence == 0 {
+            println!("REMOTE_LIVE_READY=pass auth=cpace remote=peer-info source=127.0.0.1");
+        }
+        println!("REMOTE_LIVE_ROUNDTRIP=pass seq={sequence} nonce={nonce} elapsed_ms={elapsed}");
+        std::io::stdout().flush().map_err(|error| format!("remote live output: {error}"))?;
+    }
+    Ok(())
 }
 
 async fn probe_cm_receive_write(stream: &mut FramedStream, report: &mut String) -> bool {
@@ -2070,6 +2160,7 @@ fn main() {
     let mode = a.get(4).map(String::as_str).unwrap_or("").to_string();
     let do_read = mode == "read"
         || mode == "login"
+        || mode == "remote-live"
         || mode == "inject"
         || mode == "portforward"
         || mode == "filetransfer"
@@ -2090,6 +2181,19 @@ fn main() {
     let local = a
         .get(5)
         .and_then(|s| s.parse::<std::net::SocketAddr>().ok());
+    if mode == "remote-live"
+        && (addr != "127.0.0.1:21118"
+            || a.get(5).map(String::as_str) != Some("127.0.0.1:0")
+            || !std::path::Path::new("/run/rustdesk-verifier-vm").is_dir()
+            || std::fs::read_dir("/sys/class/net").map(|entries| {
+                let names = entries.map(|entry| entry.map(|entry| entry.file_name()))
+                    .collect::<Result<Vec<_>, _>>();
+                !matches!(names, Ok(names) if names == [std::ffi::OsString::from("lo")])
+            }).unwrap_or(true))
+    {
+        eprintln!("probe_client: remote-live requires the owned zero-NIC VM and fixed loopback peer");
+        std::process::exit(2);
+    }
 
     // R-P1: the CPace PRS is base64(Argon2id(NFC(pw), fixed salt)) — a faithful viewer derives it
     // from the password alone (nothing per-box in the salt). This loopback probe shares the server's
@@ -2120,6 +2224,17 @@ fn main() {
         };
         match run_initiator(&mut stream, &prs).await {
             Ok(keys) => {
+                if mode == "remote-live" {
+                    stream.set_session_keys(keys);
+                    let result = hbb_common::tokio::time::timeout(
+                        std::time::Duration::from_secs(100), probe_remote_live(&mut stream),
+                    ).await;
+                    return match result {
+                        Ok(Ok(())) => (true, "[REMOTE-LIVE-COMPLETE roundtrips=45]".into(), true, true),
+                        Ok(Err(error)) => (true, format!("[REMOTE-LIVE-FAILED {error}]"), true, false),
+                        Err(_) => (true, "[REMOTE-LIVE-TIMEOUT]".into(), true, false),
+                    };
+                }
                 let mut pk = String::new();
                 let mut remote_login_ok = mode != "login";
                 if do_read {
@@ -2618,7 +2733,7 @@ fn main() {
             && mode != "ftreadfailure"
             && mode != "ftfiletype")
             || file_transfer_ok)
-        && (mode != "login" || remote_login_ok);
+        && ((mode != "login" && mode != "remote-live") || remote_login_ok);
     if pass {
         println!("probe_client: PASS");
     } else {

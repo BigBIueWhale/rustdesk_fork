@@ -2983,6 +2983,8 @@ def service_limiter(commit, binary_sha, probe_sha):
     retained = []
     observations = []
     value = "Receiver-limiter-recovery-2026!"
+    live = None
+    live_prefix = b""
 
     def properties():
         return dict(line.split("=", 1) for line in run(
@@ -2992,7 +2994,8 @@ def service_limiter(commit, binary_sha, probe_sha):
     def unchanged():
         if (properties() != before or child_record() != record or credential() != durable
                 or direct_listener(record) != listener
-                or any(select.select([fd], [], [], 0)[0] for _, fd in retained)):
+                or any(select.select([fd], [], [], 0)[0] for _, fd in retained)
+                or (live is not None and live.poll() is not None)):
             raise RuntimeError("limiter observation changed service, child, listener or credential")
 
     def attempt(password, allowed, source, phase):
@@ -3041,6 +3044,30 @@ def service_limiter(commit, binary_sha, probe_sha):
                 != ("active", "running", "success", "0")):
             raise RuntimeError("limiter service did not become ready")
         source, other = "127.0.0.1", "127.0.0.2"
+        live_started = time.monotonic()
+        live = subprocess.Popen(
+            ["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+             "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+             str(PROBE), "127.0.0.1:21118", "--password-stdin", "ok", "remote-live", "127.0.0.1:0"],
+            env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        live.stdin.write((value + "\n").encode())
+        live.stdin.close()
+        live.stdin = None
+        while b"\n" not in live_prefix:
+            remaining = live_started + 15 - time.monotonic()
+            if remaining <= 0 or not select.select([live.stdout], [], [], remaining)[0]:
+                raise RuntimeError("persistent Remote login did not become ready")
+            chunk = os.read(live.stdout.fileno(), 512)
+            if not chunk or len(live_prefix) + len(chunk) > 1024:
+                raise RuntimeError("persistent Remote readiness output is absent or oversized")
+            live_prefix += chunk
+        ready_line, live_prefix = live_prefix.split(b"\n", 1)
+        if ready_line != b"REMOTE_LIVE_READY=pass auth=cpace remote=peer-info source=127.0.0.1":
+            raise RuntimeError(f"persistent Remote readiness differs: {ready_line!r}")
+        live_ready = time.monotonic()
+        print("LINUX_SERVICE_LIMITER_LIVE_READY=" + json.dumps(
+            {"pid": live.pid, "ready": live_ready, "source": source, "remote_peer_info": True},
+            sort_keys=True), flush=True)
         attempt(value, True, source, "initial")
         attempt(value, True, other, "initial-other")
         for index in range(1, 10):
@@ -3071,12 +3098,41 @@ def service_limiter(commit, binary_sha, probe_sha):
             raise RuntimeError("installed limiter recovery exceeded its observation deadline")
         if len(observations) != 21 or sum(item["remote_peer_info"] for item in observations) != 8:
             raise RuntimeError("installed limiter case inventory differs")
+        live_recovery = time.monotonic()
+        stdout, stderr = live.communicate(timeout=max(1, live_started + 105 - time.monotonic()))
+        live_ended = time.monotonic()
+        lines = (live_prefix + stdout).decode("utf-8").splitlines()
+        roundtrips = []
+        for line in lines[:-3]:
+            matched = re.fullmatch(r"REMOTE_LIVE_ROUNDTRIP=pass seq=([0-9]+) nonce=([0-9]+) elapsed_ms=([0-9]+)", line)
+            if matched is None:
+                raise RuntimeError(f"persistent Remote round-trip output differs: {line}")
+            sequence, nonce, elapsed = map(int, matched.groups())
+            if (sequence != len(roundtrips) or nonce != 1_000_000 + sequence
+                    or not sequence * 2000 <= elapsed < sequence * 2000 + 4000):
+                raise RuntimeError("persistent Remote round-trip correlation or timing differs")
+            roundtrips.append({"sequence": sequence, "nonce": nonce, "elapsed_ms": elapsed})
+        if (live.returncode != 0 or stderr or len(roundtrips) != 45 or lines[-3:] != [
+                "probe_client: keying ok=true (expected=ok)",
+                "probe_client: post-key = [REMOTE-LIVE-COMPLETE roundtrips=45]", "probe_client: PASS"]):
+            raise RuntimeError(f"persistent Remote session did not complete: {lines[-3:]} {stderr!r}")
+        live_observed = {"pid": live.pid, "ready": live_ready, "recovery": live_recovery,
+                         "ended": live_ended, "exit": live.returncode, "roundtrips": roundtrips}
+        print("LINUX_SERVICE_LIMITER_LIVE_OBSERVED=" + json.dumps(live_observed, sort_keys=True), flush=True)
     except BaseException:
         print(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "-n", "60"]).stdout, flush=True)
         raise
     finally:
         try:
-            run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+            try:
+                if live is not None:
+                    if live.poll() is None:
+                        live.kill()
+                        live.communicate(timeout=5)
+                    for pipe in (live.stdout, live.stderr):
+                        pipe.close()
+            finally:
+                run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
             deadline = time.monotonic() + 5
             for pid, fd in retained:
                 if not select.select([fd], [], [], max(0, deadline - time.monotonic()))[0]:
@@ -3099,9 +3155,10 @@ def service_limiter(commit, binary_sha, probe_sha):
         raise RuntimeError("limiter service stop changed its credential")
     print("LINUX_SERVICE_LIMITER_OBSERVED=" + json.dumps(
         {"record": record, "listener_inode": listener, "before": before, "after": after,
-         "recovery_seconds": recovery_seconds, "cases": len(observations), "logins": 8,
+         "recovery_seconds": recovery_seconds, "cases": len(observations), "logins": 9,
+         "live_roundtrips": 45, "live_probe_reaped": live.returncode == 0,
          "eof_controls": 12, "credential_unchanged": True, "processes_reaped": True}, sort_keys=True), flush=True)
-    print(f"LINUX_SERVICE_LIMITER_NATIVE=pass cases=21 logins=8 eof=12 threshold=10 checkpoints=0,20,40 "
+    print(f"LINUX_SERVICE_LIMITER_NATIVE=pass cases=21 logins=9 live_roundtrips=45 eof=12 threshold=10 checkpoints=0,20,40 "
           f"recovered=64s source={commit} binary_sha256={binary_sha} probe_sha256={probe_sha} "
           "fixture=installed-layout unit=shipped logind=actual generation=unchanged credential=preserved cleanup=joined", flush=True)
 

@@ -138397,3 +138397,37 @@ pty-wording-ledger-a7059e3d.json is 5,175 bytes, SHA-256
 with ten raw/control records and its retirement receipt. No owned job remains.
 The focused deletion is complete; native acceptance and the overall release goal
 remain OPEN, with independent user parks intact.
+
+## 2026-11-04 — native integration specification roles
+
+The preceding verification cleanup made progress at a7059e3d/819ae285. Select
+the binding separation of normative requirements from progress history while
+independent product parks remain intact. Read complete R-S11gf/R-S11gn/R-S11go/
+R-S11gp/R-S11gq and the relevant Appendix C findings. Five risk descriptions
+still narrated former renderer lookup, ambient libvirt storage, display-selection
+ordering, queue lifetime and topology callbacks. Rewrite #341/#349–#352 as enduring
+risks. Replace the two redundant FIX/HARDEN labels with Required disposition;
+the disposition text after those labels is byte-identical, as are the three other
+complete disposition cells. Bundle identity, private storage ownership, exact
+session/UI ownership, ordering, terminal retirement and all acceptance duties stay.
+
+R-S11gn also described a specific libvirt 10.0.0 daemon/pool result as achieved.
+The existing Windows-harness ledger entry already retains it as historical,
+without QEMU or product acceptance. Replace that report with the standing limit:
+daemon/pool checks cannot establish generated log/domain/auxiliary cleanup, and
+acceptance requires an exact QEMU/domain transaction proving those effects and
+finality. No native transaction is run or newly accepted by this documentation work.
+
+Exact comparison preserves all requirement declarations/references, numeric
+finding rows, 211 links, 34 anchors and every byte outside the five risk cells,
+two labels and one classified sentence. Requirements shrink by 436 bytes,
+1,674,195 to 1,673,759. Before SHA-256:
+8af0160d0a065fb4389d45f0058e58435c47ff4cf3431b6d71b74a100f08b8dc;
+after SHA-256:
+fdb9977ff819f77d0be776403b296fdace59c63dc0bbba760152eb04d5907d22.
+Retained px0QyAIyPq REQUIREMENTS_TOKEN_COUNT matches the complete before bytes:
+366,781 tokens with the pinned method, seven controls and full byte round trip.
+Shared verifier sources do not depend on the removed history phrases. HTML
+structure/identifier/link inspection and whitespace checks pass. Product, tests,
+verifiers and live instructions are unchanged. Fresh counts for both documents
+are pending; native/release obligations and all user parks remain OPEN.

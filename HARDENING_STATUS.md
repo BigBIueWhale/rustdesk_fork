@@ -1338,6 +1338,15 @@ installation details, with an explicit unknown-identity option. Screenshots are
 optional. This repairs routing and build identification for release regression
 triage. Source/schema review does not establish GitHub UI or product acceptance.
 
+**Native integration finding descriptions.** Appendix C #341/#349–#352 state
+enduring renderer-loading, VM-storage and display-lifecycle risks instead of
+former implementation history. Their required dispositions remain intact.
+R-S11gn replaces its historical daemon/pool result with the required real-QEMU
+acceptance boundary; the existing Windows-harness entry retains that history.
+IDs, links, anchors and all other specification bytes are unchanged. No native
+acceptance is added; all existing gaps and parks remain. Classification and
+two-document counts are in the audit's “2026-11-04 — native integration specification roles”.
+
 **Vendored Linux URL-launcher documentation.** The package README now identifies
 the application's local path override, links its provenance and local correction,
 and points contributors to the fork's workflow. The provenance introduction no

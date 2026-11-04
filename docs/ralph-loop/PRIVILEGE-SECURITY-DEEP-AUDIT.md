@@ -137376,3 +137376,14 @@ fixtures, launchers, normative requirements and live instructions are unchanged.
 No product test, clipboard or hostname experiment runs for this documentation
 correction. Fresh isolated counting follows for the changed whole ledger; only its
 bounded admitted RAM-backed VM is needed.
+
+Fresh count UMysbdiHdN at 1f91c609 passes: 399,286 tokens / 1,826,834 bytes,
+input SHA-256 79176c5fec895928c9b26eb0fa5e35b67149aa54c78d8559d9e6aec3752a5ffd.
+Seven controls, round trip and 82 storage admissions/five refusals pass in
+31.422 capture seconds. Exact processes 1865121/1866537 are absent by pidfd;
+private/RAM workspace and helpers retire, with three zero listener deltas and
+402,534,400 peak RAM scratch bytes. The 5,204-byte capsule
+clipboard-evidence-ledger-1f91c609.json has SHA-256
+bda2bdd9933f2844a3c787674fcd08d0230a61a4a7c17494f855a6a4cbf2221e.
+All twelve bounded evidence files match CTE/TUF. This audit-only receipt preserves
+the counted ledger. The documentation checkpoint is complete; no owned job remains.

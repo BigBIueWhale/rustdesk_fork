@@ -4937,6 +4937,7 @@ pub fn resolutions(name: &str) -> Vec<Resolution> {
                 rdp0 connected primary 1920x1080+0+0 0mm x 0mm
                     */
                 if let Some(caps) = re.captures(&xrandr_output) {
+                    let swaps_axes = xrandr_query::rotation_swaps_axes(&caps);
                     if let Some(resolutions) = caps.name("resolutions") {
                         let resolution_pat =
                             r"\s*(?P<width>\d+)x(?P<height>\d+)\s+(?P<rates>(\d+\.\d+\D*)+)\s*\n";
@@ -4948,6 +4949,11 @@ pub fn resolutions(name: &str) -> Vec<Resolution> {
                             if let Some((width, height)) =
                                 get_width_height_from_captures(&resolution_caps)
                             {
+                                let (width, height) = if swaps_axes {
+                                    (height, width)
+                                } else {
+                                    (width, height)
+                                };
                                 let resolution = Resolution {
                                     width,
                                     height,
@@ -4984,6 +4990,17 @@ pub fn current_resolution(name: &str) -> ResultType<Resolution> {
 }
 
 pub fn change_resolution_directly(name: &str, width: usize, height: usize) -> ResultType<()> {
+    let xrandr_output = xrandr_query()?;
+    let re = Regex::new(&xrandr_query::connected_output_pattern(name))?;
+    let Some(output) = re.captures(&xrandr_output) else {
+        bail!("Failed to find current resolution for {}", name);
+    };
+    // Requests and restoration use visible dimensions; xrandr mode names do not rotate.
+    let (width, height) = if xrandr_query::rotation_swaps_axes(&output) {
+        (height, width)
+    } else {
+        (width, height)
+    };
     let Some(xrandr) = xrandr_path() else {
         bail!("xrandr was not found at a trusted fixed path");
     };

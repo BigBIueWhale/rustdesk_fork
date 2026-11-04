@@ -137861,3 +137861,20 @@ The existing bounded, networkless TUF VM runs this component; no host display or
 service is used. Preparation leaves production unchanged. The correction sought is
 one visible-size convention with conversion only at the Linux mode boundary;
 native X-server/physical-monitor, complete Remote and release acceptance remain OPEN.
+
+Baseline bEiK0ug3BC at ec38a81f compiles and executes all 21 cases: seventeen
+pass; left, right and reflected-rotation cases fail the offered-size comparison.
+The fourth failure is missing-output command admission at the controlled boundary,
+not a demonstrated X-server mutation. Those early failures do not independently
+execute the later setter/restoration assertions. Exact launcher/QEMU
+1909476/1909933, helpers, private state and 3,407,355,904 peak RAM bytes retire;
+four listener deltas are zero. Bounded failure diagnostics and capsule
+rotation-baseline-ec38a81f.json preserve the comparison before cleanup.
+
+The candidate parses current rotation separately from supported-rotation text,
+offers visible dimensions for left/right outputs, and converts visible dimensions
+back to native mode dimensions immediately before constructing setter argv. It
+requires a successful query and the exact connected output before mutation.
+Current geometry, normal/inverted/reflection behavior, remote authorization and
+restoration ownership retain their existing roles. Only the two Linux production
+files change after baseline; all 21 assertions and adapters remain identical.

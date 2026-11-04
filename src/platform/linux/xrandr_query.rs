@@ -3,9 +3,13 @@ use std::{io, process::Output};
 
 pub(super) fn connected_output_pattern(name: &str) -> String {
     format!(
-        r"(?m)^{}[ \t]+connected.+?(?P<width>\d+)x(?P<height>\d+)\+(?P<x>\d+)\+(?P<y>\d+).*?\n",
+        r"(?m)^{}[ \t]+connected.+?(?P<width>\d+)x(?P<height>\d+)\+(?P<x>\d+)\+(?P<y>\d+)(?:[ \t]+(?P<rotation>normal|left|inverted|right)\b)?.*?\n",
         regex::escape(name)
     )
+}
+
+pub(super) fn rotation_swaps_axes(output: &regex::Captures<'_>) -> bool {
+    matches!(output.name("rotation").map(|r| r.as_str()), Some("left" | "right"))
 }
 
 pub(super) fn admit_output(output: Output) -> io::Result<String> {

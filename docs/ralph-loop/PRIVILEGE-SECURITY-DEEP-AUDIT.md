@@ -137282,3 +137282,52 @@ aa22703266a017e05d4e977ed2e6c2711990f27e897a9859f8d8a55ec01c49c3;
 all twelve bounded evidence files match CTE/TUF. Final guide wording asks for a
 passing checksum result without assuming the operator's output locale. The counted
 ledger is unchanged. This documentation checkpoint is complete; no owned job remains.
+
+## 2026-11-04 — controlled privacy preference authority trace
+
+The previous turn is progress: release-verification guidance and its isolated count
+are committed through clean 6f03980f. Select a distinct R-S0 required-settings gap.
+The current controlled privacy-backend selector has an actual source mismatch,
+which takes priority over another documentation cleanup. This investigation does
+not reopen dependency/artifact validation or any independently parked topic.
+
+At this source, desktop_setting_page.dart:1081-1115 renders the card only for two
+or more supported implementations. Its callback writes privacy-mode-impl-key via
+common.dart:1761 mainSetOption, flutter_ffi.rs:1198 main_set_option and
+ui_interface.rs:279 set_option. ipc.rs:9309 constructs MainStatusOption before
+opening a request; from_pair/from_str reject this key because the closed enum has
+no corresponding variant. The same classifier filters it from from_config at
+ipc.rs:2862; ui_interface.rs:701 replaces the GUI cache with that filtered status.
+The Dart helper already catches the write error and shows Failed. Thus this is a
+rejected required operation, not evidence of silent success or a newly found LPE.
+
+privacy_mode.rs:936 can return multiple implementations on installed Windows;
+Linux returns none and macOS one. Its controlled activation uses the configured
+supported default at :587, with explicit Remote-owner activation remaining separate.
+The rendered settings fixture at test_probes/settings_navigation_cases.dart.inc
+always returns [] for mainSupportedPrivacyModeImpls. Its existing green tests do
+not exercise this card. No native Windows observation has been made in this slice.
+
+An enum-only patch is insufficient: ipc.rs:4867 independently refuses ordinary
+SetOption for a service-owned receiver under MainIpcAuthority at :5461. R-S11b,
+R-S11c and R-S0 require preserving that refusal while supplying the legitimate
+action. The implementation direction is a purpose-specific service-owned preference
+operation and typed nonsecret readback, with exact requester authority, supported
+values, durable effective state, pending/error/retry and restart/use acceptance.
+Do not substitute a GUI-local write, relax service-owned mutation admission or
+remove the supported choice to call the gap fixed. The existing RDP-sharing action
+is a precedent to review, not evidence that its authority automatically covers this
+different operation. Its presentation check at windows.rs:5283 does not grant
+receiver authority. Generic Windows service-protocol work remains parked.
+
+Primary Microsoft references reviewed:
+https://learn.microsoft.com/en-us/windows/win32/services/service-security-and-access-rights
+and https://learn.microsoft.com/en-us/windows/win32/secauthz/access-tokens.
+They distinguish the caller's security context and operation-specific service
+rights; SCM connection or status access is not configuration authority. This is
+design context, not proof of application authorization or a selected SCM mechanism.
+Exact installed Windows authorized/refused save, persisted readback, restart and
+subsequent authenticated privacy use remain the decisive acceptance. AGENTS.md's
+Windows storage-admission prerequisite still bars that launcher. No product code,
+tests, live instructions, normative requirements or host configuration changes.
+The current ledger records the concrete gap; its fresh isolated count follows.

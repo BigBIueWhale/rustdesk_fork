@@ -5931,6 +5931,26 @@ scenario or actual codec switch is claimed. Complete menu rendering, native
 FFI/peer switching, device/installed/platform, R-S0/R-F5 and release acceptance
 remain OPEN.
 
+**Windows privacy-backend preference — source-confirmed functional gap; OPEN.**
+The desktop selector appears when at least two native implementations are available
+and writes `privacy-mode-impl-key` through ordinary `mainSetOption`. At `6f03980f`,
+`MainStatusOptionKey::from_str` omits that key: `ipc::set_option` rejects it before
+opening IPC, and `MainStatusOptions::from_config` filters it from synchronized
+status. The UI's failure toast does not make the required selection functional.
+The rendered settings fixture always returns an empty implementation list, so its
+passes supply no coverage for this card. This is source evidence, not an executed
+Windows failure or a demonstrated privilege escalation.
+
+An allowlist-only change would still fail at the service-owned receiver's intentional
+ordinary-option refusal. Preserve that boundary. The correction needs explicit
+service-owned preference authority, supported-value validation, durable effective
+readback and UI pending/failure/retry behavior; it must preserve the separate
+authenticated Remote activation path. Verify authorized save/restart/use and refused
+changes on the same installed Windows artifact. Windows launcher storage acceptance
+remains an execution prerequisite; no Windows VM or product patch ran here. See the
+audit entry “2026-11-04 — controlled privacy preference authority trace”. Independent
+service-protocol, default-display-radio and artifact parks remain unchanged.
+
 **Desktop About metadata (`199d5fd7`).** The empty custom-server metadata getter,
 its native/web bridge methods and the About request are removed. Version, build
 date, fork identity and Purslane copyright wording remain; the unused trailing

@@ -138243,3 +138243,17 @@ Capsule prs-derivation-1cf48290.json is 7,515 bytes, SHA-256
 with its retirement receipt and eleven raw/control records on CTE. The ledger
 records this component checkpoint without closing UI/peer, storage, other-platform,
 shipping-artifact or independent-review acceptance. All independent parks remain.
+
+Fresh CTE count `co4HIqWQ7w` at `399db80e` completes in 28 seconds: 398,852
+tokens / 1,824,413 bytes, input SHA-256
+8bed6481f38129738d0a9927cca9b228657af40f6b4cc8599d02c4ea75a780b4.
+The pinned tiktoken 0.12.0/cl100k_base/encode_ordinary method, seven controls and
+whole-input round trip pass, leaving 1,148 tokens below the budget. Existing
+42-mode/82-control/five-refusal admission checks pass. Three listener inventories
+have zero changes; exact process/helper/private/RAM retirement is verified under
+the shared lock. Scratch peaks at 402,759,680 bytes. Capsule
+prs-ledger-399db80e.json is 5,142 bytes, SHA-256
+8fb458c9e24ad9df020f122f9de4b4bb7303e272802b46abb80cea93258db55e.
+Whitespace checks pass. The independent derivation slice reaches its validation
+checkpoint. No owned runtime job remains active; the broader release goal stays
+active with all remaining acceptance obligations and user parks intact.

@@ -28,7 +28,7 @@ if len(sys.argv) > 1 and sys.argv[1] in ("--direct-address", "--connection-page"
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] in ("--floating-position", "--path-labels"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
-if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--help-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--audio-mute", "--view-mode", "--desktop-theme", "--status-refresh", "--restart-dialog", "--custom-scale", "--modifier-release"):
+if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--help-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--audio-mute", "--view-mode", "--desktop-theme", "--settings-sidebar", "--status-refresh", "--restart-dialog", "--custom-scale", "--modifier-release"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 
 
@@ -150,10 +150,12 @@ class ResultTests(unittest.TestCase):
         elif profile == "file-navigation":
             suites = sorted(result.FILE_NAVIGATION_SUITES)
             names = sorted(set().union(*result.FILE_NAVIGATION_SUITES.values()))
-        elif profile in {"settings-navigation", "desktop-theme"}:
+        elif profile in {"settings-navigation", "settings-sidebar", "desktop-theme"}:
             suites = ["settings_navigation_probe_test.dart"]
             names = sorted(result.SETTINGS_NAVIGATION_TESTS)
-            if profile == "desktop-theme":
+            if profile == "settings-sidebar":
+                names = [name for name in names if name.startswith("settings sidebar ")]
+            elif profile == "desktop-theme":
                 names = [name for name in names
                          if name.startswith(("desktop home", "desktop theme", "mobile theme", "recording directory", "settings "))]
         elif profile == "terminal-output":
@@ -325,8 +327,9 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("file-search"), "file-search"), (1, 12))
         self.assertEqual(self.parse(self.events("file-navigation"), "file-navigation"), (7, 125))
         self.assertEqual(self.parse(self.events("terminal-output"), "terminal-output"), (2, 37))
-        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 84))
-        self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 54))
+        self.assertEqual(self.parse(self.events("settings-navigation"), "settings-navigation"), (1, 86))
+        self.assertEqual(self.parse(self.events("settings-sidebar"), "settings-sidebar"), (1, 6))
+        self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 56))
         self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 121))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 14))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 117))
@@ -363,7 +366,7 @@ class ResultTests(unittest.TestCase):
                         path.unlink()
 
     def test_inventory_is_exact(self):
-        for profile in ((SINGLE_PROFILE,) if SINGLE_PROFILE is not None else ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release", "combo-box", "image-quality", "audio-mute", "view-mode")):
+        for profile in ((SINGLE_PROFILE,) if SINGLE_PROFILE is not None else ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "window-dispatch", "menu-button", "help-button", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release", "combo-box", "image-quality", "audio-mute", "view-mode")):
             events = self.events(profile)
             for edit in ("rename", "duplicate", "suite", "missing", "wrong-suite"):
                 with self.subTest(profile=profile, edit=edit):
@@ -387,7 +390,7 @@ class ResultTests(unittest.TestCase):
                         self.parse(changed, profile)
 
     def test_failure_skip_incomplete_and_changed_inputs_are_rejected(self):
-        for profile in ((SINGLE_PROFILE,) if SINGLE_PROFILE is not None else ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release", "combo-box", "image-quality", "audio-mute", "view-mode")):
+        for profile in ((SINGLE_PROFILE,) if SINGLE_PROFILE is not None else ("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "window-dispatch", "menu-button", "help-button", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "clipboard-keystrokes", "file-search", "audio-input", "reconnect", "file-navigation", "modifier-release", "combo-box", "image-quality", "audio-mute", "view-mode")):
             events = self.events(profile)
             done_index = next(
                 i for i, event in enumerate(events) if event["type"] == "testDone"

@@ -138531,3 +138531,19 @@ rust-name-ledger-151cdfd3.json is 5,166 bytes, SHA-256
 3fbe78dd4bdb75d9c735099dbadbb095943468f2bc896c4fe1b1eae306d0d553,
 with ten raw/control records and the retirement receipt. This deletion checkpoint
 is complete; native/product and overall release acceptance remain OPEN.
+
+## 2026-11-04 — user pivot: desktop settings sidebar accessibility
+
+Leave the four single-Rust-test execution guards OPEN after the user's pivot;
+no implementation of that follow-up was applied. Select the independent R-S0
+settings-usability requirement: the sidebar paints its selected state but its
+custom InkWell does not declare selection or button role. Flutter's documented
+SemanticsProperties.selected/button contracts and the pinned 3.24.5 navigation
+rail provide the component model. This is a presentation finding, not an LPE.
+
+Prepare two rendered cases for current selection, translated labels, semantic
+activation and external/rebuild updates, plus Tab/Enter/Space navigation. The
+new settings-sidebar subset reuses the existing exact-page/native-double VM
+fixture and four sidebar controls; broader settings/theme inventories retain
+all their cases. First run unchanged product, then the same tests after any
+necessary correction. No installed/native-screen-reader acceptance is implied.

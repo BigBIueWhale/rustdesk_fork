@@ -1815,6 +1815,77 @@ void main() {
     });
   }
 
+  testWidgets('settings sidebar semantics follow the selected page',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    native.translations['Security'] = 'Sicherheit';
+    final destinations = {
+      'General': SettingsTabKey.general,
+      'Sicherheit': SettingsTabKey.safety,
+      'Display': SettingsTabKey.display,
+      'About': SettingsTabKey.about,
+    };
+    Finder label(String name) => find.descendant(
+        of: find.byType(ListView).first, matching: find.text(name));
+    void expectSelected(SettingsTabKey selected) {
+      for (final entry in destinations.entries) {
+        expect(tester.getSemantics(label(entry.key)), containsSemantics(
+          label: entry.key,
+          isButton: true,
+          hasEnabledState: true,
+          isEnabled: true,
+          isSelected: entry.value == selected,
+          hasTapAction: true,
+        ));
+      }
+      _expectSelection(tester, selected);
+    }
+
+    await _mount(tester, SettingsTabKey.display);
+    expectSelected(SettingsTabKey.display);
+    for (final entry in destinations.entries) {
+      final node = tester.getSemantics(label(entry.key));
+      tester.binding.pipelineOwner.semanticsOwner!
+          .performAction(node.id, SemanticsAction.tap);
+      await _settle(tester);
+      expectSelected(entry.value);
+    }
+    DesktopSettingPage.switch2page(SettingsTabKey.safety);
+    await _settle(tester);
+    expectSelected(SettingsTabKey.safety);
+    tester.state(find.byType(DesktopSettingPage)).setState(() {});
+    await _settle(tester);
+    expectSelected(SettingsTabKey.safety);
+    await tester.pumpWidget(const SizedBox.shrink());
+  }, semanticsEnabled: true);
+
+  testWidgets('settings sidebar keyboard traversal and activation select pages',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await _mount(tester, SettingsTabKey.about);
+    for (final entry in {
+      'General': SettingsTabKey.general,
+      'Security': SettingsTabKey.safety,
+      'Display': SettingsTabKey.display,
+      'About': SettingsTabKey.about,
+    }.entries) {
+      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await _settle(tester);
+      final label = find.descendant(
+          of: find.byType(ListView).first, matching: find.text(entry.key));
+      expect(tester.getSemantics(label), containsSemantics(isFocused: true));
+      for (final key in [LogicalKeyboardKey.enter, LogicalKeyboardKey.space]) {
+        DesktopSettingPage.switch2page(entry.value == SettingsTabKey.about
+            ? SettingsTabKey.general : SettingsTabKey.about);
+        await _settle(tester);
+        await tester.sendKeyEvent(key);
+        await _settle(tester);
+        _expectSelection(tester, entry.value);
+      }
+    }
+    await tester.pumpWidget(const SizedBox.shrink());
+  }, semanticsEnabled: true);
+
   testWidgets('settings sidebar and external requests select the current page',
       (tester) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));

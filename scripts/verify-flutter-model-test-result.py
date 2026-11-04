@@ -1318,6 +1318,8 @@ SETTINGS_NAVIGATION_TESTS = {
     "recording directory cancellation and picker failure allow retry",
     "recording directory save failure retries and retires after close",
     "settings sidebar and external requests select the current page",
+    "settings sidebar semantics follow the selected page",
+    "settings sidebar keyboard traversal and activation select pages",
     "settings sidebar labels fit for English scale 1.0",
     "settings sidebar labels fit for English scale 3.0",
     "settings sidebar labels fit for German scale 2.0",
@@ -1948,7 +1950,7 @@ AUDIO_MUTE_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -2158,10 +2160,13 @@ def parse_result(path, profile="models"):
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
-    elif profile in {"settings-navigation", "desktop-theme"}:
+    elif profile in {"settings-navigation", "settings-sidebar", "desktop-theme"}:
         expected_suites = {"settings_navigation_probe_test.dart"}
         expected_names = SETTINGS_NAVIGATION_TESTS
-        if profile == "desktop-theme":
+        if profile == "settings-sidebar":
+            expected_names = {name for name in expected_names
+                              if name.startswith("settings sidebar ")}
+        elif profile == "desktop-theme":
             expected_names = {name for name in expected_names
                               if name.startswith(("desktop home", "desktop theme", "mobile theme", "recording directory", "settings "))}
         expected_tests = len(expected_names)
@@ -2284,7 +2289,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -2337,6 +2342,7 @@ def main():
         "file-progress": "FLUTTER_FILE_PROGRESS_TEST_JSON",
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "settings-navigation": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",
+        "settings-sidebar": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",
         "desktop-theme": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",
         "connect-password": "FLUTTER_CONNECT_PASSWORD_TEST_JSON",

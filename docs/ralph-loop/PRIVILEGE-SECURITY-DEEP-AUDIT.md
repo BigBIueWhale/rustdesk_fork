@@ -137894,3 +137894,15 @@ Thirteen accepted-run and 31 baseline bounded records match CTE/TUF. The local
 evidence reconciler initially overescaped its test-line regex; correcting that
 read-only parser accepts the existing 21 exact names without rerunning product tests.
 Ledger records the pivot and bounded result; a fresh isolated token count follows.
+
+Fresh count WtxC8IJLrP at dbd8858b passes in 27 outer seconds: 398,818 tokens /
+1,825,095 bytes, SHA-256 265790a493d99ab89381e35eb3c395961167394f9340e78ed6a973ec8802d1c9.
+Seven controls, whole-input round trip and all 82 workload admissions/five refusals
+pass. Exact processes, helpers, private state and 402,804,736 peak RAM bytes retire;
+three listener deltas are zero. Twelve bounded records match CTE/TUF. Capsule
+rotation-ledger-dbd8858b.json is 5,165 bytes, SHA-256
+8feec7d84b9f9c31b2fbd8f9a15f332a46700f17785732c6464b1284e49c35be.
+This audit-only receipt leaves the counted ledger unchanged. The component correction
+checkpoint is complete; actual rotated-display/native application acceptance remains
+open. PAKE retirement and independent user parks remain parked; the release goal
+remains active.

@@ -73,7 +73,7 @@ def pam_module():
     return module
 
 
-def prepare_container():
+def prepare_container(openrc=False):
     if os.getuid() != 1000 or not Path("/.dockerenv").is_file():
         raise RuntimeError("runtime preparation requires the isolated ordinary builder")
     built = run(["/usr/bin/python3", "-I", "-S", "/native/build.py",
@@ -105,6 +105,85 @@ def prepare_container():
     if not 5 <= count <= 64:
         raise RuntimeError("X11 dependency closure count differs")
     print(f"LINUX_RECEIVER_PREPARE=pass xdo=checked-in xkb=pinned-image x11_libraries={count}", flush=True)
+    if openrc:
+        prepare_openrc()
+
+
+def openrc_runtime_path(path):
+    return (path in {"/etc/rc.conf", "/sbin/openrc", "/sbin/openrc-run",
+                     "/sbin/rc-service", "/sbin/rc-status", "/sbin/rc-update"}
+            or path.startswith("/lib/rc/")
+            or re.fullmatch(r"/lib/x86_64-linux-gnu/lib(?:rc|einfo)\.so\.[0-9.]+", path) is not None)
+
+
+def prepare_openrc():
+    versions = run(["/usr/bin/dpkg-query", "--show", "--showformat=${Package}\t${Version}\n",
+                    "openrc", "librc1", "libeinfo1"]).stdout
+    expected = {name: "0.45.2-2+deb12u1" for name in ("openrc", "librc1", "libeinfo1")}
+    if dict(line.split("\t", 1) for line in versions.splitlines()) != expected:
+        raise RuntimeError("pinned OpenRC runtime package versions differ")
+    listing = run(["/usr/bin/dpkg-query", "--listfiles", *expected]).stdout.splitlines()
+    target = Path("/out/openrc")
+    target.mkdir(mode=0o700)
+    files = {}
+    total = 0
+    for name in sorted(set(listing)):
+        if not openrc_runtime_path(name) or not Path(name).is_file():
+            continue
+        source = Path(name)
+        size = source.stat().st_size
+        total += size
+        if size > 2097152 or total > 16777216 or len(files) >= 256:
+            raise RuntimeError("OpenRC runtime exceeds its fixture bound")
+        destination = target / name.lstrip("/")
+        destination.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+        mode = 0o755 if source.stat().st_mode & 0o111 else 0o644
+        files[name] = {"bytes": size, "sha256": digest(destination), "mode": mode}
+        if digest(source) != files[name]["sha256"]:
+            raise RuntimeError("OpenRC runtime copy differs")
+    if not {"/etc/rc.conf", "/sbin/openrc", "/sbin/openrc-run", "/sbin/rc-service"} <= files.keys():
+        raise RuntimeError("OpenRC runtime entrypoints are absent")
+    (target / "manifest.json").write_text(json.dumps({"versions": expected, "files": files}, sort_keys=True))
+    print(f"LINUX_OPENRC_PREPARE=pass version=0.45.2-2+deb12u1 files={len(files)} bytes={total}", flush=True)
+
+
+def install_openrc():
+    guard()
+    source = WORK / "prepared/openrc"
+    manifest = source / "manifest.json"
+    if manifest.stat().st_size > 65536:
+        raise RuntimeError("OpenRC runtime manifest exceeds its bound")
+    description = json.loads(manifest.read_text())
+    if description["versions"] != {name: "0.45.2-2+deb12u1" for name in ("openrc", "librc1", "libeinfo1")}:
+        raise RuntimeError("OpenRC runtime version receipt differs")
+    files = description["files"]
+    if not 4 <= len(files) <= 256:
+        raise RuntimeError("OpenRC runtime inventory differs")
+    for name, spec in files.items():
+        path = source / name.lstrip("/")
+        metadata = path.lstat()
+        if (not openrc_runtime_path(name) or ".." in Path(name).parts
+                or not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+                or (metadata.st_uid, metadata.st_gid) != (1000, 1000)
+                or metadata.st_size != spec["bytes"] or metadata.st_size > 2097152
+                or spec["mode"] not in (0o644, 0o755) or digest(path) != spec["sha256"]):
+            raise RuntimeError("OpenRC staged runtime identity differs")
+        if os.path.lexists(name):
+            raise RuntimeError("OpenRC fixture would replace an existing runtime file")
+    for name, spec in files.items():
+        destination = Path(name)
+        destination.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
+        shutil.copyfile(source / name.lstrip("/"), destination)
+        destination.chmod(spec["mode"])
+        if digest(destination) != spec["sha256"]:
+            raise RuntimeError("installed OpenRC runtime bytes differ")
+    run(["/usr/sbin/ldconfig"])
+    version = run(["/sbin/openrc", "--version"]).stdout
+    if "0.45.2" not in version:
+        raise RuntimeError("installed OpenRC runtime did not execute")
+    print(f"LINUX_OPENRC_RUNTIME=pass version=0.45.2-2+deb12u1 manifest_sha256={digest(manifest)} "
+          f"files={len(files)} source=pinned-devcheck", flush=True)
 
 
 def install_polkit(archive_sha, manifest_sha):
@@ -2892,6 +2971,175 @@ def service_session_handoff(commit, binary_sha, probe_sha):
           "logind=actual seats=none credential=preserved cleanup=joined", flush=True)
 
 
+def service_openrc(commit, binary_sha, probe_sha):
+    unit = Path("/etc/systemd/system/rustdesk.service")
+    script = Path("/etc/init.d/rustdesk")
+    source = MEDIA / "repo/res/service-managers/openrc/rustdesk"
+    runtime = Path("/run/openrc")
+    runlevel = Path("/etc/runlevels/rustdesk-fixture")
+    pidfile = Path("/run/rustdesk.pid")
+    record_path = Path("/run/rustdesk/service-child.record")
+    if any(os.path.lexists(path) for path in (unit, script, runtime, runlevel, pidfile, record_path.parent)):
+        raise RuntimeError("OpenRC scenario requires absent manager/service state")
+    manager_env = {**ENV, "PATH": "/sbin:/usr/sbin:/usr/bin:/bin"}
+    libc = ctypes.CDLL(None, use_errno=True)
+    libc.prctl.restype = ctypes.c_int
+    previous = ctypes.c_int()
+    if libc.prctl(37, ctypes.byref(previous), 0, 0, 0) != 0 or previous.value != 0:
+        raise RuntimeError("OpenRC fixture subreaper state differs")
+    if libc.prctl(36, 1, 0, 0, 0) != 0:
+        raise OSError(ctypes.get_errno(), "cannot retain OpenRC-backgrounded supervisor")
+    retained = []
+    observations = []
+    active = None
+    before_children = Path(f"/proc/self/task/{os.getpid()}/children").read_text().split()
+
+    def manager(action):
+        result = run(["/sbin/rc-service", "rustdesk", action], timeout=45, env=manager_env)
+        print("LINUX_OPENRC_MANAGER=" + json.dumps({"action": action, "exit": result.returncode,
+              "stdout": result.stdout, "stderr": result.stderr}, sort_keys=True), flush=True)
+
+    def capture():
+        metadata = pidfile.lstat()
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+                or metadata.st_uid != 0 or metadata.st_mode & 0o022 or not 1 <= metadata.st_size <= 32):
+            raise RuntimeError("OpenRC pidfile authority differs")
+        raw = pidfile.read_bytes()
+        if re.fullmatch(rb"[1-9][0-9]*\n?", raw) is None:
+            raise RuntimeError("OpenRC pidfile grammar differs")
+        pid = int(raw)
+        fd = os.pidfd_open(pid)
+        retained.append(fd)
+        proc = Path(f"/proc/{pid}")
+        fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+        status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
+        if (fields[0] in (b"Z", b"X") or status["PPid"].strip() != str(os.getpid())
+                or status["Uid"].split() != ["0"] * 4
+                or (proc / "cmdline").read_bytes() != b"/usr/bin/rustdesk\0--service\0"
+                or digest(proc / "exe") != binary_sha or unit.exists()
+                or select.select([fd], [], [], 0)[0]):
+            raise RuntimeError("OpenRC supervisor identity differs")
+        owned = {"pid": pid, "start": int(fields[19]), "fd": fd,
+                 "record": None, "child_fd": None, "reaped": False}
+        return owned
+
+    def ready(owned):
+        deadline = time.monotonic() + 25
+        last = ""
+        while time.monotonic() < deadline:
+            if select.select([owned["fd"]], [], [], 0)[0]:
+                raise RuntimeError("OpenRC supervisor exited before readiness")
+            try:
+                record = child_record(owned["pid"])
+                for suffix in ("_service", "_service_password", "_service_credential"):
+                    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as endpoint:
+                        endpoint.settimeout(1)
+                        endpoint.connect(f"/run/RustDesk-service/ipc{suffix}")
+                        peer = struct.unpack("3i", endpoint.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                        if peer != (owned["pid"], 0, 0):
+                            raise RuntimeError("OpenRC endpoint owner differs")
+                child_fd = os.pidfd_open(record["pid"])
+                retained.append(child_fd)
+                owned.update(record=record, child_fd=child_fd)
+                return record
+            except (OSError, ValueError, RuntimeError) as error:
+                last = str(error)
+            time.sleep(0.05)
+        raise RuntimeError(f"OpenRC service readiness failed: {last}")
+
+    def retired(owned):
+        if not select.select([owned["fd"]], [], [], 5)[0]:
+            raise RuntimeError("OpenRC command returned with its supervisor alive")
+        waited, status = os.waitpid(owned["pid"], 0)
+        owned["reaped"] = True
+        if waited != owned["pid"] or not os.WIFEXITED(status) or os.WEXITSTATUS(status) != 0:
+            raise RuntimeError("OpenRC supervisor did not exit cleanly")
+        if (not select.select([owned["child_fd"]], [], [], 0)[0]
+                or Path(f"/proc/{owned['record']['pid']}").exists()):
+            raise RuntimeError("OpenRC shutdown left its service child")
+
+    try:
+        shutil.copyfile(source, script)
+        script.chmod(0o755)
+        runlevel.mkdir(mode=0o755, parents=True)
+        runtime.mkdir(mode=0o755)
+        (runtime / "softlevel").write_text("rustdesk-fixture\n")
+        run(["/sbin/openrc", "--no-stop", "rustdesk-fixture"], env=manager_env)
+        if not (runtime / "started").is_dir() or list((runtime / "started").iterdir()):
+            raise RuntimeError("OpenRC empty runlevel started another service")
+        value = "Receiver-openrc-lifecycle-2026!"
+        manager("start")
+        for generation in (1, 2):
+            active = capture()
+            record = ready(active)
+            if generation == 1:
+                change(0, value, True)
+                durable = credential()
+            elif credential() != durable or record["generation"] == observations[0]["record"]["generation"]:
+                raise RuntimeError("OpenRC restart did not preserve credential and replace generation")
+            deadline = time.monotonic() + 10
+            while direct_listener(record, active["pid"]) is None and time.monotonic() < deadline:
+                time.sleep(0.05)
+            listener = direct_listener(record, active["pid"])
+            if listener is None:
+                raise RuntimeError("OpenRC child did not open its direct listener")
+            login = run(["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                         "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                         str(PROBE), "127.0.0.1:21118", "--password-stdin", "ok", "login"],
+                        input=value + "\n", timeout=15)
+            lines = login.stdout.splitlines()
+            if (login.stderr or len(lines) != 3 or lines[0] != "probe_client: keying ok=true (expected=ok)"
+                    or lines[-1] != "probe_client: PASS" or "[REMOTE-LOGIN-ADMITTED peer-info]" not in lines[1]
+                    or child_record(active["pid"]) != record or credential() != durable):
+                raise RuntimeError("OpenRC authenticated login failed")
+            print(f"LINUX_OPENRC_LOGIN=pass generation={generation} uid=4002 cpace=mutual "
+                  f"remote=peer-info probe_sha256={probe_sha}", flush=True)
+            manager("status")
+            began = time.monotonic()
+            manager("restart" if generation == 1 else "stop")
+            retired(active)
+            observations.append({"generation": generation, "record": record,
+                                 "supervisor_exit": 0, "child_reaped": True,
+                                 "operation_seconds": time.monotonic() - began})
+            active = None
+            print("LINUX_OPENRC_OBSERVED=" + json.dumps(observations[-1], sort_keys=True), flush=True)
+        if (record_path.exists() or list((runtime / "started").iterdir()) or credential() != durable
+                or digest(script) != digest(source) or unit.exists()
+                or Path(f"/proc/self/task/{os.getpid()}/children").read_text().split() != before_children):
+            raise RuntimeError("OpenRC lifecycle left process/manager state or changed its source/credential")
+        stopped = run(["/sbin/rc-service", "rustdesk", "status"], allowed=(3,), env=manager_env)
+        print("LINUX_OPENRC_STOPPED=" + json.dumps({"exit": stopped.returncode,
+              "stdout": stopped.stdout, "stderr": stopped.stderr}, sort_keys=True), flush=True)
+    finally:
+        try:
+            if script.exists() and (runtime / "started/rustdesk").exists():
+                manager("stop")
+            if active is not None:
+                if not active["reaped"]:
+                    if not select.select([active["fd"]], [], [], 5)[0]:
+                        signal.pidfd_send_signal(active["fd"], signal.SIGKILL)
+                    os.waitpid(active["pid"], 0)
+                if active["child_fd"] is not None:
+                    if not select.select([active["child_fd"]], [], [], 5)[0]:
+                        raise RuntimeError("failed OpenRC scenario retained its child")
+                    try:
+                        os.waitpid(active["record"]["pid"], 0)
+                    except ChildProcessError:
+                        if Path(f"/proc/{active['record']['pid']}").exists():
+                            raise RuntimeError("failed OpenRC child was not reaped")
+        finally:
+            for fd in retained:
+                os.close(fd)
+            if libc.prctl(36, 0, 0, 0, 0) != 0:
+                raise OSError(ctypes.get_errno(), "cannot restore OpenRC subreaper state")
+    script.unlink()
+    runlevel.rmdir()
+    shutil.rmtree(runtime)
+    print(f"LINUX_OPENRC_NATIVE=pass generations=2 restarts=1 stops=1 logins=2 source={commit} "
+          f"binary_sha256={binary_sha} probe_sha256={probe_sha} fixture=installed-layout "
+          "manager=openrc script=shipped logind=actual credential=preserved cleanup=joined", flush=True)
+
+
 def service_parent_death(commit, binary_sha, probe_sha):
     unit = Path("/etc/systemd/system/rustdesk.service")
     record_path = Path("/run/rustdesk/service-child.record")
@@ -3728,7 +3976,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False, parent_death=False, handoff=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False, parent_death=False, handoff=False, openrc=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -3757,6 +4005,10 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if openrc:
+        install_openrc()
+        installed_desktop(lambda: service_openrc(commit, spec["sha256"], probe_spec["sha256"]))
+        return
     if handoff:
         service_session_handoff(commit, spec["sha256"], probe_spec["sha256"])
         return
@@ -4066,6 +4318,8 @@ def polkit_agent(subject, notify):
 if __name__ == "__main__":
     if sys.argv[1:] == ["--prepare-container"]:
         prepare_container()
+    elif sys.argv[1:] == ["--prepare-openrc-container"]:
+        prepare_container(openrc=True)
     elif len(sys.argv) == 4 and sys.argv[1] == "--install-polkit":
         guard()
         install_polkit(*sys.argv[2:])
@@ -4105,6 +4359,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], parent_death=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--handoff":
         tests(sys.argv[1:6], handoff=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--openrc":
+        tests(sys.argv[1:6], openrc=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--stopped-child":
         tests(sys.argv[1:6], stopped_child=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--record-cleanup":

@@ -138853,3 +138853,41 @@ f087c93ff47c81012aaf3578f846a3f33b49d048cabf4fd84ede9844a7338bc1.
 This bounded documentation slice and its count prerequisite are complete;
 whole-document classification, product/release acceptance and all parked work
 remain OPEN. No product test or new product acceptance is claimed.
+
+## 2026-11-04 — OpenRC installed-layout lifecycle preparation
+
+The preceding dependency-ledger slice completed with a fresh accepted count.
+Select the OpenRC manager gap, tracked under historical ledger R-S11c-27q,
+over further documentation consolidation: a shipped privileged service path
+lacks current execution while its authenticated inputs and artifact are available.
+R-S0, R-S11l/m/n/aj/bz and the ledger's installed-service acceptance remain binding.
+Runit, SysV, privileged-settings and every independent park remain untouched.
+
+Retained artifact 60e3fb0ae0a351aa3103f2377166f400692de61e has no differences
+from current HEAD in src, libs, Cargo manifests/lock, build.rs or the OpenRC
+template. Its seven-file manifest is already authenticated by the artifact build
+and is revalidated by the common replay launcher; no new build is needed.
+The pinned devcheck image contains OpenRC. Historical smoke-openrc-lifecycle.sh
+assumes a root container and fabricated loginctl state, so it is not executed.
+
+Primary OpenRC 0.45.2 sources:
+https://raw.githubusercontent.com/OpenRC/openrc/0.45.2/sh/start-stop-daemon.sh
+https://raw.githubusercontent.com/OpenRC/openrc/0.45.2/man/openrc-run.8
+The shipped command_background setting delegates backgrounding and pidfile
+creation to start-stop-daemon; restart invokes stop/start. Manager success alone
+does not establish current child readiness or exact process retirement.
+
+Add --linux-service-openrc-tests to the existing bounded, zero-NIC installed-layout
+VM replay. Its ordinary UID-1000, capability-free preparation container stages
+only pinned OpenRC runtime files and hashes; guest root validates and installs
+that bounded closure after Docker retires. The selected scenario uses the exact
+shipped service script, real PAM/logind/X11 desktop and retained production binary.
+A fixture subreaper retains the backgrounded supervisor through native pidfds
+and waitpid; child records, principals, executable/role and kernel IPC owners
+establish readiness. Two generations must complete CPace/Remote PeerInfo logins,
+preserve the provisioned credential, replace generation on restart and retire
+supervisor/child on ordinary stop. Existing manager scenarios are not selected.
+The VM still boots systemd; OpenRC alone controls this RustDesk process, with no
+RustDesk systemd unit. This tests OpenRC manager integration, not a full OpenRC
+boot, final Debian package, unauthorized actors, rendered pixels or release.
+Shell/Python syntax and diff review pass; native execution is next.

@@ -112,7 +112,7 @@ case "$#:${8:-}" in
     8:--host-network-tests)
         MODE=host-network-tests
         ;;
-    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-startup-tests|12:--linux-service-incumbent-tests|12:--linux-service-collision-tests|12:--linux-service-exclusive-tests|12:--linux-service-desktop-exclusive-tests|12:--linux-service-crash-tests|12:--linux-service-child-crash-tests|12:--linux-service-parent-death-tests|12:--linux-service-handoff-tests|12:--linux-service-stopped-child-tests|12:--linux-service-record-cleanup-tests|12:--linux-service-recovery-refusal-tests)
+    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-startup-tests|12:--linux-service-incumbent-tests|12:--linux-service-collision-tests|12:--linux-service-exclusive-tests|12:--linux-service-desktop-exclusive-tests|12:--linux-service-crash-tests|12:--linux-service-child-crash-tests|12:--linux-service-parent-death-tests|12:--linux-service-handoff-tests|12:--linux-service-stopped-child-tests|12:--linux-service-record-cleanup-tests|12:--linux-service-recovery-refusal-tests|12:--linux-service-openrc-tests)
         MODE=linux-service-receiver-tests
         if [ "${8}" = --linux-service-convergence-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=convergence-failure
@@ -140,6 +140,8 @@ case "$#:${8:-}" in
             LINUX_RECEIVER_PROFILE=parent-death
         elif [ "${8}" = --linux-service-handoff-tests ]; then
             LINUX_RECEIVER_PROFILE=handoff
+        elif [ "${8}" = --linux-service-openrc-tests ]; then
+            LINUX_RECEIVER_PROFILE=openrc
         elif [ "${8}" = --linux-service-stopped-child-tests ]; then
             LINUX_RECEIVER_PROFILE=stopped-child
         elif [ "${8}" = --linux-service-record-cleanup-tests ]; then
@@ -933,6 +935,10 @@ run_linux_flutter_engine_prepare() {
 run_linux_service_receiver_tests() {
     local work=/var/tmp/rustdesk-linux-service-receiver inspect load_output status=0
     local -a native_args=()
+    local prepare_arg=--prepare-container
+    if [ "$LINUX_RECEIVER_PROFILE" = openrc ]; then
+        prepare_arg=--prepare-openrc-container
+    fi
     local helper=$VERIFY_REPO/scripts/test-linux-service-receiver-native.py
     local native=$VERIFY_REPO/libs/libxdo-sys-stub/native
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
@@ -940,6 +946,7 @@ run_linux_service_receiver_tests() {
     source_before="$(sha256sum "$helper" "$VERIFY_REPO/scripts/test-linux-logind-session-selection.py" \
         "$VERIFY_REPO/scripts/verify-linux-service-password-ipc.py" \
         "$VERIFY_REPO/res/rustdesk.service" "$VERIFY_REPO/res/com.carriez.RustDesk.policy" \
+        "$VERIFY_REPO/res/service-managers/openrc/rustdesk" \
         "$native/build.py" "$native/xdo.c" "$native/xdo.h" "$native/xdo_version.h" "$native/COPYRIGHT" "$native/SOURCE.txt")"
     load_output="$(
         setpriv --reuid=1000 --regid=1000 --clear-groups \
@@ -971,7 +978,7 @@ run_linux_service_receiver_tests() {
         --mount "type=bind,source=$helper,target=/fixture.py,readonly" \
         --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly" \
         --mount "type=bind,source=$work/prepared,target=/out,bind-recursive=disabled" \
-        --workdir /tmp "$DEV_CHECK_IMAGE_CONFIG_ID" /usr/bin/python3 -B -I -S /fixture.py --prepare-container)" \
+        --workdir /tmp "$DEV_CHECK_IMAGE_CONFIG_ID" /usr/bin/python3 -B -I -S /fixture.py "$prepare_arg")" \
         || fail 'cannot create the confined native receiver preparer'
     [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'native receiver preparer ID differs'
     inspect="$("$CLIENT" --host "unix://$SOCK" inspect --format \
@@ -1052,6 +1059,8 @@ run_linux_service_receiver_tests() {
         native_args+=(--parent-death)
     elif [ "$LINUX_RECEIVER_PROFILE" = handoff ]; then
         native_args+=(--handoff)
+    elif [ "$LINUX_RECEIVER_PROFILE" = openrc ]; then
+        native_args+=(--openrc)
     elif [ "$LINUX_RECEIVER_PROFILE" = stopped-child ]; then
         native_args+=(--stopped-child)
     elif [ "$LINUX_RECEIVER_PROFILE" = record-cleanup ]; then
@@ -1065,6 +1074,7 @@ run_linux_service_receiver_tests() {
     [ "$(sha256sum "$helper" "$VERIFY_REPO/scripts/test-linux-logind-session-selection.py" \
         "$VERIFY_REPO/scripts/verify-linux-service-password-ipc.py" \
         "$VERIFY_REPO/res/rustdesk.service" "$VERIFY_REPO/res/com.carriez.RustDesk.policy" \
+        "$VERIFY_REPO/res/service-managers/openrc/rustdesk" \
         "$native/build.py" "$native/xdo.c" "$native/xdo.h" "$native/xdo_version.h" "$native/COPYRIGHT" "$native/SOURCE.txt")" = "$source_before" ] \
         || fail 'native Linux receiver fixture source changed'
     printf 'LINUX_SERVICE_RECEIVER_VM=pass harness=%s manifest=%s source=readonly network=none docker=retired cleanup=joined\n' \

@@ -48,8 +48,24 @@ OPEN/PARKED. Its six-case rendered-component correction remains valid;
 full-application and OS screen-reader acceptance remain unproved. Work moves
 to consolidation of documentation history below. Independent parks remain.
 
-**Current work — runit lifecycle:** R-S11c-27r's current-source artifact is
-ready; actual manager lifecycle and installed/release acceptance remain OPEN.
+**User pivot (2026-11-04):** R-S11c-27r runit lifecycle validation is
+OPEN/PARKED before native fixture implementation or execution. The verified
+`60e3fb0a` service artifact remains available; manager and installed/release
+acceptance remain unproved. Independent parks remain.
+
+**Current work — connection-manager duration (R-S0), source finding.**
+`_CmHeaderState` starts at zero and increments once per periodic callback while
+the client is authorized and connected. Dart permits missed callbacks, so this
+counts UI scheduling events rather than elapsed connection time. Header recreation
+also discards the counter. The existing Dart client retains exact owner identity
+through same-generation snapshots, but neither its model nor the native CM
+snapshot supplies an elapsed duration. No product correction or runtime result
+is claimed. Next exercise the actual duration widget through delayed callbacks,
+remount, disconnect and replacement; elapsed time must follow the exact connection
+and freeze on disconnect, while a new owner starts separately. Full-session timing
+across CM startup/restart needs authoritative connection timing; a local stopwatch
+alone cannot establish it. Service, CM read-tick, file, voice and other parked work
+remain separate.
 
 **User pivot (2026-11-04):** The four single-Rust-test execution guards remain
 OPEN/PARKED before implementation. Independent parks remain.

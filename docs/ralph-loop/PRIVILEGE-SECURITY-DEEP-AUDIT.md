@@ -138711,3 +138711,31 @@ Scratch peaks at 402,878,464 bytes; no owned run remains. Capsule
 runit-ledger-ee73e9d1.json (5,291 bytes, SHA-256
 4e4f3aba39de332724df9d41efe8498101536fd234b3dc464f3f56c2a5548f3c)
 binds ten raw/control records and a 196-byte retirement receipt.
+
+## 2026-11-04 — user pivot: connection-manager elapsed duration
+
+Park R-S11c-27r before native fixture work. Preserve the verified seven-file
+60e3fb0a service artifact; no VM, service or SSH work is resumed. Select the
+R-S0 connection-duration display over more documentation consolidation: source
+review identifies concrete user-visible timekeeping behavior, independently of
+the parked service, file, voice and CM read-tick investigations.
+
+flutter/lib/desktop/pages/server_page.dart:370-395 owns a zero-initialized
+counter in _CmHeaderState and increments it once per periodic callback while
+authorized/connected. Rendering at lines 480-489 formats that counter. Dart's
+Timer.tick documentation explicitly distinguishes elapsed periods from callback
+invocations: delayed periods may have no callback. Header disposal also removes
+all timekeeping state. This is a source finding, not a native reproduction.
+Primary references: https://api.dart.dev/dart-async/Timer/tick.html and
+https://api.dart.dev/dart-core/Stopwatch-class.html.
+
+The same-owner snapshot reconciliation preserves the Dart Client object; neither
+that model nor src/ui_cm_interface.rs Client/get_clients_state exports connection
+timing. The next decisive comparison should render the actual duration path during
+a controlled event-loop delay, header recreation, disconnect and exact-owner
+replacement. Connection-owned elapsed time should survive UI recreation, stop at
+disconnect and remain separate across generations. A stopwatch started at UI
+observation cannot recover elapsed time predating CM startup; keep that broader
+timing requirement explicit. No product, fixture, protocol or live instruction
+file is changed in this research checkpoint. The ledger records the pivot and
+source finding; a fresh isolated token count follows.

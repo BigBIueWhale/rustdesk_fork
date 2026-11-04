@@ -2893,7 +2893,7 @@ if [ "$MODE" = dependency-inventory ]; then
     inventory_sources=(
         scripts/dependency-inventory.py Cargo.lock flutter/pubspec.yaml flutter/pubspec.lock
         .github/workflows/DISABLED.md build.rs libs/clipboard/build.rs libs/enigo/build.rs
-        libs/hbb_common/build.rs libs/portable/build.rs libs/scrap/build.rs
+        libs/hbb_common/build.rs libs/portable/build.rs libs/protobuf_it/build.rs libs/scrap/build.rs
         scripts/camera-native-probe/build.rs
     )
     for source in "${inventory_sources[@]}"; do

@@ -136408,3 +136408,16 @@ acceptance is the pinned offline enforce-lockfile resolver, existing 25 password
 field/focus/lifecycle cases, and isolated dependency inventory. No new test or
 product behavior is needed for an unused import. Full application/final artifacts,
 advisory freshness, installed authority and release acceptance remain OPEN.
+
+At 25ead00a, wGPi8NmlU2 passes all 25 cases and three parser controls in 99 outer
+seconds, including exact offline resolution and unchanged lockfiles. Its twelve
+bounded evidence files match CTE/TUF; qr-password-25ead00a.json binds the result.
+Both process identities are absent, RAM peaks at 4,106,739,712 bytes then retires,
+and all four listener deltas are zero.
+
+Inventory Jba01dShLr fails before comparison: the Git index includes
+libs/protobuf_it/build.rs, but the inventory projection omits that existing file.
+Commit 074ccdda added it and the sole extra Cargo record, protobuf_it;
+every retained Cargo record matches inventory commit 546fa719. Admit that tracked
+file and reconcile eight build scripts / 832 Cargo records. This is inventory
+bookkeeping only; parked protobuf behavior and all other parks remain untouched.

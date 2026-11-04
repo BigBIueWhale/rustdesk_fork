@@ -137494,3 +137494,33 @@ linux-parent-death-ledger-43527d49.json is 5,205 bytes, SHA-256
 3b37dd7a90b2219aaae052a8bf2b186172b46c6613ca8bc9e059d3c70a6567e5.
 This audit-only receipt leaves the counted ledger unchanged. Checkpoint complete;
 no owned job remains. Required final-artifact and other-manager acceptance stays open.
+
+## 2026-11-04 — Linux service cross-user desktop handoff
+
+Previous goal turn: progress; independent parent-death and same-artifact systemd
+crash acceptance passed. Select R-S0/R-S11b and service-child lifecycle ownership's
+desktop-transition gap over more ledger history work. Existing selection component
+tests do not establish actual privileged-supervisor handoff between different users.
+The separate caller/admin-authorization and startup-failure profiles remain parked.
+
+Review covers Desktop identity/replacement, selected principal, child credentials
+and environment, exact owned-child retirement, native fixture and both launchers.
+Primary systemd v252 references: https://www.freedesktop.org/software/systemd/man/252/pam_systemd.html
+and https://www.freedesktop.org/software/systemd/man/252/org.freedesktop.login1.html.
+Sessions are registered/closed through PAM; runtime directories are user-scoped,
+and closing differs from active. The new profile uses actual seatless PAM/logind
+sessions and separate UID-4001/:77 and UID-4003/:78 X11 desktops. The old PAM actor
+and desktop remain alive while its session closes; the service must reap that
+child, select the new UID/environment and complete another real UID-4002 CPace/
+Remote login with the same privileged supervisor/generation and durable credential.
+Closing both sessions must remove the child/record/listener while preserving the
+supervisor, followed by orderly stop and complete desktop cleanup. Physical seat/VT,
+rendered pixels/input, final packages and other-platform acceptance remain separate.
+
+The focused --linux-service-handoff-tests profile reuses the canonical bounded RAM
+receiver VM and the exact 89828922 service artifact. No product change or rebuild
+is proposed. TUF has approximately 48 GB available memory and 32 GB available
+existing tmpfs; launcher admission/limits/monitoring remain decisive. No runtime
+result is claimed before execution. Three shared observers gain an explicit UID
+parameter with their existing UID-4001 default; the desktop actor retains its old
+entry points and gains one closed UID/display pair for this scenario.

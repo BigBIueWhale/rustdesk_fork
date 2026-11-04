@@ -160,7 +160,7 @@ def install_polkit(archive_sha, manifest_sha):
           "libpam-systemd=252.39-1~deb12u2 packages=82", flush=True)
 
 
-def child_record(supervisor=None):
+def child_record(supervisor=None, uid=4001):
     main = supervisor if supervisor is not None else int(run(
         ["/usr/bin/systemctl", "show", "rustdesk.service",
          "--property=MainPID", "--value"]).stdout.strip())
@@ -175,7 +175,7 @@ def child_record(supervisor=None):
     raw = path.read_bytes()
     matched = re.fullmatch(rb"version=1\npid=([1-9][0-9]*)\nstart_time=([1-9][0-9]*)\n"
                            rb"boot_id=([0-9a-f-]{36})\nexe_dev=([0-9]+)\nexe_ino=([1-9][0-9]*)\n"
-                           rb"uid=4001\ngeneration=([0-9a-f-]{36})\n"
+                           rb"uid=" + str(uid).encode() + rb"\ngeneration=([0-9a-f-]{36})\n"
                            rb"role=--server\+--service-owned-server\n", raw)
     if matched is None:
         raise RuntimeError("child record grammar or selected UID differs")
@@ -189,7 +189,7 @@ def child_record(supervisor=None):
     if fields[0] in (b"Z", b"X") or int(fields[19]) != int(start):
         raise RuntimeError("child start identity differs")
     status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
-    if status["PPid"].strip() != str(main) or status["Uid"].split() != ["4001"] * 4:
+    if status["PPid"].strip() != str(main) or status["Uid"].split() != [str(uid)] * 4:
         raise RuntimeError("child principal or direct parent differs")
     if any(int(status[key], 16) for key in ("CapInh", "CapPrm", "CapEff", "CapAmb")):
         raise RuntimeError("child retained capabilities")
@@ -207,12 +207,12 @@ def child_record(supervisor=None):
     return {"supervisor": main, "pid": int(pid), "start": int(start), "generation": generation}
 
 
-def ready(previous=None, child_replacement=False):
+def ready(previous=None, child_replacement=False, uid=4001):
     deadline = time.monotonic() + 25
     last = ""
     while time.monotonic() < deadline:
         try:
-            record = child_record()
+            record = child_record(uid=uid)
             changed = previous is None
             if previous is not None and child_replacement:
                 changed = (record["supervisor"] == previous["supervisor"]
@@ -1645,8 +1645,8 @@ def admin_change(value, record, phase="apply", actor=None):
           "authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined", flush=True)
 
 
-def direct_listener(record, supervisor=None):
-    if child_record(supervisor) != record:
+def direct_listener(record, supervisor=None, uid=4001):
+    if child_record(supervisor, uid) != record:
         raise RuntimeError("serving child changed before listener proof")
     proc = Path("/proc") / str(record["pid"])
     listeners = []
@@ -1655,7 +1655,7 @@ def direct_listener(record, supervisor=None):
         if len(fields) < 10:
             raise RuntimeError("kernel TCP socket row is incomplete")
         if fields[1].endswith(":527E") and fields[3] == "0A":
-            if fields[1] != "00000000:527E" or fields[7] != "4001":
+            if fields[1] != "00000000:527E" or fields[7] != str(uid):
                 raise RuntimeError("direct listener address or principal differs")
             listeners.append(int(fields[9]))
     if not listeners:
@@ -1672,7 +1672,7 @@ def direct_listener(record, supervisor=None):
         match = re.fullmatch(r"socket:\[([1-9][0-9]*)\]", target)
         if match is not None:
             sockets.add(int(match[1]))
-    if listeners[0] not in sockets or child_record(supervisor) != record:
+    if listeners[0] not in sockets or child_record(supervisor, uid) != record:
         raise RuntimeError("direct listener is not owned by the retained child")
     return listeners[0]
 
@@ -2667,6 +2667,229 @@ def stopped_child_shutdown(commit, binary_sha, probe_sha):
                 os.close(fd)
 
 
+def service_session_handoff(commit, binary_sha, probe_sha):
+    unit = Path("/etc/systemd/system/rustdesk.service")
+    record_path = Path("/run/rustdesk/service-child.record")
+    cgroup = Path("/sys/fs/cgroup/system.slice/rustdesk.service")
+    pam = pam_module()
+    if any(os.path.lexists(p) for p in (unit, record_path.parent, cgroup)) or pam.sessions():
+        raise RuntimeError("session handoff requires absent service and desktop state")
+    confdir = WORK / "pam"
+    confdir.mkdir(mode=0o700)
+    (confdir / "rustdesk-logind-fixture").write_text("session required pam_systemd.so\n")
+    users, actors, retained, observations = [], [], [], []
+    reference = ServiceUnitResultReference()
+    value = "Receiver-session-handoff-2026!"
+
+    def properties():
+        return dict(line.split("=", 1) for line in run(
+            ["/usr/bin/systemctl", "show", "rustdesk.service",
+             "--property=ActiveState,SubState,Result,MainPID,NRestarts,InvocationID,ExecMainCode,ExecMainStatus"]).stdout.splitlines())
+
+    def endpoints(supervisor):
+        result = {}
+        for suffix in ("_service", "_service_password", "_service_credential"):
+            path = Path("/run/RustDesk-service") / ("ipc" + suffix)
+            st = path.lstat()
+            if not stat.S_ISSOCK(st.st_mode) or (st.st_uid, st.st_gid, stat.S_IMODE(st.st_mode)) != (0, 0, 0o666):
+                raise RuntimeError("handoff endpoint authority differs")
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+                peer.settimeout(2)
+                peer.connect(str(path))
+                credentials = struct.unpack("3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                if credentials != (supervisor, 0, 0):
+                    raise RuntimeError("handoff endpoint supervisor differs")
+            result[suffix] = {"device": st.st_dev, "inode": st.st_ino, "peer": credentials}
+        return result
+
+    def start_desktop(uid, display):
+        process = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)),
+                                    "--pam-actor" if uid == 4001 else "--handoff-actor"],
+                                   env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        actor = {"process": process, "uid": uid, "type": "x11"}
+        actors.append(actor)
+        opened = pam.reply(process)
+        if opened.get("phase") != "opened":
+            raise RuntimeError("handoff desktop session did not open")
+        actor["session"] = opened["session"]
+        actor["desktop_pid"] = opened["desktop_pid"]
+        pam.properties(actor, "active")
+        deadline = time.monotonic() + 5
+        while not Path(f"/tmp/.X11-unix/X{display}").is_socket():
+            if process.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError("handoff X11 desktop did not start")
+            time.sleep(0.05)
+        actor["desktop_fd"] = os.pidfd_open(actor["desktop_pid"])
+        retained.append(actor["desktop_fd"])
+        return actor
+
+    def close_session(actor):
+        actor["process"].stdin.write(b"close\n")
+        actor["process"].stdin.flush()
+        if pam.reply(actor["process"]) != {"session": actor["session"], "phase": "closed"}:
+            raise RuntimeError("handoff PAM close was not acknowledged")
+        pam.properties(actor, "closing")
+
+    def desktops_live():
+        if any(a["process"].poll() is not None or select.select([a["desktop_fd"]], [], [], 0)[0] for a in actors):
+            raise RuntimeError("handoff desktop exited instead of remaining alive")
+
+    def child_retired(record, fd, deadline):
+        while not select.select([fd], [], [], 0)[0] or Path(f"/proc/{record['pid']}").exists():
+            if time.monotonic() >= deadline:
+                raise RuntimeError("handoff retained the previous session child")
+            time.sleep(0.02)
+
+    def login(record, uid, display):
+        deadline = time.monotonic() + 10
+        listener = direct_listener(record, uid=uid)
+        while listener is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+            listener = direct_listener(record, uid=uid)
+        if listener is None:
+            raise RuntimeError("handoff child listener never became ready")
+        environment = dict(v.split(b"=", 1) for v in Path(f"/proc/{record['pid']}/environ").read_bytes().split(b"\0") if v)
+        expected = {b"HOME": f"/home/rdreceiver{uid}", b"USER": f"rdreceiver{uid}",
+                    b"LOGNAME": f"rdreceiver{uid}", b"DISPLAY": f":{display}",
+                    b"XDG_RUNTIME_DIR": f"/run/user/{uid}", b"XAUTHORITY": f"/run/user/{uid}/gdm/Xauthority"}
+        if any(environment.get(k) != v.encode() for k, v in expected.items()):
+            raise RuntimeError("handoff child retained another desktop environment")
+        result = run(["/usr/bin/setpriv", "--reuid=4002", "--regid=4002", "--clear-groups",
+                      "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                      str(PROBE), "127.0.0.1:21118", "--password-stdin", "ok", "login"],
+                     input=value + "\n", timeout=15)
+        lines = result.stdout.splitlines()
+        if (result.stderr or len(lines) != 3 or lines[0] != "probe_client: keying ok=true (expected=ok)"
+                or lines[-1] != "probe_client: PASS" or "[REMOTE-LOGIN-ADMITTED peer-info]" not in lines[1]
+                or f'username: "rdreceiver{uid}"' not in lines[1]
+                or credential() != durable or child_record(uid=uid) != record
+                or direct_listener(record, uid=uid) != listener):
+            raise RuntimeError("handoff child authenticated login failed")
+        print("LINUX_SERVICE_HANDOFF_LOGIN_OBSERVED=" + json.dumps(
+            {"uid": uid, "display": display, "record": record, "listener_inode": listener,
+             "environment": {k.decode(): v for k, v in expected.items()},
+             "stdout": result.stdout, "stderr": result.stderr, "exit": result.returncode}, sort_keys=True), flush=True)
+        print(f"LINUX_SERVICE_HANDOFF_LOGIN=pass child_uid={uid} client_uid=4002 cpace=mutual "
+              f"remote=peer-info probe_sha256={probe_sha}", flush=True)
+        return listener
+
+    try:
+        for uid in (4001, 4002, 4003):
+            try:
+                pwd.getpwuid(uid)
+            except KeyError:
+                run(["/usr/sbin/useradd", "--uid", str(uid), "--user-group", "--create-home",
+                     "--shell", "/usr/sbin/nologin", f"rdreceiver{uid}"])
+                users.append(uid)
+            else:
+                raise RuntimeError("handoff fixture UID already exists")
+        first_actor = start_desktop(4001, 77)
+        shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
+        run(["/usr/bin/systemctl", "daemon-reload"])
+        run(["/usr/bin/systemctl", "start", "rustdesk.service"])
+        first = ready()
+        supervisor = first["supervisor"]
+        supervisor_fd = os.pidfd_open(supervisor)
+        retained.append(supervisor_fd)
+        supervisor_start = Path(f"/proc/{supervisor}/stat").read_bytes().rsplit(b") ", 1)[1].split()[19]
+        if digest(Path(f"/proc/{supervisor}/exe")) != binary_sha:
+            raise RuntimeError("handoff supervisor image differs")
+        initial = properties()
+        if (initial["ActiveState"], initial["SubState"], initial["Result"], initial["NRestarts"]) != ("active", "running", "success", "0"):
+            raise RuntimeError("handoff service is not stable")
+        initial_endpoints = endpoints(supervisor)
+        change(0, value, True)
+        durable = credential()
+
+        def stable():
+            if (select.select([supervisor_fd], [], [], 0)[0] or properties() != initial
+                    or Path(f"/proc/{supervisor}/stat").read_bytes().rsplit(b") ", 1)[1].split()[19] != supervisor_start
+                    or endpoints(supervisor) != initial_endpoints or credential() != durable):
+                raise RuntimeError("session handoff changed the supervisor or durable authority")
+            desktops_live()
+
+        first_fd = os.pidfd_open(first["pid"])
+        retained.append(first_fd)
+        first_listener = login(first, 4001, 77)
+        began = time.monotonic()
+        close_session(first_actor)
+        second_actor = start_desktop(4003, 78)
+        child_retired(first, first_fd, began + 15)
+        second = ready(first, child_replacement=True, uid=4003)
+        second_fd = os.pidfd_open(second["pid"])
+        retained.append(second_fd)
+        second_listener = login(second, 4003, 78)
+        handoff_seconds = time.monotonic() - began
+        if handoff_seconds >= 35 or first_listener == second_listener:
+            raise RuntimeError("handoff did not restore a fresh serving child within its deadline")
+        stable()
+        observations.append({"phase": "handoff", "old": first, "new": second,
+                             "old_listener": first_listener, "new_listener": second_listener,
+                             "old_reaped": True, "seconds": handoff_seconds})
+        began = time.monotonic()
+        close_session(second_actor)
+        child_retired(second, second_fd, began + 15)
+        while record_path.exists():
+            stable()
+            if time.monotonic() >= began + 15:
+                raise RuntimeError("sessionless supervisor did not retire the reaped child's record")
+            time.sleep(0.02)
+        deadline = time.monotonic() + 3
+        samples = 0
+        while time.monotonic() < deadline:
+            stable()
+            if record_path.exists() or any(len(f := line.split()) >= 10 and f[1].endswith(":527E") and f[3] == "0A"
+                                          for line in Path("/proc/net/tcp").read_text().splitlines()[1:]):
+                raise RuntimeError("closing sessions retained a child record or direct listener")
+            samples += 1
+            time.sleep(0.1)
+        observations.append({"phase": "sessionless", "child": second, "child_reaped": True,
+                             "seconds": time.monotonic() - began, "stable_samples": samples})
+        run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
+        terminal = properties()
+        if (terminal["ActiveState"], terminal["SubState"], terminal["Result"], terminal["MainPID"]) != ("inactive", "dead", "success", "0"):
+            raise RuntimeError("sessionless supervisor did not stop cleanly")
+        if (terminal["ExecMainCode"], terminal["ExecMainStatus"]) != ("1", "0"):
+            raise RuntimeError("sessionless supervisor did not exit zero")
+        if cgroup.exists() or record_path.exists() or Path(f"/proc/{supervisor}").exists() or not select.select([supervisor_fd], [], [], 0)[0]:
+            raise RuntimeError("sessionless service cleanup is incomplete")
+        print("LINUX_SERVICE_HANDOFF_OBSERVED=" + json.dumps(
+            {"initial": initial, "terminal": terminal, "endpoints": initial_endpoints,
+             "transitions": observations, "credential_unchanged": credential() == durable,
+             "closing_desktops_alive": True, "supervisor_reaped": True}, sort_keys=True), flush=True)
+        if credential() != durable:
+            raise RuntimeError("final handoff stop changed the durable credential")
+    except BaseException:
+        print(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "-n", "60"]).stdout, flush=True)
+        raise
+    finally:
+        try:
+            run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40, allowed=(0, 5))
+        finally:
+            try:
+                for actor in actors:
+                    process = actor["process"]
+                    if process.poll() is None:
+                        process.stdin.write(b"quit\n")
+                        process.stdin.flush()
+                    if process.wait(timeout=10) != 0:
+                        raise RuntimeError("handoff PAM actor did not retire cleanly")
+                    process.stdin.close()
+                    process.stdout.close()
+            finally:
+                reference.close()
+                for fd in retained:
+                    os.close(fd)
+                for uid in users:
+                    run(["/usr/bin/systemctl", "stop", f"user@{uid}.service", f"user-runtime-dir@{uid}.service"])
+                    run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
+    if pam.sessions() or any(Path(f"/tmp/.X11-unix/X{display}").exists() for display in (77, 78)):
+        raise RuntimeError("handoff desktop sessions or X11 sockets remain")
+    print(f"LINUX_SERVICE_HANDOFF_NATIVE=pass supervisors=1 children=2 handoffs=1 logins=2 source={commit} "
+          f"binary_sha256={binary_sha} probe_sha256={probe_sha} fixture=installed-layout unit=shipped "
+          "logind=actual seats=none credential=preserved cleanup=joined", flush=True)
+
+
 def service_parent_death(commit, binary_sha, probe_sha):
     unit = Path("/etc/systemd/system/rustdesk.service")
     record_path = Path("/run/rustdesk/service-child.record")
@@ -3503,7 +3726,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False, parent_death=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False, parent_death=False, handoff=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -3532,6 +3755,9 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if "not found" in run(["/usr/bin/ldd", str(PROBE)]).stdout:
         raise RuntimeError("network probe runtime dependency is missing")
     run(["/usr/bin/systemctl", "is-active", "systemd-logind.service", "polkit.service"])
+    if handoff:
+        service_session_handoff(commit, spec["sha256"], probe_spec["sha256"])
+        return
     if parent_death:
         installed_desktop(lambda: service_parent_death(commit, spec["sha256"], probe_spec["sha256"]))
         return
@@ -3797,28 +4023,29 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 
 
-def actor():
+def actor(uid=4001, display=77):
     guard()
-    # pam_systemd creates /run/user/4001 during open_session. The desktop
+    # pam_systemd creates the user's runtime directory during open_session. The desktop
     # command creates its authority file after that session is registered.
-    command = ["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)), "--desktop"]
-    pam_module().pam_actor("rdreceiver4001", "x11", WORK / "pam", display=":77", desktop_command=command)
+    command = ["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)),
+               "--desktop" if uid == 4001 else "--handoff-desktop"]
+    pam_module().pam_actor(f"rdreceiver{uid}", "x11", WORK / "pam", display=f":{display}", desktop_command=command)
 
 
-def desktop():
+def desktop(uid=4001, display=77):
     guard()
-    auth = Path("/run/user/4001/gdm/Xauthority")
+    auth = Path(f"/run/user/{uid}/gdm/Xauthority")
     auth.parent.mkdir(mode=0o700)
-    os.chown(auth.parent, 4001, 4001)
+    os.chown(auth.parent, uid, uid)
     def field(value):
         return struct.pack("!H", len(value)) + value
-    auth.write_bytes(struct.pack("!H", 65535) + field(b"") + field(b"77")
+    auth.write_bytes(struct.pack("!H", 65535) + field(b"") + field(str(display).encode())
                      + field(b"MIT-MAGIC-COOKIE-1") + field(bytes.fromhex("112233445566778899aabbccddeeff00")))
-    os.chown(auth, 4001, 4001)
+    os.chown(auth, uid, uid)
     os.chmod(auth, 0o600)
-    os.execve("/usr/bin/setpriv", ["/usr/bin/setpriv", "--reuid=4001", "--regid=4001", "--clear-groups",
+    os.execve("/usr/bin/setpriv", ["/usr/bin/setpriv", f"--reuid={uid}", f"--regid={uid}", "--clear-groups",
               "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs",
-              str(WORK / "Xvfb"), ":77", "-nolisten", "tcp", "-auth", str(auth),
+              str(WORK / "Xvfb"), f":{display}", "-nolisten", "tcp", "-auth", str(auth),
               "-screen", "0", "640x480x24", "-xkbdir", str(WORK / "xkb"), "-fp", "built-ins"], ENV)
 
 
@@ -3844,6 +4071,10 @@ if __name__ == "__main__":
         actor()
     elif sys.argv[1:] == ["--desktop"]:
         desktop()
+    elif sys.argv[1:] == ["--handoff-actor"]:
+        actor(4003, 78)
+    elif sys.argv[1:] == ["--handoff-desktop"]:
+        desktop(4003, 78)
     elif len(sys.argv) == 4 and sys.argv[1] == "--polkit-agent":
         polkit_agent(*sys.argv[2:])
     elif len(sys.argv) == 7 and sys.argv[-1] == "--convergence-failure":
@@ -3870,6 +4101,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], child_crash=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--parent-death":
         tests(sys.argv[1:6], parent_death=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--handoff":
+        tests(sys.argv[1:6], handoff=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--stopped-child":
         tests(sys.argv[1:6], stopped_child=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--record-cleanup":

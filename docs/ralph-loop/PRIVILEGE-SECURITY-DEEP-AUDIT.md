@@ -139145,3 +139145,16 @@ ef7f3d2a5c281c31c5f407e4a343d26dba0d7212a23bc3a83bb58094e19a3701.
 Record the named rendered-page acceptance in the existing ledger row and run
 its mandatory fresh isolated token count. Pre-dispatch disposal, native errors,
 device behavior, complete settings and release acceptance remain OPEN.
+
+Fresh ledger count at 93fa3aaa, CTE gHmRSVLH5D: 398,041 tokens / 1,818,060
+bytes, SHA-256 8a9c5ddbad332820b067669085a20a52ecf75200c0d67dc48680fc064cb576b6.
+Seven tokenizer controls, whole-input round trip and 84 workload controls/five
+refusals pass in 29 workload seconds, including selection of the new bounded
+mobile-build-date profile. Three zero endpoint deltas, exact process absence and
+private/RAM retirement are verified under the shared lock; no owned run remains.
+Scratch peaks at 402,759,680 bytes. Eleven records are bound by
+mobile-date-ledger-93fa3aaa.json (7,613 bytes, SHA-256
+01265d61593b416b5a6036282744c5f527bcecc2655d01c2ea4736cd41050bc7),
+with a 456-byte retirement receipt, SHA-256
+1ef4d5a4047797761a247e85e72f963a2853d95bd9a8b4754a4e7df0b742685e.
+The selected rendered-page checkpoint is complete; broader release work remains.

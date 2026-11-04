@@ -1666,6 +1666,79 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  for (final platform in [TargetPlatform.android, TargetPlatform.iOS]) {
+    final skin = platform.name;
+
+    testWidgets('mobile build date $skin renders completed read and retains it through rebuilds',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      installSettingsProbeAndroid(true);
+      final date = Completer<String>();
+      native.readBuildDate = () => date.future;
+      const value = '2026-10-30 12:34';
+      try {
+        await _mountMobile(tester, platform);
+        await _showBoolean(tester, 'Build Date');
+        expect(native.buildDateReads, 1);
+        expect(find.text(value), findsNothing);
+        tester.state(find.byType(mobile.SettingsPage)).setState(() {});
+        await _settle(tester);
+        expect(native.buildDateReads, 1);
+        date.complete(value);
+        await _settle(tester);
+        final renderedDate = find.descendant(
+            of: _booleanTile('Build Date'), matching: find.text(value));
+        expect(renderedDate.hitTestable(), findsOneWidget);
+        tester.state(find.byType(mobile.SettingsPage)).setState(() {});
+        await _settle(tester);
+        expect(renderedDate.hitTestable(), findsOneWidget);
+        expect(native.buildDateReads, 1);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        if (!date.isCompleted) date.complete(value);
+        await _settle(tester);
+      }
+    });
+
+    testWidgets('mobile build date $skin closed page cannot replace reopened metadata',
+        (tester) async {
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      installSettingsProbeAndroid(true);
+      final oldDate = Completer<String>();
+      final currentDate = Completer<String>();
+      native.readBuildDate = () =>
+          native.buildDateReads == 1 ? oldDate.future : currentDate.future;
+      const oldValue = '2026-10-29 01:23';
+      const currentValue = '2026-10-30 12:34';
+      try {
+        await _mountMobile(tester, platform);
+        final oldState = tester.state(find.byType(mobile.SettingsPage));
+        expect(native.buildDateReads, 1);
+        await tester.pumpWidget(const SizedBox.shrink());
+        expect(oldState.mounted, isFalse);
+        await _mountMobile(tester, platform);
+        expect(tester.state(find.byType(mobile.SettingsPage)), isNot(same(oldState)));
+        expect(native.buildDateReads, 2);
+        await _showBoolean(tester, 'Build Date');
+        currentDate.complete(currentValue);
+        await _settle(tester);
+        expect(find.text(currentValue).hitTestable(), findsOneWidget);
+        oldDate.complete(oldValue);
+        await _settle(tester);
+        expect(find.text(currentValue).hitTestable(), findsOneWidget);
+        expect(find.text(oldValue), findsNothing);
+        expect(native.buildDateReads, 2);
+        expect(tester.takeException(), isNull);
+      } finally {
+        await tester.pumpWidget(const SizedBox.shrink());
+        if (!oldDate.isCompleted) oldDate.complete(oldValue);
+        if (!currentDate.isCompleted) currentDate.complete(currentValue);
+        await _settle(tester);
+      }
+    });
+  }
+
   testWidgets('settings about retains pending metadata across rebuilds',
       (tester) async {
     addTearDown(() => tester.binding.setSurfaceSize(null));

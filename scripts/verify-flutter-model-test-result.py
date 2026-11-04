@@ -1256,6 +1256,10 @@ PEER_LOADER_TESTS = {
     "peer loader clear retires a pending request and its failure",
 }
 SETTINGS_NAVIGATION_TESTS = {
+    *{f"mobile build date {skin} {case}"
+      for skin in ("android", "iOS")
+      for case in ("renders completed read and retains it through rebuilds",
+                   "closed page cannot replace reopened metadata")},
     "settings wake lock ordinary owner releases its cookie",
     "settings wake lock retains the remaining owner",
     "settings wake lock respects disabled outgoing preference",
@@ -1962,7 +1966,7 @@ CM_DURATION_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "mobile-build-date", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -2176,12 +2180,15 @@ def parse_result(path, profile="models"):
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
         expected_tests = len(expected_names)
-    elif profile in {"settings-navigation", "settings-sidebar", "desktop-theme"}:
+    elif profile in {"settings-navigation", "settings-sidebar", "mobile-build-date", "desktop-theme"}:
         expected_suites = {"settings_navigation_probe_test.dart"}
         expected_names = SETTINGS_NAVIGATION_TESTS
         if profile == "settings-sidebar":
             expected_names = {name for name in expected_names
                               if name.startswith("settings sidebar ")}
+        elif profile == "mobile-build-date":
+            expected_names = {name for name in expected_names
+                              if name.startswith("mobile build date ")}
         elif profile == "desktop-theme":
             expected_names = {name for name in expected_names
                               if name.startswith(("desktop home", "desktop theme", "mobile theme", "recording directory", "settings "))}
@@ -2305,7 +2312,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "mobile-build-date", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -2360,6 +2367,7 @@ def main():
         "peer-data": "FLUTTER_PEER_DATA_TEST_JSON",
         "settings-navigation": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",
         "settings-sidebar": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",
+        "mobile-build-date": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",
         "desktop-theme": "FLUTTER_SETTINGS_NAVIGATION_TEST_JSON",
         "terminal-output": "FLUTTER_TERMINAL_OUTPUT_TEST_JSON",
         "connect-password": "FLUTTER_CONNECT_PASSWORD_TEST_JSON",

@@ -50,6 +50,12 @@ the host requires the exact completion receipt. Evidence: the audit's
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Authenticated-session continuity during password
+throttling is OPEN/PARKED. The extension at `ffa36e12` has not been compiled or
+executed; the earlier 21-case installed limiter recovery result remains valid.
+Work moves to mobile Settings build-date rendering and page lifetime. All
+independent parks remain.
+
 **User pivot (2026-11-04):** OpenRC lifecycle validation is OPEN/PARKED.
 At `9e6aa6d4`, both generations complete authenticated login and exact
 supervisor/child retirement, but a combined final-state assertion fails without

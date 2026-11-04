@@ -139096,3 +139096,31 @@ headroom and overhead before allocation. Current available memory exceeds that
 requirement; live admission/monitoring still decides execution. Product source,
 dependencies, service unit, storage limits and live instructions are unchanged.
 Shell syntax, native Python AST and diff review pass before compilation.
+
+## 2026-11-04 — user pivot; mobile Settings build-date lifetime
+
+Honor the explicit pivot. Park the authenticated-session continuity extension at
+ffa36e12 before its source-bound build or runtime execution. The earlier installed
+limiter recovery checkpoint remains valid; no new VM or service job was started.
+Select the R-S0 mobile Settings page's unproved rendering/lifetime condition,
+recorded in the current ledger's mobile settings lifetime row. This exercises an
+existing product correction against the actual page, ahead of further metadata
+or documentation cleanup. All independent parks remain.
+
+The page already checks mounted before and after the build-date read and uses
+setState for the completed value. Flutter's primary mounted/setState and
+addPostFrameCallback documentation confirms that a disposed State cannot be
+updated and post-frame callbacks cannot be unregistered:
+https://api.flutter.dev/flutter/widgets/State/mounted.html
+https://api.flutter.dev/flutter/widgets/State/setState.html
+https://api.flutter.dev/flutter/scheduler/SchedulerBinding/addPostFrameCallback.html
+No product change is indicated before observing the current behavior.
+
+Add four rendered cases using the existing settings fixture: delayed date display
+and one-read reuse through rebuilds, plus close/reopen with the old read completing
+after the new page's date. Both Android and iOS SettingsList visual styles execute
+in Linux with the Android application branch selected. Native metadata, parent,
+platform and logo are controlled doubles; no Android/iOS device acceptance is
+claimed. The new mobile-build-date selector runs only these four cases through
+the existing bounded settings VM profile, exact-source checks and result parser.
+Existing unrelated settings cases remain available but are not selected here.

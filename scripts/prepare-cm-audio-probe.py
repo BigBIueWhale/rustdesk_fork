@@ -41,18 +41,26 @@ def main():
                     stream.write(suffix)
         if target.read_bytes() != original + suffix:
             raise ValueError(f'CM audio copy differs: {relative}')
-    cases = (repo / 'test_probes/cm_audio_cases.dart.inc').read_bytes()
-    target = project / 'test_probes/cm_audio_probe_test.dart'
-    if prepare:
-        with target.open('xb') as stream:
-            stream.write(cases)
-        target.chmod(0o400)
-    if target.read_bytes() != cases:
-        raise ValueError('CM audio cases differ')
+    case_digests = {}
+    for name in ('cm_audio', 'cm_voice_controls'):
+        cases = (repo / f'test_probes/{name}_cases.dart.inc').read_bytes()
+        target = project / f'test_probes/{name}_probe_test.dart'
+        if prepare:
+            with target.open('xb') as stream:
+                stream.write(cases)
+            target.chmod(0o400)
+        if target.read_bytes() != cases:
+            raise ValueError(f'CM cases differ: {name}')
+        case_digests[name] = hashlib.sha256(cases).hexdigest()
     panel = (repo / 'lib/desktop/pages/server_page.dart').read_bytes()
+    mobile = (repo / 'lib/mobile/pages/server_page.dart').read_bytes()
+    model = (repo / 'lib/models/server_model.dart').read_bytes()
     print(f'CM_AUDIO_SOURCE={sys.argv[1]} '
           f'panel={hashlib.sha256(panel).hexdigest()} '
-          f'tests={hashlib.sha256(cases).hexdigest()} '
+          f'mobile={hashlib.sha256(mobile).hexdigest()} '
+          f'model={hashlib.sha256(model).hexdigest()} '
+          f'tests={case_digests["cm_audio"]} '
+          f'voice_tests={case_digests["cm_voice_controls"]} '
           'panel_copy=exact native_binding=double', flush=True)
 
 

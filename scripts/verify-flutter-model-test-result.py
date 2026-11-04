@@ -1560,6 +1560,17 @@ TRACKPAD_SPEED_SUITES = {
 
 
 AUDIO_INPUT_SUITES = {
+    "cm_voice_controls_probe_test.dart": {
+        'mobile voice popup accepts its exact call',
+        'mobile voice popup dismisses its exact call',
+        'mobile voice remains acceptable after closing its popup',
+        'mobile voice page accepts its exact call',
+        'mobile voice page dismisses its exact call',
+        'mobile voice page accepts with Enter and Space',
+        'mobile voice page retains the displayed call identity',
+        'mobile voice page offers responses only while incoming',
+        'mobile voice page reports refusal and permits retry',
+    },
     "cm_audio_probe_test.dart": {
         'audio CM picker retains pending reads after panel disposal',
         'audio CM picker retains pending writes after panel disposal',

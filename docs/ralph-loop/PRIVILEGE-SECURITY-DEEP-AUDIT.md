@@ -136532,3 +136532,34 @@ SHA-256 9993006dd4da3a3e9fbcf534a077e36eda530d18eed651a076bc021c8086f979.
 Twelve bounded files match both hosts. This audit-only receipt preserves the
 counted ledger. The production dependency cleanup is complete at its scoped
 checkpoint; no owned job remains, and codec/model-inventory plus other parks remain.
+
+## 2026-11-04 — mobile incoming voice-call control availability
+
+Previous goal turn: progress; production text/font dependency cleanup is accepted.
+Select R-S0/R-S4's retained voice-call workflow and R-G7 connection-management
+functionality. Native commands already bind connection/generation/call identity,
+but the ledger explicitly lacks rendered voice-control/dialog acceptance. This
+required workflow takes priority over further unused-dependency removal. All
+codec, model-inventory, Android-native and other independent parks remain.
+
+Source finding: mobile ConnectionManager renders only Dismiss for an incoming
+voice call. ServerModel's popup supplies Accept, but its close icon closes the
+popup without responding; a pending call then has no page Accept action. Desktop
+and popup commands already use CmVoiceCallOwner and the typed response API.
+The desired behavior is to keep both voice responses reachable on the mobile
+page while an incoming call is pending, preserving exact displayed call identity
+and truthful refusal feedback. This is post-authentication voice consent; the
+password-only connection admission contract remains binding.
+
+Extend the existing audio-control VM cohort with nine actual mobile page/popup
+cases, leaving product source unchanged for the baseline. The fixture uses the
+real ServerModel, dialog manager, mobile ConnectionManager and Material widgets;
+only the native bridge is doubled. It observes popup Accept/Dismiss, close then
+page Accept, both page responses, Enter/Space, captured identity, nonpending
+visibility and refused-command retry. Existing forty neighboring audio cases
+remain. Fresh bridge generation and exact copied-source comparison are reused.
+Flutter's official TextButton contract at
+https://api.flutter.dev/flutter/material/TextButton-class.html supports the
+existing grouped-card action and onPressed activation model. No new dependency,
+authentication path, native audio or Android/device evidence is claimed. The
+baseline must distinguish a rendered missing action from a fixture/build failure.

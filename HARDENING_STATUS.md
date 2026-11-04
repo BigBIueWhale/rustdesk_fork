@@ -50,9 +50,10 @@ and four zero listener deltas are retained in `android-scroll-admitted-ca70a84d.
 The unverified two-line candidate is preserved in stash
 `9536b1f8a6f28b8192009b6b23b39433551a699e`; preparation remains at `ca70a84d`.
 No mobile correction or runtime acceptance is claimed. X11 capture integration
-and all independent parks remain. The selected documentation checkpoint condenses
-the retained-account section's credential-workflow history without changing its
-implementation, evidence boundaries or open release obligations.
+and all independent parks remain. The documentation checkpoint is complete.
+The current R-S11hj checkpoint verifies retained Linux/Android asset inventories
+and removes two unused source fonts; complete account-removal and release
+acceptance remain OPEN.
 
 **User pivot (2026-11-04):** Android permission native-workflow acceptance is
 OPEN/PARKED; the accepted Kotlin callback correction below remains valid.
@@ -15705,6 +15706,23 @@ asset admission and retired icon fonts are removed. Existing `*_ab`/`*_group` fi
 remain untouched inert bytes. Live peer TOML transactions, build-local display-name/
 avatar metadata and direct-session CPace/password/token state remain separate.
 
+**Retired account fonts — retained-artifact inventory verified.** The two unused
+source files `flutter/assets/address_book.ttf` and `device_group.ttf` are deleted
+(3,804 bytes). Neither has a source consumer or pubspec registration. Read-only
+inspection revalidates all 74 files of Linux app `27bf28eb` against its source-bound
+manifest and the complete digest of Android test APK `33fc2bdb`. Their identical
+asset/font manifests contain the exact 40 declared SVGs and four custom fonts,
+plus Material Icons; both retired names and font-byte hashes are absent from the
+inspected asset payloads. All 52 binary-manifest entries decode without trailing
+bytes. The declarations and retained asset sources match both build commits.
+Android's 179-entry ZIP has 58 Flutter asset files and no duplicate names.
+`account-assets-27bf28eb.json` and `account-assets-android-33fc2bdb.json` retain
+the full inventories and identities. The existing enumeration already excluded
+these files; deletion removes source residue without changing declared assets.
+These are retained Linux-bundle and test-signed x86_64 APK observations, not native
+asset loading, glyph rendering, ABI/storage absence or final Debian/Android aarch64,
+Windows/Apple acceptance. Those obligations remain OPEN.
+
 The tables describe current source and the evidence for the named historical commits.
 They do not establish fresh validation of the current tree. All capsules are retained
 under `.harness-state/verifier-vm/`; detailed case inventories, intermediate failures,
@@ -15818,9 +15836,10 @@ denied by the owned harness, external endpoint owners were still neither inspect
 nor changed.
 
 **Remaining acceptance — OPEN.** Exact-current Rust application compilation,
-complete fresh-bridge absence inspection, package asset/symbol inventories and
+complete fresh-bridge absence inspection, final-package asset/symbol inventories and
 installed-platform checks are still required for account removal. R-S11gr's
-bridge/model checkpoint supplies neither complete compilation nor package absence.
+bridge/model checkpoint supplies neither complete compilation nor final-package
+absence; the retained-artifact inventory above covers only its named assets.
 
 For the retained direct, metadata, chat and CM features, the following remain open:
 

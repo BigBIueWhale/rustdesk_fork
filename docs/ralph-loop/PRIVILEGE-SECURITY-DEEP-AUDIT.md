@@ -135945,3 +135945,75 @@ files match CTE/TUF; account-ledger-b043b87a.json is 5,085 bytes, SHA-256
 c761294d9ead0ad6d210e865f17748d8e02e0ed938f4b8b2027ba485a3ca5493.
 The classification capsule is also hash-verified on both hosts. No owned run
 remains. This audit-only receipt leaves the counted ledger unchanged.
+
+
+## 2026-11-04 — retained account-asset inventories and orphan font removal
+
+Previous goal turn is progress: it completed the bounded ledger consolidation,
+published its actual token count and retired the redirected Android run. CTE/TUF
+start clean at 0e69d3ad; no owned run remains. Mobile scroll, X11 integration and
+all independent parks remain. No parked runtime workflow is resumed.
+
+Selected R-S11hj/Appendix C #370 acceptance is the actual packaged asset inventory.
+Existing source-bound Linux/Android artifacts can decide this gap without another
+full build, making this a higher-value next step than further status compression.
+Success requires actual file/ZIP inventory and bytes, interpreted manifests and
+matching declarations; source-string absence alone is insufficient. Full API,
+storage, native loading and final-release acceptance remain separate obligations.
+
+Primary research: Flutter documents AssetManifest.bin as the replacement for
+the retired JSON inventory and identifies StandardMessageCodec as its encoding:
+https://docs.flutter.dev/release/breaking-changes/asset-manifest-dot-json .
+The exact retained framework revision's decoder and manifest schema were read:
+https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/packages/flutter/lib/src/services/message_codecs.dart
+https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/packages/flutter/lib/src/services/asset_manifest.dart .
+Inspection consumes the complete actual binary inventory, including variant maps;
+it does not search opaque bytes or treat missing AssetManifest.json as failure.
+
+Under the shared TUF run lock, read-only inspection revalidates the complete
+27bf28eb bundle: 74 payload files / 70,344,770 bytes, exact manifest
+c1b49165e06828d0dd6eb7b796dbe2e9ceb67923d329eaa77325326fcb086dfb.
+The complete directory/file inventory, retained file identities and metadata,
+payload hashes and source pubspec/assets match. All 52 AssetManifest.bin entries
+decode fully; application assets are precisely 40 SVGs and four declared custom
+fonts. FontManifest registers those four plus MaterialIcons, with every target
+present. The retired address_book.ttf/device_group.ttf names and original-byte
+hashes are absent. An initial inspection stopped because its lowercase-only
+source-name expression omitted message_24dp_5F6368.svg; correcting that inspection
+expression includes the actual mixed-case declaration. No product failure or
+accepted result is attributed to the incomplete inspection.
+
+The retained 33fc2bdb x86_64 test APK also matches its build receipt exactly:
+48,315,044 bytes, SHA-256
+1d8c1fc050d09656fcd3167ece7b9703432e367c5651d026ad219142c371f509.
+Its ZIP has 179 unique names and 58 Flutter asset files. AssetManifest.bin and
+FontManifest.json match the inspected Linux manifests by hash; the same 44
+application assets are present, all SVG bytes match source, font targets exist,
+and neither retired name nor font-byte hash appears in the inspected assets.
+This is artifact inspection only: no product executable, compiler, emulator,
+installer, service, test peer or listener is started on either host.
+
+The source still retained the two unused imported TrueType files. Complete tracked
+reference review finds no filename/family consumer or pubspec registration;
+Linux/Windows CMake installs the Flutter-generated asset bundle, not the raw source
+asset directory. Only these two hash-verified binary files are removed:
+address_book.ttf, 1,792 bytes,
+c725b18176aa78151e013222a9fc9c439a9a9106d6c061e8f617162a80a8b4f7;
+device_group.ttf, 2,012 bytes,
+757071e3671adac7f6fca290259e782ddaf8e5a8381cf14b6984b3f05c67412f.
+The text patch tool cannot decode these binaries; exact-size/hash/type-checked
+file deletion performs the same scoped edit. Pubspec, retained assets, application
+code, tests, dependencies, requirements and live instructions remain unchanged.
+The unused bytes are repository residue; their removal is not a demonstrated
+runtime security correction and does not establish complete account absence.
+
+Bounded capsules are hash-verified on both hosts:
+account-assets-27bf28eb.json, 8,262 bytes,
+8706358dc187db7435f6fbb832d0dfb47af4edccb6a25355b20535f2293a3b4c;
+account-assets-android-33fc2bdb.json, 9,971 bytes,
+5acaeb4c69abd36146220376519d36a19f78f9c4cbda643b47aa9be9e6ab8de9.
+The ledger records only this asset checkpoint. Current full compilation/bridge/
+ABI/storage absence, native asset loading and glyph rendering, final Debian and
+aarch64 stable-signed Android packages, Windows/Apple artifacts, installed behavior,
+cold equality, independent reproduction and review remain OPEN. No release is
+created. Whitespace and complete diff review precede the fresh required ledger count.

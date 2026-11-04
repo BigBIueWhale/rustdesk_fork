@@ -138284,3 +138284,25 @@ whole diff, reference inventory and exact bytes outside the selected range/new
 pivot before committing. A fresh isolated count is still required before claiming
 the resulting budget. Reuse the admitted zero-NIC counter and its pinned method;
 retain bounded evidence and verify exact process/private/RAM retirement.
+
+Review passes: all 27 inline code/evidence references and eight requirement IDs
+from the selected range remain. Every ledger byte outside that range and the new
+pivot is unchanged; the complete diff touches only the ledger and this journal.
+The selected range shrinks 26.2%; the complete ledger shrinks 1,821 bytes after
+the pivot entry. Whitespace checks pass.
+
+CTE count `otbgZtI115` at pushed `c62dd0e7` completes in 27 outer seconds:
+398,492 tokens / 1,822,592 bytes, input SHA-256
+e793ffc44b53ccc73b67141eca841c68baecb39d931a476e9510901c29e401b1.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and the whole-input byte round trip. This saves 360 measured tokens and leaves
+1,508 below the budget; broader document consolidation remains OPEN. Existing
+42-mode/82-control/five-refusal admission checks pass. Three decoded listener
+inventories have zero changes. Exact wrapper/QEMU pidfd checks, helper absence
+and private/RAM retirement are verified under the shared lock. RAM scratch peaks
+at 402,821,120 bytes and is retired. Capsule ipc-history-ledger-c62dd0e7.json is
+5,174 bytes, SHA-256
+dfe5005c3891371f5f50784420ca97b19e588334795ccc101727390adefe5a8d;
+its retirement receipt and ten raw/control records remain. No owned runtime job
+remains. This documentation checkpoint adds no product/native acceptance; the
+release goal remains active with all acceptance gaps and independent parks intact.

@@ -139229,3 +139229,16 @@ receipt has SHA-256
 This closes the reproduced rendered-page error handling defect; native bridge
 faults, a current APK/device run, complete settings and release acceptance remain
 OPEN. Update the existing row, then perform its mandatory isolated token count.
+
+Fresh isolated count at 7fd413a2, CTE 2rJIsRb8Mo: 398,117 tokens / 1,818,412
+bytes, SHA-256 558eb2284b50638d81f75d7bf84f9b97bf72668d2457db51000bc2fd8018b2ee.
+Seven tokenizer controls, whole-input round trip and 84 workload controls/five
+refusals pass in 27 workload seconds. Three zero listener deltas, exact process
+absence and private/RAM retirement pass under the shared lock; no owned run
+remains. Peak scratch is 402,890,752 bytes. Eleven records are bound by
+mobile-date-errors-ledger-7fd413a2.json (7,649 bytes, SHA-256
+48130199b168439223ecaa940324c7b72f54c81cf1dcf0881f3c897af2800218),
+with a 456-byte retirement receipt, SHA-256
+f4394af094a34c374d2880d801d7883365eb071459570d894b92345b5f871bb4.
+The focused correction and comparison checkpoint is complete. Release work
+remains active, with the named native/device gap and independent parks intact.

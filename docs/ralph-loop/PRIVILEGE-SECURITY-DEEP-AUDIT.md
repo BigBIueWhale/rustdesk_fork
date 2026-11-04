@@ -136614,3 +136614,15 @@ Processes 1791553/1792019 are absent; RAM peaks at 3,428,376,576 bytes and
 retires. Private diagnostics and the inventoried extracted helper retire under
 the shared lock, with four zero listener deltas. Thirty-one bounded evidence
 files match both hosts. Replay uses the same source-extraction and execution recipe.
+
+Replay h9YhUQXyN0 at 2b72ca22 passes the full named regression and the outer
+wrapper in 64 seconds. Production type and dependency-lock hashes match the
+baseline; only the test expectation changes. Artifact
+f8463a5118ab937a8c5dd729d9f3d55ae9371126b6e0333082da247d0c2d618a
+remains unchanged across execution. winprotocol-fixed-2b72ca22.json is 4,955
+bytes, SHA-256 59ac4c3576599ec8861a8ae9ed5b0e0f9ba5323add71d0b9020b82ffe1cf01b9.
+Processes 1792584/1793057 are absent; peak RAM scratch 3,377,057,792 bytes
+retires with helpers/private state and four zero listener deltas. Twelve bounded
+files match CTE/TUF. This closes the named Linux wire-component checkpoint,
+not actual Windows transport/authorization or full-parent/release acceptance.
+The ledger records that boundary and the voice pivot; fresh whole-ledger count follows.

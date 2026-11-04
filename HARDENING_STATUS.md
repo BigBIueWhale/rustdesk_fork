@@ -43,6 +43,14 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Mobile incoming voice controls are OPEN/PARKED.
+Preparation `af311435` leaves production unchanged. Run `auakRqgWeC` passes forty
+existing cases but executes none of the nine new voice cases; count validation
+refuses it. No voice correction or runtime acceptance is claimed. The receipt
+edit is stashed at `30f00f9937dcd85032694cf9a1bbf9fc2630a913`.
+`voice-controls-before-af311435.json` binds exact process/private/RAM retirement
+and four zero listener deltas. Work moves to R-S11hg below; all other parks remain.
+
 **User pivot (2026-11-04):** Native Auto/VP8/VP9 switching is OPEN/PARKED.
 Five unexecuted harness edits are preserved in stash
 `852b340fed401975e24d3086bdf30f393083ead2`; no codec VM ran or native switching
@@ -15640,24 +15648,25 @@ reproduction; causation; external review; and complete connection-flow correctne
 
 ### R-S11hg/R-S11e-245 — endpoint-specific Windows service credential/control protocols
 
-**SOURCE IMPLEMENTED; EXECUTABLE WIRE REGRESSION WIRED; EXACT CURRENT WIRE/INSTALLED
-WINDOWS ACCEPTANCE OPEN.** `src/ipc.rs` defines four closed, disjoint, unknown-field-rejecting
+**Linux wire component verified; installed Windows acceptance OPEN.**
+`src/ipc.rs` defines four closed, disjoint, unknown-field-rejecting
 credential/control request/response types. Each endpoint has its own budget, requester capability,
 typed reader, handler, writer, and client. Shutdown retains control authority across acknowledgment
 and revalidates before its latch. There is no shared decoded union or post-deserialization endpoint
 selection.
 
-The retained platform-neutral regression
-`ipc::test::windows_service_credential_and_control_channels_use_closed_directional_protocols`
-checks exact encodings and rejects opposite-direction, cross-endpoint, unknown-field,
-nested-unknown-field, and generic-`Data` inputs. `scripts/verify.sh` directly invokes:
-
-```sh
-cargo test --lib --features linux-pkg-config ipc::test::windows_service_credential_and_control_channels_use_closed_directional_protocols --color never
-```
-
-No exact-current accepted execution of that regression is established here. Even a wire-test pass
-would not prove Windows named-pipe, LocalSystem, protected-action, or installed lifecycle behavior.
+`2b72ca22` corrects the existing regression's false expectation that declared null
+unit content is an unknown field; it preserves equivalent Shutdown decoding and
+requires refusal of an actual extra field. Production types and handlers are unchanged.
+Baseline `vj1TMESzC9` fails that assertion; replay `h9YhUQXyN0` passes the complete
+named regression in 64 outer seconds. Exact production types and test body run
+with root-locked Serde on Linux; generic `Data::Close` is a one-variant fixture.
+Exact encodings, direction/cross-endpoint, outer/nested unknown-field and generic
+message refusals pass. `winprotocol-{before-6901f4fc,fixed-2b72ca22}.json` bind
+source/artifacts, four zero listener deltas per run and process/private/RAM retirement.
+Reproduce with `--windows-service-protocol-tests` on the shared verifier-VM wrapper.
+The direct `ipc::test::windows_service_credential_and_control_channels_use_closed_directional_protocols`
+invocation remains in `scripts/verify.sh`; full-parent execution remains unclaimed.
 
 STOP-SHIP: exact installed Windows transactions with the intended supervisor and unauthorized/
 wrong-generation actors; malformed/cross-endpoint frames; PID/creation-time/token/image/argv changes;

@@ -43,6 +43,11 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Further PAKE secret-erasure work is OPEN/PARKED
+before pending-confirmation implementation or execution. The accepted credential-buffer
+evidence remains valid. Work moves to Linux rotated-resolution correctness below;
+all independent parks remain.
+
 **User pivot (2026-11-04):** Further Android boot-first credential reload is
 OPEN/PARKED before execution. Six unfinished harness edits are preserved in stash
 `7549e817c376e670fde85eddba74cda20f0e7276`. The accepted healthy process-reload
@@ -6376,6 +6381,24 @@ native Windows/macOS and whole-parent behavioral A/B remain OPEN. The pinned
 devcheck image has XRandR libraries but lacks the native `xrandr` executable;
 its authenticated acquisition and real query execution remain required. No LPE
 or release closure follows from this parent-library result.
+
+**Rotated Linux resolutions (`d53cd530`) — component correction verified.**
+Supported sizes now use visible dimensions; left/right outputs swap those dimensions
+back to native mode sizes before setter argv construction. Current rotation is parsed
+separately from the supported-rotation list. Missing/failed queries refuse mutation;
+normal/inverted/reflected outputs, same-size no-op and restoration ownership retain
+their intended behavior. At unchanged production `ec38a81f`, three rotation cases
+fail at offered-size comparison and one controlled missing-output admission case
+fails; seventeen controls pass. Those early failures do not execute their subsequent
+setter/restoration assertions or demonstrate an actual X-server mutation. The identical
+21-case suite passes after correction in 68 VM seconds, including exact change/restore
+mode arguments and the six existing registry cases. Five production functions and
+the actual parser/registry run with controlled query, command, protobuf-value and
+descriptor adapters. `rotation-{baseline-ec38a81f,fixed-d53cd530}.json` bind evidence
+and exact process/private/RAM retirement; both runs have four zero listener deltas.
+Reproduce with `--linux-xrandr-query-tests`. Actual rotated X-server/monitor, complete
+Remote session, concurrent external orientation changes, final-artifact and release
+acceptance remain OPEN. No new privilege-escalation claim is made.
 
 **Resolution restoration record identity (R-T4): production component accepted; integration OPEN.**
 The registry privately retains an immutable original-resolution object for each output.

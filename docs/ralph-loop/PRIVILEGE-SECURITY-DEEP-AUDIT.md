@@ -137878,3 +137878,19 @@ requires a successful query and the exact connected output before mutation.
 Current geometry, normal/inverted/reflection behavior, remote authorization and
 restoration ownership retain their existing roles. Only the two Linux production
 files change after baseline; all 21 assertions and adapters remain identical.
+
+Candidate FbzO7lXecq at d53cd530 passes all 21 cases in 0.17 test seconds and
+68 outer seconds. The exact Rust 1.75 test executable remains unchanged across
+execution, SHA-256 4e000f13474cc1541993ff092e5b88b212d111a8ad36e72b6d4f92a151a40cde.
+Unlike the baseline, the rotated cases reach and pass both change and restoration
+argv assertions; all normal/inverted/reflection/no-op and refusal controls pass.
+The source-bound controlled component result is accepted; no actual monitor,
+shipping app, complete Remote or concurrent external orientation-change result is
+claimed. Launcher/QEMU 1910267/1910724 are absent by pidfd lookup, owned helpers and
+private/RAM state retire, and four listener deltas are zero. Peak RAM scratch is
+3,457,163,264 bytes. Capsule rotation-fixed-d53cd530.json is 6,055 bytes, SHA-256
+03b358794a2f9cc388cdf2bb9b00a560b03d446e8b7dbed24a3756a38c28ac22.
+Thirteen accepted-run and 31 baseline bounded records match CTE/TUF. The local
+evidence reconciler initially overescaped its test-line regex; correcting that
+read-only parser accepts the existing 21 exact names without rerunning product tests.
+Ledger records the pivot and bounded result; a fresh isolated token count follows.

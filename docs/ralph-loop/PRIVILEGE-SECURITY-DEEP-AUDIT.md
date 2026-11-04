@@ -138133,3 +138133,24 @@ about 31 GiB available memory, empty owned RAM/run namespaces and authenticated
 inputs; TUF is unnecessary for this check. Source/shell syntax and whitespace
 inspection pass. Native execution remains pending at this preparation commit;
 no product defect or complete password/native-platform acceptance is claimed.
+
+CTE `T0UdjxoqD9` at pushed `66dc8496` completes with outer/QEMU exit zero in
+94 outer seconds (97.938 monitored). All three exact integration tests pass in
+0.18 seconds: 95,370 official row comparisons, 1,095,035 unlisted scalars and
+twelve password-policy controls. Corpus identity and all four section counts
+pass. Cargo confirms opt_level 3, debug_assertions false and overflow_checks
+false; artifact 57ef2f50c7484b4478ae8ca44bf99290eddb736ae59518db10c6483f46f52b68
+is unchanged through execution. The exact target selector's focused tests also
+pass inside the VM. No normalizer correction is indicated by this result.
+
+Under the shared lock, pidfd checks establish wrapper 1687905 and QEMU 1688434
+absence; matching helpers, private run state and RAM workspace run.pkyuym4s
+(identity 29:468) are absent. All four decoded listener inventories have zero
+additions/removals. RAM scratch peaks at 2,362,740,736 bytes and is retired.
+Only bounded evidence remains; no new corpus download, image or build cache was
+created. Capsule nfc-conformance-66dc8496.json is 4,993 bytes, SHA-256
+e1df1cdbe65050c8199d47753a8ce10a8bdcc3c1a8a71584622098abe1ff9fb2;
+its retirement receipt and eleven exact raw/control records remain on CTE.
+The live ledger records the normalization checkpoint and pivot. Full UI-input,
+Argon2 derivation, cross-platform peer, shipping-artifact and independent-review
+acceptance remains OPEN; no password-authority or complete release claim follows.

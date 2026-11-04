@@ -139019,3 +139019,27 @@ https://www.freedesktop.org/software/systemd/man/latest/systemd.service.html
 The fixture is installed-layout debug/headless evidence, not final-package,
 rendered pixels, other-platform, sustained-load or complete privilege acceptance.
 Shell syntax, Python AST and diff review pass; native execution follows.
+
+CTE PyBwHGsjOx at a9ac7d3e passes all 21 outcomes, eight Remote PeerInfo logins
+and twelve EOF controls in 124 workload seconds. The same supervisor 7897 and
+UID-4001 child 7905/start 4388 retain generation
+3f2b3f5d-235e-4e68-9804-e8aed1f88d4d and listener inode 23966 throughout.
+The first source's valid credential remains refused at immediate/20/40 seconds;
+the other source completes each Remote login. Recovery begins after the real
+64-second wait and completes 67.187530084 seconds after the first failed attempt.
+No service/child replacement, credential mutation, clock/map manipulation or
+success-based reset is used. Normal stop exits zero with no automatic restarts;
+exact pidfds exit, processes are reaped and child record/cgroup are absent.
+
+Capsule service-limiter-a9ac7d3e.json (11,989 bytes, SHA-256
+edae83de10c8dc37736205368fdcf1dc7d07e680bc8a5eac613d40a53f1e1f2d)
+binds the 21 timestamped observations, source/artifacts and eleven raw/control
+records. Three host listener deltas are zero. Wrapper, QEMU and captured children
+are absent by pidfd ESRCH; private/RAM state is retired under the shared lock,
+scratch peaks at 4,090,486,784 bytes and no owned run remains. The 443-byte
+retirement receipt has SHA-256
+8e78fc958aa6ad94f301adbb9a7150043783fbe1b384cdb5c6d5cb276de99551.
+The named installed-layout gap is exercised successfully without a product change.
+Final packages, other platforms/suspend, sustained load, rendered pixels/input,
+independent review and complete R-S0/release acceptance remain OPEN. Update the
+R-S10 ledger with this evidence and run its mandatory fresh isolated count.

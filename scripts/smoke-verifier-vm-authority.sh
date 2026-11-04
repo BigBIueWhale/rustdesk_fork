@@ -64,6 +64,7 @@ FLUTTER_SESSION_CLOSE=0
 FLUTTER_MONITOR_SWITCH=0
 FLUTTER_RECENT_SEARCH=0
 FLUTTER_ACCOUNT_STORES=0
+FLUTTER_NATIVE_COMPONENTS=0
 FLUTTER_THEME_RESTART=0
 FLUTTER_LANGUAGE_RESTART=0
 FLUTTER_THEME_APPEARANCE=0
@@ -734,6 +735,7 @@ case "$#:${1:-}" in
                 --monitor-switch) FLUTTER_MONITOR_SWITCH=1 ;;
                 --recent-search) FLUTTER_RECENT_SEARCH=1 ;;
                 --account-stores) FLUTTER_ACCOUNT_STORES=1 ;;
+                --native-components) FLUTTER_NATIVE_COMPONENTS=1 ;;
                 --monitor-burst) FLUTTER_MONITOR_SWITCH=2 ;;
                 --wake-lock) FLUTTER_SESSION_CLOSE=3 ;;
                 --background-close) FLUTTER_SESSION_CLOSE=2 ;;
@@ -2071,6 +2073,7 @@ android_frame_input_inventory() {
         "$SCRIPT_DIR/android-peer-soak.py"
         "$SCRIPT_DIR/x11-frame-oracle.h" "$SCRIPT_DIR/test-x11-frame-oracle.c"
         "$SCRIPT_DIR/flutter-peer-presentation-x11.c"
+        "$SCRIPT_DIR/flutter-peer-native-components.h"
         "$SCRIPT_DIR/test-android-frame-native.py" "$SCRIPT_DIR/smoke-xvfb-prepare.sh"
         "$SCRIPT_DIR/build-x11-frame-source.py"
         "$SCRIPT_DIR/smoke-xvfb-packages.tsv" "$SCRIPT_DIR/smoke-xvfb-files.tsv"
@@ -4906,6 +4909,7 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         "repo/scripts/x11-frame-oracle.h=$SCRIPT_DIR/x11-frame-oracle.h"
         "repo/scripts/test-x11-frame-oracle.c=$SCRIPT_DIR/test-x11-frame-oracle.c"
         "repo/scripts/flutter-peer-presentation-x11.c=$SCRIPT_DIR/flutter-peer-presentation-x11.c"
+        "repo/scripts/flutter-peer-native-components.h=$SCRIPT_DIR/flutter-peer-native-components.h"
         "repo/scripts/test-android-frame-native.py=$SCRIPT_DIR/test-android-frame-native.py"
         "repo/scripts/build-x11-frame-source.py=$SCRIPT_DIR/build-x11-frame-source.py"
         "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
@@ -5352,6 +5356,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || guest_invocation+=' --monitor-switch'
         [ "$FLUTTER_RECENT_SEARCH" -eq 0 ] || guest_invocation+=' --recent-search'
         [ "$FLUTTER_ACCOUNT_STORES" -eq 0 ] || guest_invocation+=' --account-stores'
+        [ "$FLUTTER_NATIVE_COMPONENTS" -eq 0 ] || guest_invocation+=' --native-components'
         [ "$FLUTTER_MONITOR_SWITCH" -ne 2 ] || guest_invocation+=' --monitor-burst'
         [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || guest_invocation+=' --wake-lock'
         [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || guest_invocation+=' --image-quality'
@@ -8956,6 +8961,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || peer_scenario=monitor-switch
     [ "$FLUTTER_RECENT_SEARCH" -eq 0 ] || peer_scenario=recent-search
     [ "$FLUTTER_ACCOUNT_STORES" -eq 0 ] || peer_scenario=account-stores
+    [ "$FLUTTER_NATIVE_COMPONENTS" -eq 0 ] || peer_scenario=native-components
     [ "$FLUTTER_MONITOR_SWITCH" -ne 2 ] || peer_scenario=monitor-burst
     [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || peer_scenario=wake-lock
     [ "$FLUTTER_SESSION_CLOSE" -ne 2 ] || peer_scenario=background-close

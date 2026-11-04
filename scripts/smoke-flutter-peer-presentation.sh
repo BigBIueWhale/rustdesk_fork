@@ -104,6 +104,7 @@ case "$#:${1:-}" in
         --monitor-switch) PEER_SCENARIO=monitor-switch ;;
         --recent-search) PEER_SCENARIO=recent-search ;;
         --account-stores) PEER_SCENARIO=account-stores ;;
+        --native-components) PEER_SCENARIO=native-components ;;
         --monitor-burst) PEER_SCENARIO=monitor-burst ;;
         --wake-lock) PEER_SCENARIO=wake-lock ;;
         --background-close) PEER_SCENARIO=background-close ;;
@@ -375,6 +376,11 @@ elif [ "$PEER_SCENARIO" = viewer-suspend ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined suspension_cycles=3 stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = native-components ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined native_components=12 snapshots=2 controls=3 stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = account-stores ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1 2 3 4'

@@ -16,6 +16,7 @@ FLUTTER_SESSION_CLOSE=0
 FLUTTER_MONITOR_SWITCH=0
 FLUTTER_RECENT_SEARCH=0
 FLUTTER_ACCOUNT_STORES=0
+FLUTTER_NATIVE_COMPONENTS=0
 FLUTTER_IMAGE_QUALITY=0
 FLUTTER_QUALITY_RESTART=0
 FLUTTER_IMAGE_QUALITY_SAVE_FAILURE=0
@@ -328,6 +329,7 @@ case "$#:${8:-}" in
                 --monitor-switch) FLUTTER_MONITOR_SWITCH=1 ;;
                 --recent-search) FLUTTER_RECENT_SEARCH=1 ;;
                 --account-stores) FLUTTER_ACCOUNT_STORES=1 ;;
+                --native-components) FLUTTER_NATIVE_COMPONENTS=1 ;;
                 --monitor-burst) FLUTTER_MONITOR_SWITCH=2 ;;
                 --wake-lock) FLUTTER_SESSION_CLOSE=3 ;;
                 --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
@@ -14353,6 +14355,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || peer_args+=(--monitor-switch)
     [ "$FLUTTER_RECENT_SEARCH" -eq 0 ] || peer_args+=(--recent-search)
     [ "$FLUTTER_ACCOUNT_STORES" -eq 0 ] || peer_args+=(--account-stores)
+    [ "$FLUTTER_NATIVE_COMPONENTS" -eq 0 ] || peer_args+=(--native-components)
     [ "$FLUTTER_MONITOR_SWITCH" -ne 2 ] || peer_args+=(--monitor-burst)
     [ "$FLUTTER_SESSION_CLOSE" -ne 3 ] || peer_args+=(--wake-lock)
     [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_args+=(--image-quality)
@@ -14435,7 +14438,10 @@ run_flutter_peer_presentation() {
         fail 'Linux replay unexpectedly built an app'
     fi
     local peer_scenario=focus-reconnect-resource peer_cycles=6
-    if [ "$FLUTTER_INPUT_LATENCY" -eq 1 ]; then
+    if [ "$FLUTTER_NATIVE_COMPONENTS" -eq 1 ]; then
+        peer_scenario=native-components
+        peer_cycles=1
+    elif [ "$FLUTTER_INPUT_LATENCY" -eq 1 ]; then
         peer_scenario=input-latency
         peer_cycles=1
     elif [ "$FLUTTER_INPUT_SOAK" -eq 1 ]; then

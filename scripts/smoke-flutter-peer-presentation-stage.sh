@@ -27,7 +27,7 @@ MENU_ACTION=pointer
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
   monitor-switch|monitor-burst) EXPECTED_RESTARTS=0 ;;
-  recent-search) EXPECTED_RESTARTS=0 ;;
+  recent-search|native-components) EXPECTED_RESTARTS=0 ;;
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
@@ -571,7 +571,8 @@ PY
       && [ -z "$(find /out -mindepth 1 -print -quit)" ] \
       || fail 'driver output must be a fresh private directory'
     for input in flutter-peer-source-x11.c flutter-peer-presentation-x11.c \
-        x11-frame-oracle.h flutter-peer-wakelock.h flutter-peer-recent-search.h test-x11-frame-oracle.c smoke-bind-loopback.c; do
+        x11-frame-oracle.h flutter-peer-wakelock.h flutter-peer-recent-search.h \
+        flutter-peer-native-components.h test-x11-frame-oracle.c smoke-bind-loopback.c; do
       verify_regular "/source/scripts/$input"
     done
     /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
@@ -1794,6 +1795,7 @@ PY
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
     [ "$PEER_SCENARIO" != monitor-switch ] || controller_args+=(--monitor-switch)
     [ "$PEER_SCENARIO" != recent-search ] || controller_args+=(--recent-search)
+    [ "$PEER_SCENARIO" != native-components ] || controller_args+=(--native-components)
     [ "$PEER_SCENARIO" != monitor-burst ] || controller_args+=(--monitor-burst)
     [ "$PEER_SCENARIO" != wake-lock ] || controller_args+=(--wake-lock)
     [ "$PEER_SCENARIO" != image-quality ] || controller_args+=(--image-quality)
@@ -2046,6 +2048,10 @@ PY
       grep -Fxq "FLUTTER_PEER_ISOLATION_OK role=$isolation_role stable_connection=true resources=bounded" \
         <<<"$controller_output" || fail 'native two-viewer isolation result is absent'
       viewer_result="viewer=joined xvfb=joined isolation=$isolation_role stable_connection=true resources=bounded"
+    elif [ "$PEER_SCENARIO" = native-components ]; then
+      [ "$(grep -Fxc 'FLUTTER_PEER_NATIVE_COMPONENTS_OK files=12 snapshots=2 controls=3 actual_peer=true fresh_pixels=true stable_connection=true resources=bounded' <<<"$controller_output")" -eq 1 ] \
+        || fail 'native component identity verdict is absent or duplicated'
+      viewer_result='viewer=joined xvfb=joined native_components=12 snapshots=2 controls=3 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = recent-search ]; then
       grep -Fxq 'FLUTTER_PEER_RECENT_SEARCH_OK cases=8 rows=3 fields=address,alias,hostname,username case_whitespace=passed no_matches=passed clear=passed native_input=true visible_accessibility=true stable_connection=true fresh_pixels=4' \
         <<<"$controller_output" || fail 'native Recent search verdict is absent'

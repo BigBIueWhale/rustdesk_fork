@@ -136306,3 +136306,41 @@ scratch peaks at 402,718,720 bytes. native-components-ledger-5dadec71.json is
 Twelve bounded files match both hosts. This audit-only receipt leaves the
 counted ledger unchanged. No owned job remains; the artifact checkpoint is
 complete with the stated limits and every independent park preserved.
+
+## 2026-11-04 — native packaged-library identity preparation
+
+Previous goal turn is progress: c8fba806 records the actual Linux artifact
+inventory, preserves the user's account-store pivot, and leaves both hosts clean
+with no owned jobs. The next selected requirement is R-S11gf's missing native
+renderer identity, alongside R-X2's distinction between fixed packaged components
+and retired runtime extensions. The ledger explicitly says earlier pixel runs
+did not attest the mapped renderer inode. This takes priority over more static
+symbol checks because the retained a3192591 app permits a real-session observation
+without another application build. Installed Debian and other targets remain separate.
+
+The focused --native-components replay uses the actual password dialog and direct
+session, waits for four current presented frames, then observes all twelve native
+bundle files (runner and eleven libraries). A retained process directory, start
+identity and pidfd bind the viewer. Open descriptors bind the expected files on
+the authenticated read-only bundle mount. Each matching kernel mapping must have
+the expected absolute path, device and inode, an executable non-writable segment,
+and no same-basename alternate/deleted path. After another four current frames,
+the second snapshot must match, with the same TCP connection and bounded resources.
+Native window close and existing exact process/container/VM/RAM joins remain mandatory.
+
+Primary Linux references: https://man7.org/linux/man-pages/man5/proc_pid_maps.5.html
+and https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html . The maps fields
+provide backing-file device/inode and permissions; a filename alone does not
+establish identity. Read access remains subject to kernel process-access policy.
+Snapshots are bounded observations, not a continuous trace or proof against every
+transitive load, mutable memory page, installed-path race or privileged caller.
+Three live observer controls change only expected inode, device or pathname;
+they must return the specific mismatch/missing result, never merely an I/O failure.
+No library, target file, product mapping or product source is changed by a control.
+
+The new fixture header and narrow selector plumbing preserve the parked account
+scenario and existing acceptance checks. One viewer/server lifecycle suffices;
+focus/reconnect and unrelated parked investigations are not resumed. Shell syntax
+and diff checks pass; actual C compilation and runtime acceptance are pending.
+TUF's shared lock is available, no run/RAM workspace remains, and about 42 GiB
+is available. Canonical replay admission still decides resource eligibility.

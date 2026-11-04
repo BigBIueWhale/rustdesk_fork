@@ -1969,6 +1969,8 @@ static int viewer_pidfd_alive(int pidfd) {
     return result == 0;
 }
 
+#include "flutter-peer-native-components.h"
+
 static int network_profile(const char *profile, unsigned long long *drops,
                            unsigned long long *packets) {
     struct sockaddr_un address = {.sun_family = AF_UNIX, .sun_path = "/netem.sock"};
@@ -7282,6 +7284,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--monitor-switch") != 0 &&
                                     strcmp(argv[5], "--recent-search") != 0 &&
+                                    strcmp(argv[5], "--native-components") != 0 &&
                                     strcmp(argv[5], "--monitor-burst") != 0 &&
                                     strcmp(argv[5], "--wake-lock") != 0 &&
                                     strcmp(argv[5], "--background-close") != 0 &&
@@ -7314,7 +7317,7 @@ int main(int argc, char **argv) {
               "--keyboard-translate, --keyboard-repeat, "
               "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
               "--language-french, --language-portugal, --language-english, --language-restore, "
-              "--language-direction\n", stderr);
+              "--language-direction, --native-components\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
               "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
@@ -7550,6 +7553,16 @@ int main(int argc, char **argv) {
         return 1;
     }
     print_resources("initial", 0U, &baseline_resources);
+
+    if (argc == 6 && strcmp(argv[5], "--native-components") == 0) {
+        int result = exercise_native_components(display, &viewer, &history, argv[4],
+                                                 &current_connection, &baseline_resources);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
 
     if (argc == 6 && (strcmp(argv[5], "--input-latency") == 0 ||
                       strcmp(argv[5], "--input-soak") == 0)) {

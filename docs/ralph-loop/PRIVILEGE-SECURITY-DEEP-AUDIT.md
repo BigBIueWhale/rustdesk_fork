@@ -138611,3 +138611,30 @@ capsule (SHA-256 12755dc4b02ef3c2f1451a613b9e7be3282d7bcbe617bf40bced7dd86f067bc
 binds eleven raw/control records and a 248-byte retirement receipt. No owned job
 remains. The sidebar component checkpoint is complete; release acceptance and
 independently parked tasks remain OPEN.
+
+## 2026-11-04 — user pivot: documentation-history index
+
+Leave further settings-sidebar work OPEN/PARKED after the user's pivot. Preserve
+its six-case component result; no native observer or application replay is added.
+Select the binding documentation-architecture work: the last verified ledger
+count is 399,303 tokens, leaving little capacity for current release evidence.
+
+Consolidate 28 documentation-only rows in the architecture table into contract
+references, distinct acceptance limits and retained classification receipts.
+Remove repeated historical edit narration and repeated unchanged-file assurances.
+Keep every row title and evidence column, all separately parked scopes, and the
+product-finding/runtime rows, including PAKE, connection resources, file receive
+and dependencies. A shared qualification retains all fifteen credential actions,
+R-S0/R-F5 and compiler/scanner/native/installed/timing/independent/release limits.
+The normative specification, product, tests, verification code, source artifacts
+and live instructions are unchanged. This is a documentation checkpoint, not
+additional product acceptance. Exact comparison and a fresh isolated count follow.
+
+Exact reconstruction against 9fac0ce9 confirms only those 28 table cells, the
+shared qualification and the sidebar-pivot/current-task wording changed in the
+ledger. All 85 titles/evidence columns and all links/anchors are unchanged;
+the other 57 table rows are byte-identical. Row-specific requirement references
+remain, with repeated R-S0/R-F5 references covered by the shared qualification.
+The ledger loses 8,666 bytes (1,826,534 to 1,817,868); its SHA-256 is
+629905c3590b98b938112961dc500374b873e653abdba538461fa1c386b281df.
+The audit is append-only and no other tracked file changes. Diff checks pass.

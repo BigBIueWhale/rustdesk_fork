@@ -135725,3 +135725,29 @@ artifact stability, server/socket/lock retirement and empty network inventories.
 It uses the existing admitted VM/container/storage profile and input closure.
 Shell syntax, Python parsing and whitespace review pass; compilation and native
 behavior remain pending until the isolated run. No product source is changed.
+
+Run 1XSDzNatTJ at c6deb28b passes in 49 outer seconds. The four ordered
+phases exercise twelve caller cases: six admitted captures deliver twelve real
+red/blue frames, and six wrong/missing-cookie calls refuse before enumeration,
+capture or segment creation. All calls run in one native child; the same Xvfb
+remains alive through the final positive phase. Per-caller descriptor/thread
+restoration, allocation retirement, kernel segment metadata and exact segment
+absence pass. No historical defect or product correction is claimed.
+
+The compiled artifact is stable before/after:
+96f6a9d419a7de3c38e5ba397f1f8ace0c243337835338e0b246827a390f8c61.
+The unchanged production server module has SHA-256
+f2f9c233f2cef01c5e172c2a993e15ba22d3dc53af98fcd5e9babe6040cc4f83.
+The fixture's existing naming/import compiler warnings remain unrelated;
+the new native workload passes without assertion or recipe changes.
+All three host listener deltas are zero, QEMU exits zero, exact processes,
+helpers/private/RAM retire and scratch peaks at 3,679,117,312 bytes. Twelve
+bounded evidence files match CTE/TUF; capture-auth-c6deb28b.json is 4,968 bytes,
+SHA-256 658cd3126297520c592aee7eec547698e2081c1658885aef6b5662f24fdb8310.
+The ledger replaces the specific missing-cookie-fixture evidence item with
+this component result while preserving desktop authority-file provisioning,
+connected peer/session identity, constructor deadlines, installed cross-user,
+whole-product pixels and release/independent acceptance as OPEN. The next
+decisive integration step is complete source-bound peer capture/presentation
+with X server cookie authentication enabled; actual session-manager provisioning
+and service authority remain additional obligations. All user parks persist.

@@ -46,8 +46,8 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 **User pivot (2026-11-04):** Android permission native-workflow acceptance is
 OPEN/PARKED; the accepted Kotlin callback correction below remains valid.
 The unfinished native fixture is preserved in stash
-`7c39f66c29be5abf64b2e6f306389341082074b6`. Work moves to release-ledger
-consolidation, retaining named X11 component results and every open acceptance gap.
+`7c39f66c29be5abf64b2e6f306389341082074b6`. X11 release-ledger consolidation
+is complete; native capture authentication advances below. All independent parks remain.
 
 **Earlier pivot (2026-11-04):** Further floating-panel native/device/session work is
 OPEN/PARKED; its accepted component correction remains valid. The already-running
@@ -1766,7 +1766,21 @@ Android/Windows display-delay cause or new closed privilege boundary is establis
 Deferred Android concurrent Stop/admission and stale-generation work remains
 **INCOMPLETE / NOT VALIDATED**, not resumed by this retirement.
 
-### Linux capture constructor — explicit local Unix route; integration OPEN
+### Linux capture constructor — Unix route and native cookie authentication; integration OPEN
+
+**Native Xauthority capture (`c6deb28b`).** The unchanged production XCB
+constructor, public primary/all-displays APIs and MIT-SHM capturer pass twelve
+cases against one owned, cookie-authenticated Xvfb. Valid/wrong/missing/valid
+phases run in one process: six accepted captures publish twelve real red/blue
+frames; six refusals precede enumeration, capture and segment creation. The
+final positive phase succeeds without replacing the process or X server.
+Each caller retires its descriptors, threads, replies and exact SHM segment.
+The artifact hash remains stable. `--x11-display-tests --capture-auth` completes
+in 49 outer seconds with three zero listener deltas and joined VM/RAM/private
+retirement. `capture-auth-c6deb28b.json` binds source, phases, artifact and cleanup.
+This is native component evidence with private FamilyLocal fixture cookies,
+not desktop login/session selection, installed cross-user authority or full-app
+capture-to-presentation acceptance. No product correction was needed.
 
 `libs/scrap/src/x11/server.rs::Server::default` now validates the process's
 local decimal display/screen selector and supplies explicit `unix/` transport
@@ -1799,8 +1813,8 @@ independent attestation. No host endpoint was added; readonly inputs unchanged;
 exact runtime owners joined; disk/media/run root self-retired. The prior capture
 and focus evidence remains in its retained receipts and Git history.
 
-**OPEN:** constructor deadlines, connected Unix peer/session binding, native
-authenticated-Xauthority cases (this Xvfb uses `-ac`), separate Xlib/XDO routes,
+**OPEN:** constructor deadlines, connected Unix peer/session binding, real desktop
+authority-file provisioning/selection, separate Xlib/XDO routes,
 whole-app/installed/platform/current release artifacts, internal heap,
 resources/performance/soak/cross-version, Android/Windows delay causation, cold
 equality, independent reproduction and external review. The historical route

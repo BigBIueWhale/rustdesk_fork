@@ -139373,3 +139373,28 @@ and private/RAM state is retired under the shared lock. Peak scratch is
 406,118,400 bytes; retirement receipt is 404 bytes, SHA-256
 ea04a80dd048347e4af05b2d0b91cf9f5d810bb3df14a88c3a5886b0af2f9378.
 No owned run remains. Continue the same integration checkpoint.
+
+CTE X8hdJvOeSU at e1b5c224 completes the full existing authority smoke, outer
+exit zero in 94 workload seconds. All 28 unchanged metadata cases pass; the
+guest differs from db7c8f09 only by the truthful engine_capsule receipt label.
+The presentation contract passes. Retained-run, engine-capsule, root/foreign
+entry, same-root/cross-root concurrency and retained-descriptor cases pass, as
+do actual release transaction/reset/publication fixtures, thirteen manifest
+boundary variants and private-tree cleanup. The remaining existing authority,
+scanner-result and build-envelope checks also complete. Compiler/product/device
+workloads and real release publication are not exercised by this integration.
+
+release-integration-e1b5c224.json (14,562 bytes, SHA-256
+70b6f08cd0d71a3c3479a542fe849bdfa921bdf3e075ccea4c7e27373cadba00)
+binds eleven raw/control records and exact outcomes. All three listener
+snapshots have zero additions. The after snapshot records one removed UDP
+endpoint from the pre-existing baseline, ownership unattributed; preserve the
+raw evidence without inspecting or altering foreign processes. Exact owned
+wrapper/QEMU/captured children are absent by pidfd ESRCH and private/RAM state
+has retired under the shared lock. Peak scratch is 471,064,576 bytes. The
+885-byte retirement receipt has SHA-256
+46162e12ec2790eda339156a11ae592b2c3f10e5cc91b4755d7b0524f506ac95.
+No owned run remains. Record this completed release-tooling checkpoint and
+perform the required fresh ledger count, which also replays the unchanged
+nine-case four-generation artifact-capacity controls. Release acceptance and
+independent user parks remain open.

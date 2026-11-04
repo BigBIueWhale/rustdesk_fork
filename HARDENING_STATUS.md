@@ -9929,9 +9929,15 @@ zero-NIC Linux replay now passes both executable and sourced entry points,
 including normal releases, rebases and malformed file/history refusal. Both runs
 have three zero host-listener deltas and verified process/private/RAM retirement.
 Evidence: `fork-version-before-db7c8f09.json`, `fork-version-fixed-f4266c41.json`
-and the audit's release-version entry. The broader authority smoke stops at a
-separate Flutter presentation source assertion; its complete acceptance remains
-OPEN. No fresh target build, release artifact set or publication ran.
+and the audit's release-version entry. At `e1b5c224`, complete authority integration
+passes in 94 seconds after correcting the selected-display assertion and deleting
+the obsolete empty-app-cache requirement. Exact run/lock/engine-cache checks,
+release transactions, reset/publication fixtures and cleanup pass; the separate
+four-generation app-cache limit is unchanged. `release-integration-e1b5c224.json`
+binds the run, no added host listeners and exact process/private/RAM retirement.
+One existing UDP endpoint disappears without attribution; raw snapshots remain.
+These are isolated tooling fixtures. Target builds, release artifacts and native
+application acceptance remain OPEN.
 
 **R-B3 source identity — release-source delivery OPEN.** Source review at `2a867df2`
 confirms no gitlinks, tracked LFS filters or archive exclusions; `hbb_common`,

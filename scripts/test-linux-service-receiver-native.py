@@ -2678,7 +2678,7 @@ def service_session_handoff(commit, binary_sha, probe_sha):
     confdir.mkdir(mode=0o700)
     (confdir / "rustdesk-logind-fixture").write_text("session required pam_systemd.so\n")
     users, actors, retained, observations = [], [], [], []
-    reference = ServiceUnitResultReference()
+    reference = None
     value = "Receiver-session-handoff-2026!"
 
     def properties():
@@ -2786,6 +2786,7 @@ def service_session_handoff(commit, binary_sha, probe_sha):
         first_actor = start_desktop(4001, 77)
         shutil.copyfile(MEDIA / "repo/res/rustdesk.service", unit)
         run(["/usr/bin/systemctl", "daemon-reload"])
+        reference = ServiceUnitResultReference()
         run(["/usr/bin/systemctl", "start", "rustdesk.service"])
         first = ready()
         supervisor = first["supervisor"]
@@ -2877,7 +2878,8 @@ def service_session_handoff(commit, binary_sha, probe_sha):
                     process.stdin.close()
                     process.stdout.close()
             finally:
-                reference.close()
+                if reference is not None:
+                    reference.close()
                 for fd in retained:
                     os.close(fd)
                 for uid in users:

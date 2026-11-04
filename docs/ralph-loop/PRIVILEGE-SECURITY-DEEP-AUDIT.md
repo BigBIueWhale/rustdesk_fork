@@ -137524,3 +137524,13 @@ existing tmpfs; launcher admission/limits/monitoring remain decisive. No runtime
 result is claimed before execution. Three shared observers gain an explicit UID
 parameter with their existing UID-4001 default; the desktop actor retains its old
 entry points and gains one closed UID/display pair for this scenario.
+
+First run YdZhA8PhqQ at 1300b391 fails before product start: the new fixture calls
+RefUnit before copying/reloading rustdesk.service, returning ENOENT (-2). Move
+that observer acquisition after daemon-reload and retain optional cleanup. No
+product result or defect is inferred. Exact launcher/QEMU 1877075/1878811 are
+absent; the 4,060,151,808-byte peak bounded RAM workspace is retired. Three
+listener deltas are zero. Under the shared lock, eighteen exact bounded private
+files are retained and the diagnostic directory retires. Twenty-nine records
+match CTE/TUF. Capsule linux-handoff-1300b391.json is 7,910 bytes, SHA-256
+4069144e74779e29fb2249937121e3021f0b9d56d86799810344035bb81697c4.

@@ -136721,3 +136721,14 @@ private state and helpers retire with three zero listener deltas. Eleven
 bounded files match both hosts. Read-only byte comparison preserves all retained
 lock records except tuple's direct-to-transitive field. The ledger records this
 scoped dependency checkpoint and the IPC pivot; fresh whole-ledger count follows.
+
+Fresh count Ps69AmPR7V at f67df60e passes in 28 seconds: 399,791 tokens /
+1,828,601 bytes, input SHA-256
+f4b475d98a645a8e7d25401606cbd93f674bb5dad0b06b133495588fec9a9aeb.
+Seven token controls, whole-input round trip and all 82 storage admissions/five
+refusals pass. Exact process/helper/private/RAM retirement and three zero listener
+deltas pass; scratch peaks at 402,862,080 bytes. ui-deps-ledger-f67df60e.json is
+5,161 bytes, SHA-256 bd791e30af6a2454858c9630822a16ccbe825057772670ebb5ffc4cbac795cc7.
+Twelve bounded files match CTE/TUF. This audit-only receipt preserves the counted
+ledger. The dependency checkpoint is complete, no owned job remains, and IPC
+follow-up plus all independent parks remain OPEN/PARKED.

@@ -446,20 +446,50 @@ fn optimized_timing_evidence() {
 #[test]
 #[ignore = "requires the isolated optimized backend comparison"]
 fn backend_timing_evidence() {
-    backend_measurements(3, GROUP_SAMPLES, false);
+    backend_measurements(3, GROUP_SAMPLES, false, 1);
 }
 
 #[test]
 #[ignore = "requires the isolated optimized backend comparison"]
 fn backend_long_timing_evidence() {
-    backend_measurements(1, 500_000, true);
+    backend_measurements(1, 500_000, true, 2);
 }
 
-fn backend_measurements(fixture_count: usize, assessed_samples: usize, include_dense_scalar: bool) {
+fn backend_measurements(
+    fixture_count: usize, assessed_samples: usize, include_dense_scalar: bool, rounds: usize,
+) {
     assert!(!cfg!(debug_assertions), "timing requires an optimized build");
     assert!((1..=3).contains(&fixture_count));
+    assert!((1..=2).contains(&rounds));
     check_mxcsr_scope();
     capture_memcpy("before");
+    let mut positive_controls_valid = true;
+    let mut negative_controls_valid = true;
+    let mut detected = false;
+    // Finish the fixed number of rounds in this process before deciding the
+    // verdict. A later nondetection cannot replace an earlier detected result.
+    for round in 1..=rounds {
+        println!("PAKE_TIMING_ROUND_BEGIN=round:{round} total:{rounds} pid:{}", std::process::id());
+        let (positive, negative, difference) = backend_round(
+            fixture_count, assessed_samples, include_dense_scalar);
+        println!("PAKE_TIMING_ROUND_RESULT=round:{round} positive_controls_valid:{positive} negative_controls_valid:{negative} detected:{difference}");
+        positive_controls_valid &= positive;
+        negative_controls_valid &= negative;
+        detected |= difference;
+    }
+    capture_memcpy("after");
+    assert!(positive_controls_valid, "variable-time positive control was not detected: inconclusive");
+    assert!(negative_controls_valid, "identical-input negative control detected a difference: inconclusive");
+    assert!(!detected, "backend timing difference detected");
+    let positive_controls = fixture_count * rounds;
+    let negative_controls = positive_controls * if include_dense_scalar { 2 } else { 1 };
+    println!("PAKE_TIMING_BACKEND_RESULT=no-difference-detected rounds={rounds} fixtures={fixture_count} cohorts={} positive_controls={positive_controls} negative_controls={negative_controls} samples={assessed_samples} control_samples={GROUP_SAMPLES} repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact",
+        negative_controls * 2);
+}
+
+fn backend_round(
+    fixture_count: usize, assessed_samples: usize, include_dense_scalar: bool,
+) -> (bool, bool, bool) {
     let mut controls = [false; 3];
     let mut detected = [[false; 3]; 3];
     let mut dense_detected = [[false; 3]; 3];
@@ -520,16 +550,10 @@ fn backend_measurements(fixture_count: usize, assessed_samples: usize, include_d
             }
         }
     }
-    capture_memcpy("after");
-    assert!(controls[..fixture_count].iter().all(|value| *value),
-        "variable-time positive control was not detected: inconclusive");
-    assert!(!detected[..fixture_count].iter().chain(&dense_detected[..fixture_count])
-        .any(|fixture| fixture[2]),
-        "identical-input negative control detected a difference: inconclusive");
-    assert!(!detected[..fixture_count].iter().chain(&dense_detected[..fixture_count])
-        .any(|fixture| fixture[..2].iter().any(|value| *value)),
-        "backend timing difference detected");
-    let negative_controls = fixture_count * if include_dense_scalar { 2 } else { 1 };
-    println!("PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures={fixture_count} cohorts={} positive_controls={fixture_count} negative_controls={negative_controls} samples={assessed_samples} control_samples={GROUP_SAMPLES} repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact",
-        negative_controls * 2);
+    let positive_controls_valid = controls[..fixture_count].iter().all(|value| *value);
+    let negative_controls_valid = !detected[..fixture_count].iter().chain(&dense_detected[..fixture_count])
+        .any(|fixture| fixture[2]);
+    let difference = detected[..fixture_count].iter().chain(&dense_detected[..fixture_count])
+        .any(|fixture| fixture[..2].iter().any(|value| *value));
+    (positive_controls_valid, negative_controls_valid, difference)
 }

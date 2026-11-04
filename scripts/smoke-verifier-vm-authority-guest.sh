@@ -7577,7 +7577,7 @@ print("R-B10 canary: build confirmed network-isolated (offline compile stage).")
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = pake-timing ]; then
         printf 'PAKE_TIMING_PROFILE=pake-timing stage=container-start tests=1 cohorts=24\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
-        printf 'PAKE_TIMING_PROFILE=%s stage=container-start tests=21 cohorts=7 fixtures=1 samples=500000 control_samples=100000\n' "$RUST_TEST_PROFILE"
+        printf 'PAKE_TIMING_PROFILE=%s stage=container-start tests=21 rounds=2 cohorts=14 fixtures=1 samples=500000 control_samples=100000\n' "$RUST_TEST_PROFILE"
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
         printf 'WINDOWS_SERVICE_PROTOCOL_PROFILE=windows-service-protocol stage=container-start tests=7 windows=unexecuted\n'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = main-config-key ]; then
@@ -8440,12 +8440,17 @@ PY
             || fail 'PAKE backend measurements or artifact differ'
         [ "$(grep -c '^PAKE_TIMING_MEMCPY=' "$output")" -eq 1 ] \
             || fail 'PAKE resolved memcpy observation is absent'
-        [ "$(grep -Fxc 'PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures=1 cohorts=4 positive_controls=1 negative_controls=2 samples=500000 control_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^PAKE_TIMING_FIXTURE=name:baseline ' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^PAKE_TIMING_FIXED_SCALAR=fixture:baseline wide_byte:63 scalar:[0-9a-f]{64} bit_weight:[0-9]+$' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-(vartime-prepared-one-random|multiply-prepared-(one-one|fixed-fixed)) seed:[0-9a-f]{16} samples:100000 ' "$output")" -eq 3 ] \
-            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-multiply-prepared-(one-random|random-one|fixed-random|random-fixed) seed:[0-9a-f]{16} samples:500000 ' "$output")" -eq 4 ] \
+        [ "$(grep -Fxc 'PAKE_TIMING_BACKEND_RESULT=no-difference-detected rounds=2 fixtures=1 cohorts=8 positive_controls=2 negative_controls=4 samples=500000 control_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_FIXTURE=name:baseline ' "$output")" -eq 2 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_FIXED_SCALAR=fixture:baseline wide_byte:63 scalar:[0-9a-f]{64} bit_weight:[0-9]+$' "$output")" -eq 2 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-(vartime-prepared-one-random|multiply-prepared-(one-one|fixed-fixed)) seed:[0-9a-f]{16} samples:100000 ' "$output")" -eq 6 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-multiply-prepared-(one-random|random-one|fixed-random|random-fixed) seed:[0-9a-f]{16} samples:500000 ' "$output")" -eq 8 ] \
             || fail 'PAKE backend extended measurements differ'
+        for round in 1 2; do
+            [ "$(grep -Ec "^PAKE_TIMING_ROUND_BEGIN=round:$round total:2 pid:[0-9]+$" "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc "PAKE_TIMING_ROUND_RESULT=round:$round positive_controls_valid:true negative_controls_valid:true detected:false" "$output")" -eq 1 ] \
+                || fail 'PAKE backend repeated round differs'
+        done
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'service protocol summary count differs'
         [ "$(grep -Ec '^WINDOWS_SERVICE_PROTOCOL_ARTIFACT=pass sha256=[0-9a-f]{64} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \

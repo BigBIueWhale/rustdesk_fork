@@ -136922,3 +136922,34 @@ pake-serial-ledger-9562d497.json is 5,177 bytes, SHA-256
 9f053bef92a32d50bb8dc74a09997ba6120b22fb24abebaeec08873a47fee432.
 Twelve bounded files match CTE/TUF. The counted ledger is unchanged by this
 audit-only receipt. No owned job remains; R-P12 and the full release goal stay OPEN.
+
+## 2026-11-04 — bounded PAKE repeatability within one process
+
+The previous serial comparison made progress but its finite nondetection does
+not explain earlier detections. R-P12's next selected result is repeatability
+without rebuilding or restarting the measured process. This takes priority
+over another input-class expansion: the existing serial result is near the
+criterion and a changing binary/layout would confound another comparison.
+The prior dudect and Intel DOIT sources were reread: compiler/build/hardware
+conditions matter, and data-timing instruction properties do not exclude power,
+thermal, frequency or address effects. No host settings are changed.
+
+Preregister two complete sequential rounds in the same optimized test process,
+with the same seven cohorts, point, deterministic inputs, 500,000 assessed /
+100,000 control samples, 20,000 warmups, four operations and raw/pooled-p99
+absolute-t threshold 10. Each round reports its own outcomes; a later pass
+cannot replace a detection or invalid control in either round. Before/after
+executable and resolved memcpy evidence spans both rounds. All fourteen cohorts
+must finish before the aggregate statistical verdict; structural measurement
+failure still aborts. Input buffers may be reallocated, and host scheduling,
+frequency and thermal state remain uncontrolled. This is not independent
+hardware reproduction or proof of constant-time execution.
+
+The existing serial profile runs first. This is an explicit noninteractive
+diagnostic integration job, expected around nine minutes from the preceding
+199.57-second native timing plus about 145 seconds of setup. Only backend
+timing limits rise to 480 seconds native / 660 seconds VM; other profiles,
+memory/storage ceilings, monitors and joined cleanup stay unchanged. The
+short three-fixture test retains one round. Production and dependencies are
+unchanged. Research/evidence, not a speculative production patch, is the
+completion condition for this slice; R-P12/R-V3 and independent parks remain OPEN.

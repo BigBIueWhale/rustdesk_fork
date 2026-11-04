@@ -1201,7 +1201,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
     elif [[ "$RUST_TEST_PROFILE" = recording-output || "$RUST_TEST_PROFILE" = video-vpx || "$RUST_TEST_PROFILE" = remote-restart || "$RUST_TEST_PROFILE" = viewer-credentials || "$RUST_TEST_PROFILE" = local-file-listing || "$RUST_TEST_PROFILE" = android-client-drain || "$RUST_TEST_PROFILE" = cm-read-tick || "$RUST_TEST_PROFILE" = cm-file-log || "$RUST_TEST_PROFILE" = idle-timeout ]]; then
         readonly VM_TIMEOUT_SECONDS=600
     elif [[ "$RUST_TEST_PROFILE" = pake-backend-default || "$RUST_TEST_PROFILE" = pake-backend-serial ]]; then
-        readonly VM_TIMEOUT_SECONDS=420
+        readonly VM_TIMEOUT_SECONDS=660
     elif [ "$RUST_TEST_PROFILE" != integration ]; then
         readonly VM_TIMEOUT_SECONDS=300
     else

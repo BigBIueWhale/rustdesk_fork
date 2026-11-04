@@ -173,7 +173,7 @@ timing_test=optimized_timing_evidence
 timing_timeout=150s
 if [ -n "$backend_comparison" ]; then
     timing_test=backend_long_timing_evidence
-    timing_timeout=240s
+    timing_timeout=480s
     timeout --signal=TERM --kill-after=5s 30s taskset -c "$cpu" "$test_executable" tests:: \
         --skip nfc_normalization_tests:: --skip timing_tests:: --test-threads=1 --color never --show-output \
         || test_status=$?

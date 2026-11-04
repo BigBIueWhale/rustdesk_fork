@@ -137170,3 +137170,46 @@ SHA-256 ade38a85fdeac98515185222e9ee7bf6637b1d6e6e2cf0cba43fcfa9dd4620b2.
 All twelve bounded files match CTE/TUF. This audit-only receipt leaves the counted
 ledger unchanged. The documentation checkpoint is complete; no product claim
 changes, no owned job remains, and the Android task plus independent parks remain.
+
+## 2026-11-04 — current Linux application dependency acceptance
+
+Previous turn is progress: the direct-address ledger consolidation and fresh count
+are committed through 9db30e41. Select R-B5/R-X2's complete Linux artifact after
+the accepted Flutter dependency removals. The retained a3192591 app predates them;
+component checks do not establish current whole-app compilation or package bytes.
+This integration evidence takes priority over further ledger compression. Android
+artifact validation, release-input promotion and all independent parks remain.
+
+Preflight reads the complete build stages and their changes since the last accepted
+producer. The build-only route retains thirteen widget/two native command controls;
+it does not invoke optional account-store, scroll or native input experiments.
+The separate Flutter 3.47.5 project lock still carries eleven removed packages.
+Reconcile that prerequisite: remove after_layout, animations, contextmenu,
+dropdown_button2, extended_text, extended_text_library, flex_color_picker,
+flex_seed_scheme, google_fonts, qr and qr_flutter; HTTP/tuple become transitive.
+The candidate graph becomes 185 packages. All other package blocks, retained
+versions/sources/hashes and SDK constraints are byte-identical. The new 43,472-byte
+lock has SHA-256 7be0602c35a77c2dffbe348a567e25d0d5d56c761bbd88b6e403e7b8f5ce827d;
+its sole digest pin changes accordingly. The default lock, SDK/engine, authenticated
+package cache and release recipe are unchanged. This is not SDK promotion.
+
+Official https://dart.dev/tools/pub/cmd/pub-get documents removal of orphaned
+dependencies without retained-version upgrades, offline resolution and exact lock
+enforcement. Keep both Dart and Flutter --offline --enforce-lockfile plus byte
+identity checks; their actual success is still required. No baseline build failure
+is claimed from this source comparison. Reconcile only the reviewed-source
+discovery-lock copy under idle shared/candidate-directory locks, preserving its
+old exact bytes. Follow the existing c45e3e6b/6b703f35 provenance treatment.
+
+The canonical --linux-flutter-app-build uses retained engine ddb1541d and existing
+authenticated inputs. Prior equivalent integration takes about eighteen minutes.
+TUF reports 47,100,072 KiB available and no owned run/RAM workspace. Admission
+retains 20 GiB guest, 16 GiB bounded RAM scratch, 12 GiB hard file ceiling, 6 GiB
+headroom and 1 GiB overhead, with live monitoring and exact joined retirement.
+The four-generation app cache requires retiring one verified superseded artifact
+before launch; preserve the designated 7e6f6459 baseline, current a3192591 and
+parked pending 0ccb2a7e. Retain bounded inventory/provenance for retired 27bf28eb.
+Required result: fresh bridge/full-app build and the existing controls, complete
+manifest/hash agreement, current native component inventory and removal of unused
+package assets. Native sessions/settings, other platforms, final installed/cold
+release artifacts, independent reproduction and external review remain OPEN.

@@ -5,6 +5,15 @@ prohibitions. The inferred task restrictions and resulting blocked-goal rational
 have been removed at the user's direction on 2026-11-05. Historical checkpoints
 retain their evidence and limitations; unfinished work remains OPEN.
 
+Cleanup validation at `2c3186bf`: evidence hashes, inline references and URLs are
+retained, excluding the deleted blocked-goal rationale. No product files changed.
+The isolated ledger count is 395,532 tokens / 1,806,482 bytes, SHA-256
+12878ed2723c250e027aefa661007f4144b73ae76339923378cf54d68f8b0918,
+using tiktoken 0.12.0 / cl100k_base / encode_ordinary. Seven controls and the
+whole-input round trip pass; all three endpoint deltas are zero and owned
+processes, private state and RAM scratch are retired. Receipt:
+`.harness-state/verifier-vm/pivot-restrictions-ledger-2c3186bf.json`.
+
 ## 2026-10-14 — Clipboard helper primary-child and output lifetime
 
 Previous turn is progress: the f9a1e8bc private descriptor component passed nine actual Linux cases

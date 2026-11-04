@@ -137572,3 +137572,30 @@ linux-handoff-ledger-a29bf96e.json is 5,185 bytes, SHA-256
 a09faad386e909f44017ec9805902175917c065b973da9e64d3e323d19732545.
 The audit-only receipt preserves the counted ledger. The selected handoff
 checkpoint is complete; the full release objective remains active and incomplete.
+
+## 2026-11-04 — user pivot; current-verdict consolidation
+
+The user redirects work away from direct SysV init-script integration. It remains
+OPEN/PARKED before implementation or execution; no SysV VM or product change ran.
+Prior Linux service checkpoints remain valid. Select the binding current-state
+documentation work: the last complete ledger count is 399,876 tokens, only 124
+below its limit. Operator/build guides already reflect the current source and
+acceptance boundaries; no speculative guide correction is made.
+
+Classify eight opening verdict entries against dc63f99664c20a332123aa2eb6bafbcdd6c752d3:
+Android permission denial, floating viewport, PE reproducibility, sequential file
+logging, terminal retry, Android backup, mobile navigation and peer-window size.
+Keep the implemented behavior, accepted comparison, component/native scope,
+unresolved acceptance limits and all nine evidence-reference expressions.
+Remove repeated run identifiers, timings, hash/cleanup narration and intermediate
+fixture history already retained in those capsules and this audit. No product,
+test, requirement, instruction, evidence file or old parked-item paragraph changes.
+
+Read-only structural comparison confirms that, apart from these eight entries and
+the new SysV pivot, every ledger byte is unchanged; headings and HTML anchors are
+identical. All eight retain their OPEN limits and the same capsule references.
+The ledger decreases from 1,829,304 to 1,826,840 bytes; SHA-256 changes from
+059d2d3fcb3263b90253fe533d0add7588eb430d2521379456f750010c599fd0 to
+bb5149b3be09d0b124924dc5f92e06209d10a803eadad1166cb9a14a3a0cefea.
+Full diff review and git diff --check pass. Fresh isolated token counting follows;
+this documentation consolidation adds no runtime or release-acceptance claim.

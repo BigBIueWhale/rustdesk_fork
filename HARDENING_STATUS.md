@@ -43,6 +43,11 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Direct SysV init-script lifecycle validation is
+OPEN/PARKED before implementation or execution. Existing Linux service evidence
+below remains valid; it does not establish SysV integration or final-package
+acceptance. Work moves to release-ledger consolidation. Independent parks remain.
+
 **User pivot (2026-11-04):** Windows privacy-backend preference work is
 OPEN/PARKED. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
@@ -141,41 +146,31 @@ no native panel scenario ran. PE/linker validation, concurrent logging and all
 independent parks remain.
 
 **Android permission denial — Kotlin component correction verified.**
-`c868c6eb` reports false through the existing exact-request callback for ordinary
-and permanent denial, retaining grant behavior and the OS consent flow. The
-previous SAM handled only grants; the real XXPermissions 18.5 denial default
-does nothing, leaving Flutter's owner pending until its 120-second timeout.
-Baseline `RZiCSRp650` at `2b554b43` reproduces both missing denial results;
-the two grant and fifteen owner/voice controls pass. Replay `AWVZiKMg4I`
-passes all nineteen cases in 28 outer seconds, using unchanged tests/recipe and
-the pinned real library. `permission-{before-2b554b43,fixed-c868c6eb}.json`
-bind exact source, compiled class hashes, four zero listener deltas per run and
-process/private/RAM retirement. Actual Android dialogs, looper/MethodChannel,
-complete settings workflows, final APK/device and release acceptance remain OPEN.
+`c868c6eb` delivers ordinary/permanent denial through the exact-request callback,
+preserving grants and OS consent instead of leaving Flutter pending for 120 seconds.
+The unchanged nineteen-case comparison uses real XXPermissions 18.5 and passes
+after both denial failures are reproduced. Evidence and joined cleanup:
+`permission-{before-2b554b43,fixed-c868c6eb}.json`. Actual Android dialogs,
+looper/MethodChannel, complete settings, final APK/device and release acceptance
+remain OPEN; native-workflow work is parked above.
 
 **Floating-panel viewport ownership — Flutter component correction verified.**
 `f08e0ba3` passes each panel's local viewport into position adjustment and
-rechecks iOS placement on build and drag, using current widget dimensions.
-Baseline `AGqO167HRA` at `7e667815` reproduces standard/iOS resize and iOS
-drag containment failures, with twenty controls passing. Replay `Bp6RfimOCm`
-passes all 23 cases and three parser controls in 250 outer seconds. Test bodies,
-assertions and execution recipe are unchanged; the keyboard fixture's override
-only gains the explicit Size parameter. `floating-viewport-{before-7e667815,
-fixed-f08e0ba3}.json` bind source, outcomes, four zero listener deltas per run
-and exact process/private/RAM retirement. Actual Flutter widgets and pointer
-gestures run; viewport changes and persistence are controlled. Physical mobile
-rotation, native keyboard/storage, complete-session and release acceptance remain OPEN.
+rechecks iOS placement on build/drag using current widget dimensions. The retained
+comparison reproduces three containment failures, then passes the same 23 widget/
+pointer cases and three parser controls; only the fixture override gains Size.
+`floating-viewport-{before-7e667815,fixed-f08e0ba3}.json` bind evidence and joined
+cleanup. Viewport/persistence are controlled. Physical rotation, native keyboard/
+storage, complete-session and release acceptance remain OPEN; native work stays parked.
 
 **PE reproducibility markers — build component corrected.** `ad2b4f24` accepts
 the documented empty REPRO entry and counts it without authorizing payload writes.
-Baseline `8b01af88` passes existing controls then refuses the first valid empty
-marker. The identical self-test now passes three actual-file layouts, exact bytes,
-input preservation, idempotence and entry counts; malformed mapping/overlap and
-no-clobber controls remain. `pe-repro-{baseline-8b01af88,fixed-ad2b4f24}.json`
-retain Linux component evidence, source identities and joined VM/RAM retirement
-with zero listener deltas. Reproduce with `--pe-canonicalizer-tests` on the shared
-verifier-VM wrapper. Shipping-linker artifacts, native Windows filesystem and
-installation, cold release equality and full seven-suite integration remain OPEN.
+The unchanged self-test fails before correction and passes afterward: three real
+file layouts, exact bytes, preservation, idempotence/counts and malformed/overlap/
+no-clobber controls. Linux evidence and joined cleanup:
+`pe-repro-{baseline-8b01af88,fixed-ad2b4f24}.json`; reproduce with the verifier VM's
+`--pe-canonicalizer-tests`. Shipping-linker artifacts, native Windows filesystem/
+installation, cold equality and full seven-suite integration remain OPEN.
 
 **User pivot (2026-11-03):** Remote-restart work is OPEN/PARKED. Baseline
 `f0fb02a4` reproduces four admission/state failures with one successful-command
@@ -189,18 +184,14 @@ remains independently parked with two unexecuted bridge tests in stash
 below remains valid. All other independent parks remain.
 
 **File-log process restarts — Linux component verified.** `4b62ff2f` verifies
-forty sequential builder processes: exactly the newest 32 records (31 archives
-plus current), bounded fixture bytes and preservation of another log family.
-`46e498c5` adds forty processes through actual init_log with its file branch
-compiled: immediate handle drop does not lose the subsequent record, and repeated
-initialization creates no replacement destination. Both restart paths and existing
-size/retention controls pass: four cases in 0.19 seconds, 130 outer seconds.
-`file-log-startup-46e498c5.json` binds source, artifact, four zero listener deltas
-and exact process/private/RAM retirement; the earlier capsule remains valid.
-Product logging is unchanged. This nonoptimized library artifact does not prove
-full-app/installed startup, concurrent writers, crashes, daily rollover, privileged
-namespaces or other platforms. Those remain OPEN; single-record and Windows-log
-work stay parked. Concurrent loss below remains OPEN.
+forty sequential builders retain exactly the newest 32 records within fixture
+bounds and preserve another log family. `46e498c5` adds forty actual init_log
+processes: handle drop preserves subsequent logging; repeated initialization
+creates no new destination. All four cases pass with product logging unchanged.
+`file-log-startup-46e498c5.json` binds the nonoptimized Linux library and joined
+cleanup. Full-app/installed startup, concurrency, crashes, daily rollover,
+privileged namespaces and other platforms remain OPEN. Single-record/Windows-log
+work stays parked; the demonstrated concurrent loss remains OPEN/PARKED below.
 
 **Concurrent log retention — OPEN/PARKED (user pivot, 2026-11-04).** Linux permits multiple primary
 UI processes, whose role/executable log family is shared. At `1401acc9`, one
@@ -223,19 +214,14 @@ stash `d30327499554c4fef473a52e47e5f256218c4d4d`. The accepted new-backup
 checkpoint below remains valid.
 
 **Terminal connection errors — Flutter component correction verified.**
-`58c6cdcb` removes the shared model's obsolete offline-message retry override
-and its wall-clock state. Native hasRetry=false now remains terminal after
-PeerInfo and retires an existing retry; explicit true retains bounded recovery.
-The unchanged-product baseline fails those two cases with thirteen controls
-passing. At `101d0449`, all fifteen identical model/rendered-dialog cases and
-three parser controls pass, with exact-source/input postconditions and joined
-VM/RAM cleanup. `terminal-retry-accepted-101d0449.json` binds the evidence.
-The harness now scopes parser controls to reconnect and exports case results
-before validation; the audit retains two intermediate parser failures.
-No endpoint is added; two pre-existing endpoints disappear in the final snapshot,
-unattributed and untouched. Session/input/native events are doubles. Actual peer
-recovery, desktop/mobile installed behavior and R-S0/R-F5/release acceptance
-remain OPEN. Independent parks remain.
+`58c6cdcb` removes the obsolete offline-message retry override/wall-clock state.
+Native hasRetry=false stays terminal after PeerInfo and retires an existing retry;
+explicit true retains bounded recovery. The identical fifteen model/dialog cases
+reproduce both failures then pass at `101d0449`, with three parser controls and
+joined cleanup (`terminal-retry-accepted-101d0449.json`). Session/input/native
+events are doubles. No endpoint is added; two baseline endpoints disappear,
+unattributed and untouched. Actual peer recovery, desktop/mobile installed behavior
+and R-S0/R-F5/release acceptance remain OPEN; independent parks remain.
 
 **User pivot (2026-11-03):** Mobile Remote/Camera native close acceptance is
 OPEN/PARKED. The component result below remains valid. APK `fd258e8b` passes
@@ -247,32 +233,22 @@ and device-transfer exclusion; all independent parks remain.
 
 **Android backup/transfer exclusion — Android 14 native checkpoint verified.**
 `ba738346` adds explicit cloud/device-transfer exclusions for all nine storage
-domains and the older full-backup opt-out, retaining allowBackup=false. Android
-documents manufacturer cases where that flag alone permits device transfer.
-`aca3df16` resolves optimized resource IDs/paths in the final-APK validator,
-preserving complete exclusions and refusal of qualified alternatives/custom agents.
-Run `uc4W1PSIF6` passes the required eight AAPT2 resource controls, final-APK checks,
-Android 14 install/launch/rendering and instrumentation-process smoke. The guest
-retained build/runtime summaries but filtered individual backup-check detail lines;
-the audit records that limit and the subsequent forwarding correction. Capsule
-`android-backup-build-aca3df16.json` binds exact artifacts, four zero listener
-deltas and process/private/RAM retirement.
+domains and the older full-backup opt-out, retaining allowBackup=false. Final-APK
+validation `aca3df16` resolves optimized resources and retains refusal of qualified
+alternatives/custom agents. Eight resource controls, APK checks and Android 14
+install/launch/rendering/instrumentation smoke pass; individual backup-check lines
+were filtered from the retained build output, whose summaries remain.
 
-Replay `rpGA8oiR0v` at `2918e1a5` reuses that exact APK. Synthetic fixtures in all
-nine domains are readable under recorded application UID/groups. Android's D2D
-LocalTransport transfers all nine control files, whose bytes are checked in the
-archive and after actual restore. RustDesk produces its package-specific preflight
-transport rejection and no archive; its restore request leaves every fixture
-absent. The relaunched app is refused in cloud mode without creating an archive,
-then passes normal launch/rendering with SELinux enforcing. The control's
-allowBackup=false also demonstrates why that flag alone is insufficient for D2D.
-`android-backup-native-2918e1a5.json` binds detailed native receipts, unchanged APK
-hashes, five zero listener deltas and exact process/helper/private/RAM retirement.
-This is offline AOSP-14 test-APK evidence. It does not restore an app archive or
-prove rejection of an older imported archive, manufacturer-device behavior,
-older Android, external backup services, final release artifacts or complete
-mobile storage/privilege acceptance; those remain OPEN. No full rebuild or new
-APK-cache generation was needed; the audit records fixture repairs and limits.
+Exact-APK replay `2918e1a5` observes D2D LocalTransport transfer/restore of all nine
+control-domain files with exact bytes, while RustDesk's preflight refuses with no
+archive and its restore request leaves every fixture absent. The control retains
+allowBackup=false, demonstrating that the flag alone is insufficient. Cloud backup
+also refuses; normal launch/rendering passes with SELinux enforcing. Evidence,
+artifact identity and joined cleanup: `android-backup-build-aca3df16.json` and
+`android-backup-native-2918e1a5.json`. This offline AOSP-14 test APK does not prove
+app-archive restoration or older imported-archive rejection, manufacturer/older-OS
+behavior, external backup services, final artifacts or complete mobile storage/
+privilege acceptance. Those remain OPEN; imported-backup work is parked above.
 
 **User pivot (2026-11-03):** Peer-window close/reopen acceptance is OPEN/PARKED.
 The nineteen-case component result below remains valid. The earlier Linux app
@@ -283,16 +259,12 @@ Remote/Camera cancellation and route ownership. All independent parks remain.
 
 **Mobile Remote/Camera close ownership — component correction verified.**
 `e8447792` binds loading Cancel, Back and toolbar Close to the page's exact route
-and session, extending Terminal's existing ownership model. Baseline `2gg02qW2PB`
-at `2c7698d2` reproduces four failures on each page: preceding/covering pages and
-a replacement session's page are removed by Cancel, and Back cannot dismiss an
-ended session's view. Replay `ji9KWn7RnC` passes the unchanged eighteen cases
-(ten mobile, eight desktop controls), three parser controls and exact-source
-postconditions in 253 seconds. `mobile-navigation-fixed-e8447792.json` binds
-the results, four zero listener deltas and exact process/private/RAM retirement.
-Actual pages, dialogs, FFI navigation and Navigator run; native session admission/
-retirement, platform channels and preferences are doubles. Android/iOS device,
-native teardown and complete release acceptance remain OPEN.
+and session. The comparison reproduces four failures per page involving wrong-page
+Cancel and ended-session Back, then passes the unchanged eighteen cases and three
+parser controls (`mobile-navigation-fixed-e8447792.json`, including joined cleanup).
+Actual pages, dialogs, FFI navigation and Navigator run; native admission/retirement,
+platform channels and preferences are doubles. Android/iOS device, native teardown
+and complete release acceptance remain OPEN; native work stays parked above.
 
 **User pivot (2026-11-03):** Release-input promotion is OPEN/PARKED after
 read-only investigation. The Debian recipe still selects stock Flutter 3.24.5;
@@ -301,16 +273,12 @@ pin, recipe or artifact changed. Work moved to peer-window size persistence.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,
-instead of its X/Y offsets, when saving maximized/fullscreen state. The unchanged
-baseline fails both cases with 0x0 instead of 960x540. Run `AFAudjcL5b` at
-`829a57f9` passes all nineteen position cases and three focused parser controls,
-including RemoteDesktop/ViewCamera, normal/maximized/fullscreen, zero/negative/
-positive positions and absent/complete/partial records. Existing peer fields and
-ordinary saves are preserved. `window-position-accepted-829a57f9.json` binds
-results, source, four zero listener deltas and exact process/private/RAM retirement.
-Window channels and native storage are doubles; complete app/native restart,
-monitor changes, other-platform and release acceptance remain OPEN. Fixture setup
-and the unscoped parser failure are retained separately in the audit.
+instead of X/Y offsets when saving maximized/fullscreen state. The unchanged
+comparison reproduces both 0x0-versus-960x540 failures, then passes nineteen cases
+and three parser controls at `829a57f9`, preserving existing fields/ordinary saves.
+Evidence and joined cleanup: `window-position-accepted-829a57f9.json`. Window
+channels/native storage are doubles. Complete app/native restart, monitor changes,
+other-platform and release acceptance remain OPEN; native work is parked above.
 
 **User pivot (2026-11-03):** Mobile theme dialog work is OPEN/PARKED.
 Candidate `b98d0ea3`, run `UksnB7II3a`, passes 53 of 54 component cases;

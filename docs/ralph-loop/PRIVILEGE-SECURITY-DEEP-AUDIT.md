@@ -138520,3 +138520,14 @@ text and live instructions are unchanged. No new test is added, no product/nativ
 execution runs for this deletion, and no broader acceptance is inferred. Keep
 native/installed, R-S0/R-F5, independent review and the release objective OPEN.
 The current ledger records the classification; its fresh count is pending.
+
+CTE tQvqluoS5r at pushed 151cdfd3 completes the fresh count in 28 seconds:
+399,079 tokens / 1,825,402 bytes, SHA-256
+d6886cae4ecdaa379636c97509516065908e4c3e959070fbc6157fd235cdc9f4.
+Pinned controls, round trip and admission pass; three listener deltas are zero.
+Exact processes, helpers, private state and RAM retire under the shared lock;
+scratch peaks at 402,821,120 bytes. No owned job remains. Capsule
+rust-name-ledger-151cdfd3.json is 5,166 bytes, SHA-256
+3fbe78dd4bdb75d9c735099dbadbb095943468f2bc896c4fe1b1eae306d0d553,
+with ten raw/control records and the retirement receipt. This deletion checkpoint
+is complete; native/product and overall release acceptance remain OPEN.

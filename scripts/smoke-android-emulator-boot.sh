@@ -10,7 +10,7 @@ fail() {
 
 [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || [ "$#" -eq 6 ] \
     || [ "$#" -eq 7 ] || [ "$#" -eq 8 ] \
-    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|backup-transfer|recents|lifecycle|peer-lifecycle|controlled-cm [RECENTS_GESTURE_JAR [--soak]]]]'
+    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|backup-transfer|recents|lifecycle|peer-lifecycle|controlled-cm|storage-reload [RECENTS_GESTURE_JAR [--soak]]]]'
 readonly EMULATOR_ZIP=$1
 readonly SYSTEM_IMAGE_ZIP=$2
 readonly INPUT_ADB=$3
@@ -34,6 +34,8 @@ if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = controlled-cm ]; then
     readonly WORKLOAD=app-controlled-cm
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = peer-lifecycle ]; then
     readonly WORKLOAD=app-peer-lifecycle
+elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = storage-reload ]; then
+    readonly WORKLOAD=app-storage-reload
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = lifecycle ]; then
     readonly WORKLOAD=app-lifecycle
 elif [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = recents ]; then
@@ -94,7 +96,8 @@ PY
 if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ] \
-   || [ "$WORKLOAD" = app-controlled-cm ]; then
+   || [ "$WORKLOAD" = app-controlled-cm ] \
+   || [ "$WORKLOAD" = app-storage-reload ]; then
     [ "$WORK_ROOT" = /tmp/android-emulator-app ] \
         || fail 'the emulator app work root differs from the fixed private tmpfs path'
 else
@@ -127,7 +130,8 @@ APK_SHA256=
 if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ] \
-   || [ "$WORKLOAD" = app-controlled-cm ]; then
+   || [ "$WORKLOAD" = app-controlled-cm ] \
+   || [ "$WORKLOAD" = app-storage-reload ]; then
     [ -f "$RUNTIME_TEST_APK" ] && [ ! -L "$RUNTIME_TEST_APK" ] \
         || fail 'runtime-test APK is absent or ambiguous'
     apk_size="$(stat -c '%s' -- "$RUNTIME_TEST_APK")"
@@ -148,6 +152,7 @@ if [ -n "$INSTRUMENTATION_APK" ]; then
         || [ "$WORKLOAD" = app-lifecycle ] \
         || [ "$WORKLOAD" = app-peer-lifecycle ] \
         || [ "$WORKLOAD" = app-controlled-cm ] \
+        || [ "$WORKLOAD" = app-storage-reload ] \
         || fail 'the test instrumentation package requires an app workload'
     [ -f "$INSTRUMENTATION_APK" ] && [ ! -L "$INSTRUMENTATION_APK" ] \
         && [ "$(stat -c '%u:%g:%a:%h' -- "$INSTRUMENTATION_APK")" = \
@@ -160,7 +165,8 @@ if [ -n "$INSTRUMENTATION_APK" ]; then
 elif [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
      || [ "$WORKLOAD" = app-lifecycle ] \
      || [ "$WORKLOAD" = app-peer-lifecycle ] \
-     || [ "$WORKLOAD" = app-controlled-cm ]; then
+     || [ "$WORKLOAD" = app-controlled-cm ] \
+     || [ "$WORKLOAD" = app-storage-reload ]; then
     fail 'the app workload lacks its matching instrumentation package'
 fi
 RECENTS_GESTURE_SHA256=
@@ -1426,7 +1432,8 @@ trap 'exit 130' INT
 trap 'exit 143' TERM
 
 if [ "$WORKLOAD" = app-peer-lifecycle ] \
-   || [ "$WORKLOAD" = app-controlled-cm ]; then
+   || [ "$WORKLOAD" = app-controlled-cm ] \
+   || [ "$WORKLOAD" = app-storage-reload ]; then
     readonly PEER_TARGET=/smoke-target
     [ "$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" = lo ] \
         || fail 'the Android peer-probe runtime container has a non-loopback interface'
@@ -1519,11 +1526,11 @@ for name, relative in layout.items():
     if manifest["files"][name] != {"bytes": info.st_size, "sha256": digest.hexdigest()}:
         raise ValueError("peer runtime execution bytes differ")
 PY
-    if [ "$WORKLOAD" = app-controlled-cm ]; then
+    if [ "$WORKLOAD" = app-controlled-cm ] || [ "$WORKLOAD" = app-storage-reload ]; then
         [ -f "$PEER_TARGET/debug/examples/probe_client" ] \
             && [ ! -L "$PEER_TARGET/debug/examples/probe_client" ] \
             && [ -x "$PEER_TARGET/debug/examples/probe_client" ] \
-            || fail 'the admitted Android CM probe is absent or ambiguous'
+            || fail 'the admitted Android authentication probe is absent or ambiguous'
     fi
     if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     [ -f "$PEER_XVFB_MANIFEST" ] && [ ! -L "$PEER_XVFB_MANIFEST" ] \
@@ -4142,7 +4149,8 @@ CONTROLLED_CM_RECEIPT_READY=0
 if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ] \
-   || [ "$WORKLOAD" = app-controlled-cm ]; then
+   || [ "$WORKLOAD" = app-controlled-cm ] \
+   || [ "$WORKLOAD" = app-storage-reload ]; then
     install_output="$(timeout --signal=TERM --kill-after=2s 180s \
         "$ADB" -s "$SERIAL" install --no-streaming --no-incremental \
         "$RUNTIME_TEST_APK")" \
@@ -4178,7 +4186,8 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
     [ "$resolved_activity" = com.carriez.flutter_hbb/.MainActivity ] \
         || fail "runtime-test launcher activity differs: $resolved_activity"
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ] \
-       || [ "$WORKLOAD" = app-controlled-cm ]; then
+       || [ "$WORKLOAD" = app-controlled-cm ] \
+       || [ "$WORKLOAD" = app-storage-reload ]; then
         timeout --signal=TERM --kill-after=2s 10s \
             "$ADB" -s "$SERIAL" shell pm grant "$APP_PACKAGE" \
             android.permission.POST_NOTIFICATIONS >/dev/null \
@@ -4317,7 +4326,8 @@ PY
     fi
 
     if [ "$WORKLOAD" = app-lifecycle ] || [ "$WORKLOAD" = app-peer-lifecycle ] \
-       || [ "$WORKLOAD" = app-controlled-cm ]; then
+       || [ "$WORKLOAD" = app-controlled-cm ] \
+       || [ "$WORKLOAD" = app-storage-reload ]; then
         share_command=
         for _ in $(seq 1 3); do
             tap_ui text 'Share screen' || continue
@@ -4479,6 +4489,10 @@ PY
             <<<"$lifecycle_log" \
             || fail 'the initial lifecycle log contains a fatal ownership failure'
 
+        if [ "$WORKLOAD" = app-storage-reload ]; then
+            source "$SCRIPT_DIR/android-storage-reload.sh"
+            exercise_android_storage_reload
+        else
         if [ "$WORKLOAD" = app-peer-lifecycle ]; then
             exercise_android_controlled_cpace
             assert_main_service \
@@ -4666,6 +4680,7 @@ PY
             PEER_RECEIPT_READY=1
         fi
         LIFECYCLE_RECEIPT_READY=1
+        fi
         fi
     fi
 fi
@@ -4863,7 +4878,8 @@ fi
 if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
    || [ "$WORKLOAD" = app-lifecycle ] \
    || [ "$WORKLOAD" = app-peer-lifecycle ] \
-   || [ "$WORKLOAD" = app-controlled-cm ]; then
+   || [ "$WORKLOAD" = app-controlled-cm ] \
+   || [ "$WORKLOAD" = app-storage-reload ]; then
     [ "$(sha256sum "$RUNTIME_TEST_APK" | awk '{ print $1 }')" = "$APK_SHA256" ] \
         || fail 'runtime-test APK changed during emulator execution'
     printf 'ANDROID_EMULATOR_APP=pass emulator=%s api=%s abi=%s package=com.carriez.flutter_hbb activity=MainActivity launch_wait=%s state=resumed process=stable-five-seconds apk_sha256=%s signing=test-only acceleration=kvm-nested gpu=swiftshader framebuffer=%s selinux=%s vm_network=none container_network=none cleanup=joined\n' \

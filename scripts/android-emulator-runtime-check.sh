@@ -9,7 +9,7 @@ die() {
 }
 
 [ "$#" -eq 6 ] || [ "$#" -eq 10 ] || [ "$#" -eq 11 ] \
-    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {recents|backup-transfer} | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak]'
+    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {recents|backup-transfer} | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm|storage-reload} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak]'
 readonly APK=$1
 readonly APK_SHA256=$2
 readonly TEST_APK=$3
@@ -27,7 +27,7 @@ if [ "$#" -eq 11 ]; then
 fi
 case "$RUNTIME_SCENARIO" in
     recents|backup-transfer) [ "$#" -eq 6 ] || die 'this replay accepts no peer authority' ;;
-    peer-lifecycle|controlled-cm)
+    peer-lifecycle|controlled-cm|storage-reload)
         { [ "$#" -eq 10 ] || [ "$#" -eq 11 ]; } && [[ "$PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_TREE" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
@@ -191,6 +191,7 @@ events = {
     b"ANDROID_PEER_INFRASTRUCTURE", b"ANDROID_CONTROLLED_CPACE",
     b"ANDROID_CONTROLLED_CM_FILE", b"ANDROID_CONTROLLED_CM_STOP",
     b"ANDROID_CONTROLLED_CM_RESTART",
+    b"ANDROID_STORAGE_AUTH", b"ANDROID_STORAGE_RELOAD",
     b"ANDROID_RECENTS_GESTURE_DRIVER", b"ANDROID_RECENTS_DISMISS_ACTION",
     b"ANDROID_RECENTS_DISMISS_OUTCOME", b"ANDROID_PEER_CONNECTION_WAIT",
     b"ANDROID_PEER_CONNECTION_READY", b"ANDROID_PEER_INITIAL_CREDENTIAL_PROMPT",
@@ -608,7 +609,7 @@ VERIFY_CONTAINER="$(vm_docker create \
         if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
             /bin/bash /source/scripts/build-android-backup-control.sh \
                 /source /online/android-sdk /driver/backup-control.apk
-        else
+        elif [ "$RUNTIME_SCENARIO" != storage-reload ]; then
         for pass in a b; do
             mkdir -m 0700 "/driver/classes-$pass"
             javac -encoding UTF-8 -source 8 -target 8 \
@@ -667,7 +668,7 @@ if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
         || die 'backup control artifact metadata differs'
     readonly BACKUP_CONTROL_SHA256="$(sha256sum "$BACKUP_CONTROL_APK" | cut -d ' ' -f 1)"
     grep '^ANDROID_BACKUP_CONTROL_BUILD=pass ' "$VERIFY_LOG"
-else
+elif [ "$RUNTIME_SCENARIO" != storage-reload ]; then
 mapfile -t recents_driver_build_receipts < <(grep -E \
     "^ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=$RECENTS_DRIVER_SOURCE_SHA256 android_jar_sha256=$ANDROID_PLATFORM_JAR_SHA256 d8_sha256=$ANDROID_D8_SHA256 copies=2 equality=byte-identical network=none output=private-bind$" \
     "$VERIFY_LOG" || true)
@@ -694,7 +695,8 @@ vm_docker rm "$VERIFY_CONTAINER" >/dev/null
 VERIFY_CONTAINER=
 
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
-   || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
+   || [ "$RUNTIME_SCENARIO" = controlled-cm ] \
+   || [ "$RUNTIME_SCENARIO" = storage-reload ]; then
 materialized="$(python3 -I -S "$SCRIPT_DIR/android-peer-artifact.py" materialize \
     --root "$PEER_ROOT" --root-identity "$(stat -c '%d:%i' -- "$PEER_ROOT")" \
     --parent "$WORKSPACE" --parent-identity "$WORKSPACE_ID" \
@@ -791,12 +793,13 @@ gesture_arguments=()
 if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
     runtime_mounts+=(--mount "type=bind,source=$BACKUP_CONTROL_APK,target=/inputs/backup-control.apk,readonly,bind-recursive=disabled")
     runtime_environment+=(--env RUSTDESK_ANDROID_BACKUP_CONTROL_APK=/inputs/backup-control.apk)
-else
+elif [ "$RUNTIME_SCENARIO" != storage-reload ]; then
     runtime_mounts+=(--mount "type=bind,source=$RECENTS_DRIVER_JAR,target=/inputs/recents-dismiss.jar,readonly,bind-recursive=disabled")
     gesture_arguments=(/inputs/recents-dismiss.jar)
 fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
-   || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
+   || [ "$RUNTIME_SCENARIO" = controlled-cm ] \
+   || [ "$RUNTIME_SCENARIO" = storage-reload ]; then
     runtime_mounts+=(
         --mount "type=bind,source=$SERVER_TARGET,target=/smoke-target,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$PEER_ROOT/peer-manifest.json,target=/inputs/peer-manifest.json,readonly,bind-recursive=disabled"
@@ -869,7 +872,7 @@ runtime_namespace="$(vm_docker inspect --format \
     "$RUNTIME_CONTAINER")"
 [ "$runtime_namespace" = 'false||private||private' ] \
     || die "Android runtime container namespace authority differs: $runtime_namespace"
-if [ "$RUNTIME_SCENARIO" != backup-transfer ]; then
+if [ "$RUNTIME_SCENARIO" != backup-transfer ] && [ "$RUNTIME_SCENARIO" != storage-reload ]; then
 runtime_driver_mounts="$(vm_docker inspect --format \
     '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
     "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/inputs/recents-dismiss.jar" { print }')"
@@ -877,7 +880,7 @@ runtime_driver_mounts="$(vm_docker inspect --format \
   "bind	$RECENTS_DRIVER_JAR	/inputs/recents-dismiss.jar	false" ] \
     || die 'Android Recents gesture-driver mount authority differs'
 fi
-if [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
+if [ "$RUNTIME_SCENARIO" = controlled-cm ] || [ "$RUNTIME_SCENARIO" = storage-reload ]; then
     runtime_peer_mounts="$(vm_docker inspect --format \
         '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
         "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/smoke-target" { print }')"
@@ -1385,7 +1388,7 @@ instrumentation_receipt='ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=pass target=com.
 [ "$(grep -Fxc "$instrumentation_receipt" "$RUNTIME_LOG" || true)" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=' "$RUNTIME_LOG" || true)" -eq 1 ] \
     || die 'the matching instrumentation package did not execute in the app main process'
-if [ "$RUNTIME_SCENARIO" != backup-transfer ]; then
+if [ "$RUNTIME_SCENARIO" != backup-transfer ] && [ "$RUNTIME_SCENARIO" != storage-reload ]; then
 mapfile -t recents_driver_stage_receipts < <(grep -E \
     "^ANDROID_RECENTS_GESTURE_DRIVER=pass sha256=$RECENTS_DRIVER_SHA256 framework=android14-ui-automation-direct open=ui-automation-app-switch-key-display-0 events=12 steps=10 step_ms=16 wait_for_animations=false runtime_uiautomator_sha256=[0-9a-f]{64} device_path=/data/local/tmp/rustdesk-recents-dismiss\.jar$" \
     "$RUNTIME_LOG" || true)
@@ -1545,6 +1548,11 @@ mapfile -t controlled_lifecycle_receipts < <(grep -Fx \
 [ "${#controlled_lifecycle_receipts[@]}" -eq 1 ] \
     && [ "$(grep -c '^ANDROID_EMULATOR_CONTROLLED_CM=' "$RUNTIME_LOG")" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android controlled-CM lifecycle receipt is absent or duplicated'; }
+elif [ "$RUNTIME_SCENARIO" = storage-reload ]; then
+    storage_receipt="ANDROID_STORAGE_RELOAD=pass generations=2 auth=before-after envelope=unchanged credential=unchanged restart=force-stop-and-ui-start observer=retired apk_sha256=$APK_SHA256"
+    [ "$(grep -Fxc "$storage_receipt" "$RUNTIME_LOG")" -eq 1 ] \
+        && [ "$(grep -c '^ANDROID_STORAGE_RELOAD=' "$RUNTIME_LOG")" -eq 1 ] \
+        || die 'Android encrypted-storage reload receipt differs'
 elif [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
     backup_receipt="ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=preflight-rejected-no-archive restore=control-only cloud=refused selinux=Enforcing apk_sha256=$APK_SHA256 cleanup=fixtures-removed"
     [ "$(grep -Fxc "$backup_receipt" "$RUNTIME_LOG")" -eq 1 ] \
@@ -1596,7 +1604,8 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         || die 'private Android peer machine identity changed during execution'
 fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
-   || [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
+   || [ "$RUNTIME_SCENARIO" = controlled-cm ] \
+   || [ "$RUNTIME_SCENARIO" = storage-reload ]; then
     [ "$PEER_EXECUTION_INVENTORY" = "$(find "$SERVER_TARGET" -xdev -mindepth 0 -printf '%p\0' \
         | LC_ALL=C sort -z | xargs -0 stat -c '%d:%i:%u:%g:%a:%h:%s')" ] \
         || die 'admitted Android peer execution layout changed during the read-only run'
@@ -1624,7 +1633,7 @@ verify_sha256 "$ADB" "$SHA256_ANDROID_PLATFORM_TOOLS_ADB_37_0_1"
 if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
     [ "$(sha256sum "$BACKUP_CONTROL_APK" | cut -d ' ' -f 1)" = "$BACKUP_CONTROL_SHA256" ] \
         || die 'backup control artifact changed during execution'
-else
+elif [ "$RUNTIME_SCENARIO" != storage-reload ]; then
 [ "$(stat -c '%u:%g:%a:%h' -- "$RECENTS_DRIVER_JAR")" = 1000:1000:400:1 ] \
     && [ "$(sha256sum "$RECENTS_DRIVER_JAR" | awk '{ print $1 }')" = \
          "$RECENTS_DRIVER_SHA256" ] \
@@ -1636,6 +1645,8 @@ printf '%s\n' "${apk_receipts[0]}" "$instrumentation_receipt" \
     "${renderer_receipts[0]}" "${runtime_receipts[0]}"
 if [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
     grep '^ANDROID_BACKUP_' "$RUNTIME_LOG"
+elif [ "$RUNTIME_SCENARIO" = storage-reload ]; then
+    grep '^ANDROID_STORAGE_' "$RUNTIME_LOG"
 else
 printf '%s\n' "${recents_driver_build_receipts[0]}" \
     "${recents_driver_stage_receipts[0]}" \
@@ -1664,6 +1675,8 @@ elif [ "$RUNTIME_SCENARIO" = controlled-cm ]; then
         "${controlled_stop_receipts[0]}" "${controlled_restart_receipts[0]}" \
         "${controlled_lifecycle_receipts[0]}"
     runtime_peer=production-loopback-cpace-controlled-cm
+elif [ "$RUNTIME_SCENARIO" = storage-reload ]; then
+    runtime_peer=production-loopback-cpace-storage-reload
 elif [ "$RUNTIME_SCENARIO" = backup-transfer ]; then
     runtime_peer=absent
 else

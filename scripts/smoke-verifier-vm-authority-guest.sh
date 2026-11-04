@@ -290,7 +290,7 @@ case "$#:${8:-}" in
         MODE=android-emulator-runtime
         ;;
     20:--android-emulator-runtime|21:--android-emulator-runtime)
-        [ "${17}" = peer-lifecycle ] || [ "${17}" = controlled-cm ] || exit 2
+        [ "${17}" = peer-lifecycle ] || [ "${17}" = controlled-cm ] || [ "${17}" = storage-reload ] || exit 2
         if [ "$#" -eq 21 ]; then
             [ "${21}" = --soak ] && [ "${17}" = peer-lifecycle ] || exit 2
         fi
@@ -391,7 +391,7 @@ case "$#:${8:-}" in
         MODE=rust-audit
         ;;
     *)
-        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-pa-authority-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-service-uid-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 TEST_APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 TEST_APK_SHA256 {peer-lifecycle|controlled-cm} PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
+        echo 'usage: smoke-verifier-vm-authority-guest.sh DOCKER_TGZ ENTRY_PREFLIGHT VERSION SIZE SHA256 KERNEL_RELEASE ROOT_UUID [--hbb-common-fs SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --cpace-recovery-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-pa-authority-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-service-uid-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-lifecycle-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-rust-target-check SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-owner-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-peer-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-boot SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-app SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 TEST_APK_SHA256 recents | --android-emulator-runtime SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 ARTIFACT_COMMIT ARTIFACT_TREE APK_SHA256 TEST_APK_SHA256 {peer-lifecycle|controlled-cm|storage-reload} PEER_COMMIT PEER_TREE PEER_MANIFEST_SHA256 | --apple-conform SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 | --linux-flutter-app-build SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 CONTEXT | --linux-flutter-app-replay SOURCE_ARCHIVE HARNESS_COMMIT HARNESS_TREE SOURCE_ARCHIVE_SHA256 APP_COMMIT APP_TREE APP_RECIPE_SHA256 APP_MANIFEST_SHA256 CONTEXT | --dart-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --rust-audit SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256 IMAGE_ARCHIVE | --debian-systemd-lifecycle DEV_CHECK_ARCHIVE DEB DEB_SHA256 COMMIT]' >&2
         echo 'The seven base arguments also accept --android-execution-probe, --android-runtime-log-tests, --fixed-archive-tests, or --linux-flutter-artifact-tests.' >&2
         echo 'CM file integration replay accepts --cm-file-replay SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
         echo 'The focused Flutter queue shard appends --frame-queue to --flutter-model-tests SOURCE_ARCHIVE COMMIT TREE SOURCE_ARCHIVE_SHA256.' >&2
@@ -11181,11 +11181,12 @@ run_android_emulator_runtime() {
     [[ "$ANDROID_RUNTIME_TEST_APK_SHA256" =~ ^[0-9a-f]{64}$ ]] \
         || fail 'Android emulator runtime instrumentation digest is malformed'
     case "$ANDROID_RUNTIME_SCENARIO" in
-        recents|backup-transfer|peer-lifecycle|controlled-cm) ;;
+        recents|backup-transfer|peer-lifecycle|controlled-cm|storage-reload) ;;
         *) fail 'unknown Android emulator runtime scenario' ;;
     esac
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
-       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
+       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ] \
+       || [ "$ANDROID_RUNTIME_SCENARIO" = storage-reload ]; then
         [[ "$ANDROID_RUNTIME_PEER_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$ANDROID_RUNTIME_PEER_TREE" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" =~ ^[0-9a-f]{64}$ ]] \
@@ -11240,6 +11241,7 @@ run_android_emulator_runtime() {
     done
     for workload in pins.env lib.sh online-android-sdk-output.py \
         AndroidBackupControl.java build-android-backup-control.sh test-android-backup-transfer.py \
+        android-storage-reload.sh android-storage-snapshot.py \
         build-x11-frame-source.py \
         android-peer-soak.py \
         android-peer-artifact.py \
@@ -11267,6 +11269,8 @@ run_android_emulator_runtime() {
         "$source_root/scripts/AndroidBackupControl.java" \
         "$source_root/scripts/build-android-backup-control.sh" \
         "$source_root/scripts/test-android-backup-transfer.py" \
+        "$source_root/scripts/android-storage-reload.sh" \
+        "$source_root/scripts/android-storage-snapshot.py" \
         "$source_root/scripts/android-peer-artifact.py" \
         "$source_root/scripts/publish-artifact-result.py" \
         "$source_root/scripts/AndroidRecentsDismiss.java" \
@@ -11362,7 +11366,8 @@ run_android_emulator_runtime() {
         "$staged_test_apk" "$ANDROID_RUNTIME_TEST_APK_SHA256" \
         "$ANDROID_RUNTIME_ARTIFACT_COMMIT" "$ANDROID_RUNTIME_SCENARIO")
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
-       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
+       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ] \
+       || [ "$ANDROID_RUNTIME_SCENARIO" = storage-reload ]; then
         mkdir "$peer_mount"
         mount -t virtiofs -o ro,nodev,nosuid,noexec \
             rustdesk-android-peer-artifact-input "$peer_mount" \
@@ -11600,7 +11605,8 @@ run_android_emulator_runtime() {
             || fail 'the uninterrupted Android soak receipt is duplicated'
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
-       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
+       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ] \
+       || [ "$ANDROID_RUNTIME_SCENARIO" = storage-reload ]; then
         peer_artifact_receipt="$(grep -Fx \
             "ANDROID_PEER_ARTIFACT_ADMITTED=pass commit=$ANDROID_RUNTIME_PEER_COMMIT tree=$ANDROID_RUNTIME_PEER_TREE manifest_sha256=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 builder=$DEV_CHECK_IMAGE_CONFIG_ID files=7 build=absent execution=readonly-guest-copy" \
             "$output")" || fail 'Android peer artifact admission receipt is absent'
@@ -11637,7 +11643,7 @@ run_android_emulator_runtime() {
         || fail 'Android runtime instrumentation execution receipt is absent'
     [ "$(grep -c '^ANDROID_EMULATOR_INSTRUMENTATION_SMOKE=' "$output")" -eq 1 ] \
         || fail 'Android runtime instrumentation execution receipt is duplicated'
-    if [ "$ANDROID_RUNTIME_SCENARIO" != backup-transfer ]; then
+    if [ "$ANDROID_RUNTIME_SCENARIO" != backup-transfer ] && [ "$ANDROID_RUNTIME_SCENARIO" != storage-reload ]; then
     recents_build_receipt="$(grep -E \
         '^ANDROID_RECENTS_GESTURE_BUILD=pass sha256=[0-9a-f]{64} source_sha256=[0-9a-f]{64} android_jar_sha256=[0-9a-f]{64} d8_sha256=[0-9a-f]{64} copies=2 equality=byte-identical network=none output=private-bind$' \
         "$output")" \
@@ -11886,6 +11892,11 @@ run_android_emulator_runtime() {
                 || fail "Android controlled-CM receipt is duplicated: $marker"
         done
         runtime_peer=production-loopback-cpace-controlled-cm
+    elif [ "$ANDROID_RUNTIME_SCENARIO" = storage-reload ]; then
+        [ "$(grep -Fxc "ANDROID_STORAGE_RELOAD=pass generations=2 auth=before-after envelope=unchanged credential=unchanged restart=force-stop-and-ui-start observer=retired apk_sha256=$ANDROID_RUNTIME_APK_SHA256" "$output")" -eq 1 ] \
+            && [ "$(grep -c '^ANDROID_STORAGE_RELOAD=' "$output")" -eq 1 ] \
+            || fail 'Android encrypted-storage reload receipt differs'
+        runtime_peer=production-loopback-cpace-storage-reload
     elif [ "$ANDROID_RUNTIME_SCENARIO" = backup-transfer ]; then
         [ "$(grep -Fxc "ANDROID_BACKUP_NATIVE=pass domains=9 control=transferred-restored app=preflight-rejected-no-archive restore=control-only cloud=refused selinux=Enforcing apk_sha256=$ANDROID_RUNTIME_APK_SHA256 cleanup=fixtures-removed" "$output")" -eq 1 ] \
             && [ "$(grep -c '^ANDROID_BACKUP_NATIVE=' "$output")" -eq 1 ] \
@@ -11924,6 +11935,8 @@ run_android_emulator_runtime() {
           "$source_root/scripts/AndroidBackupControl.java" \
           "$source_root/scripts/build-android-backup-control.sh" \
           "$source_root/scripts/test-android-backup-transfer.py" \
+          "$source_root/scripts/android-storage-reload.sh" \
+          "$source_root/scripts/android-storage-snapshot.py" \
           "$source_root/scripts/android-peer-artifact.py" \
           "$source_root/scripts/publish-artifact-result.py" \
           "$source_root/scripts/AndroidRecentsDismiss.java" \
@@ -11996,13 +12009,16 @@ run_android_emulator_runtime() {
         "$renderer_receipt" "$runtime_receipt"
     if [ "$ANDROID_RUNTIME_SCENARIO" = backup-transfer ]; then
         grep '^ANDROID_BACKUP_' "$output"
+    elif [ "$ANDROID_RUNTIME_SCENARIO" = storage-reload ]; then
+        grep '^ANDROID_STORAGE_' "$output"
     else
     printf '%s\n' "$recents_build_receipt" "$recents_driver_receipt" \
         "${recents_open_action_receipts[@]}" \
         "${recents_action_receipts[@]}" "${recents_outcome_receipts[@]}"
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] \
-       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
+       || [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ] \
+       || [ "$ANDROID_RUNTIME_SCENARIO" = storage-reload ]; then
         printf '%s\n' "$peer_artifact_receipt"
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then

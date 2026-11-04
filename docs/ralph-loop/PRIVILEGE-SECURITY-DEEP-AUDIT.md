@@ -137608,3 +137608,38 @@ Twelve bounded records match CTE/TUF. Capsule verdict-ledger-f8449ec8.json is
 5,160 bytes, SHA-256 53d53962d2e9e3f3dabc3e99dfbef897713d9d9750e54afb91f9a4656b1663c6.
 The counted ledger stays unchanged. This consolidation checkpoint is complete;
 whole-document classification and all release obligations remain open.
+
+## 2026-11-04 — Android full-application encrypted credential reload
+
+After the user pivot and verdict checkpoint, select R-S9/R-S11bh's missing
+complete-application reload evidence. The native Kotlin component already passes;
+the useful next result is whether ordinary application startup installs its
+OS-wrapped storage key before Rust configuration loads, and a new process can
+authenticate with the unchanged durable credential. This takes priority over
+further documentation compression. SysV and independent parks remain parked.
+
+Android's Application reference specifies onCreate before activities/services
+(https://developer.android.com/reference/android/app/Application). AndroidKeyStore
+keeps wrapping keys outside the application process
+(https://developer.android.com/privacy-and-security/keystore); that alone does not
+prove this application's encrypted credential reload. Reviewed MainApplication,
+MobileAtRestStorageKey, Rust key installation/config-directory initialization and
+password wrapping. The Kotlin bootstrap/key object and password_security.rs are
+unchanged from retained test APK source aca3df16ad8140342cd5c8256fd44e253537ac97.
+
+Add the focused storage-reload scenario to the existing admitted no-NIC Android
+runtime lane. Reuse that APK and source-bound Linux probe 89828922. Provision via
+the real UI, grant capture consent and complete CPace; read only the exact private
+key-envelope and config files through an observer inside the disposable emulator.
+Require ordinary package UID, bounded encrypted formats and private metadata.
+Force Stop must retire the first app/service; an ordinary new-process launch
+must preserve both file digests, start sharing through the UI without another
+password, complete CPace again, and preserve storage. Retire the root observer
+and all VM resources. No product bytes or credentials are injected or rewritten
+by the observer. Force Stop tests process recreation, not network recovery.
+
+This is preparation, not a passed result. It will establish healthy reload only
+for the named retained test APK. Legacy migration/provider failures, physical
+devices, other API levels, iOS, current release artifacts and full R-S0/R-F5
+acceptance remain OPEN. No rebuild, new bulk artifact cache or host product run
+is needed. Native execution follows after diff review and source synchronization.

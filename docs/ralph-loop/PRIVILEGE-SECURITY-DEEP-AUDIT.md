@@ -136633,3 +136633,13 @@ All 82 admissions and five refusals pass. Update only the three guest/host expec
 literals; keep every case and resource limit. winprotocol-ledger-before-5f2be0bb.json
 retains the failure and exact process/private/RAM cleanup with three zero listener
 deltas; 29 bounded files match both hosts. The ledger input is unchanged for replay.
+
+Fresh count eXm2nSGISM at 862cb815 passes in 28 seconds: 399,489 tokens /
+1,827,363 bytes, input SHA-256
+4656194dbad5e0224aed4cb7b30cd82b2f0d5651649680f61459184b3791a468.
+Seven token controls, byte round trip, 82 storage admissions and five refusals pass.
+Exact processes/helpers/private/RAM retire with three zero listener deltas;
+scratch peaks at 402,857,984 bytes. winprotocol-ledger-862cb815.json is 5,176
+bytes, SHA-256 b6a8332e7f566b7f2c233dea7b1b7e0736645a7e3c65b090ac64b784e9cbe673.
+Twelve bounded files match CTE/TUF. This audit-only receipt preserves the counted
+ledger; the wire-component checkpoint is complete and no owned job remains.

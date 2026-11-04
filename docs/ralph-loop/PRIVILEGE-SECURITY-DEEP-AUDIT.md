@@ -136732,3 +136732,42 @@ deltas pass; scratch peaks at 402,862,080 bytes. ui-deps-ledger-f67df60e.json is
 Twelve bounded files match CTE/TUF. This audit-only receipt preserves the counted
 ledger. The dependency checkpoint is complete, no owned job remains, and IPC
 follow-up plus all independent parks remain OPEN/PARKED.
+
+## 2026-11-04 — PAKE timing: ordinary fixed-scalar comparison
+
+R-P12 remains OPEN after the dependency checkpoint. The selected next result is
+whether the previously observed one-versus-random multiplication difference also
+appears for a nontrivial fixed scalar. This resolves a concrete uncertainty in
+authentication validation and takes priority over further dependency cleanup.
+Windows service-protocol follow-up and every independent park stay parked.
+
+Research: the authors' dudect guidance
+(https://raw.githubusercontent.com/oreparaz/dudect/master/README.md) motivates
+varying input classes and binding finite statistical evidence to compiler and
+hardware. Intel's DOIT guidance
+(https://www.intel.com/content/www/us/en/developer/articles/technical/software-security-guidance/best-practices/data-operand-independent-timing-isa-guidance.html)
+explicitly excludes power/thermal/frequency effects and address dependence from
+instruction data-timing guarantees. Neither source identifies the cause here.
+CTE and TUF both report Core Ultra 9 285K, so moving this run to CTE would not
+provide a different microarchitecture. No host power, MSR or service changes.
+
+Preregistered comparison: retain every original baseline, its seed, 500,000
+assessed samples per orientation, 100,000-sample controls, 20,000 warmups,
+four multiplications per observation, raw/pooled-p99 Welch statistic and
+absolute-t threshold 10. Append fixed/random, random/fixed and fixed/fixed
+cohorts using Scalar::from_bytes_mod_order_wide([0x63; 64]), already used by
+the functional multiplication control. Record its reduced bytes/bit weight;
+assert nonzero and not one. Preserve random draws/labels and decode outside
+the clock. All seven cohorts finish before verdict; any assessed detection
+still refuses acceptance. Required controls and before/after executable/libc
+capture remain. This is a test-only extension; product and dependencies stay
+unchanged. Native timing timeout rises from 150 to 240 seconds and only these
+two backend VM profiles rise from 300 to 420 seconds for the added observations.
+Storage/memory bounds, monitors and joined cleanup are unchanged.
+
+Run the default backend first on authorized TUF, with the existing owned-job
+CPU-0 placement and zero-NIC bounded-RAM launcher. Inspect the result before
+deciding whether a serial comparison adds useful evidence. A detected timing
+difference is research evidence, not a completed constant-time correction;
+a finite nondetection is not proof. Full sampling/RNG, erasure, other targets,
+shipping builds, higher-order effects, automatic CI and R-V3 remain OPEN.

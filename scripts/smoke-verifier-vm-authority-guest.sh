@@ -8440,10 +8440,11 @@ PY
             || fail 'PAKE backend measurements or artifact differ'
         [ "$(grep -c '^PAKE_TIMING_MEMCPY=' "$output")" -eq 1 ] \
             || fail 'PAKE resolved memcpy observation is absent'
-        [ "$(grep -Fxc 'PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures=1 cohorts=2 positive_controls=1 negative_controls=1 samples=500000 control_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures=1 cohorts=4 positive_controls=1 negative_controls=2 samples=500000 control_samples=100000 repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^PAKE_TIMING_FIXTURE=name:baseline ' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-(vartime-prepared-one-random|multiply-prepared-one-one) seed:[0-9a-f]{16} samples:100000 ' "$output")" -eq 2 ] \
-            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-multiply-prepared-(one-random|random-one) seed:[0-9a-f]{16} samples:500000 ' "$output")" -eq 2 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_FIXED_SCALAR=fixture:baseline wide_byte:63 scalar:[0-9a-f]{64} bit_weight:[0-9]+$' "$output")" -eq 1 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-(vartime-prepared-one-random|multiply-prepared-(one-one|fixed-fixed)) seed:[0-9a-f]{16} samples:100000 ' "$output")" -eq 3 ] \
+            && [ "$(grep -Ec '^PAKE_TIMING_CASE=name:baseline-multiply-prepared-(one-random|random-one|fixed-random|random-fixed) seed:[0-9a-f]{16} samples:500000 ' "$output")" -eq 4 ] \
             || fail 'PAKE backend extended measurements differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = windows-service-protocol ]; then
         [ "${#result_lines[@]}" -eq 1 ] || fail 'service protocol summary count differs'

@@ -446,22 +446,23 @@ fn optimized_timing_evidence() {
 #[test]
 #[ignore = "requires the isolated optimized backend comparison"]
 fn backend_timing_evidence() {
-    backend_measurements(3, GROUP_SAMPLES);
+    backend_measurements(3, GROUP_SAMPLES, false);
 }
 
 #[test]
 #[ignore = "requires the isolated optimized backend comparison"]
 fn backend_long_timing_evidence() {
-    backend_measurements(1, 500_000);
+    backend_measurements(1, 500_000, true);
 }
 
-fn backend_measurements(fixture_count: usize, assessed_samples: usize) {
+fn backend_measurements(fixture_count: usize, assessed_samples: usize, include_dense_scalar: bool) {
     assert!(!cfg!(debug_assertions), "timing requires an optimized build");
     assert!((1..=3).contains(&fixture_count));
     check_mxcsr_scope();
     capture_memcpy("before");
     let mut controls = [false; 3];
     let mut detected = [[false; 3]; 3];
+    let mut dense_detected = [[false; 3]; 3];
     let mut points = Vec::new();
     // Canonical base64 of 32 repeated 0x00, 0xff and 0x55 bytes. Each point
     // and scalar corpus is fixed before execution and shared across backends.
@@ -497,14 +498,38 @@ fn backend_measurements(fixture_count: usize, assessed_samples: usize) {
                     scalar_inputs(bytes, class, state);
                 }, Scalar::from_bytes_mod_order_wide, |scalar| scalar * black_box(&*point));
         }
+        if include_dense_scalar {
+            // Keep the original cohorts and random/label stream. Change only
+            // the fixed scalar, outside the clock, to distinguish a special-one
+            // effect from differences for an ordinary nontrivial fixed value.
+            let fixed = Scalar::from_bytes_mod_order_wide(&[0x63; 64]);
+            assert_ne!(fixed, Scalar::ZERO);
+            assert_ne!(fixed, Scalar::ONE);
+            let fixed_hex: String = fixed.as_bytes().iter().map(|byte| format!("{byte:02x}")).collect();
+            let weight: u32 = fixed.as_bytes().iter().map(|byte| byte.count_ones()).sum();
+            println!("PAKE_TIMING_FIXED_SCALAR=fixture:{fixture} wide_byte:63 scalar:{fixed_hex} bit_weight:{weight}");
+            for (orientation, suffix) in ["fixed-random", "random-fixed", "fixed-fixed"].iter().enumerate() {
+                let samples = if orientation == 2 { GROUP_SAMPLES } else { assessed_samples };
+                dense_detected[index][orientation] = measure_prepared(
+                    &format!("{fixture}-multiply-prepared-{suffix}"), seed, samples,
+                    |bytes, class, state| {
+                        let class = match orientation { 0 => class, 1 => class ^ 1, _ => 0 };
+                        scalar_inputs(bytes, class, state);
+                        if class == 0 { bytes.fill(0x63); }
+                    }, Scalar::from_bytes_mod_order_wide, |scalar| scalar * black_box(&*point));
+            }
+        }
     }
     capture_memcpy("after");
     assert!(controls[..fixture_count].iter().all(|value| *value),
         "variable-time positive control was not detected: inconclusive");
-    assert!(!detected[..fixture_count].iter().any(|fixture| fixture[2]),
+    assert!(!detected[..fixture_count].iter().chain(&dense_detected[..fixture_count])
+        .any(|fixture| fixture[2]),
         "identical-input negative control detected a difference: inconclusive");
-    assert!(!detected[..fixture_count].iter().any(|fixture| fixture[..2].iter().any(|value| *value)),
+    assert!(!detected[..fixture_count].iter().chain(&dense_detected[..fixture_count])
+        .any(|fixture| fixture[..2].iter().any(|value| *value)),
         "backend timing difference detected");
-    println!("PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures={fixture_count} cohorts={} positive_controls={fixture_count} negative_controls={fixture_count} samples={assessed_samples} control_samples={GROUP_SAMPLES} repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact",
-        fixture_count * 2);
+    let negative_controls = fixture_count * if include_dense_scalar { 2 } else { 1 };
+    println!("PAKE_TIMING_BACKEND_RESULT=no-difference-detected fixtures={fixture_count} cohorts={} positive_controls={fixture_count} negative_controls={negative_controls} samples={assessed_samples} control_samples={GROUP_SAMPLES} repeats=4 statistic=welch-raw-and-pooled-p99 threshold=10 scope=linux-test-artifact",
+        negative_controls * 2);
 }

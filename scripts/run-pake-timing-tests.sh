@@ -170,14 +170,16 @@ print('PAKE_TIMING_DISASSEMBLY='+json.dumps(record,sort_keys=True))
 PY
 test_status=0
 timing_test=optimized_timing_evidence
+timing_timeout=150s
 if [ -n "$backend_comparison" ]; then
     timing_test=backend_long_timing_evidence
+    timing_timeout=240s
     timeout --signal=TERM --kill-after=5s 30s taskset -c "$cpu" "$test_executable" tests:: \
         --skip nfc_normalization_tests:: --skip timing_tests:: --test-threads=1 --color never --show-output \
         || test_status=$?
 fi
 if [ "$test_status" -eq 0 ]; then
-    timeout --signal=TERM --kill-after=5s 150s taskset -c "$cpu" "$test_executable" \
+    timeout --signal=TERM --kill-after=5s "$timing_timeout" taskset -c "$cpu" "$test_executable" \
         --exact "timing_tests::$timing_test" --ignored --test-threads=1 --color never --show-output \
         || test_status=$?
 fi

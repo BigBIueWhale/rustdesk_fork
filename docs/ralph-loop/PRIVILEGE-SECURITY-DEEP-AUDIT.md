@@ -136295,3 +136295,14 @@ inventory/export checkpoint. Native loader behavior, final Debian/other-target
 artifacts, installed authority, independent review and release acceptance remain
 OPEN. No product correction was established or manufactured. The ledger records
 the pivot and bounded evidence; its required fresh token count follows.
+
+Checkpoint 5dadec71 is pushed. Fresh isolated count sFHz1DnEUI passes in
+27 seconds: 398,480 tokens / 1,823,178 bytes, input SHA-256
+8ec004ce135e407f673db591e66870c637678000c2bc772bfc6c15652ab2dc0c.
+Seven controls, whole-input round trip, 42 modes / 81 admissions / five refusals
+and three zero listener deltas pass. Exact processes/helpers/private/RAM retire;
+scratch peaks at 402,718,720 bytes. native-components-ledger-5dadec71.json is
+5,126 bytes, SHA-256 9874921f39cb1fbac7637903b72258b51cb17bd24d89f851a2817e052368d80a.
+Twelve bounded files match both hosts. This audit-only receipt leaves the
+counted ledger unchanged. No owned job remains; the artifact checkpoint is
+complete with the stated limits and every independent park preserved.

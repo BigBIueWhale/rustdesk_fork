@@ -136439,3 +136439,14 @@ its eleven files match both hosts. Password receipt qr-password-25ead00a.json is
 4,301 bytes, SHA-256 9610b157e971dc0528f94f802b11edf8721841f13f9e08f2da29410769f0d31b.
 No application rebuild or broader authentication/platform acceptance is claimed.
 The ledger records the completed deletion and scoped evidence; fresh count follows.
+
+Ledger checkpoint ec78508d passes fresh count PfzRoUjX2x in 28 seconds:
+398,895 tokens / 1,825,035 bytes, SHA-256
+e3210b61644bff947d0b4d8dc661344ed14ccc94195ad0ba1cc02b505a0d416f.
+Seven controls, whole-input round trip, 42 modes / 81 admissions / five refusals
+and three zero listener deltas pass. Exact processes/helpers/private/RAM retire;
+scratch peaks at 402,853,888 bytes. qr-ledger-ec78508d.json is 5,065 bytes,
+SHA-256 c2539ba6c7c619f0ccdbba01451da7d25dc288aadfc1bc9c9a70be2f2545c998.
+Twelve bounded files match both hosts. This audit-only receipt leaves the counted
+ledger unchanged. The QR dependency deletion is complete at its scoped acceptance
+checkpoint; no owned job remains and every independent park stays in force.

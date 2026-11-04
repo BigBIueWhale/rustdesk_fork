@@ -138812,3 +138812,28 @@ inventory or fresh test result. Requirements, production code, dependencies,
 fixtures and runtime commands are unchanged. The only other ledger edit records
 the user pivot and baseline accurately. Exact scope/reference comparison and
 diff review precede the mandatory fresh isolated ledger count.
+
+Comparison preserves all eighteen capsule-reference spellings and confines the
+ledger diff to the pivot and selected dependency block; requirements.html is
+byte-identical. Commit 517dbfc8 reduces the ledger by 3,474 bytes. Its required
+CTE count so3fp6oM5y stops before token counting: all 83 admitted controls and
+five refusal cases pass, but the guest and host still encode the old total 82.
+This is a bookkeeping failure in the count prerequisite, not a resource refusal.
+
+The failed run is reconciled under the shared lock: wrapper 2945917, QEMU
+2947437 and four captured children are absent by pidfd ESRCH, all three listener
+deltas are zero, and RAM/private state is retired. Scratch peaks at 402,620,416
+bytes. Capsule dependency-ledger-517dbfc8.json (12,562 bytes, SHA-256
+836095b7ff51b8f6ea3430f211c171ee0003b22347b045eeca22eedf4eafe710)
+binds eleven raw/control records, exact private inventory and the failure;
+its 248-byte retirement receipt has SHA-256
+71d773225a999b2afb25c4f3368e6845f86903efe8a75ebb6a6241861be9aa5d.
+
+Correct only this prerequisite's aggregate: controls/refusals increment solely
+on an exact per-case pass, so their sum must equal the actual case-list length.
+All existing cases, expected profiles, exit/output assertions and the closed
+42-mode inventory remain unchanged. The existing observed-count JSON remains;
+the guest emits one stable completion receipt and the host requires it exactly.
+A failed case still prevents completion. No storage admission, allocation limit,
+product scenario or parked investigation changes. Shell syntax, embedded Python
+parsing and exact diff review precede replay of the same ledger-count command.

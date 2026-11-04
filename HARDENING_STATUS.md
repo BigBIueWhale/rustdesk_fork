@@ -41,6 +41,13 @@ still runs before the receipt. This corrects `OweQFPJLHx`'s wrapper rejection of
 and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 “2026-10-28 — storage-profile completion receipt”. Parser development remains parked.
 
+The workload selector also checks completion against its actual case list and
+reports observed totals separately. This corrects `so3fp6oM5y`'s rejection of
+83 passing controls and five passing refusals against a stale 82-control total.
+Each case's expected profile, exit/output assertion and the mode inventory remain;
+the host requires the exact completion receipt. Evidence: the audit's
+“2026-11-04 — user pivot; dependency evidence consolidation”.
+
 ## Current Verdict
 
 **User pivot (2026-11-04):** Further desktop settings-sidebar work is

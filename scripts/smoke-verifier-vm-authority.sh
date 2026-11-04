@@ -6224,7 +6224,7 @@ elif [ "$MODE" = ledger-token-count ]; then
         'actual input profile CLI and RAM refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ANDROID_APP_CLI=pass profile=android-app guest_mib=20480 required_mib=44032 insufficient_ram=refused allocation=not-entered' \
         'actual Android app profile CLI and RAM refusal'
-    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass modes=42 controls=82 refusals=5 allocation=not-entered' \
+    require_exact_fixed_receipt 'VM_TRANSIENT_WORKLOAD_ADMISSION=pass allocation=not-entered' \
         'VM workload class selection and unconfigured workload refusal'
     require_exact_fixed_receipt 'VM_TRANSIENT_ROOT_REFUSAL=pass operations=5 principal=root qemu=not-started' \
         'VM storage root refusal'

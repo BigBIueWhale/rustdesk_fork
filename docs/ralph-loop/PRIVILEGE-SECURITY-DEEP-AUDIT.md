@@ -137048,3 +137048,27 @@ This is dependency validation, not reopening parked UI development. TUF is clean
 at 87a2e882, has about 45 GiB available RAM and no owned run/workspace. Use the
 existing zero-NIC bounded-RAM launcher and joined cleanup. Native/installed,
 other-platform, candidate-SDK and release-artifact acceptance remain OPEN.
+
+At 8d6d8707, TUF wvKdKLyZEy passes offline enforced-lock resolution, fresh
+bridge generation, all twelve existing cases across two combo-box/widget suites,
+three parser controls and exact-source postchecks in 248 outer seconds. The
+widget execution itself finishes in 8.525 seconds. Coverage includes selection
+identity, duplicate labels, failed/pending changes, disabled/empty/unavailable
+choices, large text, narrow layout and both text directions. Callbacks/data are
+controlled; native settings effects and complete application/device behavior do
+not run. No tests or execution recipe changed. dropdown-widget-8d6d8707.json is
+4,305 bytes, SHA-256
+11e0f28f4f0e06868d60f2b0bfd7b0dd33782238081bf49a2ab5516558544358.
+Processes 1847693/1848176 are absent by pidfd; helpers, private state and RAM
+scratch retire. Scratch peaks at 6,382,260,224 bytes; four listener deltas are zero.
+Twelve bounded evidence files match CTE/TUF.
+
+Ih4tN6HIGB passes the isolated dependency inventory at the same commit in ten
+seconds: 50 direct/187 locked Flutter dependencies, unchanged 832 Cargo records
+and eight build scripts. dropdown-inventory-8d6d8707.json is 8,014 bytes, SHA-256
+3d96a65a76b421672e2ae3f15ebb58783b37f73b7881b1aa8ea8a91d22b86e28.
+Processes 1848589/1850082, helpers, private state and RAM scratch retire; peak
+scratch is 401,547,264 bytes and three listener deltas are zero. Eleven bounded
+files match both hosts. The live ledger records the pivot and this dependency
+checkpoint; every independent park and native/installed/release obligation remains.
+Fresh whole-ledger counting follows. No owned product-test job remains.

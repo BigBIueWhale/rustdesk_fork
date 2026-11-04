@@ -136384,3 +136384,27 @@ Twelve bounded files match both hosts. This audit-only receipt preserves the
 counted ledger. No owned job remains. The native bundle identity checkpoint is
 complete; installed Debian identity remains the next distinct acceptance gap,
 and account-store plus all independent parks remain unchanged.
+
+## 2026-11-04 — retire the unused Flutter TOTP QR dependency
+
+Previous turn: progress. Current review confirms that installed Debian package
+follow-ups and large-selection clipboard work are explicitly parked; neither is
+executed or changed. Select R-X7/R-R3's retired authentication dependency surface.
+Commit dbbb152a removed the only QrImageView consumer with the TOTP setup dialog,
+but its unused import and qr_flutter dependency remained. Complete tracked-source
+review finds no other consumer. The retained cache's qr_flutter 4.1.0 manifest
+alone depends on qr 3.0.2; qr's shared meta dependency remains required elsewhere.
+
+Remove the import, direct declaration and two exclusive lock records. All retained
+lock records are byte-identical. Direct dependencies fall 58 to 57 and locked
+packages 198 to 196. The inventory also reconciles the existing c45e3e6b switch
+of flutter_custom_cursor 0.0.4 from hosted to the reviewed local fork; Git comparison
+against inventory commit 546fa719 identifies that sole preexisting value drift.
+No further cursor work or authenticated cache mutation is selected.
+
+Official Pub guidance https://dart.dev/tools/pub/cmd/pub-get requires exact locked
+resolution and permits removing only orphaned transitive dependencies. The selected
+acceptance is the pinned offline enforce-lockfile resolver, existing 25 password
+field/focus/lifecycle cases, and isolated dependency inventory. No new test or
+product behavior is needed for an unused import. Full application/final artifacts,
+advisory freshness, installed authority and release acceptance remain OPEN.

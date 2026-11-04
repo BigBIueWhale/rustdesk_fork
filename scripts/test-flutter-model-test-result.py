@@ -26,7 +26,7 @@ if len(sys.argv) > 1 and sys.argv[1] == "--reconnect":
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] in ("--direct-address", "--connection-page"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
-if len(sys.argv) > 1 and sys.argv[1] == "--floating-position":
+if len(sys.argv) > 1 and sys.argv[1] in ("--floating-position", "--path-labels"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
 if len(sys.argv) > 1 and sys.argv[1] in ("--screenshot-save", "--locales", "--draggable-divider", "--file-columns", "--trackpad-speed", "--menu-button", "--help-button", "--password-fields", "--file-progress", "--peer-search", "--audio-input", "--peer-data", "--combo-box", "--image-quality", "--audio-mute", "--view-mode", "--desktop-theme", "--status-refresh", "--restart-dialog", "--custom-scale", "--modifier-release"):
     SINGLE_PROFILE = sys.argv.pop(1)[2:]
@@ -284,7 +284,7 @@ class ResultTests(unittest.TestCase):
             return
         if SINGLE_PROFILE is not None:
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE),
-                             (1, {"locales": 16, "screenshot-save": 12,
+                             (1, {"locales": 16, "path-labels": 16, "screenshot-save": 12,
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 52, "peer-search": 36,
                                   "restart-dialog": 9, "desktop-theme": 54, "custom-scale": 42}[SINGLE_PROFILE]))

@@ -13194,8 +13194,8 @@ run_flutter_model_tests() {
                 if [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
                     parser_args=(--direct-address)
                 fi
-                if [ "$FLUTTER_TEST_PROFILE" = floating-position ]; then
-                    parser_args=(--floating-position)
+                if [[ "$FLUTTER_TEST_PROFILE" = floating-position || "$FLUTTER_TEST_PROFILE" = path-labels ]]; then
+                    parser_args=("--$FLUTTER_TEST_PROFILE")
                 fi
                 if [[ "$FLUTTER_TEST_PROFILE" = connection-page || "$FLUTTER_TEST_PROFILE" = status-refresh || "$FLUTTER_TEST_PROFILE" = combo-box || "$FLUTTER_TEST_PROFILE" = image-quality || "$FLUTTER_TEST_PROFILE" = desktop-theme || "$FLUTTER_TEST_PROFILE" = restart-dialog || "$FLUTTER_TEST_PROFILE" = custom-scale || "$FLUTTER_TEST_PROFILE" = modifier-release ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")

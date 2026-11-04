@@ -136482,3 +136482,20 @@ inventory. No new test or behavioral product change is needed. Required function
 accessibility behavior and local terminal fonts remain; full application/final
 artifacts, other SDK/platforms, advisory freshness and release acceptance remain
 OPEN. All independent parks stay in force.
+
+At 5de34d94, pGvvBHd9zY completes offline resolution and returns from widget
+execution, then fails three unrelated models-profile parser controls (rename,
+duplicate and wrong-suite). Its raw widget output is not retained and no overall
+acceptance is claimed. The path-label shard accidentally selects every parser
+profile; give it the existing single-profile selection and exact sixteen-case
+expectation. Actual result-parser behavior and product tests remain unchanged.
+The models parser's count-only/name-inventory discrepancy remains OPEN separately;
+this focused selection does not establish whole-catalogue acceptance.
+
+fonts-labels-5de34d94.json retains the failure: 9,546 bytes, SHA-256
+5eeb231adfe45dd94f430817bbeec81bf304d47a2a9668165290a2b6a601a4eb.
+Processes 1780389/1780849 are absent; RAM run.gci1kbi9 identity 29:45415 retires
+after a 4,064,473,088-byte peak. Four decoded listener deltas are zero. Nineteen
+small private files are retained before exact cleanup; the owned extracted
+virtiofsd package is inventoried and retired. Thirty-one bounded files match
+CTE/TUF. Replay follows only after shared-lock and private/RAM retirement checks.

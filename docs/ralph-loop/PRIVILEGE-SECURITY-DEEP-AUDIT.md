@@ -139447,3 +139447,23 @@ new verifier catalogue. Validate fresh Rust/Dart bridge generation and the
 existing fourteen connection-password dialog cases in the admitted zero-NIC VM.
 No new scenario or product execution on either host is needed. Full application,
 web runtime, native device and installed release acceptance remain OPEN.
+
+CTE M9RHaxPo4R at b685bbb5 generates all four fresh bridge files and excludes
+the retired export. The Flutter test command completes, but its following
+result-parser controls accidentally run the full-model profile and fail three
+known inventory assertions. Individual case acceptance and source postchecks
+are therefore unproved. Forward the already-supported --connect-password flag
+to those three controls in this lane; do not modify their assertions, the
+result validator, product cases or the independently parked full-model failures.
+
+environment-bridge-first-b685bbb5.json (31,356 bytes, SHA-256
+e8aa96eb847b7ee7d8dfb81a3d4e2dbc9e0745547500237e5646b1c95da8a218)
+binds twelve raw/control records and the failed private inventory. The first
+three listener snapshots are unchanged; the final snapshot has one unattributed
+addition. Preserve it without inspecting or altering foreign processes; this
+run does not establish a clean endpoint outcome. Exact wrapper/QEMU/captured
+children are absent by pidfd ESRCH and the private/RAM state is retired under
+the shared lock. Peak scratch is 6,384,898,048 bytes. The 534-byte retirement
+receipt has SHA-256
+67f86675e0017a8d9f5bd9717ff9bb895c170d44487fa94a3cd7ad46587f3b75.
+No owned run remains. Repeat only this focused lane after the selector repair.

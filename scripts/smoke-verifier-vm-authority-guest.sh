@@ -13459,6 +13459,9 @@ run_flutter_model_tests() {
                     cat /work/test.json
                 fi
                 parser_args=()
+                if [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
+                    parser_args=(--connect-password)
+                fi
                 if [ "$FLUTTER_TEST_PROFILE" = cm-duration ]; then
                     cat /work/test.json
                     parser_args=(--cm-duration)

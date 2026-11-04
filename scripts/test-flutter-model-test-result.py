@@ -289,7 +289,8 @@ class ResultTests(unittest.TestCase):
                              (1, {"locales": 16, "path-labels": 16, "screenshot-save": 12,
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 52, "peer-search": 36,
-                                  "restart-dialog": 9, "desktop-theme": 54, "custom-scale": 42}[SINGLE_PROFILE]))
+                                  "restart-dialog": 9, "desktop-theme": 56,
+                                  "settings-sidebar": 6, "custom-scale": 42}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),

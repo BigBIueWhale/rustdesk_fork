@@ -138566,3 +138566,15 @@ and retires. Capsule sidebar-before-26e47801.json (29,485 bytes, SHA-256
 retains twelve raw/control records; its retirement receipt is 261 bytes. The
 baseline intentionally fails before parser controls and the final source-copy
 check. Candidate runtime acceptance follows before claiming a correction.
+
+At 57fb3185, CTE 2Jlr3UdAfN passes all six unchanged rendered cases in 261.152
+outer seconds. The new semantics case observes all four destinations through
+semantic activation, external selection and rebuild; Tab/Enter/Space now reach
+and activate all four. The harness then fails in its own success-count fixture:
+the new subset was omitted from SINGLE_PROFILE's count dictionary. Add its six
+cases and update the related desktop-theme count from 54 to 56; product and
+rendered tests remain unchanged. Do not report this run as complete acceptance.
+Four listener deltas are zero, exact processes/children are absent by pidfd,
+and RAM plus inode/hash-checked failed private diagnostics retire. Capsule
+sidebar-fixed-57fb3185.json retains this partial comparison and cleanup. Rerun
+the same focused subset to complete parser controls and source-copy checks.

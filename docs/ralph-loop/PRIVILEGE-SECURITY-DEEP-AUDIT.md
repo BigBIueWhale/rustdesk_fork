@@ -135688,3 +135688,40 @@ X11 summary change in the ledger. Requirements, product/test sources, live
 instructions and adjacent acceptance sections remain byte-identical. This
 audit-only receipt leaves the counted ledger unchanged. The documentation
 checkpoint is complete, all independent parks remain, and no owned job remains.
+
+## 2026-11-04 — authenticated Linux X11 capture acceptance
+
+Previous goal turn: progress (release-ledger consolidation, exact count, inherited
+APK retirement and pushed clean checkpoint). Current CTE/TUF head is 6fc7bc9e;
+the password SSH master is live and no owned VM/private/RAM run remains.
+Android permission workflows and every independent user park remain parked.
+
+Selected requirement is R-S0/R-X12's functional native capture path. The Linux
+capture-constructor ledger explicitly lacks native authenticated-Xauthority
+evidence; its accepted XCB captures used Xvfb with access control disabled.
+Existing authenticated Xlib/XDO fixtures exercise different constructors. This
+ordinary-desktop prerequisite takes priority over further ledger compression:
+the small existing native capture lane can decide it without a full-app build.
+This is an evidence gap, not a reproduced product defect or escalation claim.
+
+Primary research: X.Org's communication guide describes client/server cookie
+authentication and Xauthority selection:
+https://www.x.org/guide/communication/ . Its Xserver manual distinguishes -auth
+from -ac and documents transport suppression:
+https://xorg.freedesktop.org/releases/X11R6.9.0/doc/html/Xserver.1.html .
+The fixture reuses the existing accepted FamilyLocal/hostname/display authority
+record format with known disposable cookies. No host X server or credential is
+used. Production Server::default, public primary/all-displays, MIT-SHM capturer
+and frame comparison compile unchanged; native libxcb/Xau authenticate normally.
+
+The --x11-display-tests --capture-auth shard runs valid/wrong/missing/valid
+authority phases in one native child against one owned -auth Xvfb. Each phase
+exercises direct, primary and all-displays callers. Accepted captures must show
+real red then blue pixels; refusals must precede enumeration/capture/SHM creation.
+Exact descriptors, threads, replies and segments must retire after each caller;
+the final positive phase distinguishes refusal from dead-server or poisoned
+process state. The Python driver checks every phase and native diagnostic,
+artifact stability, server/socket/lock retirement and empty network inventories.
+It uses the existing admitted VM/container/storage profile and input closure.
+Shell syntax, Python parsing and whitespace review pass; compilation and native
+behavior remain pending until the isolated run. No product source is changed.

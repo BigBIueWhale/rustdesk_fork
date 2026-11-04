@@ -48,6 +48,7 @@ APPLE_FILE_MODE_ONLY=0
 X11_KEY_INPUT_ONLY=0
 X11_FOCUS_ONLY=0
 X11_CAPTURE_MAPPING_ONLY=0
+X11_CAPTURE_AUTH_ONLY=0
 X11_CONTEXTS_ONLY=0
 X11_MONITOR_TOPOLOGY_ONLY=0
 X11_CURSOR_IMAGE_ONLY=0
@@ -155,6 +156,7 @@ case "$#:${8:-}" in
             --key-input) X11_KEY_INPUT_ONLY=1 ;;
             --focus) X11_FOCUS_ONLY=1 ;;
             --capture-mapping) X11_CAPTURE_MAPPING_ONLY=1 ;;
+            --capture-auth) X11_CAPTURE_AUTH_ONLY=1 ;;
             --contexts) X11_CONTEXTS_ONLY=1 ;;
             --monitor-topology) X11_MONITOR_TOPOLOGY_ONLY=1 ;;
             --cursor-image) X11_CURSOR_IMAGE_ONLY=1 ;;
@@ -2158,6 +2160,9 @@ run_android_frame_tests() {
     if [ "$X11_CAPTURE_MAPPING_ONLY" -eq 1 ]; then
         native_receipt='X11_CAPTURE_MAPPING_SHARD=pass source=production-capture-and-public-wrapper kernel=actual server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false'
     fi
+    if [ "$X11_CAPTURE_AUTH_ONLY" -eq 1 ]; then
+        native_receipt='X11_CAPTURE_AUTH_SHARD=pass source=production-capture-and-public-wrapper authentication=native-cookie server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false'
+    fi
     if [ "$X11_CONTEXTS_ONLY" -eq 1 ]; then
         native_receipt='X11_CONTEXTS_SHARD=pass source=production-context-and-input-query server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false'
     fi
@@ -2177,6 +2182,7 @@ run_android_frame_tests() {
             phases=(prepare loader-build native)
         fi
         if [ "$X11_CAPTURE_MAPPING_ONLY" -eq 1 ] || [ "$X11_CONTEXTS_ONLY" -eq 1 ] \
+            || [ "$X11_CAPTURE_AUTH_ONLY" -eq 1 ] \
             || [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ] || [ "$X11_CURSOR_IMAGE_ONLY" -eq 1 ]; then
             phases=(prepare native)
         fi
@@ -2283,6 +2289,8 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
                 command+=(--contexts)
             elif [ "$phase" = native ] && [ "$X11_CAPTURE_MAPPING_ONLY" -eq 1 ]; then
                 command+=(--capture-mapping)
+            elif [ "$phase" = native ] && [ "$X11_CAPTURE_AUTH_ONLY" -eq 1 ]; then
+                command+=(--capture-auth)
             elif [ "$phase" = native ] && [ "$MODE" = x11-display-tests ] \
                 && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ] && [ "$X11_CURSOR_IMAGE_ONLY" -eq 0 ]; then
                 # Reuse only the exact pinned libc already compiled in the owned
@@ -2330,6 +2338,7 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
             if [ "$MODE" = x11-display-tests ] && [ "${X11_CLIPBOARD_ONLY:-0}" -eq 0 ] \
                 && [ "$X11_KEY_INPUT_ONLY" -eq 0 ] && [ "$X11_FOCUS_ONLY" -eq 0 ] \
                 && [ "$X11_CAPTURE_MAPPING_ONLY" -eq 0 ] && [ "$X11_CONTEXTS_ONLY" -eq 0 ] \
+                && [ "$X11_CAPTURE_AUTH_ONLY" -eq 0 ] \
                 && [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 0 ] && [ "$X11_CURSOR_IMAGE_ONLY" -eq 0 ]; then
                 [ "$(grep -Fxc 'X11_LAYOUT_NATIVE=pass xvfb_depths=24,16 stride_16_odd=1284 pixels=actual capture=production-shm public=production-buffer network=none uid=4000 cleanup=joined' "$output")" -eq 1 ] \
                     || fail 'X11 capture-layout native result is absent or duplicated'
@@ -2347,6 +2356,8 @@ DEBIAN_SYSTEMD_RUNTIME_LIBS_VM_AUTHORITY=pass uid=4000 gid=4000 docker=$EXPECTED
         printf 'X11_FOCUS_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     elif [ "$X11_CAPTURE_MAPPING_ONLY" -eq 1 ]; then
         printf 'X11_CAPTURE_MAPPING_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
+    elif [ "$X11_CAPTURE_AUTH_ONLY" -eq 1 ]; then
+        printf 'X11_CAPTURE_AUTH_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     elif [ "$X11_CONTEXTS_ONLY" -eq 1 ]; then
         printf 'X11_CONTEXTS_TESTS_VM=pass image=devcheck source=readonly docker=retired containers=joined\n'
     elif [ "$X11_MONITOR_TOPOLOGY_ONLY" -eq 1 ]; then

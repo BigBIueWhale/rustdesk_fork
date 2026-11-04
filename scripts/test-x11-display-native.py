@@ -1715,6 +1715,86 @@ def capture_mapping(binary, environment):
     print(receipt, flush=True)
 
 
+def capture_auth_main():
+    require(os.getuid() == 4000 and os.getgid() == 4000 and Path("/.dockerenv").is_file(),
+            "capture authentication requires the isolated nonroot container")
+    environment = {"PATH": "/usr/local/cargo/bin:/usr/bin:/bin", "LC_ALL": "C",
+                   "HOME": "/tmp", "DISPLAY": ":93", "XKB_CONFIG_ROOT": "/usr/share/X11/xkb",
+                   "RUSTUP_HOME": "/usr/local/rustup", "CARGO_HOME": "/usr/local/cargo",
+                   "LD_LIBRARY_PATH": "/xvfb-root/usr/lib/x86_64-linux-gnu"}
+    version = subprocess.run(["/usr/local/cargo/bin/rustc", "--version"], env=environment,
+                             check=True, capture_output=True, text=True, timeout=5)
+    require(version.stdout.strip() == "rustc 1.75.0 (82e1608df 2023-12-21)", "Rust version differs")
+    binary = build_display_fixture(Path("/work"), environment, "corrected")
+    digest = hashlib.sha256(binary.read_bytes()).hexdigest()
+    directory = Path("/tmp/x11-capture-auth")
+    directory.mkdir(mode=0o700)
+    server = None
+    try:
+        # Native Xau matching uses FamilyLocal, the container hostname and display.
+        # These known cookies belong only to this disposable display.
+        fields = (socket.gethostname().encode("ascii"), b"93", b"MIT-MAGIC-COOKIE-1")
+        prefix = struct.pack(">H", 256) + b"".join(struct.pack(">H", len(field)) + field for field in fields)
+        for name, cookie in (("valid", bytes(range(16))), ("wrong", bytes(reversed(range(16))))):
+            with (directory / name).open("xb") as output:
+                os.fchmod(output.fileno(), 0o600)
+                output.write(prefix + struct.pack(">H", len(cookie)) + cookie)
+        require(not (directory / "missing").exists(), "missing authority file exists")
+        require(not Path("/tmp/.X11-unix/X93").exists() and not Path("/tmp/.X93-lock").exists(),
+                "authenticated display already exists")
+        with (directory / "server.log").open("xb") as log:
+            server = subprocess.Popen(["/xvfb-root/usr/bin/Xvfb", ":93", "-screen", "0", "640x480x24",
+                                       "-nolisten", "tcp", "-auth", str(directory / "valid"), "-noreset"],
+                                      env=environment, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                deadline = time.monotonic() + 5
+                while not Path("/tmp/.X11-unix/X93").is_socket():
+                    require(server.poll() is None and time.monotonic() < deadline, "authenticated Xvfb not ready")
+                    time.sleep(0.01)
+                result = subprocess.run([str(binary), "capture-auth"], env=environment,
+                                        capture_output=True, text=True, timeout=15)
+                phases = [f"X11_CAPTURE_AUTH_PHASE=pass phase={phase} credential={credential} "
+                          + ("admitted=3 refused=0 frames=6" if credential == "valid" else
+                             "admitted=0 refused=3 frames=0")
+                          for phase, credential in enumerate(("valid", "wrong", "missing", "valid"))]
+                receipt = ("X11_CAPTURE_AUTH_NATIVE=pass phases=4 callers=direct,primary,all admitted=6 "
+                           "refused=6 frames=12 recovery=same-process pixels=red,blue descriptors=retired "
+                           "threads=retired segments=retired")
+                errors = (["Invalid MIT-MAGIC-COOKIE-1 key"] * 3
+                          + ["Authorization required, but no authorization protocol specified"] * 3)
+                require(result.returncode == 0 and len(result.stdout) + len(result.stderr) <= 4096
+                        and result.stdout.splitlines() == phases + [receipt]
+                        and [line for line in result.stderr.splitlines() if line] == errors
+                        and server.poll() is None, f"capture authentication differs: {result}")
+                print(result.stdout, end="", flush=True)
+            finally:
+                if server.poll() is None:
+                    server.terminate()
+                try:
+                    server.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    server.kill()
+                    server.wait(timeout=5)
+        require(server.returncode == 0 and not Path("/tmp/.X11-unix/X93").exists()
+                and not Path("/tmp/.X93-lock").exists(), "authenticated server retirement differs")
+    finally:
+        for name in ("valid", "wrong", "server.log"):
+            path = directory / name
+            if path.exists():
+                path.unlink()
+        directory.rmdir()
+    require(hashlib.sha256(binary.read_bytes()).hexdigest() == digest, "capture artifact changed")
+    binary.unlink()
+    for name in ("tcp", "tcp6"):
+        require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
+                "capture authentication retained TCP")
+    for name in ("udp", "udp6"):
+        require(len(Path("/proc/net", name).read_text().splitlines()) == 1, "capture authentication retained UDP")
+    print(f"X11_CAPTURE_AUTH_ARTIFACT=pass sha256={digest} stable=true", flush=True)
+    print("X11_CAPTURE_AUTH_SHARD=pass source=production-capture-and-public-wrapper authentication=native-cookie "
+          "server=owned-and-joined network=none uid=4000 cleanup=joined whole_app=false", flush=True)
+
+
 def component_main(component):
     require(os.getuid() == 4000 and os.getgid() == 4000 and Path("/.dockerenv").is_file(),
             "component shard requires the isolated nonroot container")
@@ -2138,10 +2218,13 @@ def main():
 
 if __name__ == "__main__":
     require(sys.argv in ([sys.argv[0]], [sys.argv[0], "--key-input"], [sys.argv[0], "--focus"],
+                        [sys.argv[0], "--capture-auth"],
                         [sys.argv[0], "--capture-mapping"], [sys.argv[0], "--contexts"],
                         [sys.argv[0], "--monitor-topology"]),
             "unknown native shard")
-    if sys.argv[1:] in (["--capture-mapping"], ["--contexts"], ["--monitor-topology"]):
+    if sys.argv[1:] == ["--capture-auth"]:
+        capture_auth_main()
+    elif sys.argv[1:] in (["--capture-mapping"], ["--contexts"], ["--monitor-topology"]):
         component_main(sys.argv[1][2:])
     elif sys.argv[1:] == ["--focus"]:
         focus_main()

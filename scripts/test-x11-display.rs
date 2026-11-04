@@ -1479,8 +1479,93 @@ fn exercise_constructor_failure(server: &Rc<x11::Server>, fault: ConstructionFau
     Ok(error_code)
 }
 
+#[cfg(corrected)]
+fn authenticated_capture_frames(server: &x11::Server, root: u32,
+    mut frame: impl FnMut() -> io::Result<([u8; 3], usize)>) -> io::Result<i32> {
+    let segment = STATE.with(|state| {
+        let state = state.borrow();
+        assert_eq!(state.segments.len(), 1);
+        state.segments[0]
+    });
+    check_capture_segment_state(segment, 640 * 480 * 4, 2)?;
+    for (color, expected) in [(0x00ff0000, [0, 0, 255]), (0x000000ff, [255, 0, 0])] {
+        draw_red(server, root, color)?;
+        assert_eq!(frame()?, (expected, 640 * 480 * 4));
+    }
+    Ok(segment)
+}
+
+#[cfg(corrected)]
+fn authenticated_capture() -> io::Result<()> {
+    use crate::common::TraitCapturer;
+    let descriptors = std::fs::read_dir("/proc/self/fd")?.count();
+    let threads = std::fs::read_dir("/proc/self/task")?.count();
+    for (phase, credential) in ["valid", "wrong", "missing", "valid"].iter().enumerate() {
+        std::env::set_var("XAUTHORITY", format!("/tmp/x11-capture-auth/{credential}"));
+        for caller in ["direct", "primary", "all"] {
+            finish_case(0);
+            if *credential == "valid" {
+                let server = x11::Server::default().map_err(|_| io::ErrorKind::ConnectionRefused)?;
+                let display = x11::Server::displays(Rc::clone(&server))
+                    .next().expect("authenticated display absent")?;
+                assert_eq!(display.pixfmt(), Pixfmt::BGRA);
+                let root = display.root();
+                let segment = if caller == "direct" {
+                    let mut capture = x11::Capturer::new(display)?;
+                    authenticated_capture_frames(&server, root, || {
+                        let data = capture.frame()?;
+                        Ok(([data[0], data[1], data[2]], data.len()))
+                    })?
+                } else {
+                    let display = if caller == "primary" {
+                        common::Display::primary()?
+                    } else {
+                        let mut displays = common::Display::all()?;
+                        assert_eq!(displays.len(), 1);
+                        displays.pop().expect("authenticated display absent")
+                    };
+                    let mut capture = common::Capturer::new(display)?;
+                    authenticated_capture_frames(&server, root, || {
+                        let Frame::PixelBuffer(buffer) = capture.frame(std::time::Duration::ZERO)?;
+                        assert_eq!((buffer.width(), buffer.height(), buffer.stride()), (640, 480, 2560));
+                        let data = buffer.data();
+                        Ok(([data[0], data[1], data[2]], data.len()))
+                    })?
+                };
+                let absent = probe_segment(segment).expect_err("authenticated capture segment survived drop");
+                assert!(matches!(absent.raw_os_error(), Some(22) | Some(43)));
+            } else {
+                match caller {
+                    "direct" => assert!(matches!(x11::Server::default(), Err(x11::Error::Generic))),
+                    "primary" => assert_eq!(common::Display::primary().err()
+                        .expect("unauthenticated primary accepted").kind(), io::ErrorKind::ConnectionRefused),
+                    "all" => assert_eq!(common::Display::all().err()
+                        .expect("unauthenticated enumeration accepted").kind(), io::ErrorKind::ConnectionRefused),
+                    _ => unreachable!(),
+                }
+                STATE.with(|state| {
+                    let state = state.borrow();
+                    assert_eq!((state.queries, state.capture_queries, state.frame_comparisons), (0, 0, 0));
+                    assert!(state.segments.is_empty());
+                });
+            }
+            finish_case(0);
+            assert_eq!(std::fs::read_dir("/proc/self/fd")?.count(), descriptors);
+            assert_eq!(std::fs::read_dir("/proc/self/task")?.count(), threads);
+        }
+        let (admitted, refused, frames) = if *credential == "valid" { (3, 0, 6) } else { (0, 3, 0) };
+        println!("X11_CAPTURE_AUTH_PHASE=pass phase={phase} credential={credential} admitted={admitted} refused={refused} frames={frames}");
+    }
+    println!("X11_CAPTURE_AUTH_NATIVE=pass phases=4 callers=direct,primary,all admitted=6 refused=6 frames=12 recovery=same-process pixels=red,blue descriptors=retired threads=retired segments=retired");
+    Ok(())
+}
+
 fn main() -> io::Result<()> {
     let scenario = std::env::args().nth(1).expect("scenario");
+    #[cfg(corrected)]
+    if scenario == "capture-auth" {
+        return authenticated_capture();
+    }
     if scenario == "server-route" {
         let descriptors = std::fs::read_dir("/proc/self/fd")?.count();
         let threads = std::fs::read_dir("/proc/self/task")?.count();

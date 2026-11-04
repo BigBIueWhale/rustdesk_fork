@@ -43,7 +43,6 @@ dependencies:
   draggable_float_widget: ^0.1.0
   settings_ui: ^2.0.2
   flutter_breadcrumb: ^1.0.1
-  http: ^1.1.0
   image: ^4.0.17
   back_button_interceptor: ^6.0.1
   flutter_rust_bridge: "1.80.1"
@@ -81,7 +80,6 @@ dependencies:
   texture_rgba_renderer:
     path: third_party/texture_rgba_renderer
   percent_indicator: ^4.2.2
-  dropdown_button2: ^2.0.0
   uuid: ^3.0.7
   auto_size_text_field: ^2.2.1
   dynamic_layouts:

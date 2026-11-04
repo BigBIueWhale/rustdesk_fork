@@ -137015,3 +137015,36 @@ pake-repeat-ledger-954f9053.json is 5,177 bytes, SHA-256
 675e7b1d214c056a95f9867b540cd75d22e39c24eda62391144297c11c1ae8d7.
 Twelve bounded files match CTE/TUF. This audit-only receipt preserves the
 counted ledger. No owned job remains; R-P12 and the complete release goal stay OPEN.
+
+## 2026-11-04 — user pivot; remaining Flutter dependency declarations
+
+The user requests a different aspect. Further PAKE timing investigation is
+OPEN/PARKED, including the proposed CPU-group comparison. No new timing job or
+timeout change started. Previous detections, controls and all R-P12 obligations
+remain retained. All independent parks remain.
+
+Select R-R1/R-B5a dependency minimization and locked offline closure. The unused
+dropdown_button2 package has no application/test imports, symbol consumers or
+remaining package dependents. Remove its direct declaration and sole lock record.
+The app has no HTTP-package imports either; remove that direct declaration while
+retaining the exact HTTP version, source and hash as transitive. Authenticated
+manifests still require it through flutter_cache_manager, flutter_svg,
+package_info_plus, puppeteer and vector_graphics. SQLite is not an orphan:
+Dash-Chat-2 uses cached_network_image/flutter_cache_manager, which requires sqflite;
+its existing exact pin and native registration remain unchanged.
+
+Official Pub dependency/removal guidance was consulted:
+https://dart.dev/tools/pub/dependencies and
+https://dart.dev/tools/pub/cmd/pub-get. Retained dependencies must keep their
+locked versions. Independent read-only YAML parsing and byte comparison show
+exactly one removed lock record, no additions and only HTTP's classification
+changed among retained records. The expected inventory becomes 50 direct / 187
+locked Flutter packages; Cargo and build-script inventories are unchanged.
+No application implementation, required workflow or authenticated cache changes.
+
+Required checkpoint: the existing offline enforced-lock resolver and twelve
+combo-box/widget cases, including fresh bridge generation, then isolated inventory.
+This is dependency validation, not reopening parked UI development. TUF is clean
+at 87a2e882, has about 45 GiB available RAM and no owned run/workspace. Use the
+existing zero-NIC bounded-RAM launcher and joined cleanup. Native/installed,
+other-platform, candidate-SDK and release-artifact acceptance remain OPEN.

@@ -207,6 +207,18 @@ the build, export comparison and joined VM/RAM cleanup. The retained Android lib
 still contains the old export; rebuilt Android ABI, full account storage/egress,
 native/installed and release acceptance remain OPEN.
 
+**Unused environment setter (`b685bbb5`).** The native `main_set_env` export and
+web `mainSetEnv` method are removed, including their input-bearing diagnostics.
+Their sole caller disappeared with terminal-admin removal in `84d33ecd`; the
+required environment reader remains. At `821088a1`, fresh Rust/Dart bridge
+generation excludes the setter and all fourteen unchanged connection-password
+dialog cases pass, with three focused result controls and exact source checks.
+The runner now selects those controls explicitly; broader model failures remain
+parked. Evidence: `environment-bridge-821088a1.json` and the audit's matching entry.
+All four endpoint deltas are zero; exact processes and private/RAM state retire.
+This is unused-API retirement, not a demonstrated LPE. Full native-library ABI,
+application/web/device and installed release acceptance remain OPEN.
+
 **User pivot (2026-11-04):** Android permission native-workflow acceptance is
 OPEN/PARKED; the accepted Kotlin callback correction below remains valid.
 The unfinished native fixture is preserved in stash

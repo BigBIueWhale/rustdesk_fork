@@ -139482,3 +139482,25 @@ bound by environment-bridge-cancelled-7dae0b73.json (27,448 bytes, SHA-256
 The 456-byte retirement receipt has SHA-256
 137b81d13405daf20a8640c0f153c9c291761139022fa646ed42a129dcb178b3.
 No owned run remains; this cancellation supplies no product acceptance.
+
+CTE r4gYjSROCz at 821088a1 passes the focused lane in 247 workload seconds:
+fresh Rust/Dart generation excludes the retired export, all fourteen unchanged
+connection-password dialog cases pass, three scoped parser controls pass, and
+the source-copy postchecks complete. Sixteen retained submission observations
+cover eight exact-value forms through button and dialog-submit actions. The
+strict guest validator checks the full fourteen-case inventory; this lane
+exports the summary and submission observations, not every raw testStart/testDone
+event. Product and result-validator bytes are unchanged since b685bbb5.
+
+environment-bridge-821088a1.json (10,120 bytes, SHA-256
+08e80e575c09e6b4f23247e92bfef949b0543a5ccaf1c844be3cad50f34547db)
+binds twelve records, generated-file identities, exact source and observations.
+All four endpoint deltas are zero; exact wrapper/QEMU/captured children are
+absent by pidfd ESRCH and private/RAM state is retired under the shared lock.
+Peak scratch is 6,383,980,544 bytes. The 521-byte retirement receipt has SHA-256
+e1fa1f921d0365dd7e77a3ac29bc08d8776f5947bf85dfc65fb52a3a9b26cc7a.
+No owned run remains. Linux Flutter runs the actual dialog with controlled
+preference/submission callbacks and platform styles; no full Rust library,
+browser, native device or installed receiver is validated. The existing TUF
+master also completes a remote /usr/bin/true with new authentication disabled.
+Record this checkpoint and perform the required fresh ledger count.

@@ -137653,3 +137653,14 @@ deltas are zero, and 4,375,982,080 peak RAM-scratch bytes plus private diagnosti
 retire under the shared lock. android-storage-cabe0cea.json (10,873 bytes,
 SHA-256 247a08d7249f97df635e34959f3e4f96202d54852ff2ce49e0d606a280de5a3d)
 retains the cancellation and bounded diagnostics. No application pass is claimed.
+
+H9SN2akbXK at cfeed6a2 completes real UI provisioning and CPace in process 2231,
+then the observer rejects its own incorrect PRS prefix expectation. Both controlled
+credential fields use permanent_password::encrypt_permanent_password_storage and
+the 01 prefix; 00 belongs to the generic/viewer wrapper. Correct only that fixture
+expectation and identify the field in errors without disclosing its value. The
+fixed 87/85-byte encrypted payload checks remain. No restart result is claimed.
+android-storage-cfeed6a2.json is 11,413 bytes, SHA-256
+34b3abb4103501c03bd24438484813be0e59ace84be098207bb1f90d1ed5459c.
+Exact launcher/QEMU retirement, five zero listener deltas and private/RAM cleanup
+pass; scratch peaks at 4,494,995,456 bytes. Reuse the same APK for the corrected run.

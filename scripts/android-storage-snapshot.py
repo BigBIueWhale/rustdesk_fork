@@ -65,10 +65,10 @@ for name, path in paths.items():
             raise ValueError("unexpected Android key envelope")
     else:
         config = tomllib.loads(raw.decode())
-        for field, prefix, length in (("password", "01", 87), ("password_prs", "00", 85)):
+        for field, length in (("password", 87), ("password_prs", 85)):
             credential = config[field]
-            if not isinstance(credential, str) or not credential.startswith(prefix):
-                raise ValueError("credential is not wrapped storage")
+            if not isinstance(credential, str) or not credential.startswith("01"):
+                raise ValueError(f"{field} is not wrapped permanent-credential storage")
             wrapped = base64.b64decode(credential[2:], validate=True)
             if len(wrapped) != length or wrapped[0] != 1 or b"Runtime1x" in raw:
                 raise ValueError("credential storage is not the current encrypted format")

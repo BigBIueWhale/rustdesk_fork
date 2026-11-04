@@ -138345,3 +138345,17 @@ explicitly preserves independent user parks; silence does not reopen them.
 Recommend installed Linux settings authorization, whose allowed-effect/refusal
 evidence is release-critical. That question does not block this authorized evidence
 repair or change the active goal status. Fresh ledger count remains pending.
+
+Fresh CTE count nia81prLtZ at pushed 8bde24de completes in 29 outer seconds:
+398,573 tokens / 1,822,891 bytes, SHA-256
+d6a42962d8bfed1fc9722c99570035673ddfa2355a33e5124022ad4ae8bd8c0e.
+The pinned method, seven controls, whole-input round trip and existing 42-mode/
+82-control/five-refusal admission checks pass; headroom is 1,427 tokens. All three
+listener deltas are zero. Exact wrapper/QEMU pidfd absence, helper absence and
+private/RAM retirement are verified under the shared lock. Scratch peaks at
+402,825,216 bytes and is retired. Capsule event-evidence-ledger-8bde24de.json is
+5,185 bytes, SHA-256
+94f8395f95ebd015d11ea62b26f6cc3bb6d119a107ce5837d05634ce9f3e455c;
+ten raw/control records and the retirement receipt remain. Diff/whitespace review
+passes. No owned job remains; the evidence repair is complete and the broader
+release goal stays active. The pending scope question has no answer yet.

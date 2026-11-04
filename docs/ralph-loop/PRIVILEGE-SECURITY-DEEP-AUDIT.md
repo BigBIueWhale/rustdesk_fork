@@ -138650,3 +138650,32 @@ c6c6f6a1433ae464a83c5f341a3c390afd1950101c58dd983651f64ca4a6e9b6)
 binds eleven raw/control records and a 248-byte retirement receipt. This bounded
 consolidation is complete; whole-document classification and release acceptance
 remain OPEN, with sidebar follow-ups and all independent parks preserved.
+
+## 2026-11-04 — runit lifecycle prerequisite: independent service artifact build
+
+The previous turn completed the bounded ledger consolidation. Select current
+R-S11c-27r runit lifecycle evidence over further documentation work: the shipped
+manager script has only historical acceptance. SysV, installed caller authorization,
+sidebar and all independent parks remain. TUF's password control socket is absent;
+CTE has about 29 GiB available and can admit the existing 8-GiB guest, 7-GiB RAM
+scratch, 6-GiB headroom and 1-GiB overhead service-build profile. Its peer cache
+contains one generation, below the four-generation limit. No host service is used.
+
+The pinned devcheck image already includes runit. The shipped script directly
+executes /usr/bin/rustdesk --service. Primary runit manuals specify restart of
+the run process and separate sv wait/control semantics; successful manager
+commands alone cannot establish application readiness or child retirement:
+https://smarden.org/runit/runsv.8 and https://smarden.org/runit/sv.8.
+Native acceptance will need the exact supervisor/child identities, readiness,
+ordinary stop/start/restart and exact cleanup in the disposable VM.
+
+The existing bounded builder also executes parked file-transfer scenarios.
+Add --linux-service-artifact-build as an explicit compile-only entry through
+the host, guest and existing production build stage. It keeps the same compiler,
+seven-file artifact, pins, source checks, publication, resource admission,
+monitoring and joined cleanup, with a distinct product=not-run receipt checked
+by both wrappers. Existing file-transfer and limiter modes retain their runtime
+commands and required receipts. No product, test body, storage profile or live
+instruction changes. All three shell syntax checks and diff checks pass. The
+next checkpoint is an authenticated current-source artifact for runit replay;
+compilation alone will not close R-S11c-27r or installed/release acceptance.

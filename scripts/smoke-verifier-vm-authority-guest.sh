@@ -56,6 +56,7 @@ X11_MONITOR_TOPOLOGY_ONLY=0
 X11_CURSOR_IMAGE_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
+SERVICE_ARTIFACT_ONLY=0
 SERVER_GUESS_LIMITER=0
 CM_DIRECTORY_DOWNLOAD=0
 case "$#:${8:-}" in
@@ -263,6 +264,7 @@ case "$#:${8:-}" in
     13:--android-peer-build)
         case "${13}" in
             --linux-service-build) ;;
+            --linux-service-artifact-build) SERVICE_ARTIFACT_ONLY=1 ;;
             --linux-server-limiter-tests) SERVER_GUESS_LIMITER=1 ;;
             *) exit 2 ;;
         esac
@@ -10334,6 +10336,8 @@ run_android_peer_build() {
         build_stage=linux-service-build
         if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
             build_stage=linux-server-limiter-build
+        elif [ "$SERVICE_ARTIFACT_ONLY" -eq 1 ]; then
+            build_stage=linux-service-artifact-build
         fi
         profile_environment+=(--env CARGO_PROFILE_DEV_DEBUG=0)
         printf '%s\n' 727573746465736b2d73657276657231 > "$ROOT/service-check.machine-id"
@@ -10464,6 +10468,9 @@ run_android_peer_build() {
     if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
         [ "$(grep -Fxc 'SERVER_GUESS_LIMITER=pass auth=cpace eof=12 threshold=10 unrelated=keyed checkpoints=0,20,40 recovered=64s server=same listener=same cleanup=server-joined' "$output")" -eq 1 ] \
             || fail 'native server limiter result differs'
+    elif [ "$SERVICE_ARTIFACT_ONLY" -eq 1 ]; then
+        [ "$(grep -Fxc 'LINUX_SERVICE_ARTIFACT_BUILD=pass files=7 product=not-run' "$output")" -eq 1 ] \
+            || fail 'Linux service artifact-only build result differs'
     elif [ "$PEER_BUILD_PROFILE" = bounded ]; then
         [ "$(grep -Fxc 'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined' "$output")" -eq 1 ] \
             || fail 'Linux service peer file-type admission result differs'

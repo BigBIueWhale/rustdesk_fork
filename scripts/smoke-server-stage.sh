@@ -87,7 +87,7 @@ start_server() {
 }
 
 case "$1" in
-  android-peer-build|linux-service-build|linux-server-limiter-build|cm-file-build)
+  android-peer-build|linux-service-build|linux-service-artifact-build|linux-server-limiter-build|cm-file-build)
     # Build the production peer and only the fixtures needed by the selected runtime replay.
     # The CM file replay also builds its production Session test artifact.
     verify_smoke_build_inputs
@@ -158,6 +158,8 @@ case "$1" in
       /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh file-type-replay
     elif [ "$1" = linux-server-limiter-build ]; then
       /bin/bash --noprofile --norc /work/scripts/smoke-server-stage.sh server-limiter
+    elif [ "$1" = linux-service-artifact-build ]; then
+      printf 'LINUX_SERVICE_ARTIFACT_BUILD=pass files=7 product=not-run\n'
     fi
     ;;
   file-type-replay)

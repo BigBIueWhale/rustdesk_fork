@@ -41,6 +41,7 @@ X11_MONITOR_TOPOLOGY_ONLY=0
 X11_CURSOR_IMAGE_ONLY=0
 LINUX_RECEIVER_PROFILE=focused
 PEER_BUILD_PROFILE=default
+SERVICE_ARTIFACT_ONLY=0
 SERVER_GUESS_LIMITER=0
 CM_DIRECTORY_DOWNLOAD=0
 LIFECYCLE_ARTIFACT=
@@ -617,7 +618,7 @@ case "$#:${1:-}" in
             *) echo 'unknown X11 shard' >&2; exit 2 ;;
         esac
         ;;
-    1:--android-peer-build|1:--linux-service-build|1:--linux-server-limiter-tests)
+    1:--android-peer-build|1:--linux-service-build|1:--linux-service-artifact-build|1:--linux-server-limiter-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
             && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Android peer-build input/run overrides are forbidden' >&2; exit 2; }
@@ -627,6 +628,8 @@ case "$#:${1:-}" in
         fi
         if [ "$1" = --linux-server-limiter-tests ]; then
             SERVER_GUESS_LIMITER=1
+        elif [ "$1" = --linux-service-artifact-build ]; then
+            SERVICE_ARTIFACT_ONLY=1
         fi
         ;;
     1:--cm-file-replay|2:--cm-file-replay)
@@ -884,6 +887,7 @@ case "$#:${1:-}" in
         printf 'Focused directory-ordering publication and home correlation: %s --flutter-model-tests --directory-ordering\n' "${0##*/}" >&2
         printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux IPC startup: %s --linux-service-startup-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Bounded Linux service artifacts (compile only): %s --linux-service-artifact-build\n' "${0##*/}" >&2
         printf 'Installed Linux live IPC preservation: %s --linux-service-incumbent-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux non-socket IPC preservation: %s --linux-service-collision-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux exclusive supervisor ownership: %s --linux-service-exclusive-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
@@ -5360,6 +5364,8 @@ elif [ "$MODE" = android-peer-build ]; then
     guest_invocation+=" --android-peer-build /mnt/rustdesk-verifier-inputs/source.tar $ANDROID_EMULATOR_SOURCE_COMMIT $ANDROID_EMULATOR_SOURCE_TREE $ANDROID_EMULATOR_SOURCE_ARCHIVE_SHA256"
     if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
         guest_invocation+=" --linux-server-limiter-tests"
+    elif [ "$SERVICE_ARTIFACT_ONLY" -eq 1 ]; then
+        guest_invocation+=" --linux-service-artifact-build"
     elif [ "$PEER_BUILD_PROFILE" = bounded ]; then
         guest_invocation+=" --linux-service-build"
     fi
@@ -8571,6 +8577,10 @@ elif [ "$MODE" = android-peer-build ]; then
         require_exact_fixed_receipt \
             'SERVER_GUESS_LIMITER=pass auth=cpace eof=12 threshold=10 unrelated=keyed checkpoints=0,20,40 recovered=64s server=same listener=same cleanup=server-joined' \
             'native server limiter threshold, source isolation and real-window recovery'
+    elif [ "$SERVICE_ARTIFACT_ONLY" -eq 1 ]; then
+        require_exact_fixed_receipt \
+            'LINUX_SERVICE_ARTIFACT_BUILD=pass files=7 product=not-run' \
+            'bounded Linux service artifact compilation'
     elif [ "$PEER_BUILD_PROFILE" = bounded ]; then
         require_exact_fixed_receipt \
             'FILE_TYPE_REPLAY=pass auth=cpace session=filetransfer unsupported=7 job=17013 generic=150001-bytes digest=confirmed done=once barrier=passed network=container-loopback cleanup=server-joined' \

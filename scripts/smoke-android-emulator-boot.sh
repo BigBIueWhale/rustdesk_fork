@@ -4695,6 +4695,16 @@ if [ "$WORKLOAD" = boot ]; then
         || fail 'the booted Android framework UI is unavailable or has an ANR'
 fi
 
+if [ "${RUSTDESK_ANDROID_SCROLL_TESTS:-}" = 1 ]; then
+    [ "$WORKLOAD" = app ] && [ "$APP_SCENARIO" = launch ] \
+        || fail 'native scroll regression requires the candidate app workload'
+    python3 -I -S "$SCRIPT_DIR/test-android-scroll-native.py" \
+        "$ADB" "$SERIAL" "$WORK_ROOT" \
+        || fail 'native Android scroll-direction regression failed'
+elif [ -n "${RUSTDESK_ANDROID_SCROLL_TESTS:-}" ]; then
+    fail 'invalid native scroll regression selection'
+fi
+
 if [ -n "$STORAGE_KEY_PROBE" ]; then
     probe_sha256="$(sha256sum "$STORAGE_KEY_PROBE" | cut -d ' ' -f 1)"
     probe_package=com.rustdesk.harness.storage

@@ -125892,6 +125892,34 @@ seconds; 402,489,344 bytes peak RAM scratch retires and all three listener delta
 are zero. Fourteen native/capsule/count files are hash-verified on CTE/TUF.
 This audit-only receipt preserves the counted ledger bytes.
 
+## 2026-11-04 — Android native scroll regression preparation
+
+Previous turn is progress: it traced the Android/iOS preference exclusion,
+recorded the user's X11 pivot and completed the counted, pushed checkpoint.
+The selected R-S0 mobile settings defect continues from clean 8b3703ce.
+
+The new parent-library Rust test calls the unchanged Session::send_mouse and
+observes real MouseEvent messages from its production viewer command channel.
+It checks off/on/off, six axis/sign combinations, wheel/trackpad/ordinary motion,
+all four modifiers, singular dispatch and channel retirement: 54 commands.
+The configured field is controlled directly; persistence and Flutter routing
+remain distinct acceptance obligations. No authenticated peer is started.
+
+The existing admitted Android emulator build compiles this exact library with
+the genuine x86_64-linux-android target and its pinned NDK/native closure.
+Cargo's --no-run builds the libtest executable without host execution; the owned
+emulator runs only the exact new test, with its matching NDK C++ runtime.
+The fixture checks copied bytes, bounded output, real target/result and private
+directory retirement; failure remains failure. The build's artifact digest
+must match the executed result before APK acceptance. Existing isolation,
+storage admission, process joins and APK smoke checks remain required.
+Primary design references are https://doc.rust-lang.org/cargo/commands/cargo-test.html
+and https://github.com/bbqsrc/cargo-ndk . No synthetic target_os setting or copied
+scroll implementation is used. This is native Rust component execution, not an
+Android UI or full-peer scrolling claim. Production behavior remains unchanged
+for the baseline. Shell syntax, Python parsing and whitespace checks pass;
+Android compilation and behavioral execution are pending.
+
 ### 2026-11-01 — pivot to native camera identity
 
 The user redirected work after read-only session-type input-confinement research.

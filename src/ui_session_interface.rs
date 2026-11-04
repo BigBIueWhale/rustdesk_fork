@@ -2970,6 +2970,62 @@ async fn start_admitted_port_forward<T: InvokeUiSession>(
 
 // R-SV6(a)/R-G4: the free `send_note` (the audit-server POST) is removed — see `Session::send_note`.
 
+#[cfg(all(test, feature = "flutter"))]
+mod scroll_direction_tests {
+    use super::*;
+    use hbb_common::futures::FutureExt;
+
+    #[test]
+    fn saved_preference_controls_emitted_scroll_commands() {
+        #[cfg(target_os = "android")]
+        hbb_common::config::initialize_android_app_dir(
+            std::env::var("RUSTDESK_SCROLL_TEST_ROOT").unwrap(),
+        ).unwrap();
+        let session = Session::<crate::flutter::FlutterHandler>::default();
+        let (sender, mut receiver) = viewer_command_channel();
+        *session.sender.write().unwrap() = Some(sender);
+        let mut mismatches = Vec::new();
+        let mut observed = 0;
+        for (phase, reversed) in [false, true, false].into_iter().enumerate() {
+            session.lc.write().unwrap().get_config().reverse_mouse_wheel =
+                if reversed { "Y" } else { "N" }.into();
+            assert_eq!(session.get_reverse_mouse_wheel().unwrap(), reversed);
+            let before = mismatches.len();
+            for mask in [MOUSE_TYPE_WHEEL, MOUSE_TYPE_TRACKPAD, 0] {
+                for (x, y) in [(3, 0), (-3, 0), (0, 7), (0, -7), (3, -7), (-3, 7)] {
+                    session.send_mouse(mask, x, y, true, true, true, true);
+                    let command = receiver.recv().now_or_never().unwrap().unwrap().unwrap();
+                    let Data::Message(message) = command else {
+                        panic!("unexpected command type");
+                    };
+                    let Some(message::Union::MouseEvent(event)) = message.union else {
+                        panic!("missing emitted mouse event");
+                    };
+                    assert_eq!(event.mask, mask);
+                    assert_eq!(event.modifiers.iter().map(|key| key.enum_value_or_default())
+                        .collect::<Vec<_>>(),
+                        [ControlKey::Alt, ControlKey::Shift, ControlKey::Control, ControlKey::Meta]);
+                    let expected = if reversed && mask != 0 { (-x, -y) } else { (x, y) };
+                    if (event.x, event.y) != expected {
+                        mismatches.push((phase, mask, (x, y), (event.x, event.y), expected));
+                    }
+                    observed += 1;
+                    assert!(receiver.recv().now_or_never().is_none());
+                }
+            }
+            println!("SCROLL_DIRECTION_PHASE phase={phase} reversed={reversed} commands=18 mismatches={}",
+                mismatches.len() - before);
+        }
+        assert!(session.thread.lock().unwrap().is_none());
+        session.sender.write().unwrap().take();
+        assert!(receiver.recv().now_or_never().unwrap().is_none());
+        println!("SCROLL_DIRECTION_NATIVE target={} commands={observed} mismatches={} peer=absent channel=retired",
+            std::env::consts::OS, mismatches.len());
+        assert_eq!(observed, 54);
+        assert!(mismatches.is_empty(), "scroll direction mismatches: {mismatches:?}");
+    }
+}
+
 #[cfg(test)]
 mod connection_round_ownership_tests {
     use super::*;

@@ -256,6 +256,31 @@ fi
 if [ "$APK_MODE" = emulator-test ]; then
     cargo ndk --platform 21 --target "$ANDROID_RUST_TARGET" \
         build --locked --release --features flutter
+    cargo ndk --platform 21 --target "$ANDROID_RUST_TARGET" \
+        test --locked --release --features flutter --lib --no-run --message-format=json \
+        >target/android-scroll-tests.jsonl
+    python3 -I -S - <<'PY'
+import hashlib, json, shutil
+from pathlib import Path
+records = Path('target/android-scroll-tests.jsonl')
+assert 0 < records.stat().st_size < 8 * 1024**2
+artifacts = []
+for line in records.read_text().splitlines():
+    item = json.loads(line)
+    if (item.get('reason') == 'compiler-artifact' and item.get('profile', {}).get('test')
+            and item.get('target', {}).get('name') == 'librustdesk' and item.get('executable')):
+        artifacts.append(Path(item['executable']))
+assert len(artifacts) == 1
+source = artifacts[0]
+assert source.resolve().parent == Path('target/x86_64-linux-android/release/deps').resolve()
+assert source.is_file() and not source.is_symlink() and 0 < source.stat().st_size < 256 * 1024**2
+destination = Path('target/android-scroll-tests')
+with destination.open('xb') as output, source.open('rb') as original:
+    shutil.copyfileobj(original, output)
+destination.chmod(0o500)
+digest = hashlib.sha256(destination.read_bytes()).hexdigest()
+print(f'ANDROID_SCROLL_TEST_BUILD=pass target=x86_64-linux-android binary_sha256={digest} bytes={destination.stat().st_size} source=parent-libtest')
+PY
 else
     bash ./flutter/ndk_arm64.sh
 fi

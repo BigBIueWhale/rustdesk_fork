@@ -43,6 +43,11 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Further Windows service-protocol work is OPEN/PARKED.
+The completed seven-case Linux component run at `b81452e0` is retained under
+R-S11hg below, with exact VM/RAM retirement. No Windows acceptance is claimed.
+Work moves to unused Flutter UI dependencies; independent parks remain.
+
 **User pivot (2026-11-04):** Mobile incoming voice controls are OPEN/PARKED.
 Preparation `af311435` leaves production unchanged. Run `auakRqgWeC` passes forty
 existing cases but executes none of the nine new voice cases; count validation
@@ -1541,6 +1546,17 @@ selected all profiles; the repair selects the existing exact path-label controls
 Its diagnostics and cleanup are retained in `fonts-labels-5de34d94.json`.
 The separately pinned candidate-SDK closure, full-app/final artifacts, advisory
 and release acceptance remain OPEN; model-inventory and all other parks remain.
+
+**Unused UI dependencies (`c1613852`).** Remove `contextmenu`, `flex_color_picker`
+and their exclusive `after_layout`, `animations`, `flex_seed_scheme` records.
+Remove the unused direct `tuple` declaration, retaining the bridge's transitive
+requirement. The graph has 52 direct dependencies and 188 locked packages;
+retained records are byte-identical except tuple's classification. Application
+sources are unchanged. `mgbK4ctZMe` passes offline enforced-lock resolution and
+61 existing menu/widget cases in 104 seconds; `UgafUvAeZ6` passes inventory in nine.
+`ui-deps-{menu,inventory}-c1613852.json` bind source/results and exact VM/RAM
+retirement with seven zero listener deltas. Candidate-SDK closure, complete app,
+native/installed artifacts and release acceptance remain OPEN; all parks remain.
 
 **Retired unused TLS client builder (`c2fafa4d`).** The callerless 196-line
 `hbb_common::verifier` module and its compatibility API are deleted; Git history
@@ -15655,18 +15671,21 @@ typed reader, handler, writer, and client. Shutdown retains control authority ac
 and revalidates before its latch. There is no shared decoded union or post-deserialization endpoint
 selection.
 
-`2b72ca22` corrects the existing regression's false expectation that declared null
-unit content is an unknown field; it preserves equivalent Shutdown decoding and
-requires refusal of an actual extra field. Production types and handlers are unchanged.
-Baseline `vj1TMESzC9` fails that assertion; replay `h9YhUQXyN0` passes the complete
-named regression in 64 outer seconds. Exact production types and test body run
-with root-locked Serde on Linux; generic `Data::Close` is a one-variant fixture.
-Exact encodings, direction/cross-endpoint, outer/nested unknown-field and generic
-message refusals pass. `winprotocol-{before-6901f4fc,fixed-2b72ca22}.json` bind
-source/artifacts, four zero listener deltas per run and process/private/RAM retirement.
-Reproduce with `--windows-service-protocol-tests` on the shared verifier-VM wrapper.
-The direct `ipc::test::windows_service_credential_and_control_channels_use_closed_directional_protocols`
-invocation remains in `scripts/verify.sh`; full-parent execution remains unclaimed.
+`2b72ca22` corrects a test's false rejection of declared null unit content;
+equivalent Shutdown decoding and actual unknown-field refusal remain. Baseline
+`vj1TMESzC9` fails; replay `h9YhUQXyN0` passes. Production types/handlers are unchanged.
+At `b81452e0`, `l4CtjTkvvt` passes seven cases in 67 seconds: the original schema
+regression plus exact typed methods, frame reader, codec and timeout over anonymous
+Unix sockets. All variants preserve values; twelve wrong routes refuse. Exact
+32-KiB messages pass, outbound excess refuses without poisoning valid reuse,
+inbound excess refuses, and all four readers report timeout/EOF. Dependencies
+match the root lock; generic `Data::Close` remains a one-variant fixture.
+`winprotocol-{before-6901f4fc,fixed-2b72ca22,io-b81452e0}.json` bind artifacts,
+four zero listener deltas per run and process/private/RAM retirement. Reproduce
+with `--windows-service-protocol-tests`; the direct schema test also remains in
+`scripts/verify.sh`. This is Linux component evidence, without handlers,
+Windows pipes, authorization, full-parent or installed acceptance. Further work
+is OPEN/PARKED by the user pivot.
 
 STOP-SHIP: exact installed Windows transactions with the intended supervisor and unauthorized/
 wrong-generation actors; malformed/cross-endpoint frames; PID/creation-time/token/image/argv changes;

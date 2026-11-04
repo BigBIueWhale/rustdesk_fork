@@ -136700,3 +136700,24 @@ removes actual unused acquisition/build surface rather than adding another
 source catalogue. Do not reopen menu/toolbar behavioral development or other parks.
 The separately pinned candidate-SDK closure and authenticated cache stay unchanged;
 full-app/current release, native/installed and independent acceptance remain OPEN.
+
+At c1613852, mgbK4ctZMe passes offline enforced-lock resolution and all 61
+existing cases across six menu/widget suites in 104 outer seconds. The real
+Flutter 3.24.5 widgets include keyboard/pointer action, disabled state, focus,
+popup positioning and existing menu callbacks; bridge/translation fixture
+boundaries remain. No tests, executable product source or runner changes were
+needed. ui-deps-menu-c1613852.json is 4,289 bytes, SHA-256
+ab2486e7cae1a43e7d79844e62a0f6cee47d9a791a30b3daa45e229fbb11b4c3.
+Processes 1801854/1802327 are absent; 4,066,353,152 peak RAM-scratch bytes,
+helpers and private state retire with four zero listener deltas. Twelve bounded
+files match CTE/TUF.
+
+UgafUvAeZ6 passes the isolated inventory at the same commit in nine seconds:
+52 direct/188 locked Flutter dependencies, unchanged 832 Cargo records and
+eight build scripts. ui-deps-inventory-c1613852.json is 8,062 bytes, SHA-256
+a04d1a4a16360e2b99de162e0b4217ee9c1be307f7c35dcf519aeb3cb3e20d99.
+Processes 1802864/1804367 are absent; peak RAM scratch 401,481,728 bytes,
+private state and helpers retire with three zero listener deltas. Eleven
+bounded files match both hosts. Read-only byte comparison preserves all retained
+lock records except tuple's direct-to-transitive field. The ledger records this
+scoped dependency checkpoint and the IPC pivot; fresh whole-ledger count follows.

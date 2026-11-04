@@ -137341,3 +137341,38 @@ privacy-trace-ledger-6f9d45e2.json is 5,184 bytes, SHA-256
 dce86582101e084a1e1f32da75838c713fddc94d4b1bd2897bb04ac462ffed05.
 All twelve bounded evidence files match CTE/TUF. The counted ledger stays unchanged;
 the privacy-preference correction and installed acceptance remain OPEN.
+
+## 2026-11-04 — user pivot; reconcile clipboard release evidence
+
+The user requests a different aspect. Leave the Windows privacy-backend preference
+gap OPEN/PARKED, preserving its source finding and required authorized workflow.
+No product correction or Windows acceptance has occurred. CTE/TUF begin clean at
+e7eebb4d; the existing password-authenticated TUF connection remains available.
+No SSH key, host configuration or live instruction is changed.
+
+Work selection exposed a current-status inconsistency: the detailed Linux clipboard
+section listed only the successful text/image runs and described larger selections
+as an open gap, while Current Verdict and this audit retain two later failures and
+an explicit park. The initial proposed large-clipboard follow-up is withdrawn before
+any edit or execution of that scenario. Hostname connection work is also independently
+parked under R-SV5/R-SV10 and is not resumed. Reconcile the actual evidence at the
+clipboard decision point instead of starting either parked experiment. This directly
+supports truthful R-S0/R-F1 release selection and takes priority over adding another
+native scenario whose scope conflicts with a retained user instruction.
+
+The ledger consolidates the two positive historical profiles and the two subsequent
+failed runs in one source/artifact-bound table. It retains exact-byte/pixel checks,
+timing and resource limits, real native ownership observations, observer limitations,
+cleanup, evidence locations and the missing platform/installed/current-release
+acceptance. Unicode case 3 fails before any new image case in both d7cf665e runs;
+the changed observer leaves product attribution unresolved. These failures do not
+erase the named historical passes or establish large-selection behavior. The
+existing clipboard/reconnect/decode-budget parks remain explicit. A separate current
+pivot note and the detailed privacy heading preserve the new user redirection.
+
+Review compares the updated ledger with the original October 31 text and November 1
+image/large-selection/pivot audit records and the current source. Product code,
+fixtures, launchers, normative requirements and live instructions are unchanged.
+No product test, clipboard or hostname experiment runs for this documentation
+correction. Fresh isolated counting follows for the changed whole ledger; only its
+bounded admitted RAM-backed VM is needed.

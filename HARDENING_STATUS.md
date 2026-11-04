@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Windows privacy-backend preference work is
+OPEN/PARKED. The source-confirmed rejected settings write remains unresolved;
+no product correction or installed Windows result is claimed. Its detailed entry
+below retains the required authorized behavior. Work moves to release-evidence
+reconciliation; all independent parks remain.
+
 **User pivot (2026-11-04):** Further Linux application dependency/artifact
 validation is OPEN/PARKED. Build `aMRuM2TUs8` at `59b51e80` completes with
 thirteen widget/two native command controls and all 73 payload hashes verified.
@@ -2965,52 +2971,31 @@ schedule; worker-thread join timing, concurrent Remote owners/same-key overlap,
 native failure paths, installed privilege boundaries, other platforms and soak
 remain OPEN under R-S19a/R-T4.
 
-**Linux clipboard text — six full-app positive cases passed; broader acceptance OPEN.**
-At harness `021c1b6c`, run `2Z9piTfyo6` uses the retained `e57678d3` app on both
-ends of one authenticated Remote connection. ASCII/multiline text, Unicode
-(accented/combining, Hebrew, Japanese and emoji), and 16 KiB text each transfer
-in both directions with exact UTF-8 readback from the destination X11 clipboard.
-The six times are **510/493/481/520/490/509 ms**, within the unchanged five-second
-limit. Each source serves an actual native selection request; destination
-ownership is external to the fixture. Window/TCP identity remains stable.
-Viewer RSS grows at most 4,660 KiB, threads at most one and descriptors one.
+**Linux clipboard — historical positive runs; repeated/large-selection investigation OPEN/PARKED.**
+The November 1 pivot above applies to this acceptance lane. Two later failed runs
+prevent treating the earlier passes as reliable repeated-transfer or large-selection
+acceptance. Their fixture-versus-product cause remains unresolved; no product
+correction is claimed.
 
-The new `--clipboard-text` scenario reuses the authenticated no-NIC VM and
-source-bound app; only the small drivers compile, twice byte-identically. Three
-preliminary whole-scenario failures are observer evidence: an immediate read can
-remain pending across replacement of the fixture's preceding selection owner.
-The final observer waits for external destination ownership before requesting
-bytes, preserving the deadline and content checks. The unchanged app passes;
-these failures do not establish a product transfer defect. The final VM completes
-in 113.468 seconds, joins QEMU, retires 3,008,176,128 bytes peak RAM scratch and
-leaves four zero listener deltas. Earlier VMs also join; their duplicate app
-copies are compared with the retained manifest before removal. Commands, exact
-artifacts, raw logs and cleanup: `clipboard-text-021c1b6c.json`, verified on CTE/TUF.
-This covers ordinary-user Linux X11 text transfer only. Installed service,
-unauthorized/non-Remote refusal, reconnect/concurrency, files/HTML,
-large incremental selections, other platforms and soak remain OPEN.
+| Source-bound Linux X11 run | Observed behavior | Evidence |
+| --- | --- | --- |
+| Text `021c1b6c` / `2Z9piTfyo6`, app `e57678d3` | Six two-direction ASCII/multiline, Unicode (accented/combining, Hebrew, Japanese, emoji) and 16-KiB transfers match every UTF-8 byte in 481–520 ms, within five seconds. | `clipboard-text-021c1b6c.json`; audit “2026-10-31 — user pivot; native Linux clipboard text transfer”. |
+| Images `e7c95f2a` / `V9uOxrypPk`, app `cf437894` | Six two-direction 1x1 transparent, 17x13 mixed-alpha RGBA and 63x31 opaque RGB PNG transfers match dimensions, all colors and alpha, including RGB under zero alpha, in 470–532 ms. All six text controls pass. | `flutter-peer-presentation-*run.V9uOxrypPk.*`; audit records the exact command, artifacts and raw evidence. |
+| Larger-selection preparation `d7cf665e`, same `cf437894` app | Both `Vf3Nbc9Ydn` and unchanged diagnostic replay `KskBb4guZG` fail at Unicode text case 3 with native clipboard-read timeouts. No image case executes. The changed observer prevents attribution to the product. | Audit “2026-11-01 — native large clipboard selections”; `clipboard-large-first.Vf3Nbc9Ydn` and `clipboard-large-repeat.KskBb4guZG`. |
 
-**Linux clipboard images — six full-app image cases and six text controls passed.**
-Harness `e7c95f2a`, TUF `V9uOxrypPk`, reuses the complete `cf437894` app through
-`--clipboard-images`. Transparent 1x1, mixed-alpha RGBA 17x13 and opaque RGB
-63x31 selections transfer in both directions through one authenticated Remote
-connection. Independent destination X11 reads decode PNG and match every color,
-alpha value and dimension, including RGB under fully transparent pixels.
-The six image readbacks take **509/532/474/518/470/528 ms**, below the five-second
-limit. The six existing ASCII/Unicode/16-KiB text cases also pass. Native source
-requests, external destination ownership and stable window/TCP identity are checked.
-Viewer RSS grows at most 6,844 KiB, threads one and descriptors one in this short run.
+Both accepted profiles require actual native source requests, external destination
+ownership, independent X11 readback and stable authenticated connection/window
+identity. Their viewer RSS growth is at most 4,660/6,844 KiB, with one additional
+thread and descriptor; these are short workloads, not soaks. Only small drivers
+compile, twice identically; product artifacts are reused. The original text
+observer failures and ownership-wait correction remain in the audit/capsule.
 
-Only small drivers compile, twice identically; product bytes are unchanged.
-The transaction completes in 109 outer seconds, joins QEMU and all peers, retires
-3,011,112,960 peak RAM bytes and leaves all four listener deltas zero. Raw serial,
-console, storage/listener records and exact artifact/source identities remain under
-`.harness-state/verifier-vm/flutter-peer-presentation-*run.V9uOxrypPk.*`; the audit
-records the command and cleanup. No defect or product correction is claimed.
-This covers small positive Linux X11 transfers on the named historical app.
-Current release artifacts, installed authority/refusal, large incremental
-selections, clipboard formats beyond these cases, other platforms and soak remain
-OPEN. Separately parked reconnect and decode-budget work remains parked.
+All four named VMs join and retire RAM scratch with zero listener deltas; bounded
+evidence is retained on CTE/TUF. These results concern ordinary-user historical
+Linux artifacts. Current release artifacts, installed authority and unauthorized/
+non-Remote refusal, concurrency, files/HTML, other platforms and soak remain OPEN.
+Large/repeated-selection work, reconnect and decode-budget investigations remain
+independently parked; a generic continuation does not reopen them.
 
 **Source disposition: implemented; exact-current native/product evidence remains open.** After CPace
 authentication, the connection's validated `AuthConnType`—not broad `self.authorized` state or an
@@ -5931,7 +5916,7 @@ scenario or actual codec switch is claimed. Complete menu rendering, native
 FFI/peer switching, device/installed/platform, R-S0/R-F5 and release acceptance
 remain OPEN.
 
-**Windows privacy-backend preference — source-confirmed functional gap; OPEN.**
+**Windows privacy-backend preference — source-confirmed functional gap; OPEN/PARKED (user pivot, 2026-11-04).**
 The desktop selector appears when at least two native implementations are available
 and writes `privacy-mode-impl-key` through ordinary `mainSetOption`. At `6f03980f`,
 `MainStatusOptionKey::from_str` omits that key: `ipc::set_option` rejects it before

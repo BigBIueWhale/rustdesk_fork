@@ -139348,3 +139348,28 @@ invariant; no new wording catalogue, alternate fixture or product change is
 needed. Run the existing isolated authority integration with the unchanged
 28-case metadata suite. TUF's existing SSH master is rechecked as active; this
 small CTE run does not require remote resources or reopen parked product topics.
+
+CTE CCV0i0tgea at 3cbb7169 passes the presentation contract and all 28 release
+metadata cases, then stops in run admission: its app-capsule fixture expects a
+blanket nonempty-cache refusal removed by e8737b14. Source review confirms the
+full launcher separately calls vm_artifact_cache_admit before artifact creation,
+under its retained run lock. The nine-case native capacity/identity/preservation
+checks run in the ledger-count lane and most recently passed at 5dd78528; no
+change to actual admission, four-generation capacity, input/cache metadata or
+cleanup is needed. The extracted run-reservation fixture cannot test that later
+capacity admission by demanding the retired blanket refusal.
+
+Delete its obsolete app-refusal assertion and two dependent duplicate inventory
+checks. Retain the engine's still-required nonempty-cache refusal, retained-run
+and cross-root/concurrent/descriptor controls. Rename app_capsule to
+engine_capsule in the exact receipt and all consumers so the result names what
+actually executes. No new catalogue or runtime policy is introduced.
+
+release-integration-3cbb7169.json (15,057 bytes, SHA-256
+bc7961ade39a006fb50fba809a42e4a7335c3c4e85cf424fa29ee6b40b17ec5f)
+binds eleven raw/control records and the failed private inventory. Three host
+listener deltas are zero; exact wrapper/QEMU/children are absent by pidfd ESRCH,
+and private/RAM state is retired under the shared lock. Peak scratch is
+406,118,400 bytes; retirement receipt is 404 bytes, SHA-256
+ea04a80dd048347e4af05b2d0b91cf9f5d810bb3df14a88c3a5886b0af2f9378.
+No owned run remains. Continue the same integration checkpoint.

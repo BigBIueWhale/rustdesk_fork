@@ -18,7 +18,7 @@ cleanup() {
         --remove-private-root "$workspace" --expected-identity "$workspace_id" \
         || status=1
     if [ "$status" -eq 0 ] && [ "$success" -eq 1 ]; then
-        printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined\n'
+        printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained engine_capsule=refused cleanup=joined\n'
     fi
     exit "$status"
 }
@@ -437,9 +437,6 @@ run_admission_cases() {
             run_id=${result##* }
             /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
                 --remove-private-root "$run" --expected-identity "$run_id"
-            [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
-            require_refusal "$root" 'an earlier Linux Flutter app artifact remains' flutter-peer-presentation "$capsule" 1
-            [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]
             [ "$(/usr/bin/find "$capsule" -mindepth 1 -maxdepth 1 | /usr/bin/wc -l)" -eq 1 ]
             require_refusal "$root" 'an earlier Flutter engine artifact remains' linux-flutter-engine-build "$capsule"
             [ -z "$(/usr/bin/find "$root" -mindepth 1 -maxdepth 1 -print -quit)" ]

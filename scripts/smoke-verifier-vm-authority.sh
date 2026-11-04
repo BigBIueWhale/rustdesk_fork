@@ -6332,7 +6332,7 @@ elif [ "$MODE" = fixed-archive-tests ]; then
 elif [ "$MODE" = linux-flutter-artifact-tests ]; then
     linux_flutter_test_receipt='LINUX_FLUTTER_ARTIFACT=pass fixture=system-elf-and-assets cases=24 publication=noclobber admission=exact execution=guest-only cleanup=joined'
     require_exact_fixed_receipt \
-        'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' \
+        'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained engine_capsule=refused cleanup=joined' \
         'Linux app build/run admission result'
     linux_flutter_vm_receipt="LINUX_FLUTTER_ARTIFACT_TESTS_VM=pass cases=24 uid=4000 gid=4000 root=refused foreign=refused materializer=refused-before-files test_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_TEST" | /usr/bin/awk '{ print $1 }') helper_sha256=$(/usr/bin/sha256sum "$LINUX_FLUTTER_ARTIFACT_SOURCE" | /usr/bin/awk '{ print $1 }') source=readonly docker=retired network=none cleanup=joined"
     require_exact_fixed_receipt "$linux_flutter_test_receipt" 'native Linux app-capsule result'
@@ -6775,9 +6775,9 @@ require_exact_fixed_receipt \
     'numeric-nonroot Android pair publication filesystem cases'
 printf 'VERIFIER_VM_ARTIFACT_PUBLICATION=pass android_pair=atomic checksums=both tamper=refused cleanup=joined\n'
 require_exact_fixed_receipt \
-    'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' \
+    'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained engine_capsule=refused cleanup=joined' \
     'verifier-VM run admission result'
-printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined\n'
+printf 'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained engine_capsule=refused cleanup=joined\n'
 for entry in smoke-verifier-vm-authority online-fetch-vm; do
     require_exact_fixed_receipt \
         "VERIFIER_VM_LISTENER_INVENTORY_NATIVE=pass entry=$entry families=ipv4,ipv6 protocols=tcp,udp paired_ports=2 additions=4 queue_changes=4 inventory=stable uid=nonroot cleanup=joined" \
@@ -8597,7 +8597,7 @@ elif [ "$MODE" = android-owner-tests ]; then
 elif [ "$MODE" = android-peer-build ]; then
     if [ "$SERVER_GUESS_LIMITER" -eq 1 ]; then
         require_exact_fixed_receipt \
-            'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained app_capsule=refused cleanup=joined' \
+            'VERIFIER_VM_RUN_ADMISSION=pass retained=refused file=refused symlink=refused lock=refused unsafe=refused concurrent=16 winners=1 cross_root_marker=refused active_lock=retained engine_capsule=refused cleanup=joined' \
             'native run-admission and cache-preservation regression'
         require_exact_fixed_receipt \
             'SERVER_GUESS_LIMITER=pass auth=cpace eof=12 threshold=10 unrelated=keyed checkpoints=0,20,40 recovered=64s server=same listener=same cleanup=server-joined' \

@@ -137331,3 +137331,13 @@ subsequent authenticated privacy use remain the decisive acceptance. AGENTS.md's
 Windows storage-admission prerequisite still bars that launcher. No product code,
 tests, live instructions, normative requirements or host configuration changes.
 The current ledger records the concrete gap; its fresh isolated count follows.
+
+Fresh count 9TOvFs2Ybr at 6f9d45e2 passes: 399,356 tokens / 1,827,316 bytes,
+input SHA-256 a5c0fb81ab1b8c2a9e686a6f168c1468f852bdd14d3fcddb96f860e626fc5899.
+Seven controls, round trip and 82 storage admissions/five refusals pass in
+31.416 capture seconds. Exact processes 1862665/1864081, helpers and private/RAM
+workspace retire; three listener deltas are zero, peak scratch 402,796,544 bytes.
+privacy-trace-ledger-6f9d45e2.json is 5,184 bytes, SHA-256
+dce86582101e084a1e1f32da75838c713fddc94d4b1bd2897bb04ac462ffed05.
+All twelve bounded evidence files match CTE/TUF. The counted ledger stays unchanged;
+the privacy-preference correction and installed acceptance remain OPEN.

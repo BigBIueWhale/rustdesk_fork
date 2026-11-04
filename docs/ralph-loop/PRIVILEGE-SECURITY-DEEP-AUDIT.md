@@ -136489,8 +136489,9 @@ duplicate and wrong-suite). Its raw widget output is not retained and no overall
 acceptance is claimed. The path-label shard accidentally selects every parser
 profile; give it the existing single-profile selection and exact sixteen-case
 expectation. Actual result-parser behavior and product tests remain unchanged.
-The models parser's count-only/name-inventory discrepancy remains OPEN separately;
-this focused selection does not establish whole-catalogue acceptance.
+The models parser's count-only/name-inventory discrepancy remains OPEN/PARKED;
+the existing ledger records fa342297/oqK3uathmq and the prior user pivot. This
+focused selection does not reopen that work or establish whole-catalogue acceptance.
 
 fonts-labels-5de34d94.json retains the failure: 9,546 bytes, SHA-256
 5eeb231adfe45dd94f430817bbeec81bf304d47a2a9668165290a2b6a601a4eb.
@@ -136499,3 +136500,24 @@ after a 4,064,473,088-byte peak. Four decoded listener deltas are zero. Nineteen
 small private files are retained before exact cleanup; the owned extracted
 virtiofsd package is inventoried and retired. Thirty-one bounded files match
 CTE/TUF. Replay follows only after shared-lock and private/RAM retirement checks.
+
+Replay rvJkckKzBF at 9752caf6 passes exact offline resolution, all sixteen
+unchanged rendered path-label tests and three selected parser controls in 91
+outer seconds. Raw events, source widget/test digests and successful finality
+are retained. The tests preserve fitting/truncated names, complete graphemes,
+accessible labels, multiline suffixes and bold text. Processes 1781387/1781846
+are absent; peak RAM scratch 4,066,328,576 bytes retires with exact helpers/private
+state and four zero listener deltas. fonts-labels-9752caf6.json is 4,295 bytes,
+SHA-256 6f6a540b0db6d4024c404daa5e73ba4bac70d5f4945ce8c86c1c3adac96ded8b;
+twelve bounded files match CTE/TUF.
+
+Inventory ps16X1ZWWN passes at the same commit in nine seconds: eight build
+scripts, unchanged 832 Cargo records, 55 direct Flutter dependencies and 193
+locked packages. Read-only source/index checks pass. Processes 1782167/1783660
+are absent; 401,477,632 peak RAM bytes and private state retire, with three zero
+listener deltas. fonts-inventory-9752caf6.json is 8,135 bytes, SHA-256
+41df965d33dfd845b1a459d8f66c25aea604615d58bc584686cfe8cfbb339dc1;
+eleven bounded files match both hosts. No product behavioral patch or new tests
+were needed. The ledger records this production-graph checkpoint and the codec
+pivot, preserving the separately pinned candidate-SDK, full application, advisory,
+installed/native, final release and all parked acceptance gaps. Fresh count follows.

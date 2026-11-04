@@ -43,6 +43,12 @@ and shell syntax pass; fresh isolated acceptance is recorded in the audit entry
 
 ## Current Verdict
 
+**User pivot (2026-11-04):** Native Auto/VP8/VP9 switching is OPEN/PARKED.
+Five unexecuted harness edits are preserved in stash
+`852b340fed401975e24d3086bdf30f393083ead2`; no codec VM ran or native switching
+acceptance was obtained. Work moves to unused text/font dependencies below.
+All independent parks remain.
+
 **User pivot (2026-11-04):** Retired account-store native observation is
 OPEN/PARKED. Run `s51zTJQ9dT` reports both observers and the inner peer scenario
 successful, but the guest wrapper rejects the product verdict and exits 1.
@@ -1511,6 +1517,22 @@ and exact VM/RAM cleanup; all seven listener deltas are zero. The initial missin
 inventory input and retired diagnostics are preserved in `qr-inventory-25ead00a.json`.
 Full-app/final-artifact, advisory, installed/native and release acceptance remain
 OPEN; all independent parks remain unchanged.
+
+**Unused text/font dependencies (`5de34d94`).** Remove `extended_text`,
+`google_fonts` and exclusive `extended_text_library` from the production graph;
+`5e28b6c4` already replaced their only consumers with the local path-label widget
+and terminal monospace family. Direct dependencies fall 57 to 55 and locked
+packages 196 to 193; all retained records are byte-identical. At `9752caf6`,
+TUF `rvJkckKzBF` passes pinned offline enforced-lock resolution, sixteen rendered
+path-label cases and three parser controls in 91 outer seconds. `ps16X1ZWWN`
+passes the dependency inventory in nine seconds. Capsules
+`fonts-labels-9752caf6.json` and `fonts-inventory-9752caf6.json` bind exact source,
+results and VM/RAM retirement; all seven listener deltas are zero. Initial
+`pGvvBHd9zY` failed the already-parked models parser controls because the shard
+selected all profiles; the repair selects the existing exact path-label controls.
+Its diagnostics and cleanup are retained in `fonts-labels-5de34d94.json`.
+The separately pinned candidate-SDK closure, full-app/final artifacts, advisory
+and release acceptance remain OPEN; model-inventory and all other parks remain.
 
 **Retired unused TLS client builder (`c2fafa4d`).** The callerless 196-line
 `hbb_common::verifier` module and its compatibility API are deleted; Git history

@@ -136450,3 +136450,35 @@ SHA-256 c2539ba6c7c619f0ccdbba01451da7d25dc288aadfc1bc9c9a70be2f2545c998.
 Twelve bounded files match both hosts. This audit-only receipt leaves the counted
 ledger unchanged. The QR dependency deletion is complete at its scoped acceptance
 checkpoint; no owned job remains and every independent park stays in force.
+
+## 2026-11-04 — user pivot; retire unused text/font dependencies
+
+The user explicitly pivots away from native software-codec switching. Its five
+unexecuted harness edits are preserved in stash
+852b340fed401975e24d3086bdf30f393083ead2. No codec VM was launched and no
+native codec acceptance is claimed; that work remains OPEN/PARKED.
+
+Select the deferred dependency deletion from 5e28b6c4 under R-D6/R-R3 and the
+binding deletion posture. That commit replaced the only extended_text consumer
+with StartEllipsisText and the web terminal's GoogleFonts lookup with local
+monospace. Current tracked Dart sources have no remaining imports or consumers
+of either package. Removing their dormant build dependencies completes that
+specific excision; it does not establish whole-application egress absence.
+
+The authenticated Pub cache confirms extended_text alone requires
+extended_text_library. Remove both direct declarations and those three exclusive
+production lock records: 57 to 55 direct dependencies, 196 to 193 locked packages.
+Shared http, crypto, path_provider and Flutter dependencies remain; every retained
+record stays byte-identical. Reconcile only inventory counts/digests. Official Pub
+guidance at https://dart.dev/tools/pub/cmd/pub-get supports removing exclusively
+orphaned packages without upgrading retained versions, and enforced offline
+resolution must verify the result. The separately pinned candidate-SDK lock and
+authenticated cache remain unchanged; refreshing that separate closure remains
+an explicit acceptance gap, not a claimed candidate-SDK result.
+
+Use the existing sixteen rendered path-label cases and parser controls after the
+pinned Flutter 3.24.5 offline enforced-lock resolver, then the isolated dependency
+inventory. No new test or behavioral product change is needed. Required functions,
+accessibility behavior and local terminal fonts remain; full application/final
+artifacts, other SDK/platforms, advisory freshness and release acceptance remain
+OPEN. All independent parks stay in force.

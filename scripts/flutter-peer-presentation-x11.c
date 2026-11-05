@@ -2918,7 +2918,7 @@ static int exercise_mouse_bursts(Display *source, Display *display,
     for (unsigned int timing = 0U; timing < 2U; ++timing) {
         for (unsigned int i = 0U; i < 3U; ++i) {
             unsigned int sequence = timing * 3U + i + 1U;
-            unsigned int wanted = cases[i].count * 4U, received = 0U, events = 0U;
+            unsigned int wanted = cases[i].count * 32U, received = 0U, events = 0U;
             uint64_t start = monotonic_millis(), complete = 0U;
             if (!mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto finished;
             for (unsigned int step = 0U; step < wanted; ++step) {
@@ -2934,11 +2934,11 @@ static int exercise_mouse_bursts(Display *source, Display *display,
             XSync(display, False);
             if (held != 0U || !mouse_buttons_match(display, 0U)) goto finished;
             printf("FLUTTER_PEER_MOUSE_BURST_SENT sequence=%u events=%u delay_ms=%lu "
-                   "repeats=4 remote_waits=0 viewer_released=true\n", sequence, wanted, delays[timing]);
+                   "repeats=32 remote_waits=0 viewer_released=true\n", sequence, wanted, delays[timing]);
             do {
                 while (XPending(source) != 0) {
                     XEvent event;
-                    if (++events > 512U) goto finished;
+                    if (++events > 2U * wanted + 32U) goto finished;
                     XNextEvent(source, &event);
                     if (event.type != ButtonPress && event.type != ButtonRelease) continue;
                     if (received >= wanted) goto finished;
@@ -2977,7 +2977,7 @@ static int exercise_mouse_bursts(Display *source, Display *display,
                 goto finished;
             }
             print_resources("mouse-burst", sequence, &resources);
-            printf("FLUTTER_PEER_MOUSE_BURST_CASE_OK sequence=%u events=%u delay_ms=%lu repeats=4 "
+            printf("FLUTTER_PEER_MOUSE_BURST_CASE_OK sequence=%u events=%u delay_ms=%lu repeats=32 "
                    "elapsed_ms=%llu released=both quiet_ms=100 stable_connection=true\n", sequence,
                    received, delays[timing], (unsigned long long)(monotonic_millis() - start));
             fflush(stdout);
@@ -8475,7 +8475,7 @@ int main(int argc, char **argv) {
                  "viewer_exit=abrupt native_releases=true fixture_buttons_released=true");
         } else if (mouse_input) {
             puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=32 button_events=64 drag_moves=2 "
-                 "wheel_directions=4 outside_releases=10 reentries=10 side_buttons=2 focus_losses=5 focus_returns=5 chord_cases=3 chord_events=20 burst_cases=6 burst_events=160 "
+                 "wheel_directions=4 outside_releases=10 reentries=10 side_buttons=2 focus_losses=5 focus_returns=5 chord_cases=3 chord_events=20 burst_cases=6 burst_events=1280 "
                  "actual_peer=true native_events=true released=both "
                  "same_window=true stable_connection=true resources=bounded");
         } else if (keyboard_retirement) {

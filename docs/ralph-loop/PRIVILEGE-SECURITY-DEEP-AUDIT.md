@@ -142090,3 +142090,42 @@ mouse-order-ledger-52ffd5c2.json is 4,776 bytes, SHA-256
 9ee06bf9dae7c7274a746264b3c382850a02f17d4fd7601cac7819bfc1e6c17f.
 All 77 bounded evidence files/2,285,953 bytes match CTE/TUF; no owned run
 remains. This receipt leaves the counted ledger unchanged.
+
+## 2026-11-06 — current Android artifact prerequisite for sustained viewing
+
+The preceding turn made progress: mouse ordering was corrected and passed the
+real Linux peer workload. Continue the user's correctness/release direction
+with R-F5's incomplete two-hour Android healthy control. Current mobile/client
+source differs materially from retained f372aacf, so a fresh app is the required
+prerequisite. The old five-minute partial observation remains partial.
+
+At 5646377d, TUF LOFgb1uOC2/session 80836 runs the unchanged
+`bash scripts/smoke-verifier-vm-authority.sh --android-emulator-app` and exits 1.
+Production Android Rust compilation succeeds; the mandatory parent-library
+libtest build then reports 109 errors and exits 101. APK assembly, installation
+and the intended scroll regression do not execute. The exact compiler JSON was
+redirected to guest-private storage by the old recipe and was not retained;
+the preserved failure summary does not identify all individual diagnostics.
+
+This exposes the scope defect previously noted at af8f69cb: ca70a84d made an
+unfinished scroll experiment mandatory for every ordinary APK build. Cargo's
+`--no-run` still compiles all selected library tests, and runtime name filtering
+does not make that a single-test compilation:
+https://doc.rust-lang.org/cargo/commands/cargo-test.html . The source-confirmed
+mobile preference exclusion is separate; no native reproduction or correction
+is established by this compiler failure.
+
+Delete that unvalidated build/mount/runner/receipt integration and its now-unused
+Python runner. Preserve the production Rust scroll regression and the OPEN
+mobile behavior requirement. The ordinary APK path retains production compilation,
+manifest/backup validation, exact package hashes, install/launch/rendering,
+instrumentation-process verification, test-only signing and joined cleanup.
+No product change or new test mode is introduced. Fresh native execution of
+this restored app path is required before any acceptance claim.
+
+The failed run's 20-GiB guest joins; QEMU 1025392 is absent by pidfd and RAM
+workspace run.tpf3vyr5 is retired. Storage lifetime is 663.384 seconds, peak
+scratch 7,198,654,464 bytes. Four decoded endpoint deltas are zero. Exact
+private diagnostics are inventoried and retired under the shared lock. Capsule
+android-soak-build-prerequisite-5646377d.json: 9,758 bytes, SHA-256
+fac69a61d929321ebefe1235e3d732e85fe06e229eae62f5d163e2b4085d7e1d.

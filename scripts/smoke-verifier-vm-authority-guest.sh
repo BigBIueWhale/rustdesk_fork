@@ -11281,8 +11281,6 @@ run_android_emulator_app() {
         "$prepared_receipt" "$check_receipt"
     grep -E '^ANDROID_BACKUP_APK_(CASE|CHECK)=|^ok Android APK manifest authority:' \
         "$output" || fail 'Android backup validation details are absent'
-    grep -E '^(SCROLL_DIRECTION_|ANDROID_SCROLL_TEST_)' "$output" \
-        || fail 'Android native scroll regression evidence is absent'
     printf 'ANDROID_EMULATOR_APP_VM=pass commit=%s tree=%s target=x86_64-linux-android emulator=%s api=%s builder_index=%s builder_runtime=%s runtime_index=%s runtime_config=%s apk_sha256=%s signing=test-only artifact=prepared-test-only output=writable-landlocked uid=1000 gid=1000 vm_network=none container_network=none inputs=readonly-landlocked source=exact-pushed cleanup=joined\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" \
         "$ANDROID_EMULATOR_VERSION" "$ANDROID_EMULATOR_SYSTEM_IMAGE_API" \

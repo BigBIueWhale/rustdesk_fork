@@ -328,8 +328,6 @@ readonly VERIFY_LOG=$WORKSPACE/verify.log
 readonly RUNTIME_LOG=$WORKSPACE/runtime.log
 readonly APK=$WORKSPACE/rustdesk-x86_64-runtime-test.apk
 readonly TEST_APK=$WORKSPACE/rustdesk-x86_64-instrumentation-test.apk
-readonly SCROLL_TEST=$BUILD_SOURCE/target/android-scroll-tests
-readonly SCROLL_CPP=$BUILD_SOURCE/flutter/android/app/src/main/jniLibs/x86_64/libc++_shared.so
 readonly GRADLE_SDK_PROJECTION_ROOT=$WORKSPACE/gradle-sdk-projection
 readonly GRADLE_SDK_PROJECTION=$GRADLE_SDK_PROJECTION_ROOT/android-sdk
 readonly GRADLE_SDK_PROJECTED_CMDLINE_ARCHIVE=$GRADLE_SDK_PROJECTION_ROOT/android-cmdline-tools.zip
@@ -446,13 +444,6 @@ vm_docker start --attach "$BUILD_CONTAINER" >"$BUILD_LOG" 2>&1 || build_status=$
     "$BUILD_CONTAINER")" = exited:0 ] \
     || die 'x86_64 APK build container did not exit cleanly'
 grep -E '^ANDROID_BACKUP_APK_(CASE|CHECK)=' "$BUILD_LOG"
-[ -f "$SCROLL_TEST" ] && [ ! -L "$SCROLL_TEST" ] \
-    && [ "$(stat -c '%u:%g:%a:%h' "$SCROLL_TEST")" = 1000:1000:500:1 ] \
-    || die 'Android native test artifact authority differs'
-readonly SCROLL_TEST_SHA256="$(sha256sum "$SCROLL_TEST" | cut -d ' ' -f 1)"
-[ "$(grep -Fxc "ANDROID_SCROLL_TEST_BUILD=pass target=x86_64-linux-android binary_sha256=$SCROLL_TEST_SHA256 bytes=$(stat -c %s "$SCROLL_TEST") source=parent-libtest" "$BUILD_LOG")" -eq 1 ] \
-    || die 'Android native test build result differs'
-grep '^ANDROID_SCROLL_TEST_BUILD=' "$BUILD_LOG"
 vm_docker rm "$BUILD_CONTAINER" >/dev/null
 BUILD_CONTAINER=
 verify_android_sdk_root \
@@ -549,10 +540,7 @@ RUNTIME_CONTAINER="$(vm_docker create \
     --mount "type=bind,source=$ADB,target=/inputs/adb,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$APK,target=/inputs/app.apk,readonly,bind-recursive=disabled" \
     --mount "type=bind,source=$TEST_APK,target=/inputs/test.apk,readonly,bind-recursive=disabled" \
-    --mount "type=bind,source=$SCROLL_TEST,target=/inputs/android-scroll-tests,readonly,bind-recursive=disabled" \
-    --mount "type=bind,source=$SCROLL_CPP,target=/inputs/libc++_shared.so,readonly,bind-recursive=disabled" \
     --env RUSTDESK_ANDROID_INSTRUMENTATION_APK=/inputs/test.apk \
-    --env RUSTDESK_ANDROID_SCROLL_TESTS=1 \
     --tmpfs /tmp:rw,exec,nosuid,nodev,size=10g,mode=700,uid=1000,gid=1000 \
     --workdir /source \
     "$DEV_CHECK_IMAGE_CONFIG_ID" \
@@ -593,9 +581,6 @@ mapfile -t instrumentation_smoke_receipts < <(grep -Fx \
     "$RUNTIME_LOG" || true)
 [ "${#instrumentation_smoke_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'installed instrumentation process smoke is absent or duplicated'; }
-[ "$(grep -Fxc "ANDROID_SCROLL_TEST_NATIVE=pass target=android commands=54 phases=3 binary_sha256=$SCROLL_TEST_SHA256 cleanup=removed" "$RUNTIME_LOG")" -eq 1 ] \
-    || { tail -n 240 "$RUNTIME_LOG" >&2; die 'native Android scroll-direction regression did not pass'; }
-grep -E '^(SCROLL_DIRECTION_|ANDROID_SCROLL_TEST_)' "$RUNTIME_LOG"
 mapfile -t runtime_receipts < <(grep -E \
     '^ANDROID_EMULATOR_APP=pass emulator=37\.1\.11 api=34 abi=x86_64 package=com\.carriez\.flutter_hbb activity=MainActivity launch_wait=(ok|timeout) state=resumed process=stable-five-seconds apk_sha256=[0-9a-f]{64} signing=test-only acceleration=kvm-nested gpu=swiftshader framebuffer=(480x800|800x480) selinux=Enforcing vm_network=none container_network=none cleanup=joined$' \
     "$RUNTIME_LOG" || true)

@@ -41,7 +41,7 @@ Widget _getApp(String configured) {
         GlobalCupertinoLocalizations.delegate,
       ],
       builder: localizedAppBuilder((context, child) {
-        expect(Directionality.of(context),
+        expectSync(Directionality.of(context),
             WidgetsLocalizations.of(context).textDirection);
         return child!;
       }),
@@ -82,7 +82,7 @@ void main() {
     final element = tester.element(find.byKey(const ValueKey('cancel-label')));
     for (final sample in <(String, String, TextDirection)>[
       ('he', 'ביטול', TextDirection.rtl),
-      ('ar', 'إلغاء', TextDirection.rtl),
+      ('ar', 'الإلغاء', TextDirection.rtl),
       ('fr', 'Annuler', TextDirection.ltr),
       ('en', 'Cancel', TextDirection.ltr),
     ]) {

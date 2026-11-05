@@ -3756,7 +3756,7 @@ static int main_header_luminance(Display *display, Window window, unsigned int *
 }
 
 static int observe_header_control(Display *display, Window window, unsigned int expected_pid,
-                                    const char *tooltip, int activate) {
+                                    const char *tooltip, int rtl, int activate) {
     XWindowAttributes attributes;
     Window child;
     unsigned long pid;
@@ -3765,9 +3765,10 @@ static int observe_header_control(Display *display, Window window, unsigned int 
     if (read_window_pid(display, window, &pid) != 0 || pid != expected_pid ||
         XGetWindowAttributes(display, window, &attributes) == 0 ||
         attributes.map_state != IsViewable || attributes.width < 320 || attributes.height < 40 ||
-        /* WindowActionPanel: three 27-pixel window buttons follow the 27-pixel tail action. */
+        /* WindowActionPanel: three 27-pixel buttons and the 27-pixel tail action
+         * reverse with direction. RTL also includes the fixed 10-pixel left padding. */
         XTranslateCoordinates(display, window, RootWindow(display, DefaultScreen(display)),
-                              attributes.width - 94, 14, &x, &y, &child) == 0 ||
+                              rtl ? 104 : attributes.width - 94, 14, &x, &y, &child) == 0 ||
         x < 0 || y < 0 || x >= DisplayWidth(display, DefaultScreen(display)) ||
         y >= DisplayHeight(display, DefaultScreen(display))) return -1;
     XRaiseWindow(display, window);
@@ -3796,7 +3797,7 @@ static int observe_header_control(Display *display, Window window, unsigned int 
 
 static int activate_header_control(Display *display, Window window, unsigned int expected_pid,
                                      const char *tooltip) {
-    return observe_header_control(display, window, expected_pid, tooltip, 1);
+    return observe_header_control(display, window, expected_pid, tooltip, 0, 1);
 }
 
 static int click_main_control(Display *display, Window main, unsigned int expected_pid,
@@ -4985,7 +4986,8 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
     /* Keep the settings window alive while querying the other window's label;
      * destroying an accessibility root mid-query cannot establish translation. */
     Window existing_main = main;
-    if (observe_header_control(display, viewer->window, pid, after_choice->new_connection, 0) != 0 ||
+    if (observe_header_control(display, viewer->window, pid, after_choice->new_connection,
+                               direction_case, 0) != 0 ||
         find_main_window(display, viewer->pid, &main) != 0 ||
         main != existing_main ||
         close_viewer(display, main) != 0) goto out;

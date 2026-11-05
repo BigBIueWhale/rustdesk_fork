@@ -141307,3 +141307,35 @@ Exact QEMU/private/RAM retirement passes. Storage lasts 30.544 seconds, peak
 SHA-256 49fc87ebdfc98d8009576862809d8a6769cfe19bb546e97753f18c86a77b9041.
 All eighteen bounded evidence files (241,845 bytes) match CTE/TUF. This audit-only
 receipt leaves the counted ledger unchanged; no owned run remains.
+
+## 2026-11-05 — language direction and locale correctness
+
+Continue the user's functional-correctness direction with the reproduced R-S0
+Hebrew direction failure, ahead of constructing another service-manager fixture.
+The correction ee5e3c41 already exists in full app bd65c0c4, so reuse that artifact
+and authenticated engine ddb1541d. The prior baseline's direction/label observers
+are unchanged. TUF l88JxLPCEv at 4917d455 now passes three English LTR and three
+Hebrew RTL geometry samples: row/radio x changes from 461/471 to 518/988 with
+row width 502 and radio width 32. The following remote-header tooltip step fails;
+fresh-frame, saved-preference and normal viewer-exit acceptance remain unreached.
+
+The header observer hardcodes the LTR position. Both production header Rows inherit
+direction, reversing their children; WindowActionPanel retains ten pixels of left
+padding. Adjust only this observer's expected RTL position, retaining exact-PID
+tooltip matching before any click. Flutter documents the horizontal ordering at
+https://api.flutter.dev/flutter/widgets/Flex/textDirection.html.
+The component fixture also needs two precise repairs: use expectSync inside its
+build callback, and expect the pinned SDK's Arabic cancel label, الإلغاء.
+Primary sources: https://api.flutter.dev/flutter/flutter_test/expectSync.html and
+https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter_localizations/lib/src/l10n/material_ar.arb.
+No product code, direction assertion, navigator-identity assertion or case is removed.
+Run the existing sixteen rendered component cases and focused native replay next.
+
+Failed-run capsule language-current-4917d455.json is 33,957 bytes, SHA-256
+4e4d27058492e01f00308a1b7bab6093f941dff26a1bfb5747f7071d460f765c.
+Guest exit 1 is observed; the outer tool handle is absent, but its final return
+metadata was not retained, so the capsule leaves tool_exit null. QEMU joins zero;
+four endpoint deltas are zero. Storage lasts 119.786 seconds, peak RAM scratch
+3,020,054,528 bytes. Under the shared lock, twelve failure-bundle payloads match
+the canonical app manifest and the input-provider digest matches; bounded logs
+remain while exact private/RAM state retires. Overall acceptance remains OPEN.

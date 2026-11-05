@@ -28,8 +28,9 @@ def alive(fd):
 
 
 class Impairment:
-    def __init__(self, image):
+    def __init__(self, image, congestion=False):
         self.image = image
+        self.congestion = congestion
         self.namespace = self.process = None
         self.interface = self.ingress = False
         self.current_profile = None
@@ -39,6 +40,7 @@ class Impairment:
         self.transport_count = 0
         self.transport_profiles = {}
         self.packet_size_baseline = None
+        self.congestion_start = None
 
     def run(self, *args):
         require(self.namespace is not None, 'namespace is not attached')
@@ -118,6 +120,78 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \\
             dict(controls_ipv4_bytes=[1499, 1500, 1501], counters=self.packet_size_baseline,
                  link=links[0], observation='ipv4-total-length-before-ingress-netem'),
             sort_keys=True), flush=True)
+        if self.congestion:
+            self.calibrate_congestion()
+
+    def tbf_options(self, name):
+        limited = name in ('bandwidth', 'bandwidth-jitter')
+        return ['tbf', 'rate', '32kbit' if limited else '10mbit',
+                'burst', '1600' if limited else '16000', 'limit', '97500']
+
+    def congestion_profile(self, name):
+        require(name in ('healthy', 'jitter', 'bandwidth', 'bandwidth-jitter'),
+                'unknown congestion profile')
+        operation = 'add' if self.current_profile is None else 'change'
+        # Change the existing queues: restoration must not discard their backlog.
+        self.run('tc', 'qdisc', operation, 'dev', 'rd-netem', 'root', 'handle', '2:',
+                 *self.tbf_options(name))
+        delay = ['delay', '80ms', '30ms'] if 'jitter' in name else ['delay', '0ms']
+        self.run('tc', 'qdisc', operation, 'dev', 'rd-netem', 'parent', '2:1',
+                 'handle', '1:', 'netem', 'limit', '64', *delay)
+
+    def calibrate_congestion(self):
+        # No application connection exists yet. These sockets carry only test datagrams.
+        self.congestion_profile('bandwidth')
+        restore = ['tc', 'qdisc', 'change', 'dev', 'rd-netem', 'root', 'handle', '2:',
+                   *self.tbf_options('healthy')]
+        raw = self.run('python3', '-I', '-S', '-c', '''
+import json, socket, subprocess, sys, time
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \\
+     socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+    receiver.bind(('127.0.0.1', 0))
+    receiver.settimeout(2)
+    started = time.monotonic_ns()
+    for sequence in range(8):
+        assert sender.sendto(bytes([sequence]) * 1000, receiver.getsockname()) == 1000
+    for sequence in range(4):
+        assert receiver.recv(2048) == bytes([sequence]) * 1000
+    limited_ns = time.monotonic_ns() - started
+    assert 500_000_000 <= limited_ns <= 1_500_000_000, limited_ns
+    queued = json.loads(subprocess.check_output(
+        ['tc', '-s', '-j', 'qdisc', 'show', 'dev', 'rd-netem']))
+    root = [q for q in queued if q['kind'] == 'tbf']
+    assert len(root) == 1 and root[0]['qlen'] >= 3 and root[0]['overlimits'] > 0, queued
+    restored = time.monotonic_ns()
+    subprocess.run(json.loads(sys.argv[1]), check=True, timeout=1)
+    for sequence in range(4, 8):
+        assert receiver.recv(2048) == bytes([sequence]) * 1000
+    recovery_ns = time.monotonic_ns() - restored
+    assert recovery_ns < 500_000_000, recovery_ns
+    print(json.dumps(dict(limited_ns=limited_ns, restored_ns=recovery_ns,
+                         queued_before_restore=root[0], received=8)))
+''', json.dumps(restore))
+        bandwidth = json.loads(raw)
+        self.congestion_profile('jitter')
+        raw = self.run('python3', '-I', '-S', '-c', '''
+import json, socket, time
+samples = []
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \\
+     socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+    receiver.bind(('127.0.0.1', 0))
+    receiver.settimeout(1)
+    for sequence in range(16):
+        started = time.monotonic_ns()
+        assert sender.sendto(bytes([sequence]), receiver.getsockname()) == 1
+        assert receiver.recv(16) == bytes([sequence])
+        samples.append(time.monotonic_ns() - started)
+assert min(samples) >= 45_000_000 and max(samples) <= 250_000_000, samples
+assert max(samples) - min(samples) >= 10_000_000, samples
+print(json.dumps(samples))
+''')
+        self.congestion_profile('healthy')
+        print('FLUTTER_PEER_CONGESTION_CALIBRATION=' + json.dumps(
+            dict(bandwidth=bandwidth, jitter_ns=json.loads(raw), sockets='joined',
+                 restoration='queued-datagrams-preserved'), sort_keys=True), flush=True)
 
     def packet_sizes(self):
         counts = {}
@@ -137,10 +211,28 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \\
                    'random3': ['loss', 'random', '3%'],
                    'random8': ['loss', 'random', '8%'],
                    'burst': ['loss', 'gemodel', '2%', '25%', '90%', '0.1%']}
-        require(name in options, 'unknown impairment profile')
-        self.run('tc', 'qdisc', 'replace', 'dev', 'rd-netem', 'root', 'handle', '1:',
-                 'netem', 'limit', '64', *options[name])
+        if self.congestion:
+            if self.congestion_start is not None:
+                root = next(q for q in self.congestion_queues() if q['kind'] == 'tbf')
+                started, before = self.congestion_start
+                elapsed = (time.monotonic_ns() - started) / 1e9
+                delivered = root['bytes'] - before['bytes']
+                require(root['overlimits'] > before['overlimits']
+                        and 0 < delivered <= 4000 * elapsed + 3200,
+                        'real-peer bandwidth constraint did not act as specified')
+                print('FLUTTER_PEER_BANDWIDTH_OBSERVED=' + json.dumps(
+                    dict(profile=self.current_profile, seconds=elapsed, bytes=delivered,
+                         before=before, after=root), sort_keys=True), flush=True)
+                self.congestion_start = None
+            self.congestion_profile(name)
+        else:
+            require(name in options, 'unknown impairment profile')
+            self.run('tc', 'qdisc', 'replace', 'dev', 'rd-netem', 'root', 'handle', '1:',
+                     'netem', 'limit', '64', *options[name])
         self.current_profile = name
+        if self.congestion and name in ('bandwidth', 'bandwidth-jitter'):
+            root = next(q for q in self.congestion_queues() if q['kind'] == 'tbf')
+            self.congestion_start = (time.monotonic_ns(), root)
         if name != 'healthy':
             self.transport_active = True
             self.transport_profiles.setdefault(name, 0)
@@ -194,9 +286,32 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \\
         print('FLUTTER_PEER_TCP_SNAPSHOT=' + json.dumps(
             dict(sequence=self.transport_count, profile=self.current_profile,
                  started_us=started // 1000, completed_us=completed // 1000,
-                 complete=complete, sockets=records), sort_keys=True), flush=True)
+                 complete=complete, sockets=records,
+                 queues=self.congestion_queues() if self.congestion else None),
+            sort_keys=True), flush=True)
         if not records:
             self.transport_active = False
+
+    def congestion_queues(self):
+        queues = json.loads(self.run('tc', '-s', '-j', 'qdisc', 'show', 'dev', 'rd-netem'))
+        require(len(queues) == 2 and {q['kind'] for q in queues} == {'tbf', 'netem'},
+                'congestion queue topology differs')
+        root = next(q for q in queues if q['kind'] == 'tbf')
+        child = next(q for q in queues if q['kind'] == 'netem')
+        limited = self.current_profile in ('bandwidth', 'bandwidth-jitter')
+        burst = 1600 if limited else 16000
+        delay = child['options'].get('delay', {})
+        jitter = 'jitter' in self.current_profile
+        require(root['handle'] == '2:' and root.get('root') is True
+                and root['options']['rate'] == (4000 if limited else 1250000)
+                and burst - 1 <= root['options']['burst'] <= burst
+                and root['qlen'] <= 65 and root['backlog'] <= 65 * 1514
+                and child['handle'] == '1:' and child['parent'] == '2:1'
+                and child['options']['limit'] == 64 and child['qlen'] <= 64
+                and abs(delay.get('delay', 0) - (0.08 if jitter else 0)) < 1e-6
+                and abs(delay.get('jitter', 0) - (0.03 if jitter else 0)) < 1e-6,
+                'congestion parameter/bound readback differs: ' + json.dumps(queues))
+        return queues
 
     def snapshot(self, request):
         sizes = self.packet_sizes()
@@ -209,6 +324,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \\
                 'netem queue differs')
         queue = queues[0]
         options = queue['options']
+        congestion = self.congestion_queues() if self.congestion else None
         random_loss = {'random3': 0.03, 'random8': 0.08}
         if self.current_profile in random_loss:
             observed = options.get('loss-random', {})
@@ -224,7 +340,7 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \\
         now = time.monotonic_ns() // 1000
         print('FLUTTER_PEER_NETEM=' + json.dumps(
             dict(request=request, monotonic_us=now, namespace=os.fstat(self.namespace).st_ino,
-                 queue=queue, packet_sizes=sizes), sort_keys=True), flush=True)
+                 queue=queue, packet_sizes=sizes, congestion=congestion), sort_keys=True), flush=True)
         return f'OK {now} {queue["drops"]} {queue["packets"]} {queue["qlen"]}'.encode()
 
     def close(self):
@@ -263,7 +379,7 @@ def supervise(image, argv):
     require([link['ifname'] for link in json.loads(initial_links)] == ['lo'], 'guest NIC present')
     require(not os.path.lexists(ENDPOINT), 'supervisor endpoint occupied')
     subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=ENV, check=True, timeout=3)
-    owner = Impairment(image)
+    owner = Impairment(image, '--network-congestion' in argv)
     child = None
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
         listener.bind(ENDPOINT)

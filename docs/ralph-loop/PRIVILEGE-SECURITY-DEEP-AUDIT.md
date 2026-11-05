@@ -139407,6 +139407,37 @@ mutation. `current-linux-ledger-dd21a276.json` is 7,749 bytes, SHA-256
 234e47aed38b737b40cebc9015f3983829d59be1bcbfa815f938eacf00b9b617.
 This audit-only receipt leaves the counted ledger unchanged. No owned run remains.
 
+## 2026-11-05 — R-F5 bandwidth and jitter recovery
+
+Continue the calibrated network-recovery work: bandwidth collapse and delay
+variation remain missing acceptance on the current Linux app. This directly
+advances R-F5 beyond the accepted loss/outage cases; another settings component
+check would not reduce that uncertainty. Input-to-visible recovery remains a
+separate next step because its event-driven source replaces the animated source.
+
+The new `--network-congestion` replay applies 20 seconds each of uniform
+80 +/- 30 ms ingress delay, 32 kbit/s aggregate bandwidth, and their combination.
+The healthy path is 10 Mbit/s without added delay. Root TBF changes rate in place
+above a retained 64-packet netem child. Linux 6.1's
+[TBF implementation](https://github.com/torvalds/linux/blob/v6.1/net/sched/sch_tbf.c)
+uses the current rate at dequeue and preserves its non-FIFO child on change;
+netem rate scheduling instead assigns departure times at enqueue. Restoration
+must preserve queued traffic. The [TBF manual](https://man7.org/linux/man-pages/man8/tc-tbf.8.html)
+also explains that the child replaces the TBF FIFO's byte-limit behavior; the
+child limit and root's at-most-one peeked packet are checked explicitly.
+
+Before application traffic, bounded UDP controls must demonstrate restricted
+delivery, an actual backlog, delivery of every queued datagram after restoration,
+and variable delay. Real-peer readback and sampling retain queue parameters,
+depth, byte and overlimit counters alongside TCP/pixel observations. The bandwidth
+cases require actual throttling and a delivered-byte ceiling. Existing MTU/GSO
+calibration, retained connection/window, 2,500-ms four-fresh-state recovery,
+1,000-ms freshness, three-second follow-up, resource bounds and exact retirement
+remain. No product or app artifact changes. Shell/Python/embedded parsing and
+whitespace checks pass; native compilation/calibration/recovery await execution.
+Random timing remains kernel-controlled; this is a named synthetic profile, not
+an exhaustive real-network, input-response, long-session or cross-platform claim.
+
 ## 2026-11-05 — packet-loss transport and displayed-frame correlation
 
 Previous turn is progress: current Linux compilation, bundle integrity and the

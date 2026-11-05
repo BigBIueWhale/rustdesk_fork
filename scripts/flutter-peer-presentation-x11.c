@@ -2005,8 +2005,8 @@ finished:
 static int exercise_network_impairment(Display *source, Display *display,
                                       ViewerWindow *viewer, SourceHistory *history,
                                       unsigned long pid, const ConnectionIdentity *connection,
-                                      const ProcessResources *baseline, int partial_loss) {
-    const struct {
+                                      const ProcessResources *baseline, int network_mode) {
+    const struct NetworkCase {
         const char *profile;
         unsigned int hold_ms;
     } outage_cases[] = {
@@ -2016,7 +2016,14 @@ static int exercise_network_impairment(Display *source, Display *display,
         {"loss", 6250U}, {"loss", 2500U}, {"loss", 6500U},
     }, loss_cases[] = {
         {"random3", 20000U}, {"random8", 20000U}, {"burst", 20000U},
+    }, congestion_cases[] = {
+        {"jitter", 20000U}, {"bandwidth", 20000U}, {"bandwidth-jitter", 20000U},
     };
+    const struct NetworkCase *cases = network_mode == 2 ? congestion_cases :
+                                     network_mode == 1 ? loss_cases : outage_cases;
+    size_t case_count = network_mode == 2 ? sizeof(congestion_cases) / sizeof(congestion_cases[0]) :
+                        network_mode == 1 ? sizeof(loss_cases) / sizeof(loss_cases[0]) :
+                                            sizeof(outage_cases) / sizeof(outage_cases[0]);
     uint64_t max_gap = 0U, max_age = 0U;
     unsigned int distinct = 0U, cycle = 0U;
     unsigned long long before_drops = 0ULL, before_packets = 0ULL;
@@ -2027,10 +2034,9 @@ static int exercise_network_impairment(Display *source, Display *display,
         max_age > FRESH_LIMIT_MS) goto failed;
     printf("FLUTTER_PEER_NETWORK_BASELINE_OK duration_ms=3000 maximum_age_ms=%llu distinct=%u\n",
            (unsigned long long)max_age, distinct);
-    for (; cycle < (partial_loss ? sizeof(loss_cases) / sizeof(loss_cases[0])
-                               : sizeof(outage_cases) / sizeof(outage_cases[0])); ++cycle) {
-        const char *profile = partial_loss ? loss_cases[cycle].profile : outage_cases[cycle].profile;
-        unsigned int hold_ms = partial_loss ? loss_cases[cycle].hold_ms : outage_cases[cycle].hold_ms;
+    for (; cycle < case_count; ++cycle) {
+        const char *profile = cases[cycle].profile;
+        unsigned int hold_ms = cases[cycle].hold_ms;
         uint64_t held_from, progress_at, resumed_at, first_fresh, recovery_age, recovery_ms;
         uint64_t impaired_maximum_age = 0U;
         uint64_t next_observation = 0U;
@@ -2054,7 +2060,7 @@ static int exercise_network_impairment(Display *source, Display *display,
                 previous_source = current;
                 progress_at = now;
             }
-            if (partial_loss) {
+            if (network_mode != 0) {
                 uint64_t captured_us = 0U, age = 0U;
                 int64_t state = viewer_state(display, viewer, &captured_us);
                 int age_known = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
@@ -2081,9 +2087,9 @@ static int exercise_network_impairment(Display *source, Display *display,
         resumed_at = monotonic_millis();
         phase = "restore-network";
         if (network_profile("healthy", &after_drops, &after_packets) != 0 ||
-            (strcmp(profile, "delay") == 0 ? after_packets <= before_packets
-                                           : after_drops <= before_drops) ||
-            (partial_loss && (after_packets <= before_packets || impaired_distinct == 0U)))
+            (network_mode == 2 || strcmp(profile, "delay") == 0 ? after_packets <= before_packets
+                                                                             : after_drops <= before_drops) ||
+            (network_mode != 0 && (after_packets <= before_packets || impaired_distinct == 0U)))
             goto failed;
         printf("FLUTTER_PEER_NETWORK_IMPAIRED_OK cycle=%u profile=%s requested_ms=%u "
                "held_ms=%llu restored_at_ms=%llu packets=%llu drops=%llu "
@@ -2093,7 +2099,7 @@ static int exercise_network_impairment(Display *source, Display *display,
                (unsigned long long)resumed_at,
                after_packets - before_packets, after_drops - before_drops);
         fflush(stdout);
-        if (partial_loss) {
+        if (network_mode != 0) {
             printf("FLUTTER_PEER_NETWORK_PARTIAL_OK cycle=%u profile=%s "
                    "displayed_distinct=%u maximum_age_ms=%llu\n", cycle + 1U,
                    profile, impaired_distinct, (unsigned long long)impaired_maximum_age);
@@ -7321,6 +7327,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--clipboard-text") != 0 &&
                                     strcmp(argv[5], "--clipboard-images") != 0 &&
                                     strcmp(argv[5], "--network-impairment") != 0 &&
+                                    strcmp(argv[5], "--network-congestion") != 0 &&
                                     strcmp(argv[5], "--network-loss") != 0))) {
         fputs("Additional full-peer scenarios: --image-quality, --image-quality-save-failure, --audio-mute, "
               "--keyboard-legacy, --keyboard-map, --keyboard-restart-translate, --keyboard-restore, "
@@ -7330,7 +7337,7 @@ int main(int argc, char **argv) {
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction, --native-components\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -7751,7 +7758,8 @@ int main(int argc, char **argv) {
         int clipboard_text = strcmp(argv[5], "--clipboard-text") == 0;
         int clipboard_images = strcmp(argv[5], "--clipboard-images") == 0;
         int partial_loss = strcmp(argv[5], "--network-loss") == 0;
-        int network = partial_loss || strcmp(argv[5], "--network-impairment") == 0;
+        int congestion = strcmp(argv[5], "--network-congestion") == 0;
+        int network = partial_loss || congestion || strcmp(argv[5], "--network-impairment") == 0;
         int suspension_status = monitor_switch ? exercise_monitor_switch(
             source, display, &viewer, &history, &current_connection, &baseline_resources, monitor_burst) :
             view_only ? exercise_view_only(
@@ -7778,7 +7786,7 @@ int main(int argc, char **argv) {
             source, display, &viewer, &current_connection, &baseline_resources, clipboard_images) :
             network ? exercise_network_impairment(
             source, display, &viewer, &history, viewer_pid,
-            &current_connection, &baseline_resources, partial_loss) : exercise_viewer_suspension(
+            &current_connection, &baseline_resources, congestion ? 2 : partial_loss) : exercise_viewer_suspension(
             source, display, &viewer, &history, viewer_pid, argv[4],
             &current_connection, &baseline_resources);
         if (suspension_status != 0) {
@@ -7862,6 +7870,12 @@ int main(int argc, char **argv) {
             puts("FLUTTER_PEER_CLIPBOARD_TEXT_OK cases=6 directions=both kinds=ascii,unicode,16k "
                  "limit_ms=5000 actual_peer=true native_readback=true same_window=true "
                  "stable_connection=true resources=bounded");
+        } else if (congestion) {
+            puts("FLUTTER_PEER_NETWORK_CONGESTION_PRESENTATION_OK cycles=3 "
+                 "profiles=jitter,bandwidth,bandwidth-jitter holds_ms=20000,20000,20000 "
+                 "recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 "
+                 "actual_peer=true x11_pixels=true same_window=true stable_connection=true "
+                 "resources=bounded seed=kernel-uncontrolled");
         } else if (partial_loss) {
             puts("FLUTTER_PEER_NETWORK_LOSS_PRESENTATION_OK cycles=3 "
                  "profiles=random3,random8,burst holds_ms=20000,20000,20000 "

@@ -33,7 +33,7 @@ case "$PEER_SCENARIO" in
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource|account-stores) EXPECTED_RESTARTS=3 ;;
   view-only|view-only-save-failure) EXPECTED_RESTARTS=0 ;;
-  viewer-suspend|network-impairment|network-loss|clipboard-text|clipboard-images|keyboard-input|keyboard-modes|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|network-congestion|clipboard-text|clipboard-images|keyboard-input|keyboard-modes|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -293,7 +293,8 @@ verify_runtime_bundle() {
 assert_loopback_only_interface() {
   local interfaces expected=lo
   if [ "$PEER_SCENARIO:${1:-}" = network-impairment:viewer ] \
-    || [ "$PEER_SCENARIO:${1:-}" = network-loss:viewer ]; then
+    || [ "$PEER_SCENARIO:${1:-}" = network-loss:viewer ] \
+    || [ "$PEER_SCENARIO:${1:-}" = network-congestion:viewer ]; then
     expected=$'lo\nrd-netem'
   fi
   interfaces="$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" \
@@ -1807,6 +1808,7 @@ PY
     [ "$PEER_SCENARIO" != theme-save-failure ] || controller_args+=(--theme-save-failure)
     [ "$PEER_SCENARIO" != network-impairment ] || controller_args+=(--network-impairment)
     [ "$PEER_SCENARIO" != network-loss ] || controller_args+=(--network-loss)
+    [ "$PEER_SCENARIO" != network-congestion ] || controller_args+=(--network-congestion)
     [ "$PEER_SCENARIO" != clipboard-text ] || controller_args+=(--clipboard-text)
     [ "$PEER_SCENARIO" != clipboard-images ] || controller_args+=(--clipboard-images)
     [ "$PEER_SCENARIO" != keyboard-input ] || controller_args+=(--keyboard-input)
@@ -2305,6 +2307,16 @@ PY
       grep -Fxq 'FLUTTER_PEER_CLIPBOARD_TEXT_OK cases=6 directions=both kinds=ascii,unicode,16k limit_ms=5000 actual_peer=true native_readback=true same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native clipboard text verdict is missing'
       viewer_result='viewer=joined xvfb=joined clipboard_cases=6 stable_connection=true resources=bounded'
+    elif [ "$PEER_SCENARIO" = network-congestion ]; then
+      for cycle in 1 2 3; do
+        for receipt in IMPAIRED PARTIAL RECOVERY; do
+          [ "$(grep -Ec "^FLUTTER_PEER_NETWORK_${receipt}_OK cycle=$cycle " <<<"$controller_output")" -eq 1 ] \
+            || fail "congestion cycle $cycle $receipt receipt is absent or duplicated"
+        done
+      done
+      grep -Fxq 'FLUTTER_PEER_NETWORK_CONGESTION_PRESENTATION_OK cycles=3 profiles=jitter,bandwidth,bandwidth-jitter holds_ms=20000,20000,20000 recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 actual_peer=true x11_pixels=true same_window=true stable_connection=true resources=bounded seed=kernel-uncontrolled' \
+        <<<"$controller_output" || fail 'congestion pixel verdict is missing'
+      viewer_result='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = network-loss ]; then
       [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_IMPAIRED_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
         && [ "$(grep -Ec '^FLUTTER_PEER_NETWORK_PARTIAL_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \

@@ -81,6 +81,7 @@ case "$#:${1:-}" in
         --input-soak) PEER_SCENARIO=input-soak ;;
         --network-impairment) PEER_SCENARIO=network-impairment ;;
         --network-loss) PEER_SCENARIO=network-loss ;;
+        --network-congestion) PEER_SCENARIO=network-congestion ;;
         --clipboard-text) PEER_SCENARIO=clipboard-text ;;
         --clipboard-images) PEER_SCENARIO=clipboard-images ;;
         --keyboard-input) PEER_SCENARIO=keyboard-input ;;
@@ -172,12 +173,13 @@ PRESENTATION_TRACE=1
 [ "$LONG_SOAK" -eq 0 ] || PRESENTATION_TRACE=0
 [ "$PEER_SCENARIO" != input-latency ] || PRESENTATION_TRACE=0
 readonly PRESENTATION_TRACE
-if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ]; then
+if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ] \
+  || [ "$PEER_SCENARIO" = network-congestion ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=9 stable_connection=true resources=bounded'
-  if [ "$PEER_SCENARIO" = network-loss ]; then
+  if [ "$PEER_SCENARIO" = network-loss ] || [ "$PEER_SCENARIO" = network-congestion ]; then
     VIEWER_RESULT='viewer=joined xvfb=joined impairment_cycles=3 stable_connection=true resources=bounded'
   fi
 elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
@@ -806,7 +808,8 @@ inspect_container_contract() {
   local atspi_defaults_mounts=0 atspi_services_mounts=0
   local input_provider_mounts=0 impairment_mounts=0 expected_impairment_mounts=0
   if [ "$label:$PEER_SCENARIO" = viewer:network-impairment ] \
-    || [ "$label:$PEER_SCENARIO" = viewer:network-loss ]; then
+    || [ "$label:$PEER_SCENARIO" = viewer:network-loss ] \
+    || [ "$label:$PEER_SCENARIO" = viewer:network-congestion ]; then
     expected_impairment_mounts=1
   fi
   local receipt_ends=0
@@ -1372,7 +1375,8 @@ fi
 
 echo '== authenticate through the real prompt and observe current pixels across focus loss =='
 impairment_mount=()
-if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ]; then
+if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ] \
+  || [ "$PEER_SCENARIO" = network-congestion ]; then
   /usr/bin/python3 -I -S "$SOURCE_SNAPSHOT/scripts/flutter-peer-netem.py" --attach "$SERVER_CID"
   impairment_mount=(--mount 'type=bind,source=/run/rustdesk-verifier-vm/netem.sock,target=/netem.sock,readonly,bind-recursive=disabled')
 fi

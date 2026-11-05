@@ -440,7 +440,10 @@ pub fn core_main() -> Option<Vec<String>> {
                 hbb_common::allow_err!(crate::platform::check_autostart_config());
                 // The tray owns its same-user singleton check in the `--tray` receiver.
                 // Only a non-root user-session server may create this independent UI role.
-                hbb_common::allow_err!(crate::run_me(vec!["--tray"]));
+                match crate::run_me(vec!["--tray"]) {
+                    Ok(child) => crate::server::CHILD_PROCESS.lock().unwrap().push(child),
+                    Err(error) => log::error!("Failed to start user-session tray: {error}"),
+                }
             }
             #[cfg(any(target_os = "linux", target_os = "windows"))]
             {

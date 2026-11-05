@@ -5314,7 +5314,7 @@ for forbidden in \
     r_s11e45="$r_s11e45 current-image-lifecycle-authority-present:$forbidden"
   fi
 done
-grep -qF 'hbb_common::allow_err!(crate::run_me(vec!["--tray"]));' <<<"$server_tray_launch" \
+grep -qF 'match crate::run_me(vec!["--tray"]) {' <<<"$server_tray_launch" \
   || r_s11e45="$r_s11e45 exact-tray-launch-missing"
 if grep -qF 'stop_tray_processes' <<<"$server_tray_launch"; then
   r_s11e45="$r_s11e45 server-still-signals-tray"
@@ -5362,7 +5362,7 @@ done
 for binding in \
   'if linux_user_session_ui_allowed(crate::platform::is_root()) {' \
   'hbb_common::allow_err!(crate::platform::check_autostart_config());' \
-  'hbb_common::allow_err!(crate::run_me(vec!["--tray"]));'; do
+  'match crate::run_me(vec!["--tray"]) {'; do
   grep -qF "$binding" <<<"$server_tray_launch" || r_s11e46="$r_s11e46 server-tray-principal-guard-missing"
 done
 for binding in \

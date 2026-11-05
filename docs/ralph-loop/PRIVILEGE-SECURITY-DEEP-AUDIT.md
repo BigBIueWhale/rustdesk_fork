@@ -142079,3 +142079,14 @@ other platforms/input APIs, settings/lock contention, sustained use and installe
 or final-release acceptance remain OPEN. In particular, the separate intermittent
 scaling click-check failure has no established cause from these observations.
 The ledger replaces stale rapid-input status; a fresh isolated count follows.
+
+CTE 62rRPcncCM/session 36694 at 52ffd5c2 exits zero: 399,872 tokens,
+1,825,601 bytes, SHA-256
+0928dbcaf129812bd2703ec6ced5eda1bcdf6815624d9a40582d003566fa2cbe.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary passes seven controls and
+the round trip. Three endpoint deltas are zero; QEMU/private/RAM retire.
+Storage lifetime is 30.735 seconds; peak scratch is 402,718,720 bytes.
+mouse-order-ledger-52ffd5c2.json is 4,776 bytes, SHA-256
+9ee06bf9dae7c7274a746264b3c382850a02f17d4fd7601cac7819bfc1e6c17f.
+All 77 bounded evidence files/2,285,953 bytes match CTE/TUF; no owned run
+remains. This receipt leaves the counted ledger unchanged.

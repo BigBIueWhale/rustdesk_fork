@@ -500,7 +500,7 @@ RESTART_DIALOG_TESTS = {
 }
 
 CUSTOM_SCALE_TESTS = {
-    "view style selection sizes the actual texture across window changes",
+    "view style selection sizes the actual texture",
     "view style menu before selection preserves session-owned selection",
     "view style menu during save preserves session-owned selection",
     "view style menu menu removal preserves session-owned selection",

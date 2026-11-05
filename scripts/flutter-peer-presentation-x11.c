@@ -5805,6 +5805,33 @@ static int counter_width_interval(const uint8_t pixels[X11_FRAME_BYTES], uint32_
     return 0;
 }
 
+static void observe_scale_pixels_after_failure(Display *display, Window window) {
+    uint8_t pixels[X11_FRAME_BYTES];
+    uint64_t captured_us = 0U;
+    GError *error = NULL;
+    gchar *png = NULL;
+    gsize bytes = 0U;
+    if (x11_frame_capture_pixels(display, window, pixels, &captured_us) != 0) {
+        fputs("FLUTTER_PEER_VIEW_SCALE_PIXELS unavailable=true\n", stderr);
+        return;
+    }
+    GdkPixbuf *picture = gdk_pixbuf_new_from_data(pixels, GDK_COLORSPACE_RGB, FALSE, 8,
+        X11_FRAME_WIDTH, X11_FRAME_HEIGHT, X11_FRAME_WIDTH * 3U, NULL, NULL);
+    if (picture != NULL && gdk_pixbuf_save_to_buffer(picture, &png, &bytes, "png", &error, NULL) &&
+        error == NULL && bytes > 0U && bytes <= 65536U) {
+        gchar *encoded = g_base64_encode((const guchar *)png, bytes);
+        printf("FLUTTER_PEER_VIEW_SCALE_PIXELS decoded=%lld captured_us=%llu bytes=%zu base64=%s\n",
+               (long long)x11_frame_decode(pixels), (unsigned long long)captured_us,
+               (size_t)bytes, encoded);
+        g_free(encoded);
+    } else {
+        fputs("FLUTTER_PEER_VIEW_SCALE_PIXELS unavailable=true\n", stderr);
+    }
+    g_clear_object(&picture);
+    g_clear_error(&error);
+    g_free(png);
+}
+
 static void observe_scale_menu_after_failure(unsigned int pid) {
     static const char *names[] = {"Scale original", "Scale adaptive", "Scale custom"};
     uint64_t deadline;
@@ -5908,6 +5935,7 @@ static int exercise_view_scaling(Display *display, ViewerWindow *viewer,
             fprintf(stderr, "FLUTTER_PEER_VIEW_SCALE_FAILED sequence=%u distinct=%u "
                     "width_interval=%u..%u maximum_age_ms=%llu\n", sequence + 1U,
                     distinct, minimum, maximum, (unsigned long long)maximum_age);
+            observe_scale_pixels_after_failure(display, viewer->window);
             observe_scale_menu_after_failure((unsigned int)viewer->pid);
             goto out;
         }

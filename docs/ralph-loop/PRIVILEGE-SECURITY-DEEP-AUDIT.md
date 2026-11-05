@@ -140978,3 +140978,14 @@ is debug/headless, and a healthy graphical tray is not demonstrated. Full OpenRC
 boot, exact final-package lifecycle, ordinary graphical tray acceptance and R-S0
 remain OPEN. The ledger's checkpoint and existing row are replaced in place;
 its required fresh count follows. No owned run remains; the goal stays active.
+
+Fresh CTE count RM3H5nt9mO at 10691f8c passes: 399,942 tokens /
+1,825,483 bytes, SHA-256
+6928419a622256ddd74956613aa15752fb9d90ad5e190db21264b99d38daeb4c.
+Session 35399 exits zero with seven controls, whole-input round trip, three
+zero endpoint deltas and exact QEMU/private/RAM retirement. Storage is 30.577s,
+peak 402,915,328 bytes. Capsule openrc-tray-ledger-10691f8c.json is
+4,491 bytes, SHA-256
+c044775c9c7d9f3894faf5068a9791959ed8fe2e4bcc51853005e3c58a282060.
+All eight count evidence files match CTE/TUF. This audit-only receipt leaves
+the counted ledger unchanged; no owned run remains.

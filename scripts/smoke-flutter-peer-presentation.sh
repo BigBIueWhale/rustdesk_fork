@@ -291,7 +291,7 @@ elif [ "$PEER_SCENARIO" = view-scaling ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined view_scaling=6 input_points=30 pixels=fresh stable_connection=true resources=bounded'
+  VIEWER_RESULT='viewer=joined xvfb=joined view_scaling=9 input_points=45 pixels=fresh stable_connection=true resources=bounded'
 elif [ "$PEER_SCENARIO" = screenshot-save-unavailable ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

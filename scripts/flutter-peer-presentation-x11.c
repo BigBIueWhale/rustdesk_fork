@@ -5966,6 +5966,8 @@ static int exercise_view_scaling(Display *source, Display *display, ViewerWindow
     static const struct { unsigned int width, height, content_width; int adaptive; } cases[] = {
         {1100U, 650U, 640U, 0}, {1100U, 650U, 813U, 1}, {900U, 700U, 880U, 1},
         {900U, 700U, 640U, 0}, {1200U, 740U, 933U, 1}, {1200U, 740U, 640U, 0},
+        /* Shrink against each axis, then restore Original after resizing. */
+        {500U, 500U, 488U, 1}, {700U, 340U, 400U, 1}, {1100U, 650U, 640U, 0},
     };
     AtspiAccessible *show = NULL, *hide = NULL;
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
@@ -8370,8 +8372,8 @@ int main(int argc, char **argv) {
             puts("FLUTTER_PEER_IMAGE_QUALITY_OK cases=5 presets=best,low,balanced "
                  "encoder_bitrate=confirmed pixels=fresh stable_connection=true resources=bounded");
         } else if (view_scaling) {
-            puts("FLUTTER_PEER_VIEW_SCALING_OK cases=6 styles=original,adaptive "
-                 "geometry=pixel-witness input_points=30 tolerance_px=1 pixels=fresh "
+            puts("FLUTTER_PEER_VIEW_SCALING_OK cases=9 styles=original,adaptive "
+                 "geometry=pixel-witness input_points=45 tolerance_px=1 pixels=fresh "
                  "stable_connection=true resources=bounded");
         } else if (screenshot_unavailable) {
             puts("FLUTTER_PEER_SCREENSHOT_SAVE_UNAVAILABLE_OK screenshot_received=true "

@@ -2191,15 +2191,15 @@ PY
         <<<"$controller_output" || fail 'native image-quality result is absent'
       viewer_result='viewer=joined xvfb=joined image_quality=5 encoder_bitrate=confirmed pixels=fresh stable_connection=true'
     elif [ "$PEER_SCENARIO" = view-scaling ]; then
-      for sequence in {1..6}; do
+      for sequence in {1..9}; do
         [ "$(grep -Ec "^FLUTTER_PEER_VIEW_SCALE_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "view scaling case $sequence is absent or duplicated"
         [ "$(grep -Fxc "FLUTTER_PEER_VIEW_SCALE_INPUT_CASE_OK sequence=$sequence points=5 events=10 tolerance_px=1 released=both" <<<"$controller_output")" -eq 1 ] \
           || fail "view scaling input case $sequence is absent or duplicated"
       done
-      grep -Fxq 'FLUTTER_PEER_VIEW_SCALING_OK cases=6 styles=original,adaptive geometry=pixel-witness input_points=30 tolerance_px=1 pixels=fresh stable_connection=true resources=bounded' \
+      grep -Fxq 'FLUTTER_PEER_VIEW_SCALING_OK cases=9 styles=original,adaptive geometry=pixel-witness input_points=45 tolerance_px=1 pixels=fresh stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native view scaling result is absent'
-      viewer_result='viewer=joined xvfb=joined view_scaling=6 input_points=30 pixels=fresh stable_connection=true resources=bounded'
+      viewer_result='viewer=joined xvfb=joined view_scaling=9 input_points=45 pixels=fresh stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = screenshot-save-unavailable ]; then
       grep -Fxq 'FLUTTER_PEER_SCREENSHOT_SAVE_UNAVAILABLE_OK screenshot_received=true save=unavailable error=visible stable_connection=true' \
         <<<"$controller_output" || fail 'native screenshot missing-picker result is absent'

@@ -8651,7 +8651,7 @@ elif [ "$MODE" = android-peer-build ]; then
     printf '%s\n' "${peer_artifact_receipts[0]}"
 elif [ "$MODE" = cm-file-replay ]; then
     require_exact_fixed_receipt \
-        "CM_FILE_PEER_BUILD=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID files=10 network=none" \
+        "CM_FILE_PEER_BUILD=pass commit=$ANDROID_EMULATOR_SOURCE_COMMIT tree=$ANDROID_EMULATOR_SOURCE_TREE builder=$DEV_CHECK_IMAGE_CONFIG_ID files=11 network=none" \
         'CM file current-source peer build'
     if [ "$CM_DIRECTORY_DOWNLOAD" -eq 1 ]; then
         require_exact_fixed_receipt \

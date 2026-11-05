@@ -10007,6 +10007,7 @@ run_cm_file_replay() {
     local pa_output=$ROOT/cm-pa-product-pair.out
     local pa_candidate=/mnt/rustdesk-verifier-inputs/pa-runtime-candidate.tar.gz
     local pa_copy=$ROOT/cm-pa-runtime.tar.gz
+    local input_provider=$ROOT/cm-input-provider input_provider_sha input_provider_bytes
     local xvfb_inputs=$ROOT/cm-xvfb-inputs
     local image=$inputs/verifier-images/devcheck.docker.tar.gz
     local source_sha load_output inspect machine_mount status=0 manifest_sha
@@ -10137,7 +10138,7 @@ run_cm_file_replay() {
         | tee "$build_output" || status=$?
     [ "$status" -eq 0 ] && [ "$(stat -c '%s' -- "$build_output")" -le 4194304 ] \
         || { tail -n 160 "$build_output" >&2; fail "CM file build failed: $status"; }
-    [ "$(grep -Fxc 'CM_FILE_BUILD=pass server=production viewer=production-session files=10 network=none' "$build_output")" -eq 1 ] \
+    [ "$(grep -Fxc 'CM_FILE_BUILD=pass server=production viewer=production-session files=11 network=none' "$build_output")" -eq 1 ] \
         || fail 'CM file build product receipt differs'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'CM file build container did not exit cleanly'
@@ -10169,13 +10170,13 @@ smoke-bind-loopback.so 555
 smoke-server-launcher 555
 production-viewer-file-tests 555
 LAYOUT
-    [ "$(wc -l < "$target/android-peer-manifest.sha256")" -eq 10 ] \
+    [ "$(wc -l < "$target/android-peer-manifest.sha256")" -eq 11 ] \
         || fail 'CM file build manifest entry count differs'
     (cd "$target" && sha256sum --check --status android-peer-manifest.sha256) \
         || fail 'CM file build artifact digests differ'
     manifest_sha="$(sha256sum "$target/android-peer-manifest.sha256" | awk '{ print $1 }')"
     sed 's/^/CM_FILE_BUILD_ARTIFACT /' "$target/android-peer-manifest.sha256"
-    printf 'CM_FILE_PEER_BUILD=pass commit=%s tree=%s builder=%s files=10 network=none\n' \
+    printf 'CM_FILE_PEER_BUILD=pass commit=%s tree=%s builder=%s files=11 network=none\n' \
         "$ANDROID_EMULATOR_SOURCE_COMMIT" "$ANDROID_EMULATOR_SOURCE_TREE" "$DEV_CHECK_IMAGE_CONFIG_ID"
     printf '%s\n' "$machine_id_value" >"$machine_id"
     chown 1000:1000 "$machine_id"
@@ -10249,6 +10250,22 @@ LAYOUT
         && [ "$(sha256sum "$passwd" | awk '{ print $1 }')" = "$passwd_sha" ] \
         || fail 'CM file peer passwd changed during execution'
     if [ "$CM_DIRECTORY_DOWNLOAD" -eq 0 ]; then
+    [ -f "$target/libxdo.so.3" ] && [ ! -L "$target/libxdo.so.3" ] \
+        && [ "$(stat -c '%u:%g:%a:%h' "$target/libxdo.so.3")" = 1000:1000:644:1 ] \
+        || fail 'CM input-provider build metadata differs'
+    input_provider_bytes="$(stat -c '%s' "$target/libxdo.so.3")"
+    [ "$input_provider_bytes" -gt 0 ] && [ "$input_provider_bytes" -le 1048576 ] \
+        || fail 'CM input-provider build exceeds its size bound'
+    input_provider_sha="$(sha256sum <"$target/libxdo.so.3" | awk '{print $1}')"
+    [ "$(grep -Fxc "NATIVE_XDO_BUILD=pass sha256=$input_provider_sha bytes=$input_provider_bytes version=3.20160805.1-rustdesk24 source=checked-in" "$build_output")" -eq 1 ] \
+        || fail 'CM input-provider build receipt differs'
+    [ ! -e "$input_provider" ] && [ ! -L "$input_provider" ] \
+        || fail 'CM input-provider installation is already occupied'
+    install -d -o 0 -g 0 -m 0555 "$input_provider"
+    install -o 0 -g 0 -m 0444 "$target/libxdo.so.3" "$input_provider/libxdo.so.3"
+    [ "$(stat -c '%u:%g:%a:%h:%s' "$input_provider/libxdo.so.3")" = "0:0:444:1:$input_provider_bytes" ] \
+        && cmp -s "$target/libxdo.so.3" "$input_provider/libxdo.so.3" \
+        || fail 'CM protected input-provider copy differs'
     CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
         --name rustdesk-cm-pa-product-pair --pull=never --network=none --read-only \
         --user 1000:1000 --pids-limit=1024 --memory=4g --memory-swap=4g --cpus=2 \
@@ -10257,6 +10274,7 @@ LAYOUT
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
         --tmpfs /tmp/.X11-unix:rw,nosuid,nodev,noexec,mode=1777,size=1m \
         --env HOME=/tmp/home \
+        --env "CM_INPUT_PROVIDER_SHA256=$input_provider_sha" \
         --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE=$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" \
         --env "PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256=$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256" \
         --env "PA_RUNTIME_CANDIDATE_MANIFEST_SHA256=$PA_RUNTIME_CANDIDATE_MANIFEST_SHA256" \
@@ -10269,6 +10287,7 @@ LAYOUT
         --mount "type=bind,source=$source_root,target=/source,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$source_root,target=/work,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$flat,target=/smoke-target,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$input_provider,target=/usr/lib/rustdesk-fork,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$ROOT/engine-xvfb/root,target=/xvfb-root,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$ROOT/engine-xvfb/root/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly" \
         --mount "type=bind,source=$pa_copy,target=/inputs/pa-runtime.tar.gz,readonly" \
@@ -10289,6 +10308,7 @@ LAYOUT
         "bind|$source_root|/source|false" \
         "bind|$source_root|/work|false" \
         "bind|$flat|/smoke-target|false" \
+        "bind|$input_provider|/usr/lib/rustdesk-fork|false" \
         "bind|$ROOT/engine-xvfb/root|/xvfb-root|false" \
         "bind|$ROOT/engine-xvfb/root/usr/bin/xkbcomp|/usr/bin/xkbcomp|false" \
         "bind|$pa_copy|/inputs/pa-runtime.tar.gz|false" \
@@ -10313,6 +10333,10 @@ LAYOUT
     [ "$(grep -Fxc 'PA_PRODUCTION_PAIR=pass auth=cpace cm=exact-child source=private-monitor signal=nonzero-opus viewer=remote video=decoded network=container-loopback cleanup=server-motion-xvfb-joined' "$pa_output")" -eq 1 ] \
         && [ "$(grep -Fxc 'PA_RUNTIME_PRODUCT_PAIR=pass daemon=16.1 source=rd_pa_test.monitor signal=sine440 network=none uid=1000 cleanup=joined' "$pa_output")" -eq 1 ] \
         || fail 'CM PulseAudio product-pair native receipts are absent or duplicated'
+    [ "$(grep -Fxc "CM_INPUT_PROVIDER=pass sha256=$input_provider_sha path=fixed loaded=production-server login=remote unchanged=true" "$pa_output")" -eq 1 ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' "$input_provider/libxdo.so.3")" = "0:0:444:1:$input_provider_bytes" ] \
+        && cmp -s "$target/libxdo.so.3" "$input_provider/libxdo.so.3" \
+        || fail 'CM production input-provider observation or retained bytes differ'
     [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || fail 'CM PulseAudio product-pair container did not exit cleanly'
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null

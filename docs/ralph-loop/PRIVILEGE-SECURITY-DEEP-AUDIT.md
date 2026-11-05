@@ -140375,3 +140375,24 @@ SHA-256 9e6e15e95de5cc122772db5b2ab22edbc81c31fa9f7b4933af2507dd547e6c48.
 All eight ledger evidence files match CTE and TUF. This audit-only receipt preserves
 the counted ledger. The file-integration checkpoint is recorded; the graphical
 pair prerequisite remains eligible next work and the broader goal stays active.
+
+## 2026-11-05 — CM graphical/audio replay input-provider prerequisite
+
+Previous turn made progress: current authenticated file transactions passed and
+the subsequent graphical Remote login exposed an unfulfilled fixture prerequisite.
+Continue that exact integration gap before another audit topic. The production
+InputDispatchLease requires native readiness; libxdo-sys accepts only the fixed
+root-owned private provider24 library. The CM build/flat runtime omitted it.
+
+Use the existing non-root, networkless builder and checked-in native/build.py to
+produce the library alongside the same server. Include it in the eleven-file
+source-bound manifest. Disposable guest root installs an exact read-only copy in
+a protected private directory; only the graphical replay container mounts it at
+the production loader path. Validate metadata, size, build receipt and exact bytes
+before launch and after runtime. Require production-server load plus successful
+authenticated Remote/audio/video behavior, retaining every existing full-profile
+file and PA check. No product authority predicate or host state changes.
+Failure cleanup exports at most 16 KiB / 80 lines of the exact owned server log.
+Shell syntax and diff checks pass. TUF starts clean at cdf3d91f, no owned run,
+49,214,480 KiB MemAvailable and 33,322,770,432 bytes free in /dev/shm. Native result
+is pending; a source repair alone is not acceptance.

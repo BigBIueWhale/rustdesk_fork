@@ -128,6 +128,8 @@ case "$1" in
     if [ "$1" = cm-file-build ]; then
       cc -O2 -Wall -Wextra -Werror \
         -o /smoke-target/smoke-x11-motion scripts/smoke-x11-motion.c -lX11
+      /usr/bin/python3 -I -S libs/libxdo-sys-stub/native/build.py \
+        --output /smoke-target/libxdo.so.3
     fi
     chmod 0555 /smoke-target/flutter-peer-source-x11 \
       /smoke-target/smoke-bind-loopback.so /smoke-target/smoke-server-launcher
@@ -139,11 +141,11 @@ case "$1" in
         sha256sum debug/rustdesk debug/examples/seed_password \
           debug/examples/probe_client debug/examples/smoke_readiness \
           debug/examples/video_pipeline_probe flutter-peer-source-x11 smoke-x11-motion \
-          smoke-bind-loopback.so smoke-server-launcher production-viewer-file-tests \
+          smoke-bind-loopback.so smoke-server-launcher production-viewer-file-tests libxdo.so.3 \
           >android-peer-manifest.sha256
       )
       chmod 0444 /smoke-target/android-peer-manifest.sha256
-      printf 'CM_FILE_BUILD=pass server=production viewer=production-session files=10 network=none\n'
+      printf 'CM_FILE_BUILD=pass server=production viewer=production-session files=11 network=none\n'
     else
       (
         cd /smoke-target
@@ -598,6 +600,12 @@ EOS
         "$READY" --stop "$XVFB_PID" "$XVFB_START" || cleanup_status=$?
         wait "$XVFB_PID" 2>/dev/null || true
       fi
+      if { [ "$status" -ne 0 ] || [ "$cleanup_status" -ne 0 ]; } \
+        && [ -f /tmp/video-server.log ] && [ ! -L /tmp/video-server.log ]; then
+        echo 'VIDEO_SERVER_FAILURE_LOG=begin bounded_bytes=16384' >&2
+        tail -c 16384 /tmp/video-server.log | tail -n 80 >&2
+        echo 'VIDEO_SERVER_FAILURE_LOG=end' >&2
+      fi
       if [ "$cleanup_status" -ne 0 ]; then
         echo "VIDEO_PIPELINE_CLEANUP_EXIT=$cleanup_status" >&2
         exit 125
@@ -640,6 +648,14 @@ EOS
     if [ "$pa_product_pair" = 1 ]; then
       [ "${HOME:-}" = /tmp/home ] && [ -d "$HOME" ] \
         || { echo 'PulseAudio product-pair HOME changed before server launch' >&2; exit 1; }
+      [[ "${CM_INPUT_PROVIDER_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] \
+        && [ ! -L /usr/lib/rustdesk-fork ] \
+        && [ "$(stat -c '%u:%g:%a' /usr/lib/rustdesk-fork)" = 0:0:555 ] \
+        && [ -f /usr/lib/rustdesk-fork/libxdo.so.3 ] \
+        && [ ! -L /usr/lib/rustdesk-fork/libxdo.so.3 ] \
+        && [ "$(stat -c '%u:%g:%a:%h' /usr/lib/rustdesk-fork/libxdo.so.3)" = 0:0:444:1 ] \
+        && [ "$(sha256sum </usr/lib/rustdesk-fork/libxdo.so.3)" = "$CM_INPUT_PROVIDER_SHA256  -" ] \
+        || { echo 'CM private input provider differs' >&2; exit 1; }
     else
       export HOME=/tmp/rd-video-pipeline
     fi
@@ -685,6 +701,10 @@ EOS
     if [ "$pa_product_pair" = 1 ]; then
       grep -Eq '^VIDEO_PIPELINE_AUDIO_OK frames=[1-9][0-9]* peak_milli=[1-9][0-9]*$' \
         <<<"$VIDEO_OUT"
+      grep -Fq 'libxdo-sys Loaded /usr/lib/rustdesk-fork/libxdo.so.3' /tmp/video-server.log
+      [ "$(sha256sum </usr/lib/rustdesk-fork/libxdo.so.3)" = "$CM_INPUT_PROVIDER_SHA256  -" ]
+      printf 'CM_INPUT_PROVIDER=pass sha256=%s path=fixed loaded=production-server login=remote unchanged=true\n' \
+        "$CM_INPUT_PROVIDER_SHA256"
     else
       [ ! -e /tmp/video-stalled-peer.log ] && [ ! -L /tmp/video-stalled-peer.log ]
       RUSTDESK_VIDEO_PIPELINE_STALLED_PEER=1 \

@@ -18837,35 +18837,36 @@ enumeration tests and historical observations below remain, with their stated li
 `file-budget-wording-aea763d9.json` retains the classification, unchanged-source
 bindings and fresh isolated ledger count.
 
-**Viewer transfer-job admission — reproduced, OPEN.** In
-`src/client/io_loop.rs::handle_msg_from_ui`, both `SendFiles` and `AddJob` append
-read/write jobs without a retained-job count check; `AddJob` also retains paused
-jobs. The connection-manager/controlled-side checks do not bound those viewer
-vectors. The viewer mailbox bounds queued commands, not accumulated jobs. Required
-follow-up is owner-level admission before enumeration or peer dispatch, explicit
-refusal with legitimate retry, and native saturation/recovery tests covering live
-and paused jobs in both directions. The native-handler reproduction below confirms
-the missing limit; it does not establish memory exhaustion or privilege escalation.
+**Viewer transfer-job admission — corrected; Linux native-handler acceptance, broader integration OPEN.**
+`2138695c` adds one connection-owner admission check to `SendFiles` and `AddJob`
+before enumeration, job construction or peer dispatch. Upload and download each
+retain at most 32 jobs, counting active, paused and pending-confirmation jobs.
+Cancelled confirmations remain charged until exact completion is collected;
+successful confirmation exchanges owners without freeing capacity. Excess work
+reports a job error and leaves existing jobs and the connection usable for retry.
+The correction adds no protocol or privilege change.
 
-**Viewer admission regression — eight scenarios fail.**
 `src/client/io_loop/file_resume_tests.rs::viewer_job_limit_precedes_scan_dispatch_and_recovers`
-adds eight native-handler scenarios: read/write direction, active/paused retained jobs,
-and `SendFiles`/`AddJob`. The fixture seeds 31 real jobs, admits the 32nd through the
-production handler, then requires refusal of the 33rd before a directory-open observation
-or keyed TCP action. It also checks exact retained-job snapshots, UI error delivery,
-independent opposite-direction admission, real cancellation and retry after capacity is freed.
-Linux inotify has a successful-enumeration control; an ordered encrypted message barrier
-observes preceding peer actions without treating a timeout as absence. During the
-user-authorized receive verification, TUF `AV1yU9t6vu` and `xh5jx41g7Y` execute
-all eight scenarios. Every 33rd job is retained without the required refusal;
-all upload cases enumerate, and all `SendFiles` cases emit a peer action.
-The subsequent cancellation/retry controls are not reached. The canonical viewer
-command exits one; its nineteen later tests and CLI check do not execute.
-The separate admission implementation remains open; no correction is claimed.
-The old planned `viewer-job-fixture-b6494444.json` capsule was never finalized;
-current evidence is the two raw runs and the audit's application-integration entry.
-Full application builds needed by the resumed receive work are authorized.
-The admission defect and broader native/installed/release obligations remain OPEN.
+retains the eight cases that failed in TUF `AV1yU9t6vu` and `xh5jx41g7Y`: both
+directions, active/paused jobs and both creation commands. It observes refusal
+before a directory open or ordered CPace-keyed TCP action, unchanged existing jobs,
+UI error delivery, independent opposite-direction capacity, cancellation and retry.
+Eight additional cases cover successful/cancelled confirmation ownership through
+collection and recovery. The required named test passes at `d46c2a2f`, TUF
+`1raNdo6Tua`, with all 24 selected tests, full Flutter-enabled application libtest
+compilation and the CLI binary check. The latter also fixes the CLI's obsolete
+`PeerConfig.password` access to use the remembered `password_prs` already consumed
+by connection setup. Native execution takes 142 seconds; libtest build 117 seconds.
+Artifact SHA-256: `cd024eed3501dfe450101de8cb4f8caa0cf29875858d0e98778d09720987936e`.
+
+The profile uses a no-NIC Linux VM, an unprivileged network-none guest container,
+actual filesystem/TCP/production handlers and a test UI. Per-scenario stdout is
+not exported; exact test names, group totals and artifact/CLI receipts are retained.
+All four host endpoint deltas are zero; exact QEMU, private state and bounded RAM
+retire. Capsule: `viewer-job-admission-d46c2a2f.json`. The audit retains the initial
+CLI-check failure and corrected stage assessment. Complete UI/CM workflows,
+installed behavior, non-Linux platforms and broader release acceptance remain OPEN;
+the reproduced admission defect was not a demonstration of privilege escalation.
 
 **Named A/B evidence.** Each accepted correction ran
 `/bin/bash scripts/smoke-verifier-vm-authority.sh --hbb-common-fs`; its filesystem count below

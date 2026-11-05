@@ -140241,7 +140241,7 @@ Using a separate watched directory excludes legitimate confirmation I/O from the
 enumeration observation. Native results are pending the existing TUF no-NIC VM
 profile; no new acceptance claim is made by this preparation.
 
-TUF HQ1D8eWaDY at 2138695c fails full-parent compilation before any test:
+TUF HQ1D8eWaDY at 2138695c fails its final CLI-feature check:
 src/cli.rs:26 still reads the removed PeerConfig.password field. The canonical
 viewer credential is password_prs; LoginConfigHandler::initialize and Client::start
 already load and use that stored derived value. Change the CLI's prompt-necessity
@@ -140257,4 +140257,34 @@ viewer-job-admission-build-2138695c.json is 9,952 bytes, SHA-256
 b0701c6cb9b280ff37146db43bb8cd9379c23ec2350aed97ba1b591381b3edc2;
 its 465-byte retirement receipt has SHA-256
 26c3f7452e416809b93a0cdbfde236c0adaa9523c0dc6418d7b8fbe5655240ff.
-No owned run remains; the viewer correction still requires native execution.
+No owned run remains. The initial assessment incorrectly said this occurred before
+any test. The CLI module is feature-gated; the fail-fast recipe reaches its CLI
+check only after the full-parent build and native commands succeed. Failure export
+retains only the last 200 output lines, so individual results are unavailable and
+this run receives no individual native acceptance. Corrected assessment:
+viewer-job-admission-build-assessment-2138695c.json, 11,309 bytes, SHA-256
+54d1f0b4af62ec907dbc5a1b7e757ca0abb725108b6ff76938d448f3a345637f.
+
+TUF 1raNdo6Tua at d46c2a2f passes the complete existing viewer profile: five viewer
+tests, ten port-forward tests, four mapping tests, four CLI-parser tests and one
+retired-key-policy test, plus the actual CLI-feature binary check. Full-parent
+Flutter-enabled libtest build takes 117 seconds; execution takes 142 seconds.
+The unchanged artifact is cd024eed3501dfe450101de8cb4f8caa0cf29875858d0e98778d09720987936e.
+The required passing admission test executes both eight-case matrices. The original
+eight-case body is unchanged from e7811005, SHA-256
+5f66b82b16b781677a72ea78ca96585797676490ab77670b754c092813fa2b1f.
+Individual admission diagnostic lines are filtered from the successful guest export;
+the exact passing test name, all group totals and artifact receipts are retained.
+Live resume controls retain 21 keepalives in each direction, with worst replies
+32,429/1,407 microseconds and joined shutdown in 2 milliseconds for each.
+
+The shared storage supervisor completes in 573.204 seconds, peak scratch
+6,302,642,176 bytes within the unchanged 7-GiB ceiling. All four decoded endpoint
+deltas are zero. Exact QEMU absence, joined exit, private-state absence and RAM
+retirement are verified under the shared lock. Eight raw/outer evidence files
+match CTE and TUF. viewer-job-admission-d46c2a2f.json is 6,588 bytes, SHA-256
+cfc602ba9976a1837d9936226bca1276a04d65afd203a8853ac031cf9165231c.
+This proves the named Linux production-handler and connection-loop cases with a
+test UI and prepared peer context. Complete UI/CM, installed/non-Linux and release
+acceptance remain OPEN. Update the current ledger and count it once; no unchanged
+product test needs repetition.

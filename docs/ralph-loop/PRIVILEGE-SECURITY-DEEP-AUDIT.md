@@ -139755,3 +139755,52 @@ expected roughly five to six minutes each including boot/build of the three smal
 drivers; the application is not rebuilt. The controller ceiling is 300 seconds.
 Kernel loss/jitter seeds remain uncontrolled, so reproducible sequence/tail
 coverage, other workloads/platforms and impaired long sessions remain OPEN.
+
+Both native jobs at `5a9fc936` pass with unchanged app `2ae08e80`. Partial-loss
+run `5aCzuEQG0F` takes 320.118 capture seconds; congestion `lA8QYlKQId` takes
+323.468. Each compiles the three drivers twice with byte-identical results.
+Independent reconciliation checks every request/identity, quiet control,
+publication/acquisition ordering, recorded age bounds, restored deadline and all
+eight healthy/recovered window quantiles. A local reconciliation variable shadow
+is corrected before the congestion capsule is written; no runtime rerun occurs.
+
+| Profile | Impairment/recovery samples | Maximum input latency | Response after restoration | Observed drops |
+| --- | ---: | ---: | ---: | ---: |
+| random3 | 64 | 293.346 ms | 13.138 ms | 37 |
+| random8 | 56 | 808.888 ms | 107.879 ms | 132 |
+| burst | 44 | 1,576.693 ms | 96.054 ms | 50 |
+| jitter | 41 | 320.846 ms | 71.963 ms | 0 |
+| bandwidth | 18 | 1,889.281 ms | 107.464 ms | 0 |
+| bandwidth-jitter | 12 | 3,092.709 ms | 98.312 ms | 0 |
+
+Loss-run p95/p99 windows are 109/119, 116/119, 113/119 and 113/121 ms;
+maximum healthy/recovered response is 124 ms. Congestion windows are 108/118,
+118/133, 119/121 and 120/178 ms, with maximum 200 ms. Fixed-baseline maximum
+upward drift is respectively 7/2 and 12/60 ms. All 960 normal samples and 235
+impairment/recovery samples have ordered unique responses. Loss requests at
+restoration are aged 91,951/126/127 microseconds; congestion requests are aged
+111,378/137,552/1,233,177 microseconds. These are recorded timing observations,
+not a claim that every last request had built a prolonged backlog.
+
+The two bandwidth intervals deliver 78,673/78,486 bytes in 20.014/20.016 seconds;
+overlimit counters increase by 643/688. Calibration preserves four queued
+datagrams across restoration, delivers them in 256.843 ms, and measures jitter
+56.536–109.641 ms. All 816/819 TCP samples retain the pair; the app adds 694/576
+full-sized packets with zero oversized packets. Congestion root queues peak at
+20 packets/5,958 bytes. Sampled socket send/receive maxima are 2,526/21 bytes
+for loss and 4,944/25 for congestion. Reported viewer RSS checkpoints rise by at
+most 12,436/21,596 KiB from initial state; measured descriptors remain 46 and
+final thread counts are lower than at startup.
+
+Exact wrappers/QEMU/captured children are absent by pidfd. Shared-lock inspection
+confirms private/RAM retirement and no owned runs. Scratch peaks at
+3,023,224,832/3,021,979,648 bytes; all eight decoded host endpoint deltas are zero.
+Twenty-eight bounded records / 3,866,258 bytes match on CTE/TUF. Capsules:
+`input-loss-5a9fc936.json`, 22,963 bytes, SHA-256
+530dcdf99d02757e9ac83da70fa3620eff3a7623042f7371a2c2d7aaa9532143;
+`input-congestion-5a9fc936.json`, 31,962 bytes, SHA-256
+0cff9cc34d73b58bd35a97c4d4da80227ffbdcedffc2477227153df63bb533ca.
+This completes the named event-driven Linux input scenarios with one outstanding
+request. Concurrent animation/input, impaired multi-hour sessions, other
+roles/platforms/workloads, physical scanout, reproducible sequences/tails and
+release acceptance remain OPEN. No product change is justified by these passes.

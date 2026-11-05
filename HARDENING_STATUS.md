@@ -4144,10 +4144,38 @@ All 604 TCP observations retain transport identity. Viewer RSS grows at most
 processes/private/RAM state retire, with 3,021,545,472-byte peak scratch and four
 zero host listener deltas. Fourteen bounded records (1,272,548 bytes) match CTE/TUF;
 `input-recovery-fdef4166.json` binds sources, artifacts, raw samples and cleanup.
-This is XTEST-to-Xvfb-visible software response. Next: input recovery under partial
-loss and bandwidth/jitter, then impaired multi-hour sessions. Physical scanout,
+This is XTEST-to-Xvfb-visible software response. Physical scanout,
 other roles/platforms/workloads, reproducible timing/tails and release acceptance
 remain OPEN; the historical healthy soaks above remain valid within their scope.
+
+**Mixed-degradation input recovery (`5a9fc936`) — named Linux scenarios pass.**
+TUF `5aCzuEQG0F` and `lA8QYlKQId` reuse app `2ae08e80`, covering 20 seconds each
+of random 3%/8% loss, burst loss, 80 +/- 30 ms jitter, aggregate 32 kbit/s and
+bandwidth plus jitter. Independent reconciliation verifies all **1,195 ordered
+input responses**: 960 healthy/recovered samples and 235 impairment/recovery
+samples. First responses after restoration arrive in 13–108 ms; the same connection
+and window survive. The last combined-profile request has already waited 1.233
+seconds at restoration and appears 98 ms later. During-impairment maximum response
+latency is 3.093 seconds; this does not persist into the recovered windows.
+
+| Profiles | Fixed baseline p95/p99 | Largest recovered p95/p99 | Worst healthy/recovered response |
+| --- | --- | --- | --- |
+| Random and burst loss | 109/119 ms | 116/121 ms | 124 ms |
+| Jitter and bandwidth | 108/118 ms | 120/178 ms | 200 ms |
+
+Actual drops are 37/132/50; restricted intervals deliver 78,673/78,486 bytes in
+about 20 seconds, with throttling counters advancing. Queue changes preserve
+backlog; native calibration verifies queued delivery after restoration. All
+1,635 TCP observations retain transport identity and packet sizing; observed
+congestion queue maxima are 20 packets/5,958 bytes. Resource limits pass. Both
+VMs retire exact processes/private/RAM state, peak scratch is at most
+3,023,224,832 bytes, and all eight host endpoint deltas are zero. The two capsules
+`input-loss-5a9fc936.json` and `input-congestion-5a9fc936.json` plus raw evidence
+have matching CTE/TUF copies (28 files, 3,866,258 bytes). This is an event-driven
+Linux software-display workload with one outstanding request. Next: impaired
+multi-hour freshness. Concurrent animation/input workloads, other roles/platforms,
+physical scanout, reproducible loss/jitter sequences and tails, and final release
+acceptance remain OPEN.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;

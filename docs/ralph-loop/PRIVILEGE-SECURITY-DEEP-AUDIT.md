@@ -140580,20 +140580,49 @@ actual CM directory reply. Kernel peer/process proof identifies the selected-use
 CM. The unchanged UID4001 probe reports all expected write, premature/short,
 peer-error, cancel and staged-owner-loss outcomes. The observer then fails its
 combined directory-metadata/pre-login assertion before accepting file contents or
-running reconnect. It had copied mode0700 from smoke-server-stage.sh, which sets
-umask077. Production fs.rs::open_parent_dir_no_follow creates ordinary directories
-with mkdirat mode0777; the shipped systemd unit does not override UMask. The pinned
-systemd252 contract defaults system units to0022:
+running reconnect. It had copied mode 0700 from smoke-server-stage.sh, which sets
+umask 077. Production fs.rs::open_parent_dir_no_follow creates ordinary directories
+with mkdirat mode 0777; the shipped systemd unit does not override UMask. The pinned
+systemd 252 contract defaults system units to 0022:
 https://www.freedesktop.org/software/systemd/man/252/systemd.exec.html#UMask=.
-Check the actual CM Umask0022, export actual destination metadata before asserting
-0755, and retain UID/GID, single-link mode0600 payloads, mode0700 private coordinator,
+Check the actual CM Umask 0022, export actual destination metadata before asserting
+0755, and retain UID/GID, single-link mode 0600 payloads, mode 0700 private coordinator,
 pre-login absence, exact bytes and complete retirement. No product permission change.
 The failed observer did not print the offending field, so this source-based
 diagnosis still requires native confirmation.
 
-Terminal tool63546 exits1, all three endpoint deltas are zero and peak scratch is
+Terminal tool 63546 exits 1, all three endpoint deltas are zero and peak scratch is
 4,108,328,960 bytes. Exact QEMU absence, joined RAM retirement and identity-checked
-bounded private-state removal pass. installed-file-login-7e982dbc.json is9,021 bytes,
-SHA-256728a5afd5a7e8fc2f1cd1dcabeec41b534076aac322302e96add18a6273ea52b;
-its459-byte retirement receipt is33bcfe05e203b212c1ded421e9b153c9c2e81a5dd85a35ea615f55cd044bff12.
+bounded private-state removal pass. installed-file-login-7e982dbc.json is 9,021 bytes,
+SHA-256 728a5afd5a7e8fc2f1cd1dcabeec41b534076aac322302e96add18a6273ea52b;
+its 459-byte retirement receipt is 33bcfe05e203b212c1ded421e9b153c9c2e81a5dd85a35ea615f55cd044bff12.
 All nine retained evidence files match both hosts. No owned run remains.
+
+TUF kbqtYnmvM5 at 4d3fa80c passes the expanded full receiver profile with the
+unchanged d108183a server/probe: 17 credential/lifecycle scenarios, 15 mutual CPace
+controls and three FileTransfer peers. The source/runtime equality guard remains.
+The exact CM is UID/GID 4001, direct child of the selected server, same installed
+executable/cgroup, role --cm, no capabilities, NoNewPrivs 1 and Umask 0022. Actual
+destination metadata confirms mode 0755 and pre-login absence. Four exact payloads
+are 36, 32, 33 and 38 bytes, UID/GID 4001, single-linked mode 0600. Premature/short
+finality is refused, peer error is returned, cancellation/owner loss remove partials,
+and a UID 4002 successor commits the interrupted job/destination. Whole destination
+inventories contain only final files; the mode 0700 coordinator is empty after both
+phases. The retained CM exits and is reaped at normal service stop; cgroup is absent.
+
+Terminal tool 22465 exits zero. Storage supervisor duration 96.265 seconds, peak
+scratch 4,110,426,112 bytes; all three decoded endpoint deltas are zero. Exact QEMU,
+private state and RAM retire under the shared lock. Capsule
+installed-file-accepted-4d3fa80c.json is 105,470 bytes, SHA-256
+fa227897d184cafd8d097833b73667029706df7af163d2c16a7cf7765fc60cf6.
+All eight bounded evidence files match CTE and TUF. No new artifact generation,
+cache enlargement, production authority/permission change or host service change.
+
+This accepts the named debug/headless installed-layout receive workflows in a
+protected destination inside the selected user's private home. Keep shared-parent/
+mount-root cleanup, GUI/device/other-platform, installed read/download, native
+contention/crash/storage failures, soak, final-package and independent acceptance
+OPEN. The tray lacks its dynamically loaded library in this fixture; no UI pass is
+claimed. Its no-UI CM also logs gtk_main_quit assertions on idle notifications;
+this test proves final service-stop retirement, not standalone idle-exit behavior.
+Update the current ledger and count it once. The broader goal remains active.

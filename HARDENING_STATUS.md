@@ -6181,6 +6181,27 @@ at 6,367,162,368 scratch bytes; all four endpoint deltas are zero, and QEMU,
 RAM and private state retire. The preceding partial run remains in
 `cm-private-receive-15c97c02.json`. The `_pa` entry below states media scope.
 
+**Installed Linux receive checkpoint — named workflows passed; broader acceptance OPEN.**
+At `4d3fa80c`, TUF `kbqtYnmvM5` reuses the exact `d108183a` server/probe and
+shipped service unit/policy. All 17 credential/lifecycle scenarios pass alongside
+three authenticated FileTransfer peers. UID4002 receives a CM directory reply;
+kernel socket/proc evidence proves the CM is the supervised server's UID4001 child,
+without effective capabilities and with no-new-privileges. Pre-login creation,
+premature/short finality, peer error, cancellation and interrupted-owner cleanup
+retain their refusal/retirement checks. Four received files have exact bytes,
+UID/GID4001, single links and mode0600; a fresh UID4002 connection commits the
+interrupted job's destination. The ordinary directory follows the installed
+Umask0022 as mode0755; private coordination stays mode0700 and returns empty,
+with no hidden destination residue. Normal unit stop exits/reaps the exact CM.
+`installed-file-accepted-4d3fa80c.json` binds source/artifact identities,
+actual observations and joined cleanup; the audit
+retains the two failed attempts' separate capsules. The initial fixture's nologin account prevented
+CM startup; its container-derived directory-mode expectation also needed correction.
+No product code or retained binary changed. This exercises a protected destination
+inside the selected user's private home, not shared-parent/mount-root retirement,
+GUI/device/other-platform, installed read/download, contention/crash/soak or final-package
+acceptance. The fixture's missing tray library leaves UI behavior unverified.
+
 **Recording outputs — named Linux file/mux, I/O and timeline components accepted; installed/platform acceptance OPEN.**
 `libs/scrap/src/common/record.rs` creates output exclusively, borrows factory metadata and
 retains no pathname for deletion. Created short, unwritten and incomplete outputs remain.

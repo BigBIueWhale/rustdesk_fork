@@ -4172,30 +4172,50 @@ VMs retire exact processes/private/RAM state, peak scratch is at most
 3,023,224,832 bytes, and all eight host endpoint deltas are zero. The two capsules
 `input-loss-5a9fc936.json` and `input-congestion-5a9fc936.json` plus raw evidence
 have matching CTE/TUF copies (28 files, 3,866,258 bytes). This is an event-driven
-Linux software-display workload with one outstanding request. Next: impaired
-multi-hour freshness. Concurrent animation/input workloads, other roles/platforms,
-physical scanout, reproducible loss/jitter sequences and tails, and final release
+Linux software-display workload with one outstanding request. Multi-hour
+jitter/bandwidth outcomes follow below. Concurrent animation/input workloads,
+other roles/platforms, physical scanout, reproducible loss/jitter sequences and tails, and final release
 acceptance remain OPEN.
 
-**Impaired multi-hour display soak — running, acceptance pending.** TUF
-`As53eP1Smj` at `d48f838d` reuses app `2ae08e80` for four rounds of jitter,
-32-kbit/s bandwidth and their combination across 241 one-minute healthy windows.
-The original baseline and freshness/resource limits remain fixed. CTE prerequisite
-`nBL6r8WOhl` passes all ten exact-loop accounting cases plus native frame checks;
-processes/RAM retire and three endpoint deltas are zero. Capsule:
-`congestion-soak-accounting-d48f838d.json`. The full-duration run and its cleanup
-must complete before acceptance; retain TUF's source unchanged and observe this
-same job. Broader R-F5 coverage remains OPEN.
+**Impaired multi-hour display and input — named Linux software-display scenarios accepted.**
+TUF `As53eP1Smj` at `d48f838d` and CTE `iimMsUsxeE` at `ac26035f` reuse app
+`2ae08e80` without rebuilding it. Each completes four rounds of 20-second jitter,
+32-kbit/s bandwidth and combined profiles, retaining the original baseline,
+1,000-ms healthy bounds, 2,500-ms recovery deadline and 250-ms quantile-drift limit.
 
-**Companion impaired input soak — implemented, execution/acceptance pending.**
-`--input-congestion-soak` retains 7,320 scheduled healthy responses and a fixed
-four-minute baseline, adding twelve 20-second congestion cycles before windows
-1/16/31/46. The original 1,000-ms healthy-response, 2,500-ms recovery and 250-ms
-quantile-drift bounds remain. CTE now holds authenticated app `2ae08e80` without
-increasing its four-generation cache. The planned capture control is
-`.harness-state/input-congestion-soak-nov05-control`; inspect its launch, live
-process and final receipts before classifying execution. Full-duration/cleanup
-evidence and broader roles/workloads remain OPEN.
+| Observation | Display soak | Input soak |
+| --- | --- | --- |
+| Healthy coverage | 241 one-minute windows; 305,119 valid pixel observations | 61 four-minute windows; 7,320 normal responses, plus 284 impaired responses |
+| Baseline p95/p99 | 294/312 ms | 114/118 ms |
+| Largest upward p95/p99 drift | 9/8 ms | 2/45 ms |
+| Worst healthy-window frame age / normal response | 342 ms | 965 ms |
+| Longest cycle recovery | 1,721 ms | 400.381 ms |
+
+All individual input timings, request/frame ordering, window quantiles and cycle
+deadlines reconcile. Display window/progress records and retained impaired pixels
+reconcile; healthy frame histograms are not retained, so their quantiles remain
+native aggregates. Display age reaches 3,715 ms during throttling and at most
+640 ms in immediate recovery follow-up. Input has exactly four normal responses
+over 200 ms: the first after each round, rounded up to 794/965/961/661 ms.
+Later windows return to baseline; the final input window is 113/117 ms.
+These tails meet the unchanged bounds; their causal explanation is unproved.
+
+All twelve cycles per run preserve the transport until ordinary shutdown.
+Calibrated impairment, observed bandwidth, queue and viewer/server resource
+bounds pass. Exact owned processes/private/RAM retire; peak scratch is
+3,036,491,776 bytes on TUF and 3,034,021,888 bytes on CTE. TUF's four endpoint
+deltas are zero. CTE's first three are zero; its final snapshot adds unattributed
+`tcp 127.0.0.1:8084`. Kernel host-IP-socket denial and owned cleanup are verified;
+the external endpoint is retained as an observation, with no foreign-process
+inspection or mutation and no claim of zero host change. Capsules:
+`congestion-soak-d48f838d.json`, `input-congestion-soak-ac26035f.json`.
+The preceding ten native accounting cases remain in
+`congestion-soak-accounting-d48f838d.json`.
+
+These runs establish the two stated Linux workloads. Multi-hour loss/outage,
+concurrent animation/input and other workloads, supported roles/platforms,
+physical scanout, reproducible impairment sequences, exact release artifacts
+and independent reproduction/review remain OPEN. No full R-F5 acceptance is claimed.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;

@@ -139997,3 +139997,81 @@ No resolver, package selection, network acquisition or input-pin change occurs;
 failed capture and retry into its `retry/` subdirectory. The retry launch JSON
 will bind the new final harness source and exact process identity. Ledger bytes
 remain unchanged and the preceding count remains current.
+
+## 2026-11-05 — completed multi-hour congestion display and input evidence
+
+Both original jobs complete with their source checkouts unchanged. The preceding
+goal turn accepted TUF's final display evidence; this turn finishes CTE's companion
+input run and reconciles every normal response and impairment cycle. This closes
+the two named Linux software-display scenarios, not R-F5 or release acceptance.
+Both reuse app `2ae08e80`/engine `ddb1541d`; all three native drivers compile twice
+to identical bytes and the application is not rebuilt. No passed soak is repeated.
+
+TUF `As53eP1Smj`, harness `d48f838d`, exits zero in 14,879.999 capture seconds.
+All 241 healthy windows reconcile with live progress: 305,119/305,119 valid
+pixel observations, 14,463,987 healthy milliseconds, maximum age/gap 342/77 ms,
+baseline p95/p99 294/312 ms and largest upward drift 9/8 ms. Twelve congestion
+cycles recover within 522–1,721 ms; impaired age peaks at 3,715 ms and immediate
+recovery follow-up age at 640 ms. Healthy per-frame histograms are not retained;
+the quantiles are native aggregates, not independently recomputed observations.
+All 1,864 TCP snapshots preserve the pair until the final shutdown snapshot;
+queue maxima are 12 packets/6,848 bytes. Server duration is 14,764,478 ms with
+14,759 one-second samples and 246 logged windows. Viewer/server resource limits
+pass. Exact processes/private/RAM retire, all four endpoint deltas are zero and
+peak scratch is 3,036,491,776 bytes. Final capsule `congestion-soak-d48f838d.json`
+is 31,551 bytes, SHA-256
+380599d19bbcde1f76f20f629c4e5159fe60ec0495f9fc334a45e08e0594739f.
+Its 590-byte retirement record and capsule have matching CTE/TUF copies;
+the seven raw evidence files remain on TUF. Workload log: 4,737,916 bytes,
+SHA-256 8b938adb9bd47a419a4b7004e020263b26c1cd2e0b83ddcf48cdaaa52ebe4a83.
+
+CTE `iimMsUsxeE`, harness `ac26035f`, exits zero in 15,008.739 capture seconds.
+Independently reconcile all 7,320 normal and 284 impaired input responses:
+strict request/frame ordering, quiet controls, 61 four-minute windows, quantiles
+recomputed from microseconds, all twelve profile holds and recovery deadlines,
+and 244 live progress records. Baseline p95/p99 is 114/118 ms, largest upward
+drift 2/45 ms, maximum normal response 965 ms and final window 113/117 ms.
+Exactly four normal responses exceed 200 ms: the first after each round,
+requests 192/2063/3932/5805, at 793006/964342/960452/660240 microseconds.
+They meet the original one-second bound; retain them without rounding down.
+The pending impaired response completes 96,534–400,381 microseconds after
+restoration. Healthy duration plus measured impairment rounds is 14,882,655 ms;
+the server independently reports 14,883,416 ms, 14,878 samples and 248 windows.
+All 1,727 TCP observations preserve identity until final shutdown, with queue
+maxima 18 packets/5,742 bytes. Viewer/server resource limits pass and exact
+owned processes/private/RAM retire; peak scratch is 3,034,021,888 bytes.
+
+CTE's first three host endpoint comparisons are unchanged. The final one adds
+`tcp 127.0.0.1:8084`; retain that exact unattributed external observation.
+Review of the existing `vm-host-network.py` entry and its recorded admission confirms:
+IP socket creation is kernel-denied, inherited IP descriptors are closed/refused,
+the shell body is sealed and source-bound, and all captured owned process IDs
+are absent. No inspection or mutation of the endpoint's foreign owner occurred. The final
+reconciliation therefore verifies exact owned cleanup while explicitly preserving
+the nonzero external delta; it does not relabel the run as zero host change.
+Capsule `input-congestion-soak-ac26035f.json`: 46,136 bytes, SHA-256
+021cf3a67cfcee567625df88a483eedfa3b6700b41ec1df7d4603dc9b6430e62.
+Its retirement record and seven raw files remain on CTE. Workload log:
+5,389,207 bytes, SHA-256
+91b5cb1a607d829619371b191385782e2d518d1765cbebaf033a982df4199c75.
+
+Research retained during the frozen-source interval remains bounded evidence,
+not a product change or new acceptance claim. `input-recovery-tail-diagnostic-research-ac26035f.json`
+records that normal-response logs lack absolute phase timestamps; sampled queues
+and QoS source review do not establish the four tails' cause. A full presentation
+trace adds a shadow decoder and can perturb the workload. Any justified follow-up
+should first add minimal observer timing and use a focused recovery case, not
+automatically repeat these four-hour checks. `network-sequence-research-ac26035f.json`,
+`network-seed-candidate-research-ac26035f.json` and
+`network-backports-auth-research-ac26035f.json` retain primary-source research for
+seeded impairment, candidate kernel/tc versions and their required authentication. Publisher
+discovery values are not authenticated pins; signed metadata, package/ELF closure
+and native calibration remain pending. No candidate acquisition, key import,
+host installation or existing input-pin change occurred.
+
+Update the current ledger with these scoped results. Multi-hour loss/outage,
+concurrent animation/input and other workloads, supported roles/platforms,
+physical scanout, reproducible sequences, exact release artifacts and independent
+review remain OPEN. Reassess the highest-value remaining release blocker at this
+checkpoint; passing these scenarios is not a reason to repeat them unchanged.
+A fresh isolated token count is required after this ledger edit.

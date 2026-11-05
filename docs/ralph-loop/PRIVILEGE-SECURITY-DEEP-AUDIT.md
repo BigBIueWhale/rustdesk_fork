@@ -141448,3 +141448,89 @@ Exact QEMU/private/RAM retirement passes. Storage lasts 30.623 seconds, peak
 SHA-256 25d50675069864161943efb97722a77514441fccd6476797cdb0a38b3def6c57.
 All eighteen bounded evidence files (230,981 bytes) match CTE/TUF. This audit-only
 receipt leaves the counted ledger unchanged; no owned run remains.
+
+## 2026-11-05 — view-style menu session lifetime
+
+Continue the user's functional-correctness direction with the demonstrated R-S0
+Adaptive scaling failure, ahead of additional locale acquisition or new runtime
+fixtures. Current native replay at 3c7b5900 reuses app bd65c0c4 and engine ddb1541d.
+The unchanged geometry/freshness conditions still fail sequence two: Original
+passes at 1100x650; Adaptive stays at width interval 627..660 instead of about
+813 pixels through 2.5 seconds. Maximum sampled age is 402 ms. Reopened radios
+and the retained saved-style observation both say original. This narrows the
+native failure to selection/persistence; no corrected native result is claimed.
+
+TUF 8aTUVYBEvI/session 90228 exits 1. Capsule view-scaling-current-3c7b5900.json,
+34,064 bytes, SHA-256 39e92043ddff5254d5abaaeca8490e861d8dd72762bda58e9b8436291ae8741d,
+binds artifact manifests, command, observations and raw output (208,637 bytes,
+SHA-256 9bf29517d38e8cef55f098778a9c0ff39c51632c99e0e1c62dbf9fb137e00a38).
+All twelve diagnostic bundle payloads match the canonical app; retain only
+bounded logs/identities and retire the duplicate tree under its exact identity.
+Four listener deltas are zero; server/source/Xvfb join, QEMU is absent and RAM
+retires. Storage: 114.077 seconds, peak 3,026,829,312 bytes.
+
+Source path: toolbar.dart's toolbarViewStyle captures a CanvasUpdateOwner while
+constructing menu data, then requires that same presentation generation and a
+mounted menu context before/after persistence. A display refresh retires that
+generation. The preference is session-owned, while geometry publication must
+use the current display after persistence. Flutter 3.24.5 and 3.47.5 both close
+a MenuItemButton's menu and defer its action until after focus restoration:
+https://raw.githubusercontent.com/flutter/flutter/3.24.5/packages/flutter/lib/src/material/menu_anchor.dart
+and https://raw.githubusercontent.com/flutter/flutter/3.47.5/packages/flutter/lib/src/material/menu_anchor.dart.
+BuildContext lifetime governs UI access, not the live session's accepted save:
+https://api.flutter.dev/flutter/widgets/BuildContext/mounted.html.
+
+Six rendered tests call the actual toolbar factory and RdoMenuButton with real
+CanvasModel/ImageModel, controlled persistence and fixture session/topology/input.
+The first run (72fd7155, 3gsRXG4dO1/session 28420, exit 1) reproduces preselection
+refusal but contains an object/string assertion error. bb5327e3 corrects only
+that assertion. Its TUF DUsmlLpAxF/session 2909 exits 1 with exactly three failures
+and 45 passes: refresh before activation suppresses the save; refresh during
+save and menu removal each suppress canvas publication. Session retirement
+before/during save and failed-save retry pass, as do all 42 prior controls.
+Capsules view-style-fixture-72fd7155.json (35,559 bytes,
+5a696107bf2b4972ae87159ccccb0187f9c8607d8201440623e8625eba721548) and
+view-style-before-bb5327e3.json (35,622 bytes,
+ca64002ad0c8f7634b6eac33a42b9b519342eacad5db11e7a87fcbf7ad5dc460)
+retain both outcomes and exact cleanup. Each has four zero listener deltas;
+storage 227.080/223.552 seconds, peaks 6,387,703,808/6,384,820,224 bytes.
+
+Correction 8185afd7 binds the operation to the captured session/client and canvas
+identity, acquires the current canvas update owner after successful persistence,
+and confines mounted-context checks to menu loading and feedback. No renderer
+owner check, native storage ordering, style set, helper failure check or session
+retirement check is relaxed. The candidate changes only toolbar.dart relative
+to the valid baseline; all tests, model code and native pixel scenario stay
+byte-identical. Shared factory use includes desktop and mobile, but mobile
+native execution is not established by these Linux component tests.
+
+At 8185afd7, TUF StPDPakT53/session 30117 executes all 48 tests successfully,
+then exits 1 because the result-parser self-test still expects 42 rather than
+48. Capsule view-style-after-8185afd7.json is 35,589 bytes, SHA-256
+d8f6bed53c36683bab116de873d5253151d116baaa4e8ac6f30899efe000661a.
+Its raw test output is 102,143 bytes, SHA-256
+5bde54f9a985bcd2f66a7c029f5d71b47ada8c1e51536ef422d002e5a95358ae.
+This is actual component success, but not an accepted outer gate. Four endpoint
+deltas are zero and exact cleanup passes; storage 229.362 seconds, peak
+6,384,033,792 bytes. 1aa2a22b updates the two stale parser-test totals only.
+
+Final TUF Bvz4zrmxkj/session 31718 at 1aa2a22b exits zero in 245 outer seconds.
+All 48 widget/model cases and all three parser controls pass. The pass transcript
+prints the identical 48 result records twice; this is one execution, not 96 tests.
+The test body is SHA-256 76e9defd746842936c886d8b85d56c7756882f1d380028562fbfcb2ea13c3970
+on both valid A/B sides. Capsule view-style-accepted-1aa2a22b.json, 57,733 bytes,
+SHA-256 9ff6c1d787091455eafaecfcb5ebb05bf1e33fa1a6946c69e6457c8440a868fa;
+raw output 48,142 bytes, SHA-256
+9b32139731e0448753a83976599e5ce3cb01a054a77a629cebf162d07da5acdc.
+Four endpoint deltas are zero, QEMU is absent, and private/RAM state retires;
+storage 248.637 seconds, peak 6,387,507,200 bytes. All 53 bounded runtime evidence
+files (1,267,418 bytes) match CTE/TUF. No owned run remains.
+
+The production diff from retained app bd65c0c4 is solely toolbar.dart. Next build
+the complete candidate with the existing authenticated --linux-flutter-app-build
+recipe, then reuse its manifest in the unchanged --view-scaling replay. The
+six-case native pixel result is still OPEN; component persistence uses a double,
+and Flutter 3.24.5 execution is not Flutter 3.47.5 app acceptance. Preserve
+Custom, exact subpixel geometry, saved-canvas restart, other-platform/device and
+release gaps. The selected blocker remains active at a component-validation
+checkpoint. Update the existing ledger entry and count it in isolation.

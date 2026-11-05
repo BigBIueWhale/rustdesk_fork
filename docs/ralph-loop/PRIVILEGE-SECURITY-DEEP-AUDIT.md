@@ -84297,7 +84297,7 @@ Final checks: clean HEAD=origin/mastered63beeb; exactly3intendedpaths differ fro
 All production/native/test/spec/harness inputs remain unchanged. Seven stash IDs/order and
 FUSEparkhash remain exact. Both runtime marker sets and owned RAMrunroots are empty;
 new boundedrecords have0400/nlink1 and correctowner. DNS correction remainsOPEN/OPEN
-by userdirection; all other explicitparks remain intact. Sharedverifiercleanup is complete at
+by userdirection; other unfinished work remains OPEN. Sharedverifiercleanup is complete at
 its limited integration scope; broadhardening remainsINCOMPLETE. Exacteditlock76435 will
 be released after this audit append; no next item is started during this pivot turn.
 
@@ -84365,7 +84365,7 @@ already-admitted actual artifact/outcomes) and no behavior/selection change. It 
 correction after the named native run, not a new whole-current replay; do not rebuild a passed
 fullproductionartifact just to verify a reversible finalmessage. Diff review and the final count
 orchestration will parse the edited shell. The ledger records only named79c451e7 Linuxcomponent
-acceptance and all missing layers. DNS and every other explicit userpark remain open.
+acceptance and all missing layers. DNS and other unfinished work remain OPEN.
 Postruneditlock37075 holds both marker sets idle. Native scope is narrower than APK/device
 acceptance; this step does not close R-S11eq or broadhardening. Prepare the final signedoffpush
 and reproducible ledger count; do not edit ledger after counting.
@@ -84388,7 +84388,7 @@ only in truthful ledger and5line terminaloutput branch, with no product/test/run
 Finalchecks pass: cleanHEAD=origin/master784daba1,6intendedpaths fromed63beeb. Source/tests,
 spec, manifests/lock, numericstorageceilings and allotherpins remain unchanged;7stashIDs/order
 andFUSEparkhash exact. Bothmarker sets andownedRAMrunroots empty; newrecords0400/nlink1/bounded.
-DNS and allotherexplicitparks remainopen/unfinished. The exacttwo-caseLinuxcomponent regression
+DNS and other unfinished work remain OPEN. The exacttwo-caseLinuxcomponent regression
 execution is accepted; broaderAndroid/APK/JNI/keyrelease/peer-media/mainthread timing/native
 installedLPE/platform/artifact/release evidence remainsopen. Preparation remainsexpensive; the
 448s integrationbuild is not a fastdefaultinnerloopclaim. Broadgoal staysACTIVE/INCOMPLETE.
@@ -84475,7 +84475,7 @@ Noledgeredit followscount; architecture restoration/broadhardening are not compl
 Finalchecks pass: cleanHEAD=origin/master8fb007cd; onlyledger differs fromacceptednative119b65c6.
 Exactly5intendedpaths differ from784daba1. Rootapp/Flutter/examples/manifests/lock/spec/pins/
 numericstorageprofiles+mapping are unchanged. SevenstashIDs/order andFUSEparkhash exact;
-DNS/allotherparks remainopen/unfinished. Source/baselinefields in acceptedv2are explicit/correct.
+DNS and other unfinished work remain OPEN. Source/baselinefields in acceptedv2are explicit/correct.
 Bothruntime marker sets andownedRAMrunroots empty; allnewrecords0400/nlink1/bounded/correctowner.
 Onlysend-digest observed-length admission is accepted at namedLinuxsharedcomponent scope;
 actualCMIPC/peer application/platform/installed/release/LPE/content-snapshot and broader
@@ -98941,7 +98941,7 @@ Live limitations remain explicit: same-APK Android task-relaunch presentation fa
 
 The exact previous full-input count is reused, not guessed: 5eadd6b6 ledger SHA256 6892a2fc0ac7d593973cb5e4f780f5a26adf8d5e04fb5dc12a9abb45501dbcbc, 1451296 bytes/321777 cl100k_base tokens. The previous sealed counter receipt is bound to that identical complete input. Fresh mandatory command bash scripts/smoke-verifier-vm-authority.sh --ledger-token-count --requirements runs at 021edfe3 as etkZRDZRsG and exits 0 in 34 outer seconds. New ledger SHA256 c7415d4e582f9c614fd1bdbe8b69e703c1f4289b3b0b65089c49958b7753d34b, 1440524 bytes/319283 tokens: decrease 2494 tokens. Requirement input remains SHA256 7c1c0e1868b95c3d1665d7ecd369087878dc399d4327fd8ac10db64e05431feb, 1733419 bytes/381360 tokens. Tokenizer method, seven known controls, round trip, native/workload/profile/ownership/cleanup controls remain checked. UID/GID4000 no-cap/no-new-privileges counter executes only in the zero-NIC disposable VM; host product/compiler/test unexecuted. VM and bounded RAM scratch/run root retire after joined owners; all three endpoint snapshots have no additions/removals.
 
-Classification and exact count provenance are retained in .harness-state/verifier-vm/verdict-baseline-rows-5eadd6b6.json, 67594 bytes/SHA256 842fd0b1681675fc92db4465813071a601bf40e183ff519a964d55f56f25b753, exclusive-created mode0400/N1, fsynced/read back. It maps every removed row's hash to remaining current status/limit entries without copying the removed historical prose. Deleted text can be reviewed with git show 5eadd6b67b91901b66b2bd9f093eac24199c4e58:HARDENING_STATUS.md. Protected outside scope remains 2331 entries SHA256 08cb524ccdf537f5afbd00106f836971bde4fb9f69e715bfccfacef62d83a71f; source/tests/spec, instruction files, prior evidence and parks are unchanged. Master is clean/pushed. Broad goal remains ACTIVE.
+Classification and exact count provenance are retained in .harness-state/verifier-vm/verdict-baseline-rows-5eadd6b6.json, 67594 bytes/SHA256 842fd0b1681675fc92db4465813071a601bf40e183ff519a964d55f56f25b753, exclusive-created mode0400/N1, fsynced/read back. It maps every removed row's hash to remaining current status/limit entries without copying the removed historical prose. Deleted text can be reviewed with git show 5eadd6b67b91901b66b2bd9f093eac24199c4e58:HARDENING_STATUS.md. Protected outside scope remains 2331 entries SHA256 08cb524ccdf537f5afbd00106f836971bde4fb9f69e715bfccfacef62d83a71f; source/tests/spec, instruction files, prior evidence are unchanged. Master is clean/pushed. Broad goal remains ACTIVE.
 
 ## 2026-10-22 — retire unused decoded-image interfaces
 
@@ -101032,7 +101032,7 @@ Limits OPEN: complete desktop producer/IPC/Connection hops,actual Android Servic
 other platform andinstalled root/principal tests,unexhausted interleavings,Arc/Box/message/
 serializer/channel/global heap failures andwhole-process allocation bounds. All15 credential
 actions,R-S0 functionality with LPE immunity,R-F5 actual presentation/recovery/multi-hour
-freshness,release artifacts,independent reproduction/external review andall parks remain OPEN.
+freshness,release artifacts,independent reproduction/external review and other unfinished work remain OPEN.
 Goal ACTIVE.
 
 ## 2026-10-23 — nonce and original transport inventory document roles
@@ -101098,7 +101098,7 @@ This is document-role/reference/byte evidence,not new compiler,crypto,wire,insta
 native-device,LPE,presentation or release acceptance. Whole-document/test classification,
 all15 credential actions,R-S0 immunity with complete functionality,R-F5 actual impairment
 recovery/long-session freshness,current builders/artifacts/installed/native coverage,cold
-equality,independent reproduction/external review andevery park remain OPEN.
+equality,independent reproduction/external review and other unfinished work remain OPEN.
 Goal ACTIVE.
 
 ### CM raw backing ownership — focused Linux component correction (2026-10-23)
@@ -102433,7 +102433,7 @@ The GUI introduction now addresses every retained Flutter frontend, references R
 
 Validation reconstructs requirements.html from the base using exactly those two authorized text regions. All 27,516 HTML structure events, 34 id anchors, 212 href links, 411 identifier spans and the 594-member requirement-reference set are preserved. All other bytes, including Appendix findings and open native/release acceptance, are unchanged. The source-module metadata pattern was checked against an actual declaration and a comment; semantic TOML parsing avoids treating removal comments as a dependency. No product unit/native/UI test was added or rerun for this reversible prose edit; existing product/source checks are unchanged.
 
-Requirements: 1700967 -> 1700995 bytes (+28); SHA-256 0960a7f33356f797d87de695ad3ac3657baa665bd24b49b23e63e7a509084023 -> 666f257df3101b4005b715cf7f009c2c008ba22afa371d5e0dd1815c30f05eae. The ledger adds exactly one 702-byte classification row; removing that row reconstructs every prior ledger byte. All 85 headings, unresolved obligations, current source/evidence rows and parks remain verbatim. This is a consistency correction, not a document-compression claim or completion of whole-document classification.
+Requirements: 1700967 -> 1700995 bytes (+28); SHA-256 0960a7f33356f797d87de695ad3ac3657baa665bd24b49b23e63e7a509084023 -> 666f257df3101b4005b715cf7f009c2c008ba22afa371d5e0dd1815c30f05eae. The ledger adds exactly one 702-byte classification row; removing that row reconstructs every prior ledger byte. All 85 headings, unresolved obligations, current source/evidence rows remain verbatim. This is a consistency correction, not a document-compression claim or completion of whole-document classification.
 
 Fresh canonical isolated counter nziu4zGP4k at 5be331456b3d78a80d2f353fad72b142749d3160, outer0/QEMU0 in 31 seconds: ledger 322508 tokens/1458486 bytes SHA-256 d75942ef8527ca2d122fb3f98bd13b67599eb9f72b761abc0b03161f3b4f95dd; requirements 373601 tokens/1700995 bytes SHA-256 666f257df3101b4005b715cf7f009c2c008ba22afa371d5e0dd1815c30f05eae. Recipe remains pinned tiktoken-0.12.0/cl100k_base/encode_ordinary, whole-file strict UTF-8/no normalization/literal specials, seven token controls and byte round-trip. Raw 92728 bytes SHA-256 ec4cf829148002676328fcf8ec9069b7588d00c517adfb97430f7e41406aa880. Ledger is within the approximate 400,000-token budget; this is no universal model-token or complete-classification claim.
 
@@ -106057,7 +106057,7 @@ Immutable evidence: /home/user/Desktop/rustdesk_fork/.harness-state/verifier-vm/
 
 Previous goal turn: PROGRESS (removed the misleading filesystem budget wording gate and recorded the native viewer retained-job source gap). This turn: PROGRESS (reproduced and corrected overlapping manual Resume requests, ran unchanged A/B controller cases, committed/pushed and updated the live ledger). The broad goal remains ACTIVE/incomplete.
 
-Scope and decision: read the live loop prompt and mandatory R-S11/R-S11a/R-S11b/R-S11c/R-S16/R-S19 plus Appendix C #25–#29 and current service-authority checklist. The fifteen installed credential actions remain OPEN. Native viewer SendFiles/AddJob retained-vector admission is still an OPEN source finding; it was reviewed further but not changed or executed. Full-parent and file-metadata parks remain respected. Source review of src/client/io_loop.rs, src/client/file_trait.rs, src/flutter_ffi.rs and libs/hbb_common/src/fs.rs establishes that native resume already consumes the paused state once. The selected correction is therefore duplicate producer requests, not a claim of duplicate transfer effects, memory exhaustion or privilege escalation.
+Scope and decision: read the live loop prompt and mandatory R-S11/R-S11a/R-S11b/R-S11c/R-S16/R-S19 plus Appendix C #25–#29 and current service-authority checklist. The fifteen installed credential actions remain OPEN. Native viewer SendFiles/AddJob retained-vector admission is still an OPEN source finding; it was reviewed further but not changed or executed. Full-parent and file-metadata work remains OPEN. Source review of src/client/io_loop.rs, src/client/file_trait.rs, src/flutter_ffi.rs and libs/hbb_common/src/fs.rs establishes that native resume already consumes the paused state once. The selected correction is therefore duplicate producer requests, not a claim of duplicate transfer effects, memory exhaustion or privilege escalation.
 
 Production path: flutter/lib/desktop/pages/file_manager_page.dart:310 invokes JobController.resumeJob through MenuButton, whose InkWell callback remains callable. JobController previously retained paused state while awaiting the bridge but had no pending admission. flutter/lib/models/file_model.dart:1487/1835 now owns a Set<JobProgress>.identity entry before dispatch. Only one pending manual resume per exact job is admitted; other jobs remain independent. Finally releases that exact object on success or failure. Existing session/current-object/terminal-state publication checks remain. Clearing the table does not reset pending ownership. Primary research: https://api.dart.dev/dart-async/Future-class.html and https://api.dart.dev/dart-core/Set/Set.identity.html. No compatibility wrapper, API or dependency added.
 
@@ -109150,7 +109150,7 @@ bytes and durable evidence 151,552 bytes. QEMU 3670152 joins with exit 0; its
 PID, RAM `run.6cecn864` and all active run roots are absent. All endpoint deltas
 are zero. The specification, ledger and source/code checks above are the scope
 of this result. Product/native execution and broad goal completion are not
-claimed; all previously open acceptances and parks remain unchanged. This
+claimed; all previously open acceptances remain OPEN. This
 audit-only receipt changes neither counted document.
 
 ## 2026-10-28 — user pivot to display recovery; bounded source review
@@ -118702,7 +118702,7 @@ transactions, CM responses and the server's CM owner, Windows clipboard reads,
 whiteboard sends and PulseAudio sends found their error paths retire the stream.
 No application path reusing a failed writer, or new reachable local privilege
 escalation, was established. That finding constrained this slice to the shared
-transport contract; the separately parked callers remain unchanged.
+transport contract; the separate caller work remains OPEN.
 
 `ConnectionTmpl::send_raw` retained its header/payload cursor only inside the
 send future. [Tokio 1.44.2's write_all_buf contract](https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/io/util/async_write_ext.rs)
@@ -123119,7 +123119,7 @@ atomic copy against concurrent writes only on supporting, same-filesystem object
 [stat](https://man7.org/linux/man-pages/man2/stat.2.html) does not establish an atomic
 content snapshot. The experiment precedes any design choice; preserving full
 filesystem functionality and bounded resources remains binding. Full application,
-staging exception and other pending decisions/parks are unchanged.
+staging exception and other pending decisions remain OPEN.
 
 **Baseline reproduced at `652c83c3c0c6b077890fee005e5d73f33d1da4fa`.** TUF
 `eDljAufR5T`, command `bash scripts/smoke-verifier-vm-authority.sh
@@ -123413,7 +123413,7 @@ I/O, explicit job cancellation and reconnect, staging-layout lifecycle correctio
 CM/installed/root-service behavior and other platforms. This checkpoint establishes
 normal-storage live-thread responsiveness and joined shutdown while hashing only.
 Next decisive receive work remains the reproduced staging lifecycle failures and
-the missing full-duration/slow-storage integration evidence; unrelated parks remain.
+the missing full-duration/slow-storage integration evidence; other unfinished work remains OPEN.
 
 Fresh ledger count at `f75479e4`, TUF `FdnePjr3NK`: **372,746 tokens /
 1,707,298 bytes**, SHA-256
@@ -124040,7 +124040,7 @@ hash-verified before deleting 3,444,736 allocated bytes of exact disposable
 diagnostics. Serial `android-rust-lifecycle-tests-run.W5buT2IeLm.serial.log`,
 10,355 bytes, SHA-256 `cedc9f864255daec25c6da6beecb18b961864956f04a078fa04146f273b26f04`.
 This checkpoint establishes four concrete failures, not their correction.
-The receive fix remains active and authorized; unrelated parks remain unchanged.
+The receive fix remains active and authorized; other unfinished work remains OPEN.
 
 Ledger count at `ebac2fa6`, TUF `XdW473ggkc`, exits zero: **373,704 tokens /
 1,712,307 bytes**, input SHA-256
@@ -128042,7 +128042,7 @@ the capsule binds them. Fresh ledger count follows.
 
 Shared-menu accessibility, the unexplained fresh-pixel failure, native Favorites,
 other platforms, failure/concurrency, installed privileged authority and current
-release acceptance remain OPEN. The latest pivot is honored; older parks remain.
+release acceptance remain OPEN. Other unfinished work remains OPEN.
 
 Fresh count at `2839764a`, TUF `C1mvZoO7fa`, passes at 387,996 tokens /
 1,776,748 bytes, input SHA-256
@@ -137298,7 +137298,7 @@ linux-parent-death-crash-control-89828922.json is 12,004 bytes, SHA-256
 This closes the named current-artifact manual parent-death evidence gap without
 a product correction. It does not establish final Debian packaging, other init
 manager integration, display/input recovery or complete R-S0 acceptance. The
-unfinished startup-failure topic and all unrelated parks remain untouched. The ledger
+unfinished startup-failure topic and other unfinished work remains OPEN. The ledger
 now records the new evidence and artifact retirement; fresh whole-ledger counting
 follows. No host product or test executable ran; no owned runtime remains.
 
@@ -139466,6 +139466,14 @@ disappearance fixed the ephemeral capture observer; it was not a product failure
 
 The user's clarification explicitly preserves intentional restrictions, particularly
 CTE's public DMZ exposure. Add that distinction to the existing authorization
-paragraph and remove the last false receive/send-producer park sentence. Comparison
+paragraph and remove stale receive/send-producer park wording. Comparison
 against the prompt before `2c3186bf` proves the host/isolation/DMZ section and every
 following specific restriction byte-identical. No host restriction is relaxed.
+
+A final ledger search also removes inferred continuing pivots from the clipboard,
+settings, directory/Home and receive-catalogue entries. Their unfinished behavior
+and missing acceptance remain OPEN; the obsolete receive-catalogue summary now
+defers to the current receive-authority evidence. The earlier isolated count
+`JX5mF7jyCT` binds bcb46efa before these additional deletions (395,957 tokens).
+Its exact processes/private/RAM retire with three zero endpoint deltas; the final
+ledger revision requires a fresh count.

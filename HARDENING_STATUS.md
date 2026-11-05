@@ -1222,7 +1222,7 @@ RAM workspaces retire and all listener deltas are zero. Diagnostics are preserve
 | Mobile settings metadata (`dda3f316`, `4f75cc4f`) and dormant battery control (`b0e36ab3`) | The page owns one build-date read, publishes success only while mounted, and handles bridge errors locally with a translated Failed value. Reopening creates a fresh read. The unchanged eight-case rendered suite passes at `4f75cc4f`; before correction all four injected-error cases fail while four healthy controls pass. Coverage includes delayed display, rebuild reuse, old replies after replacement, visible failure/reopen recovery and late failure after disposal in both Android/iOS SettingsList styles on Linux with the Android branch selected. Fresh bindings, three parser controls, exact-source checks and joined cleanup pass. Native metadata/parent/platform/logo are doubles; physical/emulated device integration, pre-dispatch disposal, current APK/release and complete R-S0/R-F5 acceptance remain OPEN. The matching older APK is on TUF; its known SSH control socket is absent. The dormant battery switch/state and unused resume observer are removed; service-start consent and native permission/boot handling remain unchanged, with device/Doze acceptance OPEN. | `mobile-date-errors-before-5abbc087.json`, `mobile-date-errors-fixed-4f75cc4f.json`; earlier `mobile-date-cdc1eb29.json`, `battery-settings-684287fa.json`, `settings-build-date-e8fb2d84.json` |
 | Mobile action-sheet rebuilding (`08af6b01`) | `BottomSheetBody` constructs a fresh child list inside its builder, preserving supplied action widgets and callbacks and adding one Cancel button without mutating caller-owned lists. Unchanged-product `57d19547` reproduces duplicate Cancel buttons on parent rebuild and an exception for immutable actions; 23 existing cases pass. Corrected Linux Flutter execution passes all 26 cases plus three result-parser controls with fresh bindings. The child-only rebuild case passes only after its fixture is scoped to the nested sheet, so its earlier ambiguous selection is not baseline product evidence. This verifies the real widget, supplied-button identity, callbacks, disabled controls and repeat rebuilds. Full mobile pages/devices, native actions and installed/R-S0/R-F5 acceptance remain OPEN. | `action-sheet-f87a6877.json` |
 | CM read-block payload ownership (`fecb67ed`) | The admitted `Bytes` moves into the outgoing protobuf without a forwarding allocation/copy; earlier fallible admission still releases unrelated backing. Session/job/generation, size and wire checks stay intact. The 38-case Linux component covers six storage forms under selective allocation refusal, exact bytes/pointers and backing lifetime. Complete authenticated handlers, CM IPC, filesystem/peer effects and root execution remain OPEN. | `cm-read-block-move-a6599f3a.json` |
-| File timestamp representation (`534488f3`) | Desktop/mobile rows share bounded seconds-to-date formatting; unsupported dates show `—`, and sorting uses original seconds. Sixteen Dart cases cover range/overflow, pre-epoch/2038, drive rows and metadata retention; mobile delegation is source-reviewed. Success retains a strict result summary, not per-case JSON or a compiled image. Rendered rows, native filesystem/mobile behavior and directory-ordering/Home parks remain OPEN. | `file-timestamps-fe769b80.json` |
+| File timestamp representation (`534488f3`) | Desktop/mobile rows share bounded seconds-to-date formatting; unsupported dates show `—`, and sorting uses original seconds. Sixteen Dart cases cover range/overflow, pre-epoch/2038, drive rows and metadata retention; mobile delegation is source-reviewed. Success retains a strict result summary, not per-case JSON or a compiled image. Rendered rows, native filesystem/mobile behavior and directory-ordering/Home work remain OPEN. | `file-timestamps-fe769b80.json` |
 | File-list numeric sorting — OPEN (`05f0b473`) | Preparation only; product unchanged. Run `G1V3ouRCT7` completed with 105 passing and five failing cases: four direction/work failures and one invalid drive-selection fixture. Numeric comparisons rescan metadata; type/size drive retention remains source-observed only because the fixture stopped early. Fix the fixture before claiming drive/selection evidence.  Exact QEMU joined, RAM workspace gone, all listener snapshots unchanged; bounded failed diagnostics retained. | `dart-catalogue-removal-05f0b473.json` |
 | Focused viewer suspension — capture pacing corrected; R-F5 OPEN | `5d8cf83a` replaces capture's fixed sleep with a wait that follows the current shared rate and original frame deadline. The instrumented baseline reaches 10 FPS but sleeps another 703 ms, then fails the 12-second pause with two of four required fresh frames. After correction, all 28 controller cases pass, including recovery, lower-rate, last-peer and notification-only waits. Exact Linux X11 app replay `WNthvLmv9r` passes the unchanged 2/6/12-second pauses in 2,069/1,854/1,666 ms, with healthy maximum displayed ages 341/321/369 ms. The same window/TCP connection survives; resources remain bounded and all owned processes join. This is one native suspension sequence, not phase-exhaustive, realistic network impairment, input-visible latency, multi-hour or other-platform acceptance; those remain OPEN.  | `viewer-pacing-5d8cf83a.json`; earlier `viewer-current-build-6b9e5acc.json` and `viewer-capture-cadence-108f40d2.json` |
 | Frame observer progress and full-window coverage | The observer counts advancing identities, excludes deadline-late samples and includes both preceding gaps and the unobserved tail, capped at the window end. Twenty-nine synthetic C cases distinguish healthy 80/1,000-ms tails from a 1,040-ms refusal; real-X11 oracle/geometry/identity controls and controller compilation pass. No RustDesk app/device runs. Diagnostic/clock/history/sleep/identity/cancellation faults, current-app latency and the retained-app recovery failure remain OPEN; thresholds and resource policy are unchanged. | `observer-window-overrun-19daee8b.json`, `observer-window-tail-dd55ee9d.json`, `observer-window-deadline-d1f2f826.json`, `observer-fresh-gap-25c024aa.json`, `frame-progress-7f5e0497.json` |
@@ -2950,7 +2950,7 @@ native failure paths, installed privilege boundaries, other platforms and soak
 remain OPEN under R-S19a/R-T4.
 
 **Linux clipboard — historical positive runs; repeated/large-selection investigation OPEN.**
-The November 1 pivot above applies to this acceptance lane. Two later failed runs
+Two later failed runs
 prevent treating the earlier passes as reliable repeated-transfer or large-selection
 acceptance. Their fixture-versus-product cause remains unresolved; no product
 correction is claimed.
@@ -5442,7 +5442,7 @@ The identical 35-case suite passes after correction in 262 outer seconds, includ
 late success/error, current-operation admission, queued edits, retry, old captured
 handlers and disposal. The focused `--flutter-model-tests --custom-scale` profile
 uses fresh bindings and the existing bounded RAM profile; three result-parser
-controls also pass. The broader settings shard is not run and its parks remain.
+controls also pass. The broader settings shard remains unverified.
 `scale-session-d6456173.json` binds sources, complete named outcomes, serial logs and
 joined cleanup. Neither run adds a host listener. The baseline after-snapshot loses
 pre-existing loopback endpoint `127.0.0.1:9238`, recorded as unattributed without
@@ -17650,8 +17650,7 @@ cases still fail, so the canonical command exits one. This binds output to the
 preparation read, not an atomic snapshot against arbitrary concurrent writers.
 Fresh-transfer mutation, preparation-time source consistency, slow-source/app/CM
 integration, installed and other-platform acceptance remain OPEN. The audit retains
-artifact/raw identities and joined RAM/diagnostic cleanup. Necessary receive
-application verification is resumed; unrelated parks remain unchanged.
+artifact/raw identities and joined RAM/diagnostic cleanup.
 
 **Generation-lock retirement (`edddaf7b`) — component accepted.** Completed claims
 release their shared membership under the private enrollment gate. Only exclusive
@@ -18656,9 +18655,9 @@ Exact-byte comparison preserves all remaining verifier text, including the actua
 Cargo filesystem commands, and Bash syntax parsing passes. Product, genuine Rust
 tests, native harnesses and R-S8/R-A5 requirements are unchanged. No new product run
 or source-wording replacement is claimed. The user pivoted after pushed commit
-`6b243996`; its separate evidence-capsule finalization remains OPEN. The three
-reproduced receive namespace syscall failures, their private-staging implementation
-park, native Windows/installed acceptance, R-S0/R-F5 remain OPEN.
+`6b243996`; its separate evidence-capsule finalization remains OPEN. Current
+receive-namespace evidence and remaining layout work are recorded in the receive
+authority entry; native Windows/installed acceptance and R-S0/R-F5 remain OPEN.
 
 **File metadata/job source catalogue — removed; behavioral obligations remain OPEN.**
 The `r_fsbudget_missing` block in `scripts/verify.sh` is deleted: 94 lines,

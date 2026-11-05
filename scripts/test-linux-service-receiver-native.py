@@ -1780,6 +1780,121 @@ def keyed(value, phase, record, probe_sha):
           f"listener=owned key_confirmation=mutual probe_sha256={probe_sha}", flush=True)
 
 
+def installed_file_receive(value, record, probe_sha):
+    home = Path(pwd.getpwuid(4001).pw_dir)
+    destination = home / "allowed-after-login"
+    if home != Path("/tmp/rd-cm-file-replay") or any(
+            os.path.lexists(p) for p in (destination, home / "blocked-before-login", home / ".rustdesk-receive")):
+        raise RuntimeError("installed file fixture is not fresh")
+    before = credential()
+    listener = direct_listener(record)
+    cm_fd = None
+
+    def probe(uid, mode, markers):
+        result = run(["/usr/bin/setpriv", f"--reuid={uid}", f"--regid={uid}", "--clear-groups",
+                      "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
+                      str(PROBE), "127.0.0.1:21118", "--password-stdin", "ok", mode],
+                     input=value + "\n", timeout=50, allowed=(0, 1))
+        print("LINUX_RECEIVER_FILE_PROBE_OBSERVED=" + json.dumps(
+            {"uid": uid, "mode": mode, "exit": result.returncode,
+             "stdout": result.stdout, "stderr": result.stderr}, sort_keys=True), flush=True)
+        required = ["probe_client: keying ok=true (expected=ok)", "probe_client: PASS",
+                    '[FT-PEERINFO username_nonempty=true username="rdreceiver4001" platform="Linux"]',
+                    '[FT-DIR-RESPONSE path="/tmp/rd-cm-file-replay" entries=', *markers]
+        if (result.returncode or result.stderr or any(result.stdout.count(text) != 1 for text in required)
+                or credential() != before or child_record() != record or direct_listener(record) != listener):
+            raise RuntimeError("installed file peer result or stable service authority differs")
+
+    def completed_files(expected):
+        deadline = time.monotonic() + 5
+        # Owner-loss cleanup is asynchronous; observe the whole destination and
+        # coordinator, including hidden entries, before admitting the successor.
+        while True:
+            names = set(os.listdir(destination))
+            coordinator = home / ".rustdesk-receive"
+            if names == set(expected) and coordinator.is_dir() and not os.listdir(coordinator):
+                break
+            if time.monotonic() >= deadline:
+                raise RuntimeError(f"installed receive retained unexpected entries: {sorted(names)}")
+            time.sleep(0.05)
+        directory = destination.lstat()
+        if (not stat.S_ISDIR(directory.st_mode)
+                or (directory.st_uid, directory.st_gid, stat.S_IMODE(directory.st_mode)) != (4001, 4001, 0o700)
+                or os.path.lexists(home / "blocked-before-login")):
+            raise RuntimeError("installed receive directory principal or pre-login refusal differs")
+        observations = []
+        for name, payload in expected.items():
+            path = destination / name
+            metadata = path.lstat()
+            if (not stat.S_ISREG(metadata.st_mode)
+                    or (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode), metadata.st_nlink,
+                        metadata.st_size) != (4001, 4001, 0o600, 1, len(payload))
+                    or path.read_bytes() != payload):
+                raise RuntimeError(f"installed receive content or principal differs: {name}")
+            observations.append({"name": name, "uid": metadata.st_uid, "gid": metadata.st_gid,
+                                 "mode": "0600", "bytes": metadata.st_size, "sha256": digest(path)})
+        print("LINUX_RECEIVER_FILE_CONTENT_OBSERVED=" + json.dumps(
+            {"files": observations, "destination_entries": sorted(names), "coordination_entries": []},
+            sort_keys=True), flush=True)
+
+    try:
+        probe(4002, "cmfiletransfer", [])
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+            peer.settimeout(5)
+            peer.connect("/tmp/RustDesk-4001/ipc_cm")
+            pid, uid, gid = struct.unpack("3i", peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            cm_fd = os.pidfd_open(pid)
+            proc = Path(f"/proc/{pid}")
+            status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
+            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+            executable = (proc / "exe").stat()
+            installed = CHILD.stat()
+            if ((uid, gid) != (4001, 4001) or status["Uid"].split() != ["4001"] * 4
+                    or status["Gid"].split() != ["4001"] * 4 or int(status["PPid"]) != record["pid"]
+                    or status["Groups"].split() not in ([], ["4001"])
+                    or status["NoNewPrivs"].strip() != "1"
+                    or any(int(status[key], 16) for key in ("CapInh", "CapPrm", "CapEff", "CapAmb"))
+                    or (executable.st_dev, executable.st_ino) != (installed.st_dev, installed.st_ino)
+                    or (proc / "cmdline").read_bytes() != os.fsencode(CHILD) + b"\0--cm\0"
+                    or (proc / "cgroup").read_text() != Path(f"/proc/{record['pid']}/cgroup").read_text()
+                    or select.select([cm_fd], [], [], 0)[0] or fields[0] in (b"Z", b"X")):
+                raise RuntimeError("installed CM is not the exact unprivileged server child")
+            cm = {"pid": pid, "start": int(fields[19]), "uid": uid, "gid": gid, "parent": record["pid"]}
+            print("LINUX_RECEIVER_FILE_CM_OBSERVED=" + json.dumps(cm, sort_keys=True), flush=True)
+        # This existing probe observes its staged private files before disconnecting;
+        # run it as the receiver user. The independent-UID peers bracket that probe.
+        probe(4001, "cmfileauthority", [
+            "[FT-CREATE-DONE id=17002]", "[FT-PREMATURE-WRITE-REFUSED id=17003]",
+            "[FT-SHORT-WRITE-REFUSED id=17014]", "[FT-WRITE-COMMITTED id=17004]",
+            "[FT-MULTI-WRITE-COMMITTED id=17005 files=2 blocks=4]",
+            "[FT-PEER-ERROR-REPORTED id=17006]", "[FT-CANCEL-BARRIER id=17007]",
+            "[FT-OWNER-LOSS-STAGED id=17008]"])
+        payloads = {"payload.txt": b"cm-file-write-finality-v1-0123456789",
+                    "first.txt": b"first-file-two-blocks-0123456789",
+                    "second.txt": b"second-file-two-blocks-abcdefghij"}
+        completed_files(payloads)
+        probe(4002, "cmfilereconnect", ["[FT-RECONNECT-WRITE-COMMITTED id=17008]"])
+        payloads["orphaned.txt"] = b"new-owner-after-abrupt-loss-0123456789"
+        completed_files(payloads)
+        if select.select([cm_fd], [], [], 0)[0] or int(
+                (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19]) != cm["start"]:
+            raise RuntimeError("installed CM generation changed during file transactions")
+        print(f"LINUX_RECEIVER_FILE=pass peers=3 cm_uid=4001 cross_uid=4002 prelogin=refused "
+              "committed_files=4 premature=refused short=refused peer_error=reported cancel=retired "
+              "owner_loss=retired reconnect=committed coordination=empty "
+              f"probe_sha256={probe_sha}", flush=True)
+        retained = cm_fd
+        cm_fd = None
+        return retained, cm
+    except Exception:
+        print(run(["/usr/bin/journalctl", "--unit=rustdesk.service", "--no-pager", "-n", "30"]).stdout,
+              flush=True)
+        raise
+    finally:
+        if cm_fd is not None:
+            os.close(cm_fd)
+
+
 def rejection_journal(record, invocation, cursor=None):
     run(["/usr/bin/journalctl", "--sync"], timeout=5)
     argv = ["/usr/bin/journalctl", "--boot", "--quiet", "--no-pager", "--output=json",
@@ -4246,6 +4361,7 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if startup or incumbent or collisions or exclusive:
         startup_namespace(commit, spec["sha256"], incumbents=incumbent, collisions=collisions, exclusive=exclusive)
         return
+    file_workflow = not any((convergence_failure, notification_failure, network_drain, authorization_timeout))
     pam = pam_module()
     confdir = WORK / "pam"
     confdir.mkdir(mode=0o700)
@@ -4253,15 +4369,23 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     actor = None
     users = []
     started = False
+    file_cm = None
     try:
         for uid in (4001, 4002, 4003):
             try:
                 pwd.getpwuid(uid)
             except KeyError:
                 groups = ["--groups", "sudo"] if uid == 4003 else []
+                home_args = []
+                if uid == 4001 and file_workflow:
+                    if os.path.lexists("/tmp/rd-cm-file-replay"):
+                        raise RuntimeError("installed file fixture home already exists")
+                    home_args = ["--home-dir", "/tmp/rd-cm-file-replay"]
                 run(["/usr/sbin/useradd", "--uid", str(uid), "--user-group", "--create-home",
-                     "--shell", "/usr/sbin/nologin", *groups, f"rdreceiver{uid}"])
+                     "--shell", "/usr/sbin/nologin", *groups, *home_args, f"rdreceiver{uid}"])
                 users.append(uid)
+                if home_args:
+                    Path("/tmp/rd-cm-file-replay").chmod(0o700)
             else:
                 raise RuntimeError("receiver fixture UID already exists")
         run(["/usr/sbin/chpasswd"], input=f"rdreceiver4003:{ADMIN_PASSWORD}\n")
@@ -4438,13 +4562,22 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
             raise RuntimeError("fresh unauthenticated request reused administrator authority")
         print("LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied "
               "durable=unchanged listener=owned", flush=True)
+        if file_workflow:
+            file_cm = installed_file_receive("Receiver-fixture-admin-2026!", second, probe_spec["sha256"])
     finally:
         try:
             if started:
                 run(["/usr/bin/systemctl", "stop", "rustdesk.service"], timeout=40)
                 if Path("/sys/fs/cgroup/system.slice/rustdesk.service").exists():
                     raise RuntimeError("owned receiver cgroup remains after stop")
+                if file_cm is not None:
+                    fd, cm = file_cm
+                    if not select.select([fd], [], [], 0)[0] or Path(f"/proc/{cm['pid']}").exists():
+                        raise RuntimeError("installed file CM survived service stop or was not reaped")
+                    print("LINUX_RECEIVER_FILE_CM_RETIRED=pass process=exited-reaped cgroup=absent", flush=True)
         finally:
+            if file_cm is not None:
+                os.close(file_cm[0])
             try:
                 if actor is not None:
                     if actor.poll() is None:
@@ -4484,7 +4617,7 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
               f"probe_sha256={probe_spec['sha256']} fixture=installed-layout polkit=actual logind=actual "
               "child=supervised cleanup=joined", flush=True)
         return
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=17 cpace=15 stale_refusals=4 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 unit_stops=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=17 cpace=15 file_peers=3 stale_refusals=4 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 unit_stops=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 

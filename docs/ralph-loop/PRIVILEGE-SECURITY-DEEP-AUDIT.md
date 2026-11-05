@@ -140524,3 +140524,32 @@ All eight count evidence files match CTE and TUF. This audit-only receipt preser
 the counted ledger. The installed credential prerequisite reaches its checkpoint;
 the next integration step is authenticated installed file receive against the
 retained current artifact. The broader goal remains active.
+
+## 2026-11-05 — installed file receive integration
+
+Previous turn made progress: current installed credential/lifecycle evidence passed
+and the retained d108183a server/probe set is reusable. Continue R-F1/R-F2 and
+R-S11c/R-S11gi integration before another audit topic. Extend the existing short
+receiver profile with its actual FileTransfer/CM path; keep every credential case.
+No application rebuild or product-source change is needed.
+
+The selected-user account uses the retained probe's fixed fixture home as its NSS
+home, created private before the PAM session starts. A UID4002 keyed peer must
+receive PeerInfo for UID4001's account and an actual CM directory reply. The existing
+UID4001 probe observes live private staging, checks pre-login refusal, premature and
+short finality, exact single/multiple-file commits, peer error, cancellation and
+abrupt owner loss. A fresh UID4002 peer reuses the interrupted job/destination.
+Require exact final bytes, UID/GID4001, mode0600, single links, no hidden destination
+residue and empty coordination. The same root credential, supervisor/child and
+listener must persist; the exact CM must exit and be reaped at normal unit stop.
+
+Primary research: Linux unix(7), https://man7.org/linux/man-pages/man7/unix.7.html,
+defines SO_PEERCRED as connection/listen-time identity, not ongoing process shape.
+Therefore retain a pidfd and additionally inspect the connected CM's executable,
+start time, complete role, parent, cgroup, current UID/GID/groups, capabilities and
+NoNewPrivs, using the kernel procfs contract at
+https://www.kernel.org/doc/html/v6.9/filesystems/proc.html. Production CM launch
+uses current_exe and inherits the already-demoted selected-user server principal;
+the fixture must not create a separate root file receiver. Shared-parent/mount-root
+retirement, GUI/device/final-package and other-platform acceptance remain OPEN.
+Python AST, shell syntax and diff checks pass; native execution is pending.

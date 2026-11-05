@@ -110472,8 +110472,6 @@ durable-run peak 249,856 bytes. QEMU 222169 joins exit 0; its PID, RAM
 `run.zv39mfrc` and active owned roots are absent. All endpoint deltas are zero.
 This audit-only receipt leaves the counted ledger unchanged.
 
-
-
 ## 2026-10-28 — retire unused legacy-ID main IPC
 
 The previous locale-selection turn made verified progress. This continuation
@@ -140155,3 +140153,46 @@ Peak scratch is 3,799,646,208 bytes over 231.909 seconds. Retirement receipt:
 Re-run the failed default profile after the selector repair, then complete the
 planned native metadata/authority integration. Move this entry to the journal's
 end; its initial insertion matched an earlier repeated ledger-count sentence.
+
+At fb148e4f, CTE l3rMkQN4TE passes the complete default filesystem profile:
+280 tests in nine groups, including 223 filesystem tests and all three original
+pre-I/O regressions. The helper and three regression bodies are unchanged from
+the failing baseline: 5,675 bytes, SHA-256
+b8d89d78e6678fc5950f77f77d03132e991685ba58d59c51e37ba8a96abdd529.
+The exact library executable remains
+feab7849cc182c5ed576bcc1d449c474ab8dbc36e25b09387dc00e2bb3c6d35c,
+matching the first corrected run. Its 7,005-byte capsule
+receive-preopen-fs-fb148e4f.json has SHA-256
+c3f166d1a4c23391665b4fab5464c7d89355a2c342877e973cf02ef6ecf1b148.
+The profile exports named pass lines; successful child calibration stdout is
+asserted inside the tests but not separately exported. QEMU joins exit zero;
+private/RAM state and exact QEMU PID are absent. Scratch peaks at 3,799,908,352
+bytes over 236.283 seconds.
+
+The same source, CTE gwS3FFrcAu, passes 157 metadata/component tests in 39 groups,
+eight descriptor-lifetime observations and 43 native production-library root
+cases with 20 UID-4001 actors. Receive inspection preserves bytes with both live
+and exited leaders; each worker's eight repetitions retain 11 descriptors before
+and after. Lifetime artifact SHA-256:
+ed3843903d84fd102297697bb52d0992975fb6d9fbb148a60a5aca035d7fe03a.
+Root-authority artifact SHA-256:
+6a4b760aab75019b6a6a39b377cb1de7bb33db21856efde7ad083c3b9166ca76.
+All 43 distinct case records and 20 unprivileged actor identity records are
+retained in receive-preopen-metadata-fb148e4f.json: 78,606 bytes, SHA-256
+5c25d0aa7cb808d03516a2fcf75ce35134859cf8b574768a3a391cb7155b24fc.
+QEMU joins exit zero and private/RAM state retires; scratch peaks at
+4,239,917,056 bytes over 298.874 seconds. No owned run remains.
+
+Endpoint qualification: each run's first three deltas are zero. The final
+filesystem snapshot adds tcp 127.0.0.1:8765; the final metadata snapshot removes
+it. Preserve both unattributed observations without inspecting or mutating the
+foreign owner. Source-bound kernel host-IP-socket denial, terminal owned tools,
+supervisor joins, exact QEMU absence and private/RAM retirement are verified.
+The initial commentary incorrectly described all four filesystem deltas as zero;
+the detailed comparison corrected that statement before recording acceptance.
+These are not zero endpoint-delta runs.
+
+Update the ledger's three stale pre-I/O residual references and record this
+scoped correction. Full installed application/peer execution, current final
+artifacts, native non-Linux platforms and independent review remain OPEN.
+Fresh isolated ledger count follows; no unchanged product scenario needs repetition.

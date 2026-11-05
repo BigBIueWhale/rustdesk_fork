@@ -173,6 +173,15 @@ mod linux {
                 ensure!(denied(fs::read_dir(&held)));
                 json!({"namespace_replaced":true, "old_namespace_access_denied":true})
             }
+            "replace-setup" => {
+                let parent = base.parent().ok_or_else(|| anyhow!("setup parent absent"))?;
+                fs::rename(base, parent.join("setup-held"))?;
+                fs::rename(parent.join("unrelated"), base)?;
+                ensure!(denied(fs::read_dir(base)));
+                ensure!(denied(OpenOptions::new().write(true).open(base.join("identity"))));
+                json!({"directory_replaced":true, "private_read_denied":true,
+                    "identity_write_denied":true})
+            }
             "replace-window" => {
                 let held = base.with_file_name("window-held");
                 match fs::rename(base, &held) {
@@ -678,6 +687,19 @@ mod linux {
         Err(anyhow!("required enrollment crash point was not reached"))
     }
 
+    async fn setup_receiver(base: &Path) -> ResultType<()> {
+        identity(0)?;
+        let mut receiver = job(base)?;
+        io::stdout().write_all(syscall_window::ARMED)?;
+        let admitted = admit(&mut receiver, false, 0).await;
+        let confirmed = receiver.file_confirmed();
+        let retired = receiver.retire_current_file_state();
+        println!("RECEIVE_NATIVE_SETUP_RECEIVER={}", json!({"admission_ok":admitted.is_ok(),
+            "admission_error":admitted.err().map(|e|e.to_string()), "confirmed":confirmed,
+            "retire_ok":retired.is_ok(), "retire_error":retired.err().map(|e|e.to_string())}));
+        Ok(())
+    }
+
     async fn descriptor_receiver(base: &Path) -> ResultType<()> {
         identity(0)?;
         // Warm the blocking worker before measuring descriptors or arming the fault.
@@ -846,8 +868,8 @@ mod linux {
             Ok(bytes)
         }
 
-        fn actor(path: &Path) -> ResultType<Value> {
-            let mut owned = ActorOwner(actor_command(path, "replace-window")?.spawn()?);
+        fn actor(path: &Path, operation: &str) -> ResultType<Value> {
+            let mut owned = ActorOwner(actor_command(path, operation)?.spawn()?);
             let child = &mut owned.0;
             let deadline = Instant::now() + Duration::from_secs(5);
             let status = loop {
@@ -862,7 +884,7 @@ mod linux {
             let out = bounded_output(child.stdout.take().ok_or_else(|| anyhow!("actor stdout absent"))?)?;
             let err = bounded_output(child.stderr.take().ok_or_else(|| anyhow!("actor stderr absent"))?)?;
             let mut count = 0;
-            let observed = report_actor("replace-window", &mut count, status, &out, &err)?;
+            let observed = report_actor(operation, &mut count, status, &out, &err)?;
             ensure!(count == 1);
             Ok(observed)
         }
@@ -871,6 +893,7 @@ mod linux {
             // This whole controller runs on one blocking thread: ptrace ownership is per thread.
             ensure!(cfg!(target_arch = "x86_64"), "canonical x86_64 verifier required");
             let descriptor = operation.starts_with("fd-");
+            let setup = operation.starts_with("setup-");
             let sustained = descriptor && operation.ends_with("-held");
             let boundary = operation.strip_suffix("-held").unwrap_or(&operation);
             let (number, suffix) = match boundary {
@@ -878,6 +901,7 @@ mod linux {
                 "digest-unlink" => (libc::SYS_unlinkat, ".digest"),
                 "lease-unlink" => (libc::SYS_unlinkat, ".download.lock"),
                 "crash-directory" => (libc::SYS_mkdirat, ""),
+                "setup-directory-swap" | "setup-identity-swap" => (libc::SYS_mkdirat, ""),
                 "crash-identity" => (libc::SYS_fsync, "identity"),
                 "crash-record" => (libc::SYS_renameat, ".tmp"),
                 "crash-payload-sync" => (libc::SYS_fsync, "payload.download"),
@@ -893,7 +917,7 @@ mod linux {
             let retirement = operation.starts_with("crash-retire-");
             let mut killed = false;
             let mut command = Command::new(std::env::current_exe()?);
-            command.arg(if descriptor { "descriptor-receiver" }
+            command.arg(if descriptor { "descriptor-receiver" } else if setup { "setup-receiver" }
                 else if crash && !retirement { "crash-receiver" } else { "window-receiver" }).arg(&base)
                 .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
             unsafe {
@@ -1017,10 +1041,10 @@ mod linux {
                                         && info.data[3] & libc::O_CREAT as u64 != 0,
                                     _ => false,
                                 }
-                            } else if operation == "crash-directory" || operation == "crash-retire-directory" {
+                            } else if setup || operation == "crash-directory" || operation == "crash-retire-directory" {
                                 path.parent() == Some(base.as_path()) && path.file_name()
                                     .is_some_and(|n| n.as_encoded_bytes().starts_with(b".rustdesk-receive-"))
-                                    && (operation == "crash-directory" || info.data[3] == libc::AT_REMOVEDIR as u64)
+                                    && (setup || operation == "crash-directory" || info.data[3] == libc::AT_REMOVEDIR as u64)
                             } else if operation == "crash-record" {
                                 path.parent() == Some(coordinator()?.as_path())
                                     && path.extension().is_some_and(|s| s == "tmp")
@@ -1058,6 +1082,10 @@ mod linux {
                                     "soft_limit_before":original.rlim_cur,"soft_limit_during":EXHAUSTED_LIMIT,
                                     "hard_limit":original.rlim_max,"sustained_through_cleanup":sustained}));
                                 selected_task = Some(pid);
+                            } else if selected && setup {
+                                ensure!(path.parent() == Some(base.as_path()) && !path.exists());
+                                observation = Some(json!({"source":path,"tid":pid,"syscall":number}));
+                                selected_task = Some(pid);
                             } else if selected && crash {
                                 ensure!(path.starts_with(&base) || path.parent() == Some(coordinator()?.as_path()));
                                 let published = if retirement { private_final(&base)? } else { Value::Null };
@@ -1073,7 +1101,7 @@ mod linux {
                                 ensure!(path.starts_with(&base));
                                 let before = snapshot(&path)?;
                                 ensure!(before["uid"] == 0 && before["mode"] == 0o600 && before["links"] == 1);
-                                let changed = actor(&path)?;
+                                let changed = actor(&path, "replace-window")?;
                                 let after = snapshot(&path)?;
                                 observation = Some(json!({"source":path, "tid":pid,
                                     "directory_fd":info.data[1], "syscall":number,
@@ -1096,6 +1124,17 @@ mod linux {
                                 ensure!(limited.rlim_cur == EXHAUSTED_LIMIT && limited.rlim_max == original.rlim_max);
                                 limit_restored = true;
                             }
+                        } else if setup {
+                            ensure!(info.data[0] == 0 && info.data[1] & 255 == 0,
+                                "selected setup mkdir did not succeed");
+                            let selected = observation.as_mut().ok_or_else(|| anyhow!("setup observation absent"))?;
+                            let path = PathBuf::from(selected["source"].as_str()
+                                .ok_or_else(|| anyhow!("setup path absent"))?);
+                            let created = fs::symlink_metadata(&path)?;
+                            ensure!(created.is_dir() && created.uid() == 0 && created.mode() & 0o7777 == 0o700);
+                            selected["created_inode"] = json!(created.ino());
+                            selected["actor"] = actor(&path, "replace-setup")?;
+                            ensure!(fs::metadata(base.join("setup-held"))?.ino() == created.ino());
                         } else if crash {
                             ensure!(info.data[0] == 0 && info.data[1] & 255 == 0,
                                 "selected receive syscall did not succeed");
@@ -1123,6 +1162,16 @@ mod linux {
             }
             ensure!(main_status.is_some_and(|s| s.success()), "receiver failed: {}", String::from_utf8_lossy(&err));
             let text = std::str::from_utf8(&out)?;
+            if setup {
+                let reports: Vec<_> = text.lines().filter_map(|line|
+                    line.strip_prefix("RECEIVE_NATIVE_SETUP_RECEIVER=")).collect();
+                ensure!(reports.len() == 1 && text.lines().count() == 2 && err.is_empty());
+                let receiver: Value = hbb_common::serde_json::from_str(reports[0])?;
+                ensure!(syscall_result.is_some());
+                let selected = observation.ok_or_else(|| anyhow!("setup boundary absent"))?;
+                return Ok(json!({"operation":operation,"selected":selected,"syscall_exit":syscall_result,
+                    "receiver":receiver,"children_joined":true,"trace_events":events}));
+            }
             if descriptor {
                 ensure!(returned && limit_restored && err.is_empty());
                 let reports: Vec<_> = text.lines().filter_map(|line|
@@ -1582,7 +1631,45 @@ mod linux {
         }
         println!("RECEIVE_NATIVE_DESCRIPTOR_SUMMARY=observed cases=6 safe={safe} children=joined limits=restored fixture=retired");
         ensure!(safe == 6, "descriptor-limited receive ownership failed: {safe}/6 safe");
-        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=43 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
+        let mut safe = 0;
+        for marker in [false, true] {
+            let operation = if marker { "setup-identity-swap" } else { "setup-directory-swap" };
+            let base = root.join(operation);
+            fs::create_dir(&base)?;
+            fs::set_permissions(&base, fs::Permissions::from_mode(0o777))?;
+            create(&base.join("incoming.bin"), b"original", 0o600)?;
+            let original = snapshot(&base.join("incoming.bin"))?;
+            let unrelated = base.join("unrelated");
+            fs::create_dir(&unrelated)?;
+            fs::set_permissions(&unrelated, fs::Permissions::from_mode(0o700))?;
+            if marker { create(&unrelated.join("identity"), b"", 0o600)?; }
+            let retained = OpenOptions::new().read(true)
+                .custom_flags(libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC).open(&unrelated)?;
+            let before = snapshot(&unrelated.join("identity"))?;
+            let selected = base.clone();
+            let name = operation.to_owned();
+            let traced = tokio::task::spawn_blocking(move || syscall_window::run(selected, name)).await??;
+            actors += 1;
+            let replacement = Path::new(traced["selected"]["source"].as_str()
+                .ok_or_else(|| anyhow!("setup source absent"))?);
+            ensure!(fs::metadata(replacement)?.ino() == retained.metadata()?.ino());
+            ensure!(fs::read_dir(base.join("setup-held"))?.count() == 0);
+            ensure!(snapshot(&base.join("incoming.bin"))? == original);
+            let after = snapshot(&replacement.join("identity"))?;
+            let entries = fs::read_dir(replacement)?.count();
+            let preserved = before == after && entries == usize::from(marker);
+            safe += usize::from(preserved);
+            println!("RECEIVE_NATIVE_CASE={}", json!({"case":operation,"observed":{
+                "trace":traced,"replacement_inode":retained.metadata()?.ino(),
+                "identity_before":before,"identity_after":after,"replacement_entries":entries,
+                "created_directory_empty":true,"original_final_preserved":true,"safe":preserved}}));
+            drop(retained);
+            fs::remove_dir_all(&base)?;
+        }
+        ensure!(actors == 22, "unexpected joined actor total: {actors}");
+        println!("RECEIVE_NATIVE_SETUP_SWAP_SUMMARY=observed cases=2 safe={safe} children=joined fixture=retired");
+        ensure!(safe == 2, "receive setup adopted unrelated directories: {safe}/2 safe");
+        println!("RECEIVE_NATIVE_AUTHORITY=pass cases=45 actors={actors} receiver_uid=0 actor_uid=4001 children=joined fixture=retired");
         Ok(())
     }
 
@@ -1608,6 +1695,10 @@ mod linux {
             let base = Path::new(&args[2]);
             ensure!(base.starts_with(&owned) && base != owned);
             crash_receiver(base).await
+        } else if args.len() == 3 && args[1] == "setup-receiver" {
+            let base = Path::new(&args[2]);
+            ensure!(base.starts_with(&owned) && base != owned);
+            setup_receiver(base).await
         } else {
             ensure!(args.len() == 3 && args[1] == "run" && Path::new(&args[2]) == owned);
             parent(&owned).await

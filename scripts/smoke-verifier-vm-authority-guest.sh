@@ -8901,8 +8901,8 @@ PY
             "$authority_work/probe" run "$authority_work/data" >"$authority_output" 2>&1 \
             || { tail -c 65536 "$authority_output" >&2; fail 'root/ordinary-user receive authority cases failed'; }
         [ "$(stat -c '%s' "$authority_output")" -le 65536 ] \
-            && [ "$(grep -Fc 'RECEIVE_NATIVE_CASE=' "$authority_output")" -eq 43 ] \
-            && [ "$(grep -Fc 'RECEIVE_NATIVE_ACTOR=' "$authority_output")" -eq 20 ] \
+            && [ "$(grep -Fc 'RECEIVE_NATIVE_CASE=' "$authority_output")" -eq 45 ] \
+            && [ "$(grep -Fc 'RECEIVE_NATIVE_ACTOR=' "$authority_output")" -eq 22 ] \
             && [ "$(grep -Fxc 'RECEIVE_NATIVE_WINDOW_SUMMARY=observed cases=3 safe=3 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
             && [ "$(grep -Fxc 'RECEIVE_NATIVE_ENROLLMENT_SUMMARY=observed cases=3 recovered=3 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
             && [ "$(grep -Fxc 'RECEIVE_NATIVE_SETUP_SUMMARY=observed cases=2 recovered=2 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
@@ -8912,7 +8912,8 @@ PY
             && [ "$(grep -Fxc 'RECEIVE_NATIVE_ADMISSION_SUMMARY=observed destinations=8 attempts=16 safe=true mounts=retired fixture=retired' "$authority_output")" -eq 1 ] \
             && [ "$(grep -Fxc 'RECEIVE_NATIVE_INODE_SUMMARY=observed cases=4 attempts=8 safe=4 mounts=retired fixture=retired' "$authority_output")" -eq 1 ] \
             && [ "$(grep -Fxc 'RECEIVE_NATIVE_DESCRIPTOR_SUMMARY=observed cases=6 safe=6 children=joined limits=restored fixture=retired' "$authority_output")" -eq 1 ] \
-            && [ "$(grep -Fxc 'RECEIVE_NATIVE_AUTHORITY=pass cases=43 actors=20 receiver_uid=0 actor_uid=4001 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'RECEIVE_NATIVE_SETUP_SWAP_SUMMARY=observed cases=2 safe=2 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
+            && [ "$(grep -Fxc 'RECEIVE_NATIVE_AUTHORITY=pass cases=45 actors=22 receiver_uid=0 actor_uid=4001 children=joined fixture=retired' "$authority_output")" -eq 1 ] \
             || fail 'receive authority native scenario or join receipt differs'
         [ -z "$(find "$authority_work/data" -mindepth 1 -maxdepth 1 -print -quit)" ] \
             && [ "$authority_sha" = "$(sha256sum "$authority_work/probe" | cut -d ' ' -f 1)" ] \
@@ -8922,7 +8923,7 @@ PY
         rm -rf -- "$authority_work"
         [ ! -e "$authority_work" ] && [ ! -L "$authority_work" ] \
             || fail 'receive authority runtime workspace did not retire'
-        printf 'RECEIVE_NATIVE_AUTHORITY_VM=pass commit=%s tree=%s artifact_sha256=%s source_sha256=%s cases=43 actors=20 receiver_uid=0 actor_uid=4001 scope=production-library installed=unexecuted vm_network=none children=joined fixture=retired\n' \
+        printf 'RECEIVE_NATIVE_AUTHORITY_VM=pass commit=%s tree=%s artifact_sha256=%s source_sha256=%s cases=45 actors=22 receiver_uid=0 actor_uid=4001 scope=production-library installed=unexecuted vm_network=none children=joined fixture=retired\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$authority_sha" "$authority_source_sha"
     fi
     if [ "$MODE" = linux-service-uid-tests ]; then

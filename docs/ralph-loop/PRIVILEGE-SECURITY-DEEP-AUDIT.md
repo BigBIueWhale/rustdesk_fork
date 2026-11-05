@@ -140698,3 +140698,31 @@ All eight ledger evidence files match CTE and TUF; this audit-only receipt leave
 the counted ledger unchanged. No owned run remains. Named installed read/write
 checks are now a meaningful checkpoint; reassess the unresolved receive namespace
 and installed concurrency/crash boundaries for the next release-directed action.
+
+## 2026-11-05 — receive namespace creation-time substitution
+
+Previous turn made progress: named installed download failures/recovery passed and
+source-bound evidence is retained. Return to the shared-parent namespace blocker
+before more installed success cases. The existing protected-parent cleanup and
+mount/handle experiments remain valid; do not repeat them as new design evidence.
+The unexecuted 09c0a917 stash contains a concrete mkdir-to-open observer. Its base
+receive_authority.rs blob exactly matches current HEAD (4b350b26); restore that
+reviewed test diff while preserving the stash and all existing 43 cases/20 actors.
+Synchronize the guest/host acceptance inventories and require both new cases.
+
+initialize_directory currently opens the public name after mkdirat succeeds,
+checks effective-owner mode0700, then creates/completes an identity marker. Those
+properties may also hold for an unrelated root-owned directory. Linux mkdir(2),
+https://man7.org/linux/man-pages/man2/mkdir.2.html, returns success rather than an
+owned directory descriptor. The related rename(2) semantics and prior native
+same-parent movement observations motivate actual execution before redesign.
+The controller pauses immediately after successful mkdirat without changing
+syscall arguments/results. A separately joined UID4001 actor moves the new empty
+directory aside and substitutes an unrelated root-owned mode0700 directory, once
+empty and once with an empty root-owned mode0600 identity file. Its private reads
+and writes must remain kernel-denied. The production root TransferJob then resumes.
+Require unchanged replacement contents/marker and original final file; collect
+both outcomes, retire all fixtures/actors, then fail if either replacement changed.
+All authority operations remain inside the owned zero-NIC disposable VM, using
+the existing bounded RAM lane. This is preparation, not a reproduced defect yet;
+it exercises root library admission, not installed GUI behavior or a shell gain.

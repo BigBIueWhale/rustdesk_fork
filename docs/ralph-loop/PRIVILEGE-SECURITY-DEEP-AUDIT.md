@@ -140364,3 +140364,14 @@ was truncated; the complete 454,502-byte durable guest log is retained and hashe
 No owned run remains. This accepts the named Linux non-root server/CM/Session
 transactions; full profile, installed root receiver, Flutter/device/platform,
 release-artifact and independent-review acceptance remain OPEN.
+
+Fresh CTE ledger count Qe83GuCxyu at 65ca92fe: 399,189 tokens / 1,821,555 bytes,
+SHA-256 3fd7fc3fe36ddf55e4a79650312719f4b32711e1210051273aa90c5e5abe7a1b.
+The pinned tiktoken-0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and the complete byte round trip. All three endpoint deltas are zero; exact QEMU,
+private state and RAM retirement pass. Storage duration is 31.558 seconds, peak
+scratch 402,771,968 bytes. cm-private-receive-ledger-65ca92fe.json is 4,500 bytes,
+SHA-256 9e6e15e95de5cc122772db5b2ab22edbc81c31fa9f7b4933af2507dd547e6c48.
+All eight ledger evidence files match CTE and TUF. This audit-only receipt preserves
+the counted ledger. The file-integration checkpoint is recorded; the graphical
+pair prerequisite remains eligible next work and the broader goal stays active.

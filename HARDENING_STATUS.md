@@ -57,9 +57,11 @@ did not withdraw authorization or require separate permission to return to a top
 not-yet-started ledger consolidation are OPEN. The completed eight-case
 Settings correction remains valid.
 
-**Checkpoint (2026-11-04):** Authenticated-session continuity during password
-throttling is OPEN. The extension at `ffa36e12` has not been compiled or
-executed; the earlier 21-case installed limiter recovery result remains valid.
+**Checkpoint (2026-11-05):** Authenticated-session continuity during password
+throttling passes CTE `XR9fhr3byl`: one Remote stream completes 45 encrypted
+exchanges over 88 seconds through blocking/recovery, alongside 21 admission
+outcomes and twelve EOF controls. Capsule: `service-limiter-live-123af8b1.json`.
+Final packages, displayed pixels/input, sustained load and other platforms remain OPEN.
 
 
 **Checkpoint (2026-11-05):** OpenRC installed-layout lifecycle passes at
@@ -14328,23 +14330,22 @@ sandbox implementation and checker-repair history remain in Git.
   network errors, other-platform clocks/suspend, installed and release acceptance
   remain OPEN. Exact artifacts, receipts and the unattributed baseline endpoint
   removal are retained in the audit journal.
-  **Installed-layout recovery:** `a9ac7d3e`, CTE `PyBwHGsjOx`, reuses authenticated
-  binary `60e3fb0a` with unchanged relevant source, the shipped systemd unit and
-  real PAM/logind/X11. All 21 keying outcomes pass, including eight Remote PeerInfo
-  logins as UID 4002 to the supervised UID-4001 child. Nine known-wrong passwords
-  plus twelve pre-key EOFs preserve valid login; the tenth failure blocks that
-  source at immediate/20/40-second observations while the other source logs in.
-  The recovery attempt starts after 64 seconds and completes at 67.188 seconds,
-  with supervisor, child, invocation, listener and durable credential unchanged.
-  Normal stop exits zero, reaps both processes and retires record/cgroup; desktop,
-  VM and bounded RAM cleanup pass with three zero host listener deltas. The run
-  takes 124 workload seconds without a rebuild. Command:
-  `scripts/smoke-verifier-vm-authority.sh --linux-service-limiter-tests
-  --peer-commit 60e3fb0ae0a351aa3103f2377166f400692de61e
-  --peer-manifest-sha256 4342aae47b179ae8ba558e8df54b579c18289c8b512e2ad7b564fd6ef377e24d`.
-  Capsule: `service-limiter-a9ac7d3e.json`. This establishes the named installed-layout
-  debug/headless login scenario; final packages, rendered pixels/input, other
-  platforms/suspend, sustained load and complete R-S0/release acceptance remain OPEN.
+  **Installed-layout recovery and continuity:** CTE `XR9fhr3byl` at `123af8b1`
+  reuses matching artifact `899dcad5`, the shipped systemd unit and real PAM/logind/X11.
+  An authenticated UID-4002 Remote connection completes 45 correlated encrypted
+  exchanges over 88 seconds while 21 admission outcomes and twelve pre-key EOF
+  controls run. Nine wrong passwords plus EOFs preserve new login; the tenth
+  failure blocks that source at immediate/20/40-second observations, while the
+  other source logs in. Recovery begins after 64 seconds and completes at 67.805
+  seconds without restart. Nine Remote logins succeed in total; supervisor,
+  child, invocation, listener and durable credential remain unchanged. Ordinary
+  stop exits zero, reaps the probe/service processes and retires record/cgroup,
+  desktop, VM and RAM; all three listener deltas are zero. The 148-second workload
+  needs no rebuild. Command: `--linux-service-limiter-tests` with peer `899dcad5`
+  and its retained manifest; exact arguments, hashes and observations are in
+  `service-limiter-live-123af8b1.json`. This is debug/headless encrypted connection
+  responsiveness. Final packages, pixels/input, other platforms/suspend, sustained
+  load and complete R-S0/release acceptance remain OPEN.
   The current IPv4-only listener does not establish a remotely reachable alias bypass.
 - **Local IPC/CM authorization audit — ⚠️ SUPERSEDED 2026-07-08 by R-S11b/R-S11c.** The
   2026-07-01 pass remains useful only for its transport facts: owner-only channels are

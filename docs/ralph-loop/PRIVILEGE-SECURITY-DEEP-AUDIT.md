@@ -140989,3 +140989,54 @@ peak 402,915,328 bytes. Capsule openrc-tray-ledger-10691f8c.json is
 c044775c9c7d9f3894faf5068a9791959ed8fe2e4bcc51853005e3c58a282060.
 All eight count evidence files match CTE/TUF. This audit-only receipt leaves
 the counted ledger unchanged; no owned run remains.
+
+## 2026-11-05 — authenticated connection survives password throttling
+
+Previous turn: progress, correcting tray ownership and verifying OpenRC lifecycle.
+Select the existing R-S10/R-P14c/R-A8 continuity extension over adding a runit
+fixture: the current artifact already includes its source-bound probe, and this
+decides a required owner's connection behavior with no rebuild. Product, probe
+and fixture sources remain unchanged. Review confirms the limiter acts before
+CPace admission, while the held connection completes Remote PeerInfo before any
+of the 45 correlated TestDelay exchanges on its original keyed stream. Every
+exchange has a four-second deadline; the full probe is bounded to 100 seconds.
+Tokio's pinned timeout contract cancels the awaited future on expiry, but does
+not preempt non-yielding execution; this probe awaits transport/timers and its
+parent retains a separate process deadline and exact join:
+https://docs.rs/tokio/1.44.2/tokio/time/fn.timeout.html.
+
+CTE XR9fhr3byl, session 55559, exits zero at harness 123af8b1 using artifact
+899dcad5 and manifest f72fbd4d3c5c3a221a25fc7c82fbd53aedb16ad99c8127a851719cade47e6e64.
+The existing source-equality and payload checks pass. Server SHA-256
+d46d1078815792a483345475a3b615a0788b10c3257eadcc9526d83e4472aa04 and probe
+768f78cb928e514159708b13f4736fc1a27220c85f7f354a08dddb2fdaf61590 are reused.
+The shipped systemd unit runs the actual root supervisor and selected UID-4001
+child with real PAM/logind/X11; both client roles are UID 4002 without capabilities.
+
+All 21 admission outcomes and twelve pre-key EOF controls pass. Correct login
+still succeeds after nine wrong passwords and the EOFs; the tenth confirmation
+failure blocks new admission from that source at immediate/20/40-second checks.
+The second source continues logging in. Recovery begins after 64 seconds and
+completes at 67.805277571 seconds from the first failure's completion, without
+restart or clock/map manipulation. The initially authenticated connection
+completes all 45 nonce-matched encrypted exchanges through 88.002 seconds and
+exits zero after both recovered logins. Nine Remote logins succeed in total.
+The same supervisor/child, unit invocation, listener and durable credential
+persist. Ordinary shutdown exits zero and reaps the exact processes, removes
+record/cgroup and retires the desktop fixtures.
+
+Capsule service-limiter-live-123af8b1.json: 14,615 bytes, SHA-256
+ba45aa3f76764d610fed5c3b62a1f749b495690b5b0b959e28e16120ee4f909f.
+It retains exact command, manifest, observations and the full 10,391-byte guest
+output (SHA-256 118ab5db3c6f5400769b562171a9f1691a9da6da8ed6a9405f481ac91aefd9a0).
+The workload takes 148 seconds; storage monitor 152.974 seconds with peak RAM
+scratch 4,064,993,280 bytes. Three endpoint deltas are zero. Terminal QEMU join,
+pidfd absence and exact private/RAM retirement are verified under the shared lock.
+Nine bounded evidence files match CTE/TUF; no new bulk artifact or owned run remains.
+
+This establishes encrypted connection responsiveness during finite throttling,
+not presented frames or delivered input. Debug/headless installed layout is not
+final-package acceptance. Other platforms/suspend, sustained load and R-S0/R-F5
+remain OPEN. The next broader acceptance is the required installed graphical
+session under load. Replace the existing ledger checkpoint/recovery entry in
+place and count the revised ledger; the goal remains active.

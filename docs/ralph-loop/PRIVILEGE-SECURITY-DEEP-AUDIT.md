@@ -141149,3 +141149,17 @@ displays, topology changes, cross-version/platform behavior, sustained recovery,
 installed/release artifacts and broader R-S0/R-F5 acceptance remain OPEN.
 Replace the existing monitor row and build checkpoint in place; count the
 revised ledger. The goal remains active.
+
+Fresh CTE count NkE7WAUE72 at ac09d073 passes: 399,930 tokens /
+1,825,710 bytes, SHA-256
+ad42447d13ad6750d317a6808af8ae6d2d3d7f3fe2304830584d0447af8627d3.
+Session 60769 exits zero with seven controls and the whole-input round trip.
+All three endpoint snapshots show zero additions; the final snapshot records
+one unattributed baseline endpoint removal, preserved in the raw inventory.
+The owned harness remains kernel-denied IP sockets; no pre-existing service is
+inspected or changed. Exact QEMU/private/RAM retirement is independently verified.
+Storage lasts 30.664 seconds, peak 402,849,792 bytes. Capsule
+monitor-ledger-ac09d073.json (4,703 bytes) has SHA-256
+6cb4b8612a4df0a6a4b5c483238ff318d3d616ba3acf206f784c727ad5631016.
+All 71 bounded evidence files (1,648,763 bytes) match CTE/TUF. This audit-only
+receipt leaves the counted ledger unchanged; no owned run remains.

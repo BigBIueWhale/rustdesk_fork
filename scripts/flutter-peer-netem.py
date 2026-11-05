@@ -38,6 +38,7 @@ class Impairment:
         self.transport_next = 0
         self.transport_count = 0
         self.transport_profiles = {}
+        self.packet_size_baseline = None
 
     def run(self, *args):
         require(self.namespace is not None, 'namespace is not attached')
@@ -82,9 +83,52 @@ class Impairment:
         self.profile('healthy')
         self.run('tc', 'qdisc', 'add', 'dev', 'lo', 'handle', 'ffff:', 'ingress')
         self.ingress = True
+        for preference, comparison in ((1, 'gt'), (2, 'eq')):
+            self.run('tc', 'filter', 'add', 'dev', 'lo', 'parent', 'ffff:',
+                     'protocol', 'ip', 'pref', str(preference), 'basic', 'match',
+                     f'cmp(u16 at 2 layer network {comparison} 1500)',
+                     'action', 'gact', 'continue', 'index', str(preference))
         self.run('tc', 'filter', 'add', 'dev', 'lo', 'parent', 'ffff:', 'protocol', 'ip',
-                 'pref', '1', 'matchall', 'action', 'mirred', 'egress', 'redirect',
+                 'pref', '3', 'matchall', 'action', 'mirred', 'egress', 'redirect',
                  'dev', 'rd-netem')
+        require(self.packet_sizes() == {'oversized': 0, 'at_mtu': 0},
+                'packet size counters are not initially empty')
+        # Exercise both sides of the boundary before reducing this private loopback MTU.
+        self.run('python3', '-I', '-S', '-c', '''
+import socket
+with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \\
+     socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sender:
+    receiver.bind(('127.0.0.1', 0))
+    receiver.settimeout(1)
+    for size in (1471, 1472, 1473):
+        payload = bytes(size)
+        assert sender.sendto(payload, receiver.getsockname()) == size
+        assert receiver.recv(2048) == payload
+''')
+        self.packet_size_baseline = self.packet_sizes()
+        require(self.packet_size_baseline == {'oversized': 1, 'at_mtu': 1},
+                '1499/1500/1501-byte ingress controls differ')
+        self.run('ip', 'link', 'set', 'dev', 'lo', 'mtu', '1500',
+                 'gso_max_size', '1500', 'gso_max_segs', '1')
+        links = json.loads(self.run('ip', '-d', '-j', 'link', 'show', 'dev', 'lo'))
+        require(len(links) == 1 and links[0]['mtu'] == 1500
+                and links[0]['gso_max_size'] == 1500 and links[0]['gso_max_segs'] == 1,
+                'private packet sizing readback differs')
+        print('FLUTTER_PEER_PACKET_CALIBRATION=' + json.dumps(
+            dict(controls_ipv4_bytes=[1499, 1500, 1501], counters=self.packet_size_baseline,
+                 link=links[0], observation='ipv4-total-length-before-ingress-netem'),
+            sort_keys=True), flush=True)
+
+    def packet_sizes(self):
+        counts = {}
+        for index, name in ((1, 'oversized'), (2, 'at_mtu')):
+            raw = self.run('tc', '-s', 'actions', 'get', 'action', 'gact', 'index', str(index))
+            matches = re.findall(r'\bSent [0-9]+ bytes ([0-9]+) pkt\b', raw)
+            require(len(raw) <= 4096 and len(matches) == 1 and 'gact action continue' in raw
+                    and re.search(r'\bindex ' + str(index) + r'\b', raw),
+                    'packet size observation differs: ' + raw[:4096])
+            counts[name] = int(matches[0])
+        return counts
 
     def profile(self, name):
         require(self.process is not None and alive(self.process), 'server is no longer live')
@@ -127,6 +171,9 @@ class Impairment:
             cookie = re.findall(r'\bsk:([0-9a-f]+)\b', line)
             require(len(inode) == len(cookie) == 1 and re.search(r'\buid:1000\b', line),
                     'transport socket identity differs')
+            mss = re.findall(r'\bmss:([0-9]+)\b', line)
+            require(re.search(r'\bpmtu:1500\b', line) and len(mss) == 1
+                    and 0 < int(mss[0]) <= 1460, 'transport packet sizing differs')
             records.append(dict(local=local, peer=peer, inode=int(inode[0]),
                                 cookie=cookie[0], recv_queue=int(fields[0]),
                                 send_queue=int(fields[1]), raw=line))
@@ -152,6 +199,10 @@ class Impairment:
             self.transport_active = False
 
     def snapshot(self, request):
+        sizes = self.packet_sizes()
+        require(self.packet_size_baseline is not None
+                and sizes['oversized'] == self.packet_size_baseline['oversized'],
+                'oversized IPv4 packet reached the impairment filter')
         queues = json.loads(self.run('tc', '-s', '-j', 'qdisc', 'show', 'dev', 'rd-netem'))
         queues = [q for q in queues if q['kind'] == 'netem']
         require(len(queues) == 1 and queues[0]['options']['limit'] == 64,
@@ -173,7 +224,7 @@ class Impairment:
         now = time.monotonic_ns() // 1000
         print('FLUTTER_PEER_NETEM=' + json.dumps(
             dict(request=request, monotonic_us=now, namespace=os.fstat(self.namespace).st_ino,
-                 queue=queue), sort_keys=True), flush=True)
+                 queue=queue, packet_sizes=sizes), sort_keys=True), flush=True)
         return f'OK {now} {queue["drops"]} {queue["packets"]} {queue["qlen"]}'.encode()
 
     def close(self):
@@ -260,13 +311,18 @@ def supervise(image, argv):
                         os.close(requester)
             status = child.wait()
             if status == 0:
+                sizes = owner.packet_sizes()
+                require(sizes['oversized'] == owner.packet_size_baseline['oversized']
+                        and sizes['at_mtu'] > owner.packet_size_baseline['at_mtu'],
+                        'real-peer packet size coverage is missing or oversized')
                 require(owner.transport_profiles
                         and all(count >= 2 for count in owner.transport_profiles.values()),
                         'impairment transport observations are incomplete')
                 print('FLUTTER_PEER_TCP_OBSERVED=' + json.dumps(
                     dict(samples=owner.transport_count, profiles=owner.transport_profiles,
                          interval_ms=200, clock='shared-monotonic', socket_pair='retained',
-                         source='ss-inet-diag', product_socket_changes=False), sort_keys=True),
+                         source='ss-inet-diag', product_socket_changes=False,
+                         packet_sizes=sizes), sort_keys=True),
                       flush=True)
         finally:
             if child is not None and child.poll() is None:

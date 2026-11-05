@@ -139485,3 +139485,33 @@ The 28-second workload retires exact processes/private/RAM with three zero endpo
 deltas; peak scratch is 402,948,096 bytes. `pivot-final-ledger-c185e021.json` is
 7,693 bytes, SHA-256 da7b41766a264ef7bb2c4eabbfb2124351330da2af6c2008b67cb25e3885b3d7.
 This audit-only receipt preserves the counted ledger. No owned run remains.
+
+## 2026-11-05 — packet-size calibration for R-F5 loss recovery
+
+Previous turn is progress: current-app loss recovery passes and transport timing
+narrows the long during-loss stall. Continue this requirement by removing the
+65,535-byte loopback packet-sizing limitation before selecting a product change;
+another settings/component check would not resolve this uncertainty.
+
+Linux 6.1's [netem enqueue](https://raw.githubusercontent.com/torvalds/linux/v6.1/net/sched/sch_netem.c)
+chooses loss for an skb before the corruption-only segmentation branch. The
+[segmentation documentation](https://kernel.org/doc/html/latest/networking/segmentation-offloads.html)
+explains how one buffer can represent multiple segments. The private loopback now
+uses MTU 1,500, GSO maximum size 1,500 and one maximum segment, all read back before
+the viewer connects. [TCP's segment selector](https://raw.githubusercontent.com/torvalds/linux/v6.1/net/ipv4/tcp_output.c)
+caps its choice with the socket's GSO segment limit; actual socket observations
+must additionally show PMTU 1,500 and MSS no larger than 1,460.
+
+Two guest-private ingress comparisons count IPv4 total lengths equal to or above
+the MTU; their continue actions preserve the existing downstream loss filter.
+Before lowering MTU, real 1,499/1,500/1,501-byte UDP datagrams exercise both sides
+and the boundary, require exact counters and retire both temporary sockets.
+Subsequent real-peer traffic must add full-sized packets and zero oversized ones.
+[tc ematch](https://man7.org/linux/man-pages/man8/tc-ematch.8.html) and the pinned-era
+[comparison implementation](https://raw.githubusercontent.com/torvalds/linux/v6.1/net/sched/em_cmp.c)
+define the network-header offset and byte-order semantics. This adds no host
+interface changes, new tool acquisition or application socket tuning. Existing
+loss profiles, deadlines, pixel oracle and resource/retirement requirements remain.
+Kernel loss sequence, bandwidth/jitter, long-session and other-platform gaps stay
+OPEN. Python/embedded-script parsing and whitespace checks pass; native calibration
+and recovery results are pending execution.

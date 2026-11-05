@@ -7172,13 +7172,13 @@ source-check correctness only; installed/native and release acceptance stays OPE
 
 ### R-S11at/R-S11e-60 — shared Linux UID policy; installed acceptance OPEN
 
-**Named historical component and installed-layout cases passed; exact-current installed,
-whole-app and release acceptance remain OPEN.** The results below apply to their recorded
-sources and artifacts. The receiver's production-source equality guard in
+**The current installed credential checkpoint passes its named scenarios; complete
+installed, whole-app and release acceptance remain OPEN.** The results below apply to
+their recorded sources and artifacts. The receiver's production-source equality guard in
 `scripts/smoke-verifier-vm-authority.sh::linux_receiver_input_inventory` rejects a retained
 binary when its complete production source differs. An earlier pass cannot authorize a
-current run or establish current-master conformance. Fresh builds and fixtures that the
-unfinished remain open.
+current run or establish current-master conformance. The `d108183a` checkpoint uses a
+fresh source-bound artifact; unexercised acceptance conditions remain open.
 
 Both endpoints use `src/ipc/uid_policy.rs`: root skips active-user lookup; a cached UID
 can deny but cannot grant, and a match requires a fresh lookup. Kernel process, role,
@@ -7227,6 +7227,7 @@ at `c7ffb339` and the audit.
 
 | Installed checkpoint | Observed behavior at the named artifact | Retained evidence |
 | --- | --- | --- |
+| Current full credential profile / `d108183a`, binary `6193391a` | Seventeen scenarios, 15 mutual CPace exchanges, four stale-credential refusals and two credential races pass. Root and actual PAM administrator changes apply; ordinary users and wrong images are refused. Rotation/restart persistence, requester/agent exit, session revocation/recovery, pending authorization shutdown, admitted mutation drain and fresh authorization denial pass. Normal systemd stop retains an admitted change through a 40.073-second held child, then reports Applied and stops cleanly. | `installed-current-native-d108183a.json`; build `installed-current-build-d108183a.json`, manifest `79e9ce8f`. Actual shipped unit/policy and polkit/PAM/logind in a zero-NIC VM; debug/headless installed layout. This does not execute installed file transactions or establish final-package/UI/platform acceptance. |
 | Initial v2 / requester exit | Root Applied; UID4001/4002 and wrong images refused; real CPace used the durable credential across restart, credential races refused and errors drained. Requester exit reaped its helper in 18 ms. | `linux-receiver-requester-exit-accepted-bb5a78b2.json` |
 | Session closes during prompt | Requester/agent/Xvfb stayed live while administrator4003 completed PAM. Root's fresh session check refused with unchanged durable credential and helper reaped; old session/runtime retired, and fresh-generation CPace/admin Applied/no-agent refusal passed. Lingering-runtime recovery remains OPEN. | `linux-receiver-session-revocation-accepted-15ea97aa.json` |
 | Wrong administrator password / `924b5aed` | A diagnostic baseline proved PAM failure and root denial but repeated the prompt for one live CLI. Separate proof/body/status deadlines corrected finality: one failed challenge, reaped helper, CLI1 rejection while agent lived, unchanged credential/child/listener, then actual admin Applied and fresh denial. The accepted fixture passed 13 cases/11 CPace exchanges/two stale refusals with race controls. | `linux-receiver-admin-denial-accepted-924b5aed.json` |
@@ -7260,7 +7261,7 @@ monitoring, hard ceilings and joined retirement. These records do not admit anot
 
 **Still OPEN:**
 
-- Exact-current installed receiver/artifact acceptance for both endpoints and all fifteen
+- Complete exact-current installed receiver/artifact acceptance for both endpoints and all fifteen
   credential actions; root/cached/fresh-active-user, principal/role/argv/ancestry/session
   changes, identity races, real authorization effects and persistence/restart.
 - Remaining administrator failure, GUI cancellation/dismissal, delay, contention/capacity,

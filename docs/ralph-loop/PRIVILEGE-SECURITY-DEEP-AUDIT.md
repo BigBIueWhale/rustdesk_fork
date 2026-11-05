@@ -140461,3 +140461,53 @@ control and the valid credential-storage fields. TUF is clean at 42bfd7df with
 49,171,036 KiB MemAvailable, 33,322,758,144 bytes available in /dev/shm and no owned
 run. The retained current-source artifact is an intentional reusable test input;
 all disposable build bulk stays in the shared admitted RAM workspace.
+
+The first build attempt, oyYJqb5CGz, refused before QEMU because the four-generation
+artifact cache was full. Under the shared run/cache locks, every payload hash
+and pinned directory/file identity was verified before retiring the superseded
+fdbab046 set. Its complete manifest and provenance remain; the later e0c73321 service
+artifact and the other two sets remain. This frees 117,271,898 bytes without
+raising the cache ceiling. The exact failed private tree and RAM workspace are
+retired; the admission refusal has no QEMU process. Both hosts retain
+installed-current-cache-d108183a.json (6,854 bytes, SHA-256
+bb114a06df91d4ef2339985389a4c4168069300e4e3d39b21852425ca6fb0f93)
+and its 671-byte retirement receipt (SHA-256
+3641a9554d686db4821dd3883e8ba3fb3aa657b08d0b0a83016d37b4805cdd78).
+
+TUF build s8kLEzOIxk at d108183af104ea2a4643ddf195b56380aec5b90a succeeds:
+seven inert retained files, 117,399,752 payload bytes, manifest SHA-256
+79e9ce8f2180eb6a144b81ae85491a2e8a6c6c1541f3285d53aabd94525eb28b.
+Server SHA-256 6193391a17d16b064ffaeccf6b2dab87652f3fb77b7e83d2967d28c00103ba37;
+probe SHA-256 909330197fe01d326b12e7704708dfeaf434a2adbe9beca6ef655bbeaea5d185.
+Compilation occurs only in the confined guest container. Storage supervisor
+duration 259.942 seconds, peak scratch 5,917,999,104 bytes; all four endpoint deltas
+are zero. Exact QEMU, private state and RAM retire. Build capsule
+installed-current-build-d108183a.json is 7,617 bytes, SHA-256
+3651b08bc3c81b7ecc81f1b4f28458206e6669a85a2476b7c6247bf1fe0ef42c.
+All nine bounded evidence files match CTE and TUF; retained payloads stay on TUF.
+The cache again contains four generations. Fixture commit 4f71c740 corrected only
+the wrong-image endpoint path; d108183a restores its original non-executable mode.
+No production source or guard changed.
+
+Reusing that exact set, TUF a8c9RudhpB passes the full receiver profile: 17 scenarios,
+15 mutual CPace exchanges, four stale-credential refusals and two credential races.
+Both wrong-image endpoints refuse before payload disclosure. Root and actual PAM
+administrator changes apply; UID4001/4002, wrong-password and fresh unauthenticated
+requests are denied. Durable credentials survive rotation/restart. Requester exit,
+agent loss, session revocation/recovery and pending authorization shutdown retire
+their exact owners. Admitted mutation drain preserves the durable result; normal
+systemd stop holds the child for 40.073 seconds, then returns Applied in 179.8 ms
+after release and completes a successful stop with exact tree/cgroup retirement.
+The final fresh administrator grant and no-agent refusal both pass.
+
+Storage supervisor duration 96.095 seconds, peak scratch 4,094,951,424 bytes; all
+three endpoint deltas are zero. Terminal tool 76797 exits zero; under the shared
+lock the exact QEMU is absent and private state/RAM are retired. Capsule
+installed-current-native-d108183a.json is 101,313 bytes, SHA-256
+6880b6d12d135063a1f34282e0267b6c585486a1d4965681aa616e2627293d69.
+All eight raw/outer/capsule files match both hosts. The checkpoint proves only
+these current debug/headless installed-layout authorization and lifecycle cases,
+using the shipped unit/policy and actual polkit/PAM/logind. Installed file workflows,
+shared-parent/mount-root receive cleanup, rendered/input behavior, final packages,
+other platforms, independent review and the broader release remain OPEN. No owned
+run remains. Update the current ledger and count its exact bytes once.

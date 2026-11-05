@@ -139635,3 +139635,12 @@ binds each original capsule and the authoritative correction. The accepted
 congestion capsule contains the corrected field and provenance. No rerun is
 needed for this metadata correction. R-F5 input-visible recovery, long-session,
 other workloads/roles/platforms and reproducible timing/tail coverage remain OPEN.
+
+Fresh count `X5HDEvLhYv` at `54f883b7` passes seven controls and the whole-input
+round trip in 27 workload seconds: **396,703 tokens / 1,811,109 bytes**, SHA-256
+faa494c76e4d1803409c2718c982b0446cbb62f746b4261e635e3f21a1d0f6c3.
+Exact processes/private/RAM retire, with 402,890,752-byte peak scratch. There are
+no endpoint additions and one unattributed final removal; no foreign process is
+inspected or changed. `congestion-ledger-54f883b7.json` is 7,839 bytes, SHA-256
+b9491bb3aec5fb0456440089597f911a9a2056d8f0ac8fad9f59306925194b83.
+This audit-only receipt leaves the counted ledger unchanged. No owned run remains.

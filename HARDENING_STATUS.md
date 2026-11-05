@@ -4187,6 +4187,16 @@ processes/RAM retire and three endpoint deltas are zero. Capsule:
 must complete before acceptance; retain TUF's source unchanged and observe this
 same job. Broader R-F5 coverage remains OPEN.
 
+**Companion impaired input soak — implemented, execution/acceptance pending.**
+`--input-congestion-soak` retains 7,320 scheduled healthy responses and a fixed
+four-minute baseline, adding twelve 20-second congestion cycles before windows
+1/16/31/46. The original 1,000-ms healthy-response, 2,500-ms recovery and 250-ms
+quantile-drift bounds remain. CTE now holds authenticated app `2ae08e80` without
+increasing its four-generation cache. The planned capture control is
+`.harness-state/input-congestion-soak-nov05-control`; inspect its launch, live
+process and final receipts before classifying execution. Full-duration/cleanup
+evidence and broader roles/workloads remain OPEN.
+
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;
 all 196 package versions and every other lock entry remain unchanged. The old

@@ -139913,3 +139913,57 @@ The bounded CTE checkpoint `congestion-soak-first-round-d48f838d.json` records
 this live observation and its partial-log hash. This is **not** full-duration
 acceptance. Continue the same session 6835/run; require all 241 windows, twelve
 cycles, final resource receipts and exact retirement before closing this condition.
+
+## 2026-11-05 — companion impaired multi-hour input response
+
+The preceding goal turn made progress: the display-soak harness, focused native
+accounting checks and first complete recovery round are accepted within their
+stated scopes. Reinspection proves TUF wrapper 135096/start 4633201 live with
+continuing healthy windows. Keep that exact job and checkout unchanged. Advance
+R-F5's separate long-session input-response condition on CTE while it runs;
+short impaired input and healthy multi-hour input already have evidence, but
+their combination does not. This takes priority over repeating either control.
+
+Reuse `exercise_input_latency` and `exercise_input_degradation` through the named
+`--input-congestion-soak` scenario. Keep 61 four-minute windows, 120 ordered
+requests per window at two-second slots, and the fixed first-window quantiles.
+Before windows 1/16/31/46, exercise jitter, 32-kbit/s bandwidth and their
+combination for 20 seconds each. The existing degradation loop keeps one request
+outstanding, restores by elapsed time and requires its exact visible response
+within 2,500 ms afterward. Healthy requests retain 1,000-ms response/age bounds,
+quiet controls, released-key checks, exact connection/window identity and bounded
+resources. Every later window retains the 250-ms p95/p99 drift allowance.
+
+Research: [clock_nanosleep](https://man7.org/linux/man-pages/man2/clock_nanosleep.2.html)
+describes absolute deadlines, immediate return for past deadlines and EINTR retry.
+Preserve the existing absolute cadence, shifting it only by each measured
+impairment round's duration. Bound each round to 60–70 seconds, count exactly four,
+and require at least 14,640 healthy seconds plus their measured duration. Validate
+the final clock before subtracting. This prevents impairment time from shortening
+the healthy observation or redefining its latency baseline. Server minimum is
+14,879 seconds/247 windows; controller/VM ceilings are 15,300/15,540 seconds.
+Reuse the display-soak transport sampling and 2,304-snapshot/6-MiB bounds within
+the existing 8-MiB workload log cap. No application or transport tuning changes.
+
+CTE's cache held older artifacts. Verify and retire superseded `cf437894` against
+its historical manifest SHA-256
+94941c425a12844e424c7ac903f8a84b93b19628f3ed391f29e77548e15f6d93:
+74 payloads/70,291,394 bytes. Preserve its manifest and historical evidence,
+the `0243c010` healthy-soak comparator and two other generations. Through the
+existing SSH master, directly stream current TUF app `2ae08e80`, using descriptor
+and complete-manifest admission on both ends: 73 payloads/70,332,436 bytes, manifest
+52395f154d6a6a877ce121fcf722610cadb5dcf1353ebc1df66338b35b3114a1.
+No archive scratch or application execution occurs. Cache capacity stays four;
+net payload growth is 41,042 bytes. Records are
+`retired-linux-flutter-app-cf437894.manifest.json`,
+`linux-flutter-app-retirement-cf437894.json` and `current-app-cte-import-2ae08e80.json`.
+TUF's artifact and source remain unchanged.
+
+Shell parsing, Python parsing and diff hygiene pass. Native compilation and
+real-duration input execution are pending. Admission sees 33,783,968 KiB available
+RAM, no owned CTE run and 33,215,627,264 available tmpfs bytes. Recheck immediately
+before launch. First count the changed ledger in isolation, record that result,
+then launch the non-interactive integration job with capture control
+`.harness-state/input-congestion-soak-nov05-control`. Its launch JSON will bind
+the exact final source, command and PID/start ticks. Keep CTE's checkout frozen
+while it runs. Initial partial observations cannot establish full acceptance.

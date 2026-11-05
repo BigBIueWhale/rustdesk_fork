@@ -391,7 +391,7 @@ def supervise(image, argv):
     require([link['ifname'] for link in json.loads(initial_links)] == ['lo'], 'guest NIC present')
     require(not os.path.lexists(ENDPOINT), 'supervisor endpoint occupied')
     subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=ENV, check=True, timeout=3)
-    long_soak = '--congestion-soak' in argv
+    long_soak = '--congestion-soak' in argv or '--input-congestion-soak' in argv
     owner = Impairment(image, long_soak or '--network-congestion' in argv or '--input-congestion' in argv,
                        long_soak)
     child = None

@@ -14,10 +14,10 @@ import time
 def main():
     assert len(sys.argv) == 6 and os.getuid() != 0 and os.getgid() != 0
     pid, start, source_pid, source_start, scenario = sys.argv[1:]
-    assert scenario in ('viewer-soak', 'input-soak', 'congestion-soak')
-    minimum_seconds = 14699 if scenario == 'congestion-soak' else 14639 if scenario == 'input-soak' else 14459
-    minimum_windows = 244 if scenario == 'congestion-soak' else 243 if scenario == 'input-soak' else 240
-    maximum_seconds = 15120 if scenario == 'congestion-soak' else 14700
+    limits = {'viewer-soak': (14459, 240, 14700), 'input-soak': (14639, 243, 14700),
+              'congestion-soak': (14699, 244, 15120), 'input-congestion-soak': (14879, 247, 15300)}
+    assert scenario in limits
+    minimum_seconds, minimum_windows, maximum_seconds = limits[scenario]
     pid, source_pid = int(pid), int(source_pid)
     coord = pathlib.Path('/coord')
 

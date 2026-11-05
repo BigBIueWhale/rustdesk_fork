@@ -4210,6 +4210,9 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
     unsigned int baseline_p95 = 0U, baseline_p99 = 0U;
     unsigned int trials = soak ? SOAK_WINDOWS * SAMPLES : recovery ? 4U * SAMPLES : SAMPLES;
     unsigned int request = 0U;
+    unsigned int impairment_rounds = 0U;
+    uint64_t impairment_ms = 0U;
+    int congestion_soak = soak && recovery == 3;
     char path[64], state = '\0';
     const char *phase = "setup";
     Window focus, initial_focus;
@@ -4254,7 +4257,27 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
     if (measurement_start == 0U ||
         (soak && isolation_marker(coord, "soak.begin", 1) != 0)) goto out;
     for (trial = 0U; trial < trials; ++trial) {
-        if (recovery && trial != 0U && trial % SAMPLES == 0U) {
+        if (congestion_soak && trial >= SAMPLES && (trial - SAMPLES) % (15U * SAMPLES) == 0U) {
+            uint64_t before = monotonic_millis();
+            phase = "congestion-round";
+            if (before == 0U || before < measurement_start ||
+                dprintf(3, "FLUTTER_PEER_INPUT_CONGESTION_SOAK_BEGIN round=%u before_window=%u\n",
+                        impairment_rounds + 1U, trial / SAMPLES) < 0) goto out;
+            for (unsigned int cycle = 0U; cycle < 3U; ++cycle) {
+                if (exercise_input_degradation(source, display, viewer, history, connection, baseline,
+                                                &expected, &request, cycle, 1) != 0) goto out;
+            }
+            uint64_t after = monotonic_millis();
+            if (after < before || after - before < 60000U || after - before > 70000U) goto out;
+            /* Exclude only the measured impairment round from the absolute healthy cadence. */
+            impairment_ms += after - before;
+            ++impairment_rounds;
+            if (dprintf(3, "FLUTTER_PEER_INPUT_CONGESTION_SOAK_RECOVERED round=%u before_window=%u "
+                        "round_ms=%llu cumulative_ms=%llu request=%u identity=%lld\n",
+                        impairment_rounds, trial / SAMPLES, (unsigned long long)(after - before),
+                        (unsigned long long)impairment_ms, request, (long long)expected) < 0) goto out;
+        }
+        if (recovery && !soak && trial != 0U && trial % SAMPLES == 0U) {
             unsigned int cycle = trial / SAMPLES - 1U;
             if (recovery == 1 ? exercise_input_outage(source, display, viewer, history, connection,
                                                      &expected, ++request, cycle) != 0 :
@@ -4262,7 +4285,8 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
                                              &expected, &request, cycle, recovery == 3) != 0) goto out;
         }
         phase = "cadence";
-        if (soak && wait_for_input_slot(measurement_start + (uint64_t)trial * SLOT_MS) != 0) goto out;
+        if (soak && wait_for_input_slot(measurement_start + impairment_ms + (uint64_t)trial * SLOT_MS) != 0)
+            goto out;
         phase = "quiet";
         uint64_t quiet = monotonic_millis(), previous = quiet, start_us, elapsed_us = 0U;
         unsigned int quiet_samples = 0U;
@@ -4304,7 +4328,7 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         printf("FLUTTER_PEER_INPUT_LATENCY_SAMPLE index=%u request=%u identity=%lld elapsed_us=%llu "
                "quiet_samples=%u input=native-request response=visible-pixels\n",
                trial, request, (long long)expected, (unsigned long long)elapsed_us, quiet_samples);
-        if (recovery && (trial + 1U) % SAMPLES == 0U) {
+        if (recovery && !soak && (trial + 1U) % SAMPLES == 0U) {
             unsigned int window = trial / SAMPLES;
             unsigned int p95 = latency_percentile(histogram, SAMPLES, 95U);
             unsigned int p99 = latency_percentile(histogram, SAMPLES, 99U);
@@ -4330,7 +4354,8 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
             unsigned int p99 = latency_percentile(histogram, SAMPLES, 99U);
             if (window == 0U) { baseline_p95 = p95; baseline_p99 = p99; }
             if (p95 > baseline_p95 + DRIFT_MS || p99 > baseline_p99 + DRIFT_MS ||
-                wait_for_input_slot(measurement_start + (uint64_t)(trial + 1U) * SLOT_MS) != 0) goto out;
+                wait_for_input_slot(measurement_start + impairment_ms + (uint64_t)(trial + 1U) * SLOT_MS) != 0)
+                goto out;
             printf("FLUTTER_PEER_INPUT_SOAK_WINDOW index=%u samples=120 p95_ms=%u p99_ms=%u "
                    "maximum_ms=%u baseline_p95_ms=%u baseline_p99_ms=%u elapsed_ms=%llu\n",
                    window, p95, p99, maximum, baseline_p95, baseline_p99,
@@ -4344,12 +4369,20 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         }
     }
     if (soak) {
-        if (monotonic_millis() - measurement_start < (uint64_t)trials * SLOT_MS ||
+        uint64_t finished = monotonic_millis();
+        if (finished == 0U || finished < measurement_start ||
+            (congestion_soak && impairment_rounds != 4U) ||
+            finished - measurement_start < (uint64_t)trials * SLOT_MS + impairment_ms ||
             isolation_marker(coord, "soak.done", 1) != 0 ||
             wait_isolation_marker(coord, "soak.observed", 5000U) != 0) goto out;
         puts("FLUTTER_PEER_INPUT_SOAK_OK baseline_ms=240000 duration_ms=14400000 windows=60 "
              "samples=7320 interval_ms=2000 deadline_ms=1000 p95_drift_ms=250 p99_drift_ms=250 "
              "stable_connection=true resources=bounded input=viewer-xtest pixels=viewer-root");
+        if (congestion_soak)
+            puts("FLUTTER_PEER_INPUT_CONGESTION_SOAK_OK rounds=4 cycles=12 windows=61 "
+                 "healthy_samples=7320 profiles=jitter,bandwidth,bandwidth-jitter hold_ms=20000 "
+                 "recovery_limit_ms=2500 healthy_duration_ms=14640000 baseline=fixed "
+                 "stable_connection=true resources=bounded");
     } else if (recovery > 1) {
         printf("FLUTTER_PEER_INPUT_DEGRADATION_OK profiles=%s cycles=3 hold_ms=20000 samples=480 "
                "recovery_limit_ms=2500 deadline_ms=1000 p95_drift_ms=250 p99_drift_ms=250 "
@@ -7514,6 +7547,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--input-loss") != 0 &&
                                     strcmp(argv[5], "--input-congestion") != 0 &&
                                     strcmp(argv[5], "--input-soak") != 0 &&
+                                    strcmp(argv[5], "--input-congestion-soak") != 0 &&
                                     strcmp(argv[5], "--isolation-slow") != 0 &&
                                     strcmp(argv[5], "--isolation-healthy") != 0 &&
                                     strcmp(argv[5], "--keyboard-retirement") != 0 &&
@@ -7578,7 +7612,7 @@ int main(int argc, char **argv) {
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction, --native-components\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--input-congestion-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -7827,11 +7861,14 @@ int main(int argc, char **argv) {
                       strcmp(argv[5], "--input-recovery") == 0 ||
                       strcmp(argv[5], "--input-loss") == 0 ||
                       strcmp(argv[5], "--input-congestion") == 0 ||
+                      strcmp(argv[5], "--input-congestion-soak") == 0 ||
                       strcmp(argv[5], "--input-soak") == 0)) {
         int result = exercise_input_latency(source, display, &viewer, &history,
                                            &current_connection, &baseline_resources,
-                                           argv[4], strcmp(argv[5], "--input-soak") == 0,
-                                           strcmp(argv[5], "--input-congestion") == 0 ? 3 :
+                                           argv[4], strcmp(argv[5], "--input-soak") == 0 ||
+                                                    strcmp(argv[5], "--input-congestion-soak") == 0,
+                                           (strcmp(argv[5], "--input-congestion") == 0 ||
+                                            strcmp(argv[5], "--input-congestion-soak") == 0) ? 3 :
                                            strcmp(argv[5], "--input-loss") == 0 ? 2 :
                                            strcmp(argv[5], "--input-recovery") == 0);
         if (atspi_exit() != 0) result = -1;

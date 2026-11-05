@@ -62,12 +62,13 @@ throttling is OPEN. The extension at `ffa36e12` has not been compiled or
 executed; the earlier 21-case installed limiter recovery result remains valid.
 
 
-**Checkpoint (2026-11-04):** OpenRC lifecycle validation is OPEN.
-At `9e6aa6d4`, both generations complete authenticated login and exact
-supervisor/child retirement, but a combined final-state assertion fails without
-identifying its differing field. The runtime also lacks `/etc/insserv.conf`.
-`openrc-exec-9e6aa6d4.json` retains the failed run and joined cleanup; full
-lifecycle acceptance is unproved.
+**Checkpoint (2026-11-05):** OpenRC installed-layout lifecycle passes at
+`899dcad5`. The server now retains its tray `Child` for the existing reaper;
+the earlier binary leaves two exited trays. With complete pinned OpenRC inputs,
+the same scenario passes two authenticated logins, restart, credential preservation
+and stop with no extra children. Capsules: `openrc-tray-baseline-56d72321.json`,
+`openrc-tray-fixed-899dcad5.json`. Full OpenRC boot, final-package and healthy
+graphical-tray acceptance remain OPEN; the debug/headless fixture's tray exits.
 
 
 **Checkpoint (2026-11-04):** Further desktop settings-sidebar work is
@@ -10542,7 +10543,7 @@ sandbox implementation and checker-repair history remain in Git.
   | R-S11c-27n | Historical runtime: identical path/bytes in distinct mount/PID namespaces retained distinct executable identity. |
   | R-S11c-27o | Historical elevated-container behavior: actual kernel PID reuse refused the stale identity without signaling the replacement. |
   | R-S11c-27p | Source/package: OpenRC/runit/manual templates own only the foreground supervisor, with no competing child or discovery authority. |
-  | R-S11c-27q | OPEN. VM `YtmlOAZxOV` at `9e6aa6d4` uses the shipped OpenRC script and retained `60e3fb0a` binary with real PAM/logind/X11. Two CPace/Remote logins and exact supervisor/child retirement pass across restart/stop; the final-state assertion fails and `/etc/insserv.conf` is missing. `openrc-exec-9e6aa6d4.json` binds observations and cleanup. Full manager, OpenRC-boot and final-package acceptance remain OPEN. |
+  | R-S11c-27q | Installed-layout OpenRC lifecycle passes CTE `P8hEwAjHqz` at `899dcad5`: shipped script, complete pinned runtime, actual PAM/logind/X11, two CPace/Remote logins, restart/stop, preserved credential and exact process retirement. Retaining the tray Child for the existing reaper fixes the two zombies reproduced by `EUdQs4m2gv` with the earlier binary and same fixture. Capsules `openrc-tray-baseline-56d72321.json` and `openrc-tray-fixed-899dcad5.json` bind both outcomes. Debug/headless execution on a systemd-booted VM does not prove full OpenRC boot, healthy graphical tray or final-package acceptance; those remain OPEN. |
   | R-S11c-27r | Historical runsvdir/runsv/supervisor/child ownership and recovery remain recorded. Current-source artifact `60e3fb0a` compiles and publishes all seven manifested files with `--linux-service-artifact-build`, using the existing bounded VM profile. Both wrappers require a distinct compile-only receipt; the file-transfer and limiter modes retain their scenarios. `runit-build-60e3fb0a.json` binds payload hashes, four zero listener deltas and exact process/private/RAM retirement. No product scenario runs in this producer. Actual runit start/stop/restart, current installed/final-artifact and independent acceptance remain OPEN. |
   | R-S11c-27s | Release wiring only; execution OPEN. The gate binds cold A==B pass-A `.deb`, commit/package identity, authenticated devcheck archive, installed systemd lifecycle and stable post-run inputs before publication, through the common no-NIC VM after Docker is joined. No current final `.deb` has passed. |
   | R-S11c-27t/R-T4 | Source/gate: owner loss remains selectable throughout headless CM bootstrap; post-bootstrap completion is bounded and terminal-first. Native/package/device lifecycle remains OPEN. |

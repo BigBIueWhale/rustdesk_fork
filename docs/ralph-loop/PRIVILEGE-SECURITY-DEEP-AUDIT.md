@@ -140909,3 +140909,72 @@ peak 402,718,720 bytes. Capsule cm-duration-origin-ledger-8d2ed5c1.json is
 a237568982d6826ebbed8ba6887e0cbeaa2340fa682114a678268c0d93fd1808.
 All eight count evidence files match CTE/TUF. This audit-only receipt leaves
 the counted ledger unchanged; no owned run remains.
+
+## 2026-11-05 — OpenRC lifecycle and exited tray ownership
+
+Continue the user's correctness direction by resolving the already-failed OpenRC
+final-state check (R-S11c-27q), ahead of further CM timer refinement. Fixture
+commits 7f7c9acf/56d72321 restore the pinned insserv configuration and empty
+configuration directory, report each final-state field and observe only owned
+descendants. The existing assertions, shipped service script and cleanup semantics
+remain. The completed runtime closure contains 79 files/1,573,050 bytes plus the
+validated empty directory; OpenRC is 0.45.2-2+deb12u1, insserv 1.24.0-1.
+
+Native baseline EUdQs4m2gv (CTE session 55902, exit 1) uses harness 56d72321
+and the freshly built 7f7c9acf binary. Both generations launch a UID-4001 tray
+from their still-live service child; before stopping, each tray is a zombie with
+raw exit 25856 (exit 101). Both authenticated logins and supervisor/child exits
+succeed, but the fixture subreaper finally owns the two unreaped trays. All
+other final fields agree and OpenRC stderr is empty. The fixture neither kills
+nor waits for these trays to manufacture acceptance. Capsule
+openrc-tray-baseline-56d72321.json: 14,201 bytes, SHA-256
+bdc79b56b324fb87c1b5e2663f94bf65d1d66f65c2ff90398d7e70a82c4717dd.
+
+The product discarded the Child returned by the Linux server's tray spawn.
+At 899dcad5, src/core_main.rs retains that exact handle in the server's existing
+CHILD_PROCESS collection; check_zombie polls try_wait and reaps an exited child.
+Spawn errors are logged. The non-root guard, singleton receiver and independently
+lived tray role remain; no process discovery or signaling is added. The two
+existing verifier expressions follow the changed launch spelling. Rust's Child
+contract explicitly says dropping a Child does not wait, while try_wait reaps
+on Unix: https://doc.rust-lang.org/std/process/struct.Child.html.
+Linux's subreaper contract explains the observed adoption:
+https://man7.org/linux/man-pages/man2/PR_SET_CHILD_SUBREAPER.2const.html.
+OpenRC launch/restart behavior was reviewed against
+https://raw.githubusercontent.com/OpenRC/openrc/0.45.2/sh/start-stop-daemon.sh
+and https://manpages.debian.org/bookworm/openrc/openrc-run.8.en.html.
+Debian's exact lsb2rcconf patch establishes both configuration inputs:
+https://sources.debian.org/patches/openrc/0.45.2-2%2Bdeb12u1/0002-lsb-header-support.patch/.
+
+Corrected CTE run P8hEwAjHqz (session 6654, exit 0) passes the same scenario.
+Both trays are observed alive initially and absent before their still-live
+parents stop. Two CPace/Remote PeerInfo logins, restart, credential preservation,
+ordinary stop, stopped status 3 and unchanged shipped script pass. Supervisor/
+child retirement takes 0.743/0.763 seconds; the final child set exactly equals
+the initial PAM actor, with no record, started service or RustDesk systemd unit.
+Binary SHA-256: d46d1078815792a483345475a3b615a0788b10c3257eadcc9526d83e4472aa04;
+manifest f72fbd4d3c5c3a221a25fc7c82fbd53aedb16ad99c8127a851719cade47e6e64.
+Capsule openrc-tray-fixed-899dcad5.json: 10,797 bytes, SHA-256
+32a4877b1c3b99aae73b97446c0ee8f2c6fa300f751319dbbcbfdfa22e0a319e.
+The full raw guest output is 8,641 bytes, SHA-256
+324afac3eb96401c773e27b7949c8ca651a065d57edbc32b50d8353e6fa4b457.
+
+All execution uses the admitted no-NIC disposable VM and bounded RAM workspace.
+Baseline/fixed runtime storage is 76.984/71.933 seconds with peaks
+4,069,183,488/4,118,798,336 bytes. Both runs have three zero endpoint deltas
+and exact QEMU/private/RAM retirement under the shared lock. Build capsules
+openrc-current-build-7f7c9acf.json and openrc-fixed-build-899dcad5.json bind the
+seven payloads to pinned inputs, with four zero endpoint deltas and joined
+cleanup. The earlier stale-source refusal and first diagnostic failure remain
+in openrc-source-preflight-7f7c9acf.json and openrc-diagnostic-7f7c9acf.json;
+no stale artifact was accepted. The obsolete pre-fix artifact is removed after
+identity/inventory/hash verification, reclaiming 117,448,704 allocated file
+bytes. Its full manifest remains in the build capsule; the corrected artifact
+is retained. Fifty-one bounded evidence files (802,323 bytes) match CTE/TUF.
+
+This closes the reproduced tray-reaping defect and this installed-layout manager
+scenario. The VM boots systemd, with OpenRC alone managing RustDesk; the binary
+is debug/headless, and a healthy graphical tray is not demonstrated. Full OpenRC
+boot, exact final-package lifecycle, ordinary graphical tray acceptance and R-S0
+remain OPEN. The ledger's checkpoint and existing row are replaced in place;
+its required fresh count follows. No owned run remains; the goal stays active.

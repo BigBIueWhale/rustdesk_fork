@@ -519,44 +519,33 @@ Swift compilation, AppKit pixels/OS changes, startup/restart and current-app
 native/installed evidence. Component reordering and full-app integration establish
 their respective layers only.
 
-**Checkpoint (2026-11-02):** View mode / Show my cursor work is OPEN.
-Candidate `0ccb2a7e` completes the Linux Flutter app build with thirteen focused
-Flutter tests and two native command-queue tests passing. Run `uRaKGkDRPY`
-then fails the outer wrapper's obsolete Mute-test receipt check; the candidate
-remains unpublished. Its native failed-save/retry acceptance remains open;
-the shared producer receipt correction is validated by the later theme build.
-The exact pending app is preserved; all owned processes, RAM scratch
-and the private diagnostics directory have retired, with four zero listener
-deltas. `view-mode-app-0ccb2a7e.json` and its retirement receipt bind the result.
+**Linux View mode — native save failure and retry accepted (2026-11-05).**
+The checked View mode / Show my cursor operations reserve command capacity before
+saving, publish coupled state only after success and return confirmed revisions.
+Desktop/mobile controls retain failure and retry state. Thirteen rendered and two
+native command controls pass in the current Linux build; the earlier unpublished
+`0ccb2a7e` bundle and its build evidence remain retained.
 
+Full-app TUF replay `juYMkoVaBK` at `54db1ce2` reuses app `bd65c0c4` and engine
+`ddb1541d`. Real EACCES while disabling View mode produces a visible failure,
+keeps its checkbox and saved file identity/bytes unchanged, and suppresses key,
+click and wheel input. Restored access permits successful retry and native input.
+All fifteen input cases pass across four ordinary phases and the failed-save
+phase; sixteen advancing displayed counters have maximum sampled age 312 ms.
+Window/TCP identity, resource bounds and final saved true state pass. The 130-second
+run has four zero endpoint deltas and exact process/private/RAM cleanup.
+Evidence: `view-mode-save-54db1ce2.json`; reproduce with `--view-only-save-failure`.
 
-**View mode baseline save failure reproduced (2026-11-02):** Native Linux replay
-`11PkXxJ7Hl` at `9722aae2` uses retained app `7e6f6459` / engine `ddb1541d`.
-Normal input and enabled View mode pass first. With private preference writes
-denied by real EACCES, attempting to disable View mode shows no error, unchecks
-the control and delivers a native key press, while the previous saved file's
-identity and bytes remain unchanged. `save_config` logs storage failure then
-publishes its cache; the void toggle still sends the option. The checked
-implementation above is compiled; native correction/retry acceptance remains
-OPEN. `view-only-save-9722aae2.json` binds the
-reproduction, identical driver rebuilds, four zero listener deltas and joined
-VM/RAM cleanup. One initial menu-observation failure was repaired; a separate
-initial click mismatch remains unresolved and retained with added diagnostics.
-validate the retained candidate and replay the same
-native failure/retry scenario; do not rebuild the completed app by default.
+The three behavioral scenario functions are unchanged from the retained baseline
+`view-only-save-9722aae2.json`: that app silently unchecked View mode and delivered
+a native key after EACCES. Intervening product changes prevent a sole-edit binary
+A/B claim. The older healthy result and fixture history remain in the audit;
+the initial click mismatch has not recurred but its cause remains unresolved.
 
-**Native Linux View mode verified (2026-11-02):** Replay `xLULyflt3A` at
-`5f3da6a8` reuses app `7e6f6459` and engine `ddb1541d`. Actual toolbar state
-is confirmed unchecked/checked/unchecked/checked. All twelve letter, primary-click
-and wheel-up cases pass: exact native press/release pairs in both control phases,
-zero controlled-side events during each one-second restricted observation.
-Local stimuli and released input state are confirmed. Sixteen post-phase displayed
-counters are current, maximum sampled age 317 ms; the same window/connection and
-resource bounds hold. The viewer exits zero and its private saved preference is true.
-All owned processes join, RAM scratch retires and four listener deltas are zero.
-`view-only-accepted-5f3da6a8.json` binds this retained-app evidence. Product code
-is unchanged. Held-input transitions, save failure, restart restoration, other input
-forms, physical devices, other platforms and installed/release acceptance remain OPEN.
+**OPEN:** actual Show my cursor coupling, held-input transitions, restart
+restoration, concurrent windows/writers, other failures/input forms, physical
+devices, other platforms and installed/release acceptance. Native View mode
+acceptance does not establish those behaviors or complete R-S0/R-F5 coverage.
 
 **Checkpoint (2026-11-02):** Language locale/direction integration is OPEN.
 Correction `ee5e3c41` and fixture correction `217f0470` remain committed. The focused

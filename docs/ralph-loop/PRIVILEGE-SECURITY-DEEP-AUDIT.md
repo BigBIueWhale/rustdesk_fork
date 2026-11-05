@@ -141233,3 +141233,64 @@ peak 402,915,328 bytes. Capsule monitor-all-ledger-21846bd7.json is 4,490 bytes,
 SHA-256 ee0bd52d0756d5e46b73cca906eba04bb65157fb35240e3bf4446e451b0e482b.
 All 27 bounded evidence files (342,443 bytes) match CTE/TUF. This audit-only
 receipt leaves the counted ledger unchanged; no owned run remains.
+
+## 2026-11-05 — View mode save failure preserves input restrictions; retry works
+
+The previous turn is progress: combined monitor views and native pointer mapping
+pass. Continue the user's correctness direction with the demonstrated R-S0 View
+mode failure, ahead of a new service-manager fixture. The checked implementation
+already exists in the current full app; use the unchanged failure/retry scenario
+to decide acceptance without another product edit or build.
+
+The retained baseline view-only-save-9722aae2.json still hashes to
+3466febcec04b3727929bce33bcafe0d5d85db7429e5fc20d3d8a1db20de4e43.
+It records real EACCES, no visible error, an unchecked control and native key
+delivery despite unchanged saved file identity/bytes. The three functions
+observe_view_only_input, exercise_view_only_save_failure and exercise_view_only
+are byte-identical to that baseline. The current application retains the checked
+save_view_mode implementation and Dart model/control from 0ccb2a7e. Source review
+confirms command reservation precedes persistence and publication; errors reach
+the retained model and visible control. Flutter's CheckboxMenuButton contract
+requires confirmed parent state for checkbox publication:
+https://api.flutter.dev/flutter/material/CheckboxMenuButton/onChanged.html.
+The fixture retains the exact private directory descriptor for permission changes
+and requires a real denied create before observing the product, consistent with
+https://man7.org/linux/man-pages/man2/fchmod.2.html and
+https://man7.org/linux/man-pages/man2/open.2.html.
+
+TUF juYMkoVaBK, session 62793, exits zero in 130 seconds at harness 54db1ce2.
+It reuses full app bd65c0c4, manifest
+275102c8113f9bc566fc543d626fc4faa6d7aa13a0efdff8feb5aa15c1cb26ce,
+and authenticated engine ddb1541d. Three driver pairs rebuild byte-identically.
+The EACCES observation is now error_visible=1 checked=1 previous=1
+file_preserved=1 input_preserved=1. Each denied key/click/wheel stimulus has a
+full one-second native observation with zero controlled-side events. Restoring
+the directory's permission permits the same control's retry; actual key, primary
+button and wheel press/release pairs return. The final enabled View mode again
+blocks all three and persists true after the viewer joins.
+
+All fifteen input cases pass, with sixteen advancing displayed counters across
+four phases. Maximum sampled ages are 312/278/293/281 ms. The exact window and
+TCP connection persist, with 46 descriptors through the four phase samples and
+RSS/threads within existing bounds. No server replacement occurs. This is the
+same behavioral scenario against an integrated current application; intervening
+product changes prevent claiming a sole-edit binary A/B. The earlier isolated
+initial-click mismatch does not recur, but its cause remains unresolved.
+
+Capsule view-mode-save-54db1ce2.json is 11,919 bytes, SHA-256
+4d1fab9da9952eb1420593b5812348d4dca2051612169aa3148af9a8f0466e0b.
+Raw output is 30,701 bytes, SHA-256
+42963dd10d1fe0f322cd92b7c94e86f7dca08cb3c077cbdb3003c41551cb7aeb.
+Storage lasts 136.664 seconds, peak RAM scratch 3,019,776,000 bytes. All four
+host endpoint deltas are zero. Source/server/Xvfb and viewer join, the listener
+closes, and exact QEMU absence plus private/RAM retirement are independently
+verified under the shared lock. Ten bounded files (121,763 bytes) match CTE/TUF.
+No owned run remains. Replace the stale View mode checkpoint and duplicate
+healthy/baseline prose with current acceptance; freshly count the ledger.
+
+The known save-failure regression is accepted for this full Linux application.
+Actual Show my cursor coupling, held-input transitions, restart restoration,
+concurrent windows/writers, other failures/input forms, physical devices, other
+platforms and installed/release acceptance remain OPEN. The unpublished older
+0ccb2a7e artifact is untouched; the current app supplies this native evidence.
+The goal remains active.

@@ -4381,8 +4381,9 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
                     if os.path.lexists("/tmp/rd-cm-file-replay"):
                         raise RuntimeError("installed file fixture home already exists")
                     home_args = ["--home-dir", "/tmp/rd-cm-file-replay"]
+                shell = "/bin/bash" if uid == 4001 and file_workflow else "/usr/sbin/nologin"
                 run(["/usr/sbin/useradd", "--uid", str(uid), "--user-group", "--create-home",
-                     "--shell", "/usr/sbin/nologin", *groups, *home_args, f"rdreceiver{uid}"])
+                     "--shell", shell, *groups, *home_args, f"rdreceiver{uid}"])
                 users.append(uid)
                 if home_args:
                     Path("/tmp/rd-cm-file-replay").chmod(0o700)

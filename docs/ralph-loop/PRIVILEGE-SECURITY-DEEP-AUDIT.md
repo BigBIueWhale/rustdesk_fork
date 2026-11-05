@@ -140553,3 +140553,24 @@ uses current_exe and inherits the already-demoted selected-user server principal
 the fixture must not create a separate root file receiver. Shared-parent/mount-root
 retirement, GUI/device/final-package and other-platform acceptance remain OPEN.
 Python AST, shell syntax and diff checks pass; native execution is pending.
+
+First native attempt sSuBmu8W8E at 76e6bf34 reaches all preceding credential
+controls, including 15 CPace exchanges and the final fresh authorization refusal.
+UID4002 then authenticates FileTransfer and receives rdreceiver4001 PeerInfo, but
+no directory reply within the existing probe wait. No file-write case executes.
+The fixture had created its X11 desktop account with /usr/sbin/nologin;
+linux.rs::is_prelogin classifies that active account as a greeter and start_ipc
+waits. Change only that full-profile desktop account to /bin/bash before rerunning
+the identical retained server/probe. The separate tray appindicator load failure
+is observed but does not establish the CM failure cause; installed UI acceptance
+remains open. Do not weaken the CM wait, authentication, timeout or content oracle.
+
+Terminal tool 52535 exits 1; storage completes in 97.893 seconds, peak scratch
+4,065,861,632 bytes. Three endpoint deltas are zero. Under the shared lock, the
+exact QEMU is absent, RAM is retired and bounded private diagnostics are verified
+then removed by pinned directory identity. installed-file-first-76e6bf34.json is
+8,770 bytes, SHA-256 aa57e1aca4354fb71e17166199bb5843d4854a19a5817521c03bd228abedc004;
+its 459-byte retirement receipt is
+722147801c58da0f8ab18b6a85eebec22c1fc9c69a22047568205b760bb8d35b.
+Nine evidence files match CTE and TUF. Complete durable guest output is retained;
+the terminal-tool failure display was truncated. No owned run remains.

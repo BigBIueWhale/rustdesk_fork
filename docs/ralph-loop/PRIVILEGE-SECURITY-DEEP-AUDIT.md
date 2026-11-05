@@ -139395,3 +139395,14 @@ compilation and the environment-setter ABI gap, not native-session/settings,
 installed authorization, mobile/web, canonical SDK promotion or final-release
 acceptance. The separate unfinished dependency/native-asset observer remains
 OPEN. Record this checkpoint and count the updated ledger once.
+
+Fresh isolated count `rMGTtTxxQp` at `dd21a276` passes in 27 workload seconds:
+395,639 tokens / 1,806,993 bytes, SHA-256
+5607f19712a8dc413b56edc802b11de13f33f72d47cee1dc6d24751daece7c5c.
+The pinned tiktoken-0.12.0/cl100k_base method passes seven controls and the whole
+input round trip. Exact owned processes and private/RAM state retire; scratch
+peaks at 402,751,488 bytes. Two endpoint deltas are zero; the final snapshot has
+two unattributed additions, retained without foreign-process inspection or
+mutation. `current-linux-ledger-dd21a276.json` is 7,749 bytes, SHA-256
+234e47aed38b737b40cebc9015f3983829d59be1bcbfa815f938eacf00b9b617.
+This audit-only receipt leaves the counted ledger unchanged. No owned run remains.

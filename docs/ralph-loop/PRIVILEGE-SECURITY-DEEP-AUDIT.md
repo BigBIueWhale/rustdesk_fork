@@ -140511,3 +140511,16 @@ using the shipped unit/policy and actual polkit/PAM/logind. Installed file workf
 shared-parent/mount-root receive cleanup, rendered/input behavior, final packages,
 other platforms, independent review and the broader release remain OPEN. No owned
 run remains. Update the current ledger and count its exact bytes once.
+
+Fresh CTE ledger count rsKZl8e3Tz at b2ec43e2 passes: 399,229 tokens /
+1,822,108 bytes, SHA-256
+48675ebefcef812616065d06d01834ff5bbd87c1b5c9837dd85f639be9103ab6.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary passes seven controls and the
+complete byte round trip. All three endpoint deltas are zero; exact QEMU, private
+state and RAM retirement pass. Supervisor 31.070 seconds, peak scratch 402,907,136
+bytes. installed-current-ledger-b2ec43e2.json is 4,498 bytes, SHA-256
+e34fdc7667266af6084f5391d79ad34532fe88508677b764a0a2d1402a94084d.
+All eight count evidence files match CTE and TUF. This audit-only receipt preserves
+the counted ledger. The installed credential prerequisite reaches its checkpoint;
+the next integration step is authenticated installed file receive against the
+retained current artifact. The broader goal remains active.

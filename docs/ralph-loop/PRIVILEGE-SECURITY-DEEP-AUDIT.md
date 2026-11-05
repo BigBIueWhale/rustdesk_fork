@@ -140833,3 +140833,15 @@ Timing before CM admission, CM process restart, suspension and installed/other-O
 integration remain OPEN. Next decisive work is an actual application timing
 comparison against authenticated connection lifetime. Update the existing ledger
 checkpoint in place and perform its required fresh count; keep the goal active.
+
+Fresh CTE count DsVmQ5RSNH at 87bad59c passes: 399,879 tokens /
+1,825,116 bytes, SHA-256
+9bef94b9d9ee884bcef1372f2cae54d1a38d3f2c0b8598efa60ac686c41968d8.
+The pinned method passes seven controls and the whole-input byte round trip.
+Session 43859 exits zero; storage 30.972s, peak 402,849,792 bytes, three zero
+endpoint deltas and exact QEMU/private/RAM retirement under the shared lock.
+Capsule cm-duration-ledger-87bad59c.json is 4,493 bytes, SHA-256
+14567e71702a6860eead56f569d6551e3cfb930efa069b6693b9f3b96b1afb20.
+All eight count evidence files match both hosts. This audit-only receipt leaves
+the counted ledger unchanged. No owned run remains. The rendered-counter fix is
+verified; the explicitly listed broader timing acceptance remains OPEN.

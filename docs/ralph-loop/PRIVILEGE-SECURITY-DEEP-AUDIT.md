@@ -141339,3 +141339,31 @@ four endpoint deltas are zero. Storage lasts 119.786 seconds, peak RAM scratch
 3,020,054,528 bytes. Under the shared lock, twelve failure-bundle payloads match
 the canonical app manifest and the input-provider digest matches; bounded logs
 remain while exact private/RAM state retires. Overall acceptance remains OPEN.
+
+At c6c8f69b, TUF CM7Rx8rwEc/session 78892 exits zero in 95 seconds. All sixteen
+rendered cases and three parser controls pass with Flutter 3.24.5. Native
+M84CZuKvex/session 26893 exits zero in 115 seconds, reusing the same bd65c0c4
+app and ddb1541d engine (Flutter 3.47.5), without a product rebuild. English LTR
+and Hebrew RTL each pass three radio-bound samples; the translated remote-header
+tooltip is observed at its actual RTL position. The same connection presents four
+fresh counters, first fresh in 4 ms and maximum sampled age 280 ms. Phase resources
+are 405,108 KiB RSS, 58 threads, 45 descriptors, within the existing bounds.
+The selected Hebrew preference persists after normal viewer join; server/source/
+Xvfb join with no replacement and the guest listener closes.
+
+Component capsule locale-component-c6c8f69b.json is 13,247 bytes, SHA-256
+3b3b595a350ce820edb5770c77991a7f2b05ae0016de4c9722c673bf60373bab.
+Native capsule language-direction-c6c8f69b.json is 7,215 bytes, SHA-256
+64d629e356ca341180cd273ce2349d80db5f7eb1f32257d3defae6874b58ff45.
+Each run has four zero endpoint deltas and independently checked exact QEMU/
+private/RAM retirement. Storage lasts 98.221/121.713 seconds, with peak RAM scratch
+4,072,161,280/3,026,018,304 bytes. All 33 bounded evidence files (775,239 bytes)
+match CTE/TUF; no owned run remains.
+
+The original direction and label observer functions remain byte-identical to
+62cff9d8; only the later header position needed adjustment. This accepts the
+reproduced Hebrew transition on the integrated current Linux app, not a sole-edit
+binary A/B or complete localization acceptance. RTL restart restoration, other
+native languages, OS-locale acquisition, physical devices, other platforms and
+installed/release acceptance remain OPEN. Replace the stale ledger checkpoint
+with this result and freshly count it. The broader release goal remains active.

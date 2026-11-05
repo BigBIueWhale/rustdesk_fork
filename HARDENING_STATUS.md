@@ -547,24 +547,27 @@ restoration, concurrent windows/writers, other failures/input forms, physical
 devices, other platforms and installed/release acceptance. Native View mode
 acceptance does not establish those behaviors or complete R-S0/R-F5 coverage.
 
-**Checkpoint (2026-11-02):** Language locale/direction integration is OPEN.
-Correction `ee5e3c41` and fixture correction `217f0470` remain committed. The focused
-run compiles and passes thirteen of sixteen cases; an Arabic label expectation and
-two guarded callback conflicts prevent acceptance. No corrected native-app replay
-ran. Both failed attempts retain bounded evidence and have joined VM/RAM/private
-cleanup.
+**Language locale/direction — native Hebrew transition accepted; broader acceptance OPEN.**
+Correction `ee5e3c41` connects both app roots to the selected framework locale and
+resolved direction. At `c6c8f69b`, TUF `CM7Rx8rwEc` passes all sixteen rendered
+locale cases and three parser controls in 95 seconds: startup, live Hebrew/Arabic/
+French/English changes with navigator preservation, Default/system updates,
+catalogue aliases and every advertised framework delegate. The two fixture repairs
+use a build-callback-safe assertion and the pinned SDK's Arabic label; assertions
+remain intact. This component uses Flutter 3.24.5.
 
-**Native language-direction failure reproduced (2026-11-02):** Replay
-`nOIZ8lS7U6` at `62cff9d8` reuses app `7e6f6459` and engine `ddb1541d`.
-Default-English labels and left-side radio placement pass. Selecting Hebrew in
-the actual settings dropdown changes the observed labels, but the radio remains
-at its English coordinates (row x=461, width=502; radio x=471, width=32) through
-the direction deadline. The complete GetMaterialApp roots omit the selected locale;
-window rebuilds translate text without updating framework locale. Correction and
-native acceptance remain OPEN. Restart and other languages/platforms are untested.
-`language-direction-62cff9d8.json` binds the failure, twice-identical driver builds,
-four zero listener deltas and joined VM/RAM cleanup. Duplicate failure-bundle bytes
-were retired after comparison with the canonical app cache; bounded evidence remains.
+Native `M84CZuKvex` reuses full app `bd65c0c4` / engine `ddb1541d` (Flutter 3.47.5).
+Actual English LTR and Hebrew RTL radio geometry each pass three samples; both
+windows show translated controls. The same connection presents four fresh frames
+with maximum sampled age 280 ms, bounded resources and saved Hebrew after viewer
+join. All processes/private/RAM state retire; four endpoint deltas are zero.
+Capsules: `locale-component-c6c8f69b.json`, `language-direction-c6c8f69b.json`.
+The retained `62cff9d8` baseline fails the unchanged direction observer. Initial
+current replay `l88JxLPCEv` already passed direction but exposed a hardcoded LTR
+header-hover position; its RTL correction preserves exact translated-tooltip
+matching. Intervening product changes preclude a sole-edit binary A/B claim.
+RTL restart restoration, other native languages, OS-locale acquisition, physical
+devices, other platforms and installed/release acceptance remain OPEN.
 
 **Checkpoint (2026-11-02):** Differing-keyboard-layout work is OPEN.
 Its unexecuted one-file observer draft is preserved in stash

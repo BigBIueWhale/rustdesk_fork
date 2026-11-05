@@ -2997,7 +2997,8 @@ static int exercise_mouse_input(Display *source, Display *display,
                                 const ViewerWindow *viewer,
                                 const ConnectionIdentity *connection,
                                 const ProcessResources *baseline) {
-    enum { MOUSE_CLICK, MOUSE_DRAG, MOUSE_EXIT, MOUSE_REENTER, MOUSE_SIDE, MOUSE_BLUR };
+    enum { MOUSE_CLICK, MOUSE_DRAG, MOUSE_EXIT, MOUSE_REENTER, MOUSE_SIDE, MOUSE_BLUR,
+           MOUSE_TAKEOVER };
     static const struct { const char *name; unsigned int button; int action; } cases[] = {
         {"left-click", 1U, MOUSE_CLICK}, {"middle-click", 2U, MOUSE_CLICK},
         {"right-click", 3U, MOUSE_CLICK}, {"left-drag", 1U, MOUSE_DRAG},
@@ -3015,6 +3016,7 @@ static int exercise_mouse_input(Display *source, Display *display,
         {"right-blurred-release", 3U, MOUSE_BLUR}, {"right-focus-return", 3U, MOUSE_REENTER},
         {"back-blurred-release", 8U, MOUSE_BLUR}, {"back-focus-return", 8U, MOUSE_REENTER},
         {"forward-blurred-release", 9U, MOUSE_BLUR}, {"forward-focus-return", 9U, MOUSE_REENTER},
+        {"left-release-after-local-move", 1U, MOUSE_TAKEOVER},
     };
     Window root = RootWindow(source, DefaultScreen(source)), child;
     Window focus_sink = None;
@@ -3039,6 +3041,8 @@ static int exercise_mouse_input(Display *source, Display *display,
         injected_held != 0U) return -1;
     XSelectInput(source, root, ButtonPressMask | ButtonReleaseMask | PointerMotionMask);
     XSync(source, False);
+    if (exercise_mouse_chords(source, display, viewer, connection, baseline) != 0 ||
+        exercise_mouse_bursts(source, display, viewer, connection, baseline) != 0) goto finished;
 
     for (unsigned int i = 0U; i < sizeof(cases) / sizeof(cases[0]); ++i) {
         unsigned int button = cases[i].button;
@@ -3100,6 +3104,38 @@ static int exercise_mouse_input(Display *source, Display *display,
                 XSync(display, False);
                 if (wait_mouse_drag(source, button, previous_x, previous_y, 1, &end_x, &end_y) != 0) goto finished;
             }
+        } else if (cases[i].action == MOUSE_TAKEOVER) {
+            XWindowAttributes attributes;
+            if (wait_mouse_drag(source, button, start_x, start_y, 0, &end_x, &end_y) != 0 ||
+                XGetWindowAttributes(source, root, &attributes) == 0 ||
+                start_x + 60 >= attributes.width || start_y + 40 >= attributes.height ||
+                sleep_millis(400U) != 0) goto finished;
+            /* Let the preceding remote-motion echo exclusion expire, then move only
+               the controlled-side pointer. Its button is still owned by the viewer. */
+            end_x = start_x + 60;
+            end_y = start_y + 40;
+            if (XTestFakeMotionEvent(source, DefaultScreen(source),
+                                    end_x, end_y, CurrentTime) == 0) goto finished;
+            XSync(source, False);
+            if (sleep_millis(250U) != 0 ||
+                XTestFakeMotionEvent(display, DefaultScreen(display),
+                                    origin_x + 40, origin_y + 30, CurrentTime) == 0) goto finished;
+            XSync(display, False);
+            uint64_t protected_start = monotonic_millis();
+            do {
+                int observed_x, observed_y;
+                if (mouse_snapshot(source, &observed_x, &observed_y, &mask) != 0 ||
+                    observed_x != end_x || observed_y != end_y || mask != bit ||
+                    !mouse_buttons_match(source, button) ||
+                    !mouse_buttons_match(display, button)) {
+                    fprintf(stderr, "FLUTTER_PEER_X11_FAIL local mouse takeover not retained\n");
+                    goto finished;
+                }
+                if (sleep_millis(10U) != 0) goto finished;
+            } while (monotonic_millis() - protected_start < 100U);
+            printf("FLUTTER_PEER_MOUSE_LOCAL_TAKEOVER sequence=%u button=%u x=%d y=%d "
+                   "held=both viewer_motion=suppressed quiet_ms=100\n", i + 1U, button, end_x, end_y);
+            fflush(stdout);
         } else if (cases[i].action == MOUSE_EXIT || cases[i].action == MOUSE_BLUR) {
             XWindowAttributes attributes, root_attributes;
             int window_x, window_y;
@@ -3172,7 +3208,7 @@ static int exercise_mouse_input(Display *source, Display *display,
                 if (received == 0U || cases[i].action == MOUSE_CLICK ||
                     cases[i].action == MOUSE_REENTER || cases[i].action == MOUSE_SIDE) {
                     if (event.xbutton.x_root != start_x || event.xbutton.y_root != start_y) goto finished;
-                } else if (cases[i].action == MOUSE_DRAG &&
+                } else if ((cases[i].action == MOUSE_DRAG || cases[i].action == MOUSE_TAKEOVER) &&
                            (event.xbutton.x_root != end_x || event.xbutton.y_root != end_y)) goto finished;
                 if (++received == 2U) complete = monotonic_millis();
             }
@@ -3181,7 +3217,7 @@ static int exercise_mouse_input(Display *source, Display *display,
         }
         if (received != 2U || complete == 0U || monotonic_millis() - start >= 5000U ||
             (cases[i].action == MOUSE_DRAG && held_moves < 2U) ||
-            (cases[i].action == MOUSE_BLUR && held_moves < 1U) ||
+            ((cases[i].action == MOUSE_BLUR || cases[i].action == MOUSE_TAKEOVER) && held_moves < 1U) ||
             mouse_snapshot(source, &end_x, &end_y, &mask) != 0 || mask != 0U ||
             mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U ||
             !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U) ||
@@ -3191,8 +3227,14 @@ static int exercise_mouse_input(Display *source, Display *display,
             read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
             read_process_resources(viewer->pid, &resources) != 0 ||
             !resources_are_bounded(baseline, &resources)) {
-            fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse case=%u name=%s received=%u held_moves=%u\n",
-                    i + 1U, cases[i].name, received, held_moves);
+            unsigned int source_mask = 0U, viewer_mask = 0U;
+            int source_status = mouse_snapshot(source, &end_x, &end_y, &source_mask);
+            int viewer_status = mouse_snapshot(display, &local_x, &local_y, &viewer_mask);
+            fprintf(stderr, "FLUTTER_PEER_X11_FAIL mouse case=%u name=%s received=%u held_moves=%u "
+                    "elapsed_ms=%llu source_status=%d source_mask=%u viewer_status=%d viewer_mask=%u\n",
+                    i + 1U, cases[i].name, received, held_moves,
+                    (unsigned long long)(monotonic_millis() - start),
+                    source_status, source_mask, viewer_status, viewer_mask);
             goto finished;
         }
         print_resources("mouse", i + 1U, &resources);
@@ -3201,8 +3243,7 @@ static int exercise_mouse_input(Display *source, Display *display,
                cases[i].name, received, held_moves, (unsigned long long)(complete - start));
         fflush(stdout);
     }
-    result = exercise_mouse_chords(source, display, viewer, connection, baseline);
-    if (result == 0) result = exercise_mouse_bursts(source, display, viewer, connection, baseline);
+    result = 0;
 finished:
     /* Retire only fixture-injected viewer input; never manufacture controlled-side releases. */
     if (injected_held != 0U) {
@@ -8406,7 +8447,7 @@ int main(int argc, char **argv) {
             puts("FLUTTER_PEER_MOUSE_RETIREMENT_OK remote_buttons=3 local_button=preserved "
                  "viewer_exit=abrupt native_releases=true fixture_buttons_released=true");
         } else if (mouse_input) {
-            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=31 button_events=62 drag_moves=2 "
+            puts("FLUTTER_PEER_MOUSE_INPUT_OK cases=32 button_events=64 drag_moves=2 "
                  "wheel_directions=4 outside_releases=10 reentries=10 side_buttons=2 focus_losses=5 focus_returns=5 chord_cases=3 chord_events=20 burst_cases=6 burst_events=160 "
                  "actual_peer=true native_events=true released=both "
                  "same_window=true stable_connection=true resources=bounded");

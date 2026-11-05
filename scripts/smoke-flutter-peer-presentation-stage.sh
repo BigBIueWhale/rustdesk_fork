@@ -2211,7 +2211,7 @@ PY
         <<<"$controller_output" || fail 'native mouse retirement verdict is missing'
       viewer_result='viewer=joined xvfb=joined mouse_retirement=abrupt owned_buttons=3 foreign_button=preserved'
     elif [ "$PEER_SCENARIO" = mouse-input ]; then
-      for sequence in {1..31}; do
+      for sequence in {1..32}; do
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse case $sequence is absent or duplicated"
       done
@@ -2246,9 +2246,11 @@ PY
         [ "$(grep -Ec "^FLUTTER_PEER_MOUSE_BURST_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "mouse burst case $sequence is absent or duplicated"
       done
-      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=31 button_events=62 drag_moves=2 wheel_directions=4 outside_releases=10 reentries=10 side_buttons=2 focus_losses=5 focus_returns=5 chord_cases=3 chord_events=20 burst_cases=6 burst_events=160 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
+      grep -Eq '^FLUTTER_PEER_MOUSE_LOCAL_TAKEOVER sequence=32 button=1 x=[0-9]+ y=[0-9]+ held=both viewer_motion=suppressed quiet_ms=100$' \
+        <<<"$controller_output" || fail 'controlled-side mouse takeover was not observed'
+      grep -Fxq 'FLUTTER_PEER_MOUSE_INPUT_OK cases=32 button_events=64 drag_moves=2 wheel_directions=4 outside_releases=10 reentries=10 side_buttons=2 focus_losses=5 focus_returns=5 chord_cases=3 chord_events=20 burst_cases=6 burst_events=160 actual_peer=true native_events=true released=both same_window=true stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native mouse input verdict is missing'
-      viewer_result='viewer=joined xvfb=joined mouse_cases=31 mouse_focus=5 mouse_chords=3 mouse_bursts=6 stable_connection=true resources=bounded'
+      viewer_result='viewer=joined xvfb=joined mouse_cases=32 mouse_focus=5 mouse_chords=3 mouse_bursts=6 local_takeover=true stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = keyboard-retirement ]; then
       grep -Fxq 'FLUTTER_PEER_KEYBOARD_RETIREMENT_OK remote_keys=2 local_key=preserved viewer_exit=abrupt native_releases=true fixture_keys_released=true' \
         <<<"$controller_output" || fail 'native keyboard retirement verdict is missing'

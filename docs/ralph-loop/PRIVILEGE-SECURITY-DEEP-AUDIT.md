@@ -141750,3 +141750,14 @@ app acceptance, verify and retire the completed diagnostic generation
 view-scaling-retire-trace-451431c2.json retains all 73 payload identities.
 All 92 bounded evidence files (2,130,607 bytes) match CTE/TUF. No owned run
 remains. Update the existing ledger entry, then count it in isolation.
+
+Fresh CTE count i7jOT8nqRn/session 99019 at 5f0b6c3e exits zero:
+399,925 tokens / 1,825,747 bytes, SHA-256
+c8865fdfa191a38f763cda45824746a5cbff65bfdcec1d1ce5d8ea2c0fb7f50f.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method, seven controls
+and whole-input round trip pass. All three endpoint deltas are zero;
+QEMU/private/RAM retirement passes. Storage 30.863 seconds, peak 402,784,256.
+view-scaling-ledger-5f0b6c3e.json is 4,777 bytes, SHA-256
+db2700f742d0deeca5495570ea013544af3680e44428c6e21b6dc21e8fa354fa.
+All 100 bounded evidence files (2,247,852 bytes) match both hosts. No owned
+run remains. This audit-only receipt leaves the counted ledger unchanged.

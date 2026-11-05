@@ -17365,6 +17365,18 @@ acceptance remain OPEN. The native cases provide controls for that next correcti
 they do not establish immunity to the remaining namespace race.
 
 **Receive namespace — protected-parent lifecycle checkpoint accepted; shared-parent layout OPEN.**
+**Creation-time substitution — reproduced, OPEN/STOP-SHIP.** At `2eba3a32`,
+TUF `Z8ZchYadlO` passes the prior 43 native cases but fails both new mkdir-to-open
+cases. A UID4001 actor substitutes an unrelated root-owned mode0700 directory
+after successful mkdirat. The root receiver adopts it, creates or extends its
+mode0600 `identity` file to 50 bytes, confirms admission and reports cleanup success.
+The actor's direct private reads/writes remain denied; the original final survives.
+All 45 observations/22 actors join before the failing verdict. Evidence and cleanup:
+`receive-setup-substitution-2eba3a32.json`. This demonstrates unauthorized marker
+mutation through root library admission; installed execution and broader exploit
+effects are unproved. Creation/recovery must establish exact namespace authority
+while preserving full filesystem access, resume and replacement safety.
+
 `bc81bb84` extends that native driver with three syscall-entry cases. A root
 receiver uses the unchanged production `TransferJob` API; a separate UID/GID 4001
 actor, with zero capabilities, no-new-privileges and no inherited fixture

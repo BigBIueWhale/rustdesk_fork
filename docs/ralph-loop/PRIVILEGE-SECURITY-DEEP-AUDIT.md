@@ -140738,3 +140738,38 @@ its461-byte retirement receipt is
 3d0adfdb36f55e35ba13df16adc4a16249de54ce6cd71a85411942911dd3016a.
 Ten bounded evidence files match CTE/TUF; complete durable output preserves the
 compiler errors despite truncated terminal display. No owned run remains.
+
+Corrected observer at 2eba3a32, TUF Z8ZchYadlO, reproduces both failures. The
+prior 43 native cases pass their assertions and summary checks. Each of two new
+UID4001 actors moves the just-created directory aside and substitutes the existing
+root-owned private directory; kernel private reads and identity writes are denied.
+The root production job nevertheless admits and confirms the transfer, creates
+the missing marker or extends the existing empty marker to its 50-byte namespace
+name, then reports successful retirement. The displaced created directory remains
+empty, and the original final-file snapshot is unchanged. Both replacement safety
+oracles fail; all 45 observations/22 actors complete and join before exit1. This
+establishes root-owned marker mutation, not arbitrary content or code execution.
+The failure path exports no complete unit-suite acceptance receipt. The prior
+compile capsule's unit_tests=301/unit_groups=71 fields count repeated log summaries;
+there are 157 distinct named unit passes, not 301 distinct tests.
+
+Root-driver artifact SHA-256 816c8e23a5f9142cbfd68e71eda145dcc2a35bda1aea59d6ebba8850822440d3;
+driver source 12ed3f753e3855afdc9b588c8d230c1dd02c7f6a29dd87c78d783e17b9339c58.
+Terminal session39727 exits1. Supervisor283.119s, peak RAM scratch4,241,203,200 bytes;
+all four decoded endpoint deltas are zero. Exact QEMU/RAM absence and bounded
+private-state retirement are verified under the shared lock. Capsule
+receive-setup-substitution-2eba3a32.json is70,684 bytes, SHA-256
+53703437142fa6d60fa6f6abe43ff4cec6e5ea0290d857f777bb8449fc3c23eb;
+its466-byte retirement receipt is
+ac1c3d9caf180a668e6d1d9dd4bc51fbd16950cdfee041bd1cb83168b73d2dab.
+Ten evidence files match both hosts. No owned run remains; the stash is preserved.
+
+This is a meaningful reproduction checkpoint, not a product correction. The
+creation and recovery abstraction treats private ownership as creation provenance.
+Another pathname check would still occur after possible substitution; rejecting
+shared destinations would violate full-filesystem functionality. The next design
+must establish exact staging authority before acting on a publicly replaceable
+name, including ordinary-user/cross-mount placement and crash recovery. Preserve
+these two failing cases together with all prior replacement/resume/lifecycle
+controls. No persistent-directory exception or permission dependency is introduced.
+Update the current ledger's explicit STOP-SHIP entry; keep the full goal active.

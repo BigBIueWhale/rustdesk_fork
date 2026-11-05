@@ -140424,3 +140424,13 @@ cm-input-provider-67bc222c.json is 11,033 bytes, SHA-256
 All nine evidence files match CTE and TUF. No owned run remains. The fixture
 prerequisite is resolved; broader required installed/UI/platform and independent
 release evidence remains OPEN. Update the current ledger and count it once.
+
+Fresh CTE ledger count z0EE4qBR53 at 64f75b3d: 399,027 tokens / 1,821,160 bytes,
+SHA-256 cea00fb4aa572ab045778e6bf9e2bffb0ff44da1ec7688685e72bc44356f9763.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary passes seven controls and the
+complete byte round trip. All three endpoint deltas are zero; exact QEMU, private
+state and RAM retirement pass. Supervisor 31.154 seconds, peak scratch 402,776,064
+bytes. cm-input-provider-ledger-64f75b3d.json is 4,499 bytes, SHA-256
+3472d4c990eb3978ac30ce8b6616a0a700a99a3064d847c8d70cfd3a2e3331ed.
+All eight count evidence files match CTE and TUF. This audit-only receipt preserves
+the counted ledger; no owned run remains. The full goal remains active.

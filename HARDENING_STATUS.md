@@ -6160,8 +6160,8 @@ inspection/mutation, with source-bound kernel host-IP denial and exact owned cle
 They are not zero endpoint-delta results. Full installed application/peer workflows,
 current release artifacts, other platforms and independent review remain OPEN.
 
-**Authenticated Linux CM receive integration — named cases passed; full profile PARTIAL.**
-At `15c97c02`, TUF `XcozisSm7q` builds the current server, helper and production
+**Authenticated Linux CM receive integration — full Linux profile passed; installed/platform acceptance OPEN.**
+At `67bc222c`, TUF `iflrIfuA0l` builds the current server, helper and production
 Rust `Session` test artifacts. The replay observes actual private receive files,
 replacing obsolete public-sidecar checks. It passes pre-login refusal, authorized
 creation, premature/short-write cleanup, exact single/multiple-file commits,
@@ -6173,13 +6173,13 @@ same-UID unrelated `_pa` peer is refused before its request. These are real
 authenticated non-root Linux server/CM exchanges with a test UI, not installed
 root-receiver, Flutter UI or other-platform acceptance.
 
-The complete `--cm-file-replay` profile exits 1 afterward: its separate graphical
-Remote/audio pair reports `Remote input service is unavailable`. No current
-audio/video pass is claimed. Capsule `cm-private-receive-15c97c02.json` and its
-retirement receipt retain exact source/artifact identities, observations and raw
-logs on CTE and TUF. The 292.086-second run peaks at 6,366,941,184 scratch bytes;
-all four endpoint deltas are zero. QEMU, RAM and exact private diagnostics retire.
-The `_pa` entry below records the remaining fixture prerequisite.
+The complete `--cm-file-replay` profile also passes its graphical Remote/audio
+pair after staging the required private input library inside the guest. Capsule
+`cm-input-provider-67bc222c.json` retains exact source/artifact identities,
+observations and raw logs on CTE and TUF. The 302.270-second supervised run peaks
+at 6,367,162,368 scratch bytes; all four endpoint deltas are zero, and QEMU,
+RAM and private state retire. The preceding partial run remains in
+`cm-private-receive-15c97c02.json`. The `_pa` entry below states media scope.
 
 **Recording outputs — named Linux file/mux, I/O and timeline components accepted; installed/platform acceptance OPEN.**
 `libs/scrap/src/common/record.rs` creates output exclusively, borrows factory metadata and
@@ -19198,34 +19198,28 @@ frame and sends only to those IDs, so a later subscriber cannot receive audio
 from an earlier authority snapshot. Same-UID status or a copied token alone
 does not authorize capture.
 
-The strongest production-pair native evidence is source `3e1466625710ad75069344c4384710b0ba730491`
-(tree `828b07d340ae4bd4aa75e8aed700f455c6234edf`). In a zero-NIC VM,
-`--cm-file-replay` built the real server and keyed Remote viewer probe, then
-ran a private PulseAudio 16.1 null-sink/sine monitor and Unix-only Xvfb inside
-guest-only networkless Docker. The live server/CM `_pa` path, including
-main-IPC token validation, delivered four decoded Opus frames (peak 512/1000)
-alongside 34 decoded VP9 frames. The same run exercised production-pair
-pre-request wrong-peer refusal and CM/file finality. The 401-second outer run
-reported no host-listener addition or pre-existing-process drift, joined
-cleanup, and no retained `run.*` or overlay. Raw serial:
-`.harness-state/verifier-vm/cm-file-replay-run.aawFGYsTlw.serial.log`
-(820,862 bytes; SHA-256
-`5daea31442810edb50a1f582c8dc0be6d3e3688187a8212bd2142d84a5dc7e8b`).
-Its private 40-package PulseAudio fixture is candidate-only, not a canonical
+At `67bc222c`, TUF `iflrIfuA0l` passes the complete `--cm-file-replay` profile
+with current-source production server/CM and keyed Remote probe. The private
+PulseAudio 16.1 sine monitor and Unix-only Xvfb run in guest-only networkless
+Docker inside a zero-NIC VM. Eleven decoded Opus frames reach peak 512/1000;
+30 distinct 640×480 VP9 frames span 6,942 ms, with first decode at 79 ms and
+zero measured receive-backlog drift. These are decoded media observations,
+not actual presentation, audible playback, input-event or long-session acceptance.
+Pre-request wrong-peer refusal and the complete CM file stage also pass.
+
+The fixture now builds provider24 from the same source and mounts its exact
+root-owned read-only bytes at `/usr/lib/rustdesk-fork/libxdo.so.3`. Runtime checks
+observe production-server loading and unchanged bytes. This resolves the missing
+fixture prerequisite exposed by the preceding input-readiness refusal; production
+source and authority predicates are unchanged. Server artifacts were rebuilt,
+so this is not an identical-binary A/B comparison. Capsule
+`cm-input-provider-67bc222c.json` retains all artifact/source hashes, the prior
+failure and joined process/VM/RAM cleanup with four zero endpoint deltas.
+Its private 40-package PulseAudio fixture remains candidate-only, not a canonical
 release input (archive SHA-256
 `50f18b087a3ecfb69f8221546136101733cc1415cdb42778af70261bf2376115`;
 manifest SHA-256
 `e09cd86e2c54ef0df9348fad5343ce051b2ee28fecc7808e50228474fd32da34`).
-
-Current-source replay `15c97c02`/`XcozisSm7q` passes the complete CM file stage
-and wrong-peer `_pa` refusal, but the later graphical Remote login refuses input
-worker startup. The fixture does not build/stage the current private input provider
-at `/usr/lib/rustdesk-fork/libxdo.so.3`; the loader requires root-owned ancestry
-and provider version `3.20160805.1-rustdesk24`. The server's detailed startup log
-was not exported, so the exact native initialization failure is unclassified.
-Next: stage the source-bound provider inside the disposable guest, retain bounded
-server failure diagnostics, and re-exercise the required production pair without
-weakening input admission. The older audio/video result above is historical.
 
 **Native source selection and recording retirement passed — `6325be96`.**
 At that historical source, System Sound resolves the current default output's monitor through PulseAudio

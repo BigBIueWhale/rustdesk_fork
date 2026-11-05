@@ -140396,3 +140396,31 @@ Failure cleanup exports at most 16 KiB / 80 lines of the exact owned server log.
 Shell syntax and diff checks pass. TUF starts clean at cdf3d91f, no owned run,
 49,214,480 KiB MemAvailable and 33,322,770,432 bytes free in /dev/shm. Native result
 is pending; a source repair alone is not acceptance.
+
+TUF iflrIfuA0l at 67bc222c passes the complete existing --cm-file-replay profile.
+The eleven-file manifest includes provider24, 25,576 bytes, SHA-256
+7a0c269da5e9eae802046130ce0b524b012de97008f8d76cbc1ddf84275f3397.
+Production server loading, protected metadata and unchanged bytes are observed.
+The server artifact is 9e99f0adfb25c273804d362ad2432b87f91e5321837c5ff8bc54ef5d7ba7972f;
+the unchanged viewer libtest is 405480fc03e57f784c88588c99e8339b3b1f22e4f1ccef172e86d08ad19a68cb.
+The full CM file stage and wrong-peer _pa refusal pass again. The authorized pair
+delivers 30 distinct VP9 frames / 30 exact receipts at 640×480, first decode 79 ms,
+PTS span 6,942 ms, maximum/mean decode 2,644/634 microseconds and receive-backlog
+drift zero. Eleven Opus frames have peak 512/1000. All product-pair, daemon and
+guest/outer finality receipts pass. These are decoded media, not actual presentation,
+audible playback, input-event, installed-root, cross-platform or soak acceptance.
+
+Product source is unchanged from the failed 15c97c02 run; only harness and records
+differ. Rebuilt server/readiness artifact hashes differ, so do not claim an
+identical-server-binary A/B result. The initial launch refused the group-writable
+checkout entry before creating a VM; tracked script permissions were restored to
+0755 and subsequent repository operations use umask 022. The guard was unchanged.
+
+Supervisor duration 302.270 seconds; peak scratch 6,367,162,368 bytes. All four
+decoded host endpoint deltas are zero. Under the shared lock, exact QEMU 897634
+is absent and the private tree and RAM workspace are retired. Capsule
+cm-input-provider-67bc222c.json is 11,033 bytes, SHA-256
+1a2cdbc10a56d2abda5b05295292a54cc1e4d2365b913f5094de484052e368e1.
+All nine evidence files match CTE and TUF. No owned run remains. The fixture
+prerequisite is resolved; broader required installed/UI/platform and independent
+release evidence remains OPEN. Update the current ledger and count it once.

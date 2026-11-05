@@ -4123,9 +4123,31 @@ kernel-denied. Evidence: `congestion-accepted-06180e24.json` on CTE/TUF.
 `network-app-manifest-correction-06180e24.json` corrects a one-character omission
 in the summary digest field of the three preceding network capsules; their
 retained launch commands, authenticated runtime receipts and executed artifact
-identity were correct. Next: actual input-to-visible recovery, then multi-hour
-sessions. These synthetic Linux profiles do not close R-F5 or other-platform,
+identity were correct. These synthetic Linux profiles do not close R-F5 or other-platform,
 workload, bandwidth/asymmetry and reproducible timing/tail coverage.
+
+**Input-to-visible outage recovery (`fdef4166`) — named Linux scenarios pass.**
+TUF `6bNlyr20yg` reuses app `2ae08e80`. Three complete outages requested for
+2/6/2 seconds each hold one unique input request without source/viewer advancement;
+drop counters increase. After restoration, the exact pending response appears in
+**1,391/1,391/1,700 ms**, within the predeclared 2,500-ms limit. Total request
+latencies, including the outages, are 3,398/7,401/3,708 ms. The same connection
+and window persist. Independent recomputation of all 480 healthy/recovered samples
+confirms four 120-request windows: baseline p95/p99 **110/117 ms**;
+recovered **125/155, 123/152 and 126/168 ms**. Maximum healthy/recovered response
+is 187 ms; maximum p95/p99 upward drift is 16/51 ms within the fixed 250-ms
+allowance. Each request retains its 200-ms no-input control, ordered source
+publication, actual viewer-root pixels and 1,000-ms response deadline.
+
+All 604 TCP observations retain transport identity. Viewer RSS grows at most
+2,184 KiB from initial state; descriptors are 46 during measurement. Exact
+processes/private/RAM state retire, with 3,021,545,472-byte peak scratch and four
+zero host listener deltas. Fourteen bounded records (1,272,548 bytes) match CTE/TUF;
+`input-recovery-fdef4166.json` binds sources, artifacts, raw samples and cleanup.
+This is XTEST-to-Xvfb-visible software response. Next: input recovery under partial
+loss and bandwidth/jitter, then impaired multi-hour sessions. Physical scanout,
+other roles/platforms/workloads, reproducible timing/tails and release acceptance
+remain OPEN; the historical healthy soaks above remain valid within their scope.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;

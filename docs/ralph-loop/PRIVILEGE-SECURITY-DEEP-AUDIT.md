@@ -139679,3 +139679,33 @@ uses the existing 240-second controller ceiling and should finish in a few minut
 including boot; no full app build runs. Shell parsing and whitespace review pass.
 Native compilation/execution are pending; partial loss, bandwidth/jitter input
 recovery, impaired long sessions and other-role/platform acceptance remain OPEN.
+
+Native execution at `fdef4166` now passes on TUF, run `6bNlyr20yg`, in 278.393
+capture seconds. All three driver builds reproduce byte-for-byte inside the VM;
+the retained application is unchanged. For requested 2/6/2-second outages,
+actual holds are 2,006,622/6,010,045/2,007,628 microseconds. The exact pending
+responses appear 1,391,076/1,391,030/1,700,302 microseconds after restoration;
+total input latencies are 3,397,698/7,401,075/3,707,930 microseconds. Outage controls
+observe unchanged source/viewer identities and publication count, with 18/18/12
+drops. The connection and viewer window survive all three cycles.
+
+Independent recomputation checks the exact sequence and identity of all 480
+healthy/recovered requests and three pending requests. Four 120-request windows
+have p95/p99 110/117, 125/155, 123/152 and 126/168 ms, with maxima
+120/187/154/179 ms. The fixed baseline is never raised; maximum upward p95/p99
+drift is 16/51 ms. Every normal request retains the 1,000-ms deadline and quiet
+control. All 604 TCP observations retain the socket pair; packet calibration
+leaves 514 full-sized application packets and zero oversized ones. Viewer RSS
+spans 360,728–363,956 KiB, at most 2,184 KiB above initial state; measurement FDs
+remain 46 and threads decrease from initial 62 to 49.
+
+Exact wrapper/QEMU/captured children are absent by pidfd; private and RAM state
+are absent under the shared lock. Peak scratch is 3,021,545,472 bytes. Four
+strictly decoded endpoint deltas are zero. Fourteen bounded records, totaling
+1,272,548 bytes, have digest-matching CTE/TUF copies. The accepted capsule
+`input-recovery-fdef4166.json` is 21,514 bytes, SHA-256
+052db657779ff1b68264e7f680108395eb107ad7db8799c2e3042d29abf042d3.
+No owned run remains. This closes only these Linux software-display outage/input
+scenarios. Partial-loss/bandwidth/jitter input recovery, impaired multi-hour
+sessions, physical scanout, other roles/platforms and release acceptance remain
+OPEN. No product correction or additional runtime replay is justified here.

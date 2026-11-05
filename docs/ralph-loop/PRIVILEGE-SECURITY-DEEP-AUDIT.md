@@ -140075,3 +140075,14 @@ physical scanout, reproducible sequences, exact release artifacts and independen
 review remain OPEN. Reassess the highest-value remaining release blocker at this
 checkpoint; passing these scenarios is not a reason to repeat them unchanged.
 A fresh isolated token count is required after this ledger edit.
+
+Fresh CTE count `wLiEI4F7rR` at pushed commit `2386e31a` passes all seven
+tokenizer controls and the whole-input round trip: **398,224 tokens / 1,817,152 bytes**,
+SHA-256 349958899065f1f53fdbb62ab1596d8b68388137eaa398f74b7df199eeb746c9.
+The admitted pinned method remains `tiktoken-0.12.0/cl100k_base/encode_ordinary`.
+The tool session exits zero; QEMU joins with exit zero, its exact PID and
+private/RAM workspace are absent, and all three decoded endpoint deltas are zero.
+Storage duration is 31.266 seconds and peak scratch is 402,767,872 bytes.
+Capsule `congestion-results-ledger-2386e31a.json`: 4,577 bytes, SHA-256
+81c184cb2234ea640618c5a02d26a8c5d036b8b82455cbbed19e9e0336f89391.
+This audit-only receipt leaves the counted ledger unchanged.

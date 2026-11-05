@@ -4078,11 +4078,32 @@ overlapping a frozen displayed state while the source advances. Delivery and
 freshness return before loss removal. This supports a transport contribution to
 the observed stall; it does not establish every application-stage delay or a
 permanent backlog. Loopback MTU 65,535/MSS 32,768 and uncontrolled loss sequences
-limit realism and reproducibility. Next: calibrate packet sizing/offload and loss
-repetition before choosing a product transport change. The 185.247-second run
+limit realism and reproducibility. The 185.247-second run
 retires all owned processes and RAM scratch (3,019,358,208-byte peak), with four
 zero listener deltas. Evidence: `packet-loss-transport-accf88fd.json` on CTE/TUF.
-Bandwidth/jitter, MTU/offload, input-visible timing, multi-hour sessions and other
+
+**Packet-size calibration (`b7f6275e`) — native Linux scenarios pass.** The private
+test link uses MTU/GSO size 1,500 and one GSO segment. Real 1,499/1,500/1,501-byte
+datagrams validate ingress size counters before application traffic; both replays
+then observe PMTU 1,500/MSS 1,448, respectively 312/211 full-sized application
+packets and zero oversized ones. No application socket setting or binary changes.
+Loss run `d1b2iNemXY` passes random3/random8/burst: during-loss maximum ages
+549/318/1,599 ms, four-state recovery 662/571/655 ms, healthy follow-up maxima
+308/314/312 ms against a 320-ms baseline. Kernel loss sequences differ, so the
+smaller burst maximum is not a controlled product-improvement comparison.
+
+Delay/outage run `xsvVldpakS` passes the existing nine-cycle sequence unchanged:
+125-ms-per-direction delay recovers in 746 ms; eight complete outages requested
+for 1,750–6,500 ms recover in 1,137–2,348 ms. Healthy follow-up maxima are
+340–368 ms against a 305-ms baseline, within the original 1,000-ms limit; minimum
+recovery-deadline margin is 152 ms. Connection/window and resource bounds pass.
+Both VMs join and retire RAM scratch (peak at most 3,022,069,760 bytes), with eight
+zero listener deltas. Capsules `packet-size-b7f6275e.json` and
+`packet-size-outages-b7f6275e.json` retain exact source/artifact/observation and
+cleanup evidence on CTE/TUF. Next: calibrated bandwidth/jitter and input-visible
+recovery, followed by long-session evidence. Reproducible loss-sequence/tail
+coverage, other MTUs/offload configurations, bandwidth/jitter, input-visible timing,
+multi-hour sessions and other
 roles/platforms remain OPEN.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**

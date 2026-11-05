@@ -139515,3 +139515,41 @@ loss profiles, deadlines, pixel oracle and resource/retirement requirements rema
 Kernel loss sequence, bandwidth/jitter, long-session and other-platform gaps stay
 OPEN. Python/embedded-script parsing and whitespace checks pass; native calibration
 and recovery results are pending execution.
+
+TUF `d1b2iNemXY` completes in 187.644 seconds. All three real packet-size controls
+pass; every observed TCP endpoint has PMTU 1,500/MSS 1,448. The application adds
+312 full-sized packets and zero oversized ones. All three loss profiles retain
+their original acceptance: during-loss maximum ages 549/318/1,599 ms, four-fresh-
+state recovery 662/571/655 ms, and follow-up maximum ages 308/314/312 ms against
+a 320-ms baseline. Kernel counters record 13/31/28 drops. All 255 pixel ages are
+known; 341 TCP samples retain the connection. Longest sampled delivery plateau
+is 1.258 seconds. This is a different uncontrolled loss sequence, so no causal
+product speedup is inferred from the smaller maximum. Viewer RSS grows at most
+6,712 KiB, descriptors remain 45 and threads decrease.
+
+Because calibration is shared, the existing delay/complete-outage scenario also
+runs on the unchanged app. TUF `xsvVldpakS` completes in 197.226 seconds. Calibration
+and 384 TCP samples pass; application traffic adds 211 full-sized packets and no
+oversized ones. The 125-ms-per-direction delay recovers in 746 ms. Eight complete
+outages requested at 2,000/6,000/1,750/5,750/2,250/6,250/2,500/6,500 ms recover in
+2,073/1,840/2,348/2,025/1,752/1,556/1,470/1,137 ms, respectively. All nine preserve
+window/TCP identity, resources and the 2,500-ms deadline; minimum margin is 152 ms.
+Follow-up ages are 340–368 ms against a 305-ms baseline, within the unchanged
+1,000-ms freshness limit. Viewer RSS grows at most 2,652 KiB, descriptors stay 45,
+and threads decrease. Neither calibration nor these runs change the application.
+
+Both exact wrapper/QEMU trees and captured children are absent by pidfd under
+the shared lock. Private/RAM state retires; peaks are 3,022,069,760 and
+3,020,759,040 bytes. Eight decoded listener deltas are zero. Capsules:
+`packet-size-b7f6275e.json`, 33,058 bytes/SHA-256
+96fab7d8d4c774a25b4b823ec7f4d6a07d4d5017f9036b8945ff57b4e3dac384;
+`packet-size-outages-b7f6275e.json`, 29,447 bytes/SHA-256
+3465b1c6416f671b3e1bc1970a06c5f15fb6fafdfebe746aec491422675c70d7.
+Fourteen bounded evidence files per run are verified on CTE/TUF. The initial
+read-only capsule builder overescaped an MSS regex; correcting that transcription
+accepted the unchanged retained records and required no runtime repeat.
+
+This closes packet-size calibration and the named Linux recovery scenarios, not
+R-F5 or release acceptance. Next decisive work is calibrated bandwidth/jitter and
+input-to-visible recovery; long-session, other-role/platform/MTU/offload and
+reproducible loss-sequence/tail coverage remain OPEN. Count the final ledger once.

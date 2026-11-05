@@ -140845,3 +140845,56 @@ Capsule cm-duration-ledger-87bad59c.json is 4,493 bytes, SHA-256
 All eight count evidence files match both hosts. This audit-only receipt leaves
 the counted ledger unchanged. No owned run remains. The rendered-counter fix is
 verified; the explicitly listed broader timing acceptance remains OPEN.
+
+## 2026-11-05 — CM duration preserves time before admission
+
+Continue the correctness correction through its remaining origin handoff. At
+51d63ac1, successful authenticated publication records a BootTime in Connection;
+Data::Login carries it to the CM registry without rebasing at admission. It is
+same-boot/clock-domain metadata, never persisted or used as action authority.
+The clock is CLOCK_BOOTTIME on Linux/Android, CLOCK_MONOTONIC_RAW on Apple and
+GetTickCount64 on Windows. These system-wide clocks include suspend time and
+avoid wall-clock adjustment. Missing/invalid timing remains explicit null and
+renders --:--:--; it does not reject an otherwise authorized connection. The
+registry still freezes elapsed time when it observes disconnect. No credential,
+capability or authenticated-publication predicate changes.
+
+Primary API research and design basis:
+- https://man7.org/linux/man-pages/man2/clock_gettime.2.html
+  defines CLOCK_BOOTTIME as suspend-aware monotonic time.
+- https://developer.apple.com/documentation/kernel/1646199-mach_continuous_time
+  identifies CLOCK_MONOTONIC_RAW as the nanosecond equivalent including sleep.
+- https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-gettickcount64
+  and https://learn.microsoft.com/en-us/windows/win32/sysinfo/windows-time
+  describe system elapsed milliseconds, suspend inclusion and wall-clock independence.
+
+TUF tbSL2Nfqqd, session 23240, exits zero: the full Linux library test target
+with freshly generated Flutter bridge compiles in 109s. Both named tests pass
+in 4.42s against artifact SHA-256
+7c17dd08c72e85f436cd67d417ca2ec46f15ce8d21a48df5ba5525bb894b5937.
+The first covers live elapsed time, frozen repeated retirement/clone, replacement,
+stale ownership, unavailable/future clocks and empty final registry. The second
+starts a separate native sender, serializes production Login over a real Unix
+socket, waits 1.1s after enqueue before starting the production IpcTaskRunner,
+then observes elapsed time at admission and frozen history after Disconnected.
+Sender and runner join. Its authority validator is a fixture; no real CPace,
+installed server or suspend/resume is exercised. Capsule
+cm-duration-origin-native-51d63ac1.json: 5,787 bytes, SHA-256
+24e438cccbe944b1fdbed8eb263aed7bfc8478bd19d9d38c5601779e61d62325.
+Storage duration 369.035s; peak RAM scratch 6,303,629,312 bytes.
+
+CTE DUGtpHZWpF, session 54902, exits zero: all nine rendered production header/
+model cases pass, including explicit unavailable-time display and its subsequent
+reactive update. Native snapshots remain doubles. The earlier widget A/B remains
+valid; this turn does not claim a new old-binary A/B. Capsule
+cm-duration-origin-rendered-51d63ac1.json: 10,351 bytes, SHA-256
+cf2974c349f6faa93f6a5fa7f08356c531fdc9c518844ecd5c4a6c5abd1dd770.
+Storage duration 268.093s; peak RAM scratch 6,387,318,784 bytes.
+
+Both runs have four zero endpoint deltas, terminal tool exit, joined QEMU,
+pidfd absence and no private/RAM workspace under the shared lock. Twenty bounded
+evidence files (180,832 bytes) match CTE/TUF. No owned run remains. Authenticated
+installed-app timing, process restart, actual suspension, other-platform execution
+and full R-S0 acceptance remain OPEN. The next decisive timing acceptance is an
+installed authenticated connection measured through startup and suspend/resume.
+The ledger checkpoint is replaced in place; its required fresh count follows.

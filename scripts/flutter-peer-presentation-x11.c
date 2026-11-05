@@ -3066,8 +3066,17 @@ static int exercise_mouse_input(Display *source, Display *display,
                 activate_named_control((unsigned int)viewer->pid, "Display settings") != 0 ||
                 activate_named_control((unsigned int)viewer->pid, "Show remote cursor") != 0 ||
                 activate_named_control((unsigned int)viewer->pid, "Hide toolbar") != 0 ||
-                return_focus_with_pointer(display, viewer) != 0 || sleep_millis(2300U) != 0)
+                return_focus_with_pointer(display, viewer) != 0 || sleep_millis(400U) != 0 ||
+                XTestFakeMotionEvent(source, DefaultScreen(source),
+                                    center_x + 20, center_y + 10, CurrentTime) == 0)
                 goto finished;
+            XSync(source, False);
+            if (sleep_millis(2300U) != 0 ||
+                XTestFakeMotionEvent(display, DefaultScreen(display),
+                                    origin_x - 40, origin_y - 30, CurrentTime) == 0) goto finished;
+            XSync(display, False);
+            if (sleep_millis(100U) != 0 || return_focus_with_pointer(display, viewer) != 0 ||
+                sleep_millis(100U) != 0) goto finished;
             XSelectInput(source, root, ButtonPressMask | ButtonReleaseMask | PointerMotionMask);
             XSync(source, False);
             start = monotonic_millis();

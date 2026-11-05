@@ -138,12 +138,13 @@ Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-rel
 and dependency/native-asset inventory acceptance remain OPEN; the current monitor
 runtime result is under R-S11go.
 
-**Checkpoint (2026-11-04):** Further Android account-API artifact validation is
-OPEN. Run `CQ4XBSwjHA` was cancelled before a build/native-test verdict;
-`account-android-build-af8f69cb.json` binds exact process/private/RAM retirement
-and four zero listener deltas. Ordinary APK validation still includes the unfinished
-scroll experiment; that prerequisite repair remains unimplemented. Existing Linux
-ABI evidence remains valid.
+**Android build prerequisite restored (2026-11-06).** `9b22f10f` removes the
+unfinished scroll libtest integration from ordinary APK validation. TUF
+`f7pzPr8zQ3` passes production Rust/Flutter compilation, package/backup checks,
+installation, rendering and instrumentation; `android-soak-app-9b22f10f.json`
+binds the test-only x86_64 APK and cleanup. Account-API ABI inspection remains
+OPEN; this build does not replace it. The earlier cancelled account run remains
+in `account-android-build-af8f69cb.json`; existing Linux ABI evidence is retained.
 
 **Checkpoint (2026-11-04):** Further PAKE timing work is OPEN.
 The repeated detections remain valid evidence; the proposed CPU-group comparison
@@ -183,13 +184,14 @@ Two kernel mapping snapshots match all twelve packaged native file identities;
 three wrong-expectation controls refuse. Exact cleanup and four zero listener
 deltas pass. R-S11gf below records scope and the remaining installed/release gap.
 
-**Checkpoint (2026-11-04):** Mobile **Reverse mouse wheel** is OPEN.
-The Android/iOS preference exclusion remains a source finding. The in-progress
-baseline was cancelled before a compilation/behavioral result; exact VM/RAM cleanup
-and four zero listener deltas are retained in `android-scroll-admitted-ca70a84d.json`.
-The unverified two-line candidate is preserved in stash
-`9536b1f8a6f28b8192009b6b23b39433551a699e`; preparation remains at `ca70a84d`.
-No mobile correction or runtime acceptance is claimed. X11 capture integration remains OPEN. The documentation checkpoint is complete.
+**Mobile Reverse mouse wheel — OPEN (2026-11-06).** Android/iOS still exclude
+the preference in source. At `5646377d`, mandatory parent-libtest compilation
+fails with 109 errors after production compilation succeeds; no scroll behavior
+executes. `9b22f10f` deletes that unfinished APK build integration and unused
+runner, preserving the Rust regression and unverified two-line candidate in
+stash `9536b1f8a6f28b8192009b6b23b39433551a699e`. Evidence:
+`android-soak-build-prerequisite-5646377d.json`; earlier cancellation remains in
+`android-scroll-admitted-ca70a84d.json`. X11 capture integration remains OPEN.
 The current R-S11hj checkpoint verifies retained Linux/Android asset inventories
 and removes two unused source fonts; complete account-removal and release
 acceptance remain OPEN.
@@ -7357,7 +7359,7 @@ The old reader rejects the same large history. The 62.537-second no-NIC run join
 and retires RAM scratch with zero listener deltas. Retained comparison:
 `android-history-76cd9218.json`. This establishes observer capacity; uninterrupted
 multi-hour app freshness/resources, input-to-visible response and R-F5 remain OPEN.
-The integrated workload below has partial evidence only; further execution is open at the user's pivot.
+The integrated workload below remains incomplete.
 
 **Scheduled observation (`94c54123`, `24a8ad3e`).** `observe_duration` rejects each stale,
 unknown, regressing or over-budget sample instead of waiting for later recovery.
@@ -7366,54 +7368,44 @@ histograms. TUF `RWJfstLFJO` passes the synthetic two-hour schedule, eleven refu
 cases and real atomic frame-replacement reads. Actual X11 observation spans
 3,130 ms/four samples, with 163-ms maximum age. This is observer evidence.
 
-**Integrated two-hour control — partial; OPEN.** `fc8fc390` adds explicit
-`--soak` execution using retained app `f372aacf` and peer `b30f4811`. At `24a8ad3e`,
-TUF `mDJFQwJwGj` accepts three 16-MiB log buffers and passes five minute windows
-before the user's pivot: 301 observations, maximum image age 1,028 ms, observer
-age 99 ms and gap 1,024 ms. Minute p95 rises from 939 to 977 ms, within the
-declared 250-ms allowance. RSS rises 6,428 KiB above the warmed baseline and
-threads stay at 60. The run was deliberately cancelled; the remaining interval,
-final log retention and subsequent lifecycle checks did not execute. Both VMs
-join and RAM scratch retires with zero listener deltas. Exact source, commands,
-raw hashes and cancellation/cleanup are recorded in the audit entry
-“2026-11-01 — user pivot; connection-manager transfer-rate reporting”. No full
-soak, input-to-visible, device or R-F5 acceptance is claimed.
+**Matching-source two-hour attempt — observer refusal; OPEN (2026-11-06).**
+APK and seven-file production Linux peer both bind `9b22f10f`; their accepted
+builds are `f7pzPr8zQ3` and `PFngJrHdtz`. TUF `OTYO8m3QRl` runs `peer-lifecycle
+--soak`: controlled authentication/directory reply, missing/wrong/correct viewer
+credentials, 2/6/120-second background recovery and six connected warm-hold
+samples pass. Sustained observation then refuses before its first minute report:
+displayed content age is **912 ms** against 2,000 ms, but observation age is
+**574 ms** against 500 ms. No full soak or subsequent lifecycle checks pass.
+The saved record proves the observation-budget failure, not permanent video lag.
+The screenshot stream emits on display changes; fixed-cadence observation needs
+an independently timed capture. Investigate that replacement without relaxing
+freshness, drift, gap or resource bounds. Capsules: `android-soak-app-9b22f10f.json`,
+`android-soak-peer-9b22f10f.json`, `android-soak-observer-9b22f10f.json`. The complete
+445,403-byte failure log and exact frame record are retained on CTE/TUF; all three
+VMs/private/RAM workspaces retire with zero endpoint deltas. Research, exact
+artifacts, commands and scope are in the audit's current sustained-viewing entry.
 
-**Current-source app/task-relaunch comparison (`f372aacf`).** TUF `k8M8wgR5WF`
-builds, inspects, installs and launches the exact-source app/test pair in
-1,012.981 seconds. The test-only x86_64 APK is 48,291,544 bytes, SHA-256
-`a2f3dc3403b50c8e9d42d309a76938f87c1e89060fd7f8064405757bca375f16`.
-Replay `SwFv2D21aX` then passes the unchanged Android 14/API-34 schedule with
-the retained `b30f4811` Linux peer. Both app generations pass all 22 pixel phases,
-six ordinary reconnects and six Recents task replacements; ordinary reconnects
-preserve the client owner, while task replacements obtain distinct owners with
-the process, foreground service and MediaProjection preserved.
+**Earlier partial control (`24a8ad3e`).** With app `f372aacf`/peer `b30f4811`,
+`mDJFQwJwGj` passes five minute windows/301 observations before cancellation:
+maximum content/observer/gap ages 1,028/99/1,024 ms, minute p95 939→977 ms,
+RSS growth 6,428 KiB and 60 threads. Remaining observation, final logs and later
+lifecycle checks are unexecuted. Cleanup joins with zero listener deltas;
+provenance is in the audit's November 1 transfer-rate entry. This is not a soak pass.
 
-| App source / replay | Duration | Maximum sampled frame age | Background / reconnect / task recovery | RSS / thread growth |
-| --- | --- | --- | --- | --- |
-| `1ee23828` / `wrGfi9VIw1` | 1,340.166 s | 1,138 ms | 540 / 1,150 / 1,170 ms | 1,768 KiB / 6 |
-| `f372aacf` / `SwFv2D21aX` | 1,344.360 s | 968 ms | 550 / 1,320 / 1,200 ms | 856 KiB / 4 |
-
-The new replay retains the 120-second background interval, 140.73-second connected
-hold and 120.38-second task-absent hold. Thirteen resource samples pass; handles
-remain unobserved. Observer capture age is at most 213 ms. Missing/wrong/correct
-credential behavior and the ordinary controlled-side directory request also pass.
-The previously missing private input provider is built twice with byte equality,
-mounted read-only and verified against the owned server's actual mapping and final
-bytes. No product correction, workload change or limit relaxation was needed.
-
-Both VMs join and their RAM workspaces retire: build peak 7,319,494,656 bytes,
-replay peak 4,498,497,536 bytes. Build listener deltas are zero; replay's final
-snapshot adds one unattributed endpoint. Owned host IP socket creation remains
-kernel-denied; no zero-drift claim is made for that replay. Exact artifacts,
-commands and raw evidence are hash-verified on CTE/TUF in
-`android-current-f372aacf.json` and `android-presentation-1c429348.json`.
-This closes the current-source emulator comparison prerequisite. The original
-intermittent failure was not reproduced; its cause, ARM64 release/device behavior,
-multi-hour freshness/resources and R-S0/R-F5 acceptance remain OPEN. Repeating this
-unchanged successful schedule would not resolve those gaps; a further reproduction
-must choose a justified untested lifetime or workload. Camera and the independent
-Android CM Stop/admission race remain open.
+**Historical app/task comparison (`f372aacf`).** `SwFv2D21aX` with peer `b30f4811`
+passes all 22 Android 14 pixel phases, six ordinary reconnects and six task
+replacements. Ordinary reconnects preserve the client owner; replacements change
+it while preserving process, foreground service and MediaProjection. Maximum
+sampled content/observer ages are 968/213 ms; background/reconnect/task recovery
+maxima are 550/1,320/1,200 ms. The 120-second background, 140.73-second connected
+and 120.38-second absent-task holds pass, as do credential/directory controls and
+13 RSS/thread samples (growth 856 KiB/four); handles remain unobserved. The input
+provider has byte-equal builds and verified live mapping. App build and replay
+join/retire; the replay has one unattributed endpoint addition, so no zero-drift
+claim applies. `android-current-f372aacf.json`, `android-presentation-1c429348.json`
+and Git `9b22f10f` retain the full comparison, hashes and timings. No original
+intermittent-failure cause, ARM64/device, multi-hour, input-to-visible or R-S0/R-F5
+acceptance follows. Camera and the independent CM Stop/admission race remain OPEN.
 
 **Shared Flutter canvas and software-image behavior — historical component A/B
 evidence; current installed/native acceptance OPEN.** These seven checkpoints

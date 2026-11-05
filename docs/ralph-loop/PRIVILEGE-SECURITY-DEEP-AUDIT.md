@@ -142129,3 +142129,113 @@ scratch 7,198,654,464 bytes. Four decoded endpoint deltas are zero. Exact
 private diagnostics are inventoried and retired under the shared lock. Capsule
 android-soak-build-prerequisite-5646377d.json: 9,758 bytes, SHA-256
 fac69a61d929321ebefe1235e3d732e85fe06e229eae62f5d163e2b4085d7e1d.
+
+## 2026-11-06 — current sustained-viewing attempt; observation budget refuses
+
+The preceding status turn was a verified wait on TUF session 74267. This turn
+completes that same peer build and runs the matching-source Android healthy
+control. This advances R-F5 through native execution; the observer failure below
+changes the next action. It does not establish an application freshness defect.
+
+At 9b22f10f7bbdb5bfd13c3c5fce2a36dd2c4e75bb, tree
+7241dee2247c1ab4a1dea659a93299e232a9d22b, TUF f7pzPr8zQ3/session 60227 passes
+the restored ordinary APK path: production Rust/Flutter compilation, four native
+library/package inspection, eight backup controls, actual installation/launch,
+SwiftShader rendering and main-process instrumentation. Android 14/API 34,
+emulator 37.1.11, x86_64 and test-only signing are explicit limits. The app is
+48,301,191 bytes, SHA-256
+d577d0186720b7316d64706a7641e08d94150904ee5f76d88cd1675dad03dd51;
+the instrumentation APK is 110,287 bytes, SHA-256
+529f132b05b5e0bdcad7ffc324cfecb8143e9696b81dc0c94da29946d029dd93.
+Both exact payloads/sidecars are independently rehashed in the bounded TUF cache.
+The APK publisher uses a mode-0700 directory with mode-0400 single-link files;
+an initial reconciliation assumption of mode 0500 refused before any write and
+was corrected to the publisher's actual contract without changing permissions.
+Capsule android-soak-app-9b22f10f.json: 8,044 bytes, SHA-256
+579fd5516c5b25199f61569b6d8edf497dcf3139c62fb99dc77f339b1397c0ff.
+Storage lifetime 982.475 seconds; peak RAM scratch 7,337,963,520 bytes.
+
+Under the shared run lock, classification/identity/hash checks retire only the
+obsolete e0c7332183938e419e9ec162df63941c0f9c329d peer generation: 117,271,856
+payload bytes plus its 1,250-byte manifest. d108183a, 89828922 and b30f4811 remain.
+Receipt android-soak-retired-e0c73321.json and its retained manifest bind that
+exact cleanup. No source, canonical offline input or unrelated host data is removed.
+
+TUF PFngJrHdtz/session 74267 then passes
+`bash scripts/smoke-verifier-vm-authority.sh --linux-service-artifact-build`.
+This produces the same seven production peer files without unrelated runtime
+scenarios, using the existing 8-GiB guest/6-GiB container/2-CPU profile and
+CARGO_PROFILE_DEV_DEBUG=0. All seven payloads, manifest, source/tree and exact
+cache inventory match. Manifest SHA-256:
+002270bc5bce942e82e114ed4d23a644ff7eb7f1e738a31dbf69f92402785212.
+Capsule android-soak-peer-9b22f10f.json: 6,768 bytes, SHA-256
+c0266e9f5f419874245438942a5d0b1905b15bc25f7898b1dde153763df1ba06.
+Storage lifetime 254.045 seconds; peak RAM scratch 5,855,277,056 bytes.
+
+TUF OTYO8m3QRl/session 13576 executes:
+```
+bash scripts/smoke-verifier-vm-authority.sh --android-emulator-runtime \
+  --artifact-commit 9b22f10f7bbdb5bfd13c3c5fce2a36dd2c4e75bb \
+  --apk-sha256 d577d0186720b7316d64706a7641e08d94150904ee5f76d88cd1675dad03dd51 \
+  --test-apk-sha256 529f132b05b5e0bdcad7ffc324cfecb8143e9696b81dc0c94da29946d029dd93 \
+  --scenario peer-lifecycle \
+  --peer-commit 9b22f10f7bbdb5bfd13c3c5fce2a36dd2c4e75bb \
+  --peer-manifest-sha256 002270bc5bce942e82e114ed4d23a644ff7eb7f1e738a31dbf69f92402785212 \
+  --soak
+```
+The existing two-hour limits remain fixed: per-second pixel observations;
+content age <=2,000 ms; observer age/processing <=500 ms; gaps <=2,000 ms;
+minute p95 drift <=250 ms above the first minute; warmed RSS growth <=128 MiB
+and threads <=+8; stable connection/process/service/task; 120 minute windows.
+No network impairment is injected. Handles/input-to-visible remain unobserved.
+
+Controlled correct/wrong CPace and authenticated directory reply pass. Viewer
+missing-credential prompt performs no network attempt; one wrong submission
+returns the exact recovery prompt in 5,130 ms, followed by 140 seconds without
+automatic retry. Manual correct submission connects (250-ms wait); initial
+pixel recovery is 530 ms. Background returns after 2/6/120 seconds recover in
+530/510/540 ms with maximum sampled ages 604/598/877 ms. Six warm-hold samples
+over 138,470 ms preserve task/process/service/connection and changing pixels.
+Their maximum sampled content age is 996 ms. The soak starts at RSS 261,392 KiB
+and 58 threads, then refuses before its first completed minute window.
+
+The preserved failing frame is sequence 2059: displayed source state 7542,
+latest source state 7561, content age 912 ms, observation age 574 ms. The exact
+frame record is 72,204 bytes, SHA-256
+76ac2930b426bb815a231f4aa64ed8ea976ba7bd4bc53389d0839f4420ebc0b3.
+The 574-ms observation exceeds the separate 500-ms bound; content is still
+within 2,000 ms. No two-hour pass, subsequent reconnect/task/force-stop acceptance,
+permanent-lag diagnosis or mobile reverse-wheel correction is claimed.
+
+The complete runtime failure log is retained before private cleanup as
+android-soak-observer-9b22f10f.runtime.log: 445,403 bytes, SHA-256
+95244dcc79dbbec4dec4dfaef6614e72a7be99ad63f4c549d6288ceec8b4fe57.
+The complete 407,087-byte guest serial is also retained. Tool outer output was
+truncated and is labeled accordingly; it is not the sole diagnostic record.
+Capsule android-soak-observer-9b22f10f.json: 40,724 bytes, SHA-256
+ef927e5f076e55e2e816b1077aaf567fa07fd07445afc7a2c4ba5de7f756c594.
+Exit 1; storage lifetime 813.488 seconds; peak RAM scratch 4,507,856,896 bytes.
+All three QEMU children join with return zero, their exact pidfds report absence,
+and private/RAM workspaces retire. Build endpoint snapshots are four each;
+runtime has five. Every decoded endpoint delta is zero. All 45 bounded evidence
+files/1,420,121 bytes for this work match CTE/TUF, with no owned run remaining.
+
+Research identifies a measurement-contract mismatch: the Java observer uses
+streamScreenshot, whose API emits when display content or sensors change,
+while the soak requires independently fresh observations every second.
+Primary API: https://android.googlesource.com/platform/prebuilts/android-emulator/+/master/linux-x86_64/lib/emulator_controller.proto
+The exact pinned emulator archive contains emulator/lib/emulator_controller.proto,
+81,619 bytes, SHA-256
+1d62c6bcad5f06621f90ec2bf26c661ba769ccd0f1416b5314d25a68e04eee5f,
+with that contract, a unary getScreenshot API, zero unary sequence numbers,
+and timestamp-before-copy semantics. A quiet interval can therefore age the
+latest stream record independently of the product's 2-second content limit.
+This explains why the current observer cannot establish the required schedule;
+it does not attribute every delay in this particular frame to that mechanism.
+
+Next decisive step: validate independently timed native framebuffer captures,
+including unchanged pixels, real changing pixels, stale content, RPC deadline
+and exact shutdown, before rerunning these retained app/peer artifacts through
+the full two-hour/lifecycle workload. Do not relax the declared bounds, stamp
+old bytes with new time, skip failed samples or rebuild unchanged product inputs.
+No observer or product implementation change is included in this checkpoint.

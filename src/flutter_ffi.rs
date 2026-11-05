@@ -1829,7 +1829,9 @@ pub fn session_send_pointer(session_id: SessionID, msg: String) {
 ///
 /// If these assumptions are violated (e.g., `relative_mouse_mode` is added to normal events),
 /// legitimate mouse events may be silently dropped by the early-return logic below.
-pub fn session_send_mouse(session_id: SessionID, msg: String) {
+/// Queue admission is synchronous so bridge workers cannot reorder mouse transitions.
+/// Network delivery remains owned by the existing bounded viewer command queue.
+pub fn session_send_mouse(session_id: SessionID, msg: String) -> SyncReturn<()> {
     if let Ok(m) = serde_json::from_str::<HashMap<String, String>>(&msg) {
         // Relative mouse mode marker validation (Flutter-only).
         // This only validates and filters markers; the server tracks per-connection
@@ -1844,7 +1846,7 @@ pub fn session_send_mouse(session_id: SessionID, msg: String) {
             if !active {
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 crate::keyboard::set_relative_mouse_mode_state(false);
-                return;
+                return SyncReturn(());
             }
 
             // Enable marker: validate BEFORE setting state to avoid desync.
@@ -1858,7 +1860,7 @@ pub fn session_send_mouse(session_id: SessionID, msg: String) {
                     "relative_mouse_mode activation marker has invalid type: {:?}, expected 'move_relative'. Dropping.",
                     msg_type
                 );
-                return;
+                return SyncReturn(());
             }
             let x_marker = m
                 .get("x")
@@ -1873,7 +1875,7 @@ pub fn session_send_mouse(session_id: SessionID, msg: String) {
                     "relative_mouse_mode activation marker has non-zero coordinates: x={}, y={}. Dropping.",
                     x_marker, y_marker
                 );
-                return;
+                return SyncReturn(());
             }
 
             // Guard against unexpected fields that could turn this no-op into a real event.
@@ -1886,7 +1888,7 @@ pub fn session_send_mouse(session_id: SessionID, msg: String) {
                 log::warn!(
                     "relative_mouse_mode activation marker contains unexpected fields (buttons/alt/ctrl/shift/command). Dropping."
                 );
-                return;
+                return SyncReturn(());
             }
 
             // All validation passed - marker will be forwarded as a no-op relative move.
@@ -1931,6 +1933,7 @@ pub fn session_send_mouse(session_id: SessionID, msg: String) {
             session.send_mouse(mask, x, y, alt, ctrl, shift, command);
         }
     }
+    SyncReturn(())
 }
 
 pub fn session_restart_remote_device(

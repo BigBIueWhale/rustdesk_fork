@@ -713,7 +713,7 @@ class RelativeMouseModel {
     if (isViewCamera()) return false;
 
     try {
-      await bind.sessionSendMouse(
+      bind.sessionSendMouse(
         sessionId: expectedSessionId ?? getSessionId(),
         msg: json.encode(modify(msg)),
       );

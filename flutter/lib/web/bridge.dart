@@ -1392,10 +1392,9 @@ class RustdeskImpl {
     throw UnimplementedError("sessionSendPointer");
   }
 
-  Future<void> sessionSendMouse(
+  void sessionSendMouse(
       {required UuidValue sessionId, required String msg, dynamic hint}) {
-    return Future(
-        () => js.context.callMethod('setByName', ['send_mouse', msg]));
+    js.context.callMethod('setByName', ['send_mouse', msg]);
   }
 
   Future<void> sessionRestartRemoteDevice(

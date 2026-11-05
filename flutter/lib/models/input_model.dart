@@ -1191,7 +1191,7 @@ class InputModel {
   /// Send scroll event with scroll distance [y].
   Future<void> scroll(int y) async {
     if (isViewCamera) return;
-    await bind.sessionSendMouse(
+    bind.sessionSendMouse(
         sessionId: sessionId,
         msg: json
             .encode(modify({'id': id, 'type': 'wheel', 'y': y.toString()})));
@@ -1216,7 +1216,7 @@ class InputModel {
   /// changed after the matching down was sent.
   Future<void> _sendMouseUnchecked(String type, MouseButtons button,
       {SessionID? expectedSessionId}) async {
-    await bind.sessionSendMouse(
+    bind.sessionSendMouse(
         sessionId: expectedSessionId ?? sessionId,
         msg: json.encode(modify({'type': type, 'buttons': button.value})));
   }
@@ -1260,7 +1260,7 @@ class InputModel {
     if (isViewCamera) return;
     var x2 = x.toInt();
     var y2 = y.toInt();
-    await bind.sessionSendMouse(
+    bind.sessionSendMouse(
         sessionId: sessionId,
         msg: json.encode(modify({'x': '$x2', 'y': '$y2'})));
   }
@@ -1283,7 +1283,7 @@ class InputModel {
     _mobileDeltaRemainderX -= x;
     _mobileDeltaRemainderY -= y;
     if (x == 0 && y == 0) return;
-    await bind.sessionSendMouse(
+    bind.sessionSendMouse(
         sessionId: sessionId,
         msg: json.encode(modify({
           'type': 'move_relative',
@@ -1593,9 +1593,11 @@ class InputModel {
           PointerEventToRust(kPointerEventKindTouch, 'scale', scale).toJson()));
 
   Future<void> sendTrackpadScroll(int x, int y,
-      {SessionID? expectedSessionId}) => bind.sessionSendMouse(
-      sessionId: expectedSessionId ?? sessionId,
-      msg: '{"type": "trackpad", "x": "$x", "y": "$y"}');
+      {SessionID? expectedSessionId}) async {
+    bind.sessionSendMouse(
+        sessionId: expectedSessionId ?? sessionId,
+        msg: '{"type": "trackpad", "x": "$x", "y": "$y"}');
+  }
 
   void _stopTrackpadFling() {
     final fling = _trackpadFling;
@@ -1895,9 +1897,11 @@ class InputModel {
   }
 
   Future<void> sendWheelScroll(int x, int y,
-      {required SessionID expectedSessionId}) => bind.sessionSendMouse(
-      sessionId: expectedSessionId,
-      msg: '{"type": "wheel", "x": "$x", "y": "$y"}');
+      {required SessionID expectedSessionId}) async {
+    bind.sessionSendMouse(
+        sessionId: expectedSessionId,
+        msg: '{"type": "wheel", "x": "$x", "y": "$y"}');
+  }
 
   void refreshMousePos() => handleMouse({
         'buttons': 0,

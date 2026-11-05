@@ -141876,3 +141876,15 @@ OPEN and use the expanded diagnostics for bounded focused reproduction before
 claiming reliable input acceptance. Custom scaling, non-unit DPI, exact
 subpixel geometry, saved-canvas restart, physical scanout, other platforms and
 full release acceptance also remain OPEN. Count the replaced ledger entry.
+
+CTE wXiO0dN13b/session 28808 at 015dd92e exits zero: 399,923 tokens,
+1,825,741 bytes, SHA-256
+640269eb56eea63de753556defbaf9d0add58f73eec36ab2d159afe5d6e9c5a6.
+Pinned tokenizer, seven controls and round trip pass. QEMU/private/RAM retire;
+storage takes 31.028 seconds, peak 402,915,328 bytes. Before/during endpoint
+deltas are zero; after records six unattributed additions, zero removals.
+The sealed wrapper denies owned IP sockets; unrelated host state is untouched.
+view-downscale-ledger-015dd92e.json is 4,779 bytes, SHA-256
+ee3f46504983da1a38b1cd36d712a2fa4cc1f02d05e256ca52cc9a3b0ca8fcce.
+All 46 evidence files match CTE/TUF; no owned run remains. This receipt
+leaves the counted ledger unchanged.

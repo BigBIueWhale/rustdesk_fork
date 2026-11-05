@@ -1780,7 +1780,7 @@ def keyed(value, phase, record, probe_sha):
           f"listener=owned key_confirmation=mutual probe_sha256={probe_sha}", flush=True)
 
 
-def installed_file_receive(value, record, probe_sha):
+def installed_file_transfer(value, record, probe_sha):
     home = Path(pwd.getpwuid(4001).pw_dir)
     destination = home / "allowed-after-login"
     if home != Path("/tmp/rd-cm-file-replay") or any(
@@ -1804,6 +1804,7 @@ def installed_file_receive(value, record, probe_sha):
         if (result.returncode or result.stderr or any(result.stdout.count(text) != 1 for text in required)
                 or credential() != before or child_record() != record or direct_listener(record) != listener):
             raise RuntimeError("installed file peer result or stable service authority differs")
+        return result.stdout
 
     def completed_files(expected):
         deadline = time.monotonic() + 5
@@ -1884,6 +1885,58 @@ def installed_file_receive(value, record, probe_sha):
         probe(4002, "cmfilereconnect", ["[FT-RECONNECT-WRITE-COMMITTED id=17008]"])
         payloads["orphaned.txt"] = b"new-owner-after-abrupt-loss-0123456789"
         completed_files(payloads)
+        sources = home / "source-swap"
+        sources.mkdir(mode=0o700)
+        os.chown(sources, 4001, 4001)
+        fixtures = {destination / "unreadable-source.txt": (b"unreadable-source-fixture", 0),
+                    destination / "readable-source.jpg": (b"A" * 150001, 0o600),
+                    sources / "a.jpg": (b"A" * 150001, 0o600),
+                    sources / "b.jpg": (b"A" * 150001, 0o600)}
+        for path, (payload, mode) in fixtures.items():
+            with path.open("xb") as output:
+                output.write(payload)
+                os.fchown(output.fileno(), 4001, 4001)
+                os.fchmod(output.fileno(), mode)
+
+        def source_snapshot():
+            observed = []
+            for path, (payload, mode) in fixtures.items():
+                metadata = path.lstat()
+                if (not stat.S_ISREG(metadata.st_mode)
+                        or (metadata.st_uid, metadata.st_gid, stat.S_IMODE(metadata.st_mode),
+                            metadata.st_nlink, metadata.st_size) != (4001, 4001, mode, 1, len(payload))
+                        or path.read_bytes() != payload):
+                    raise RuntimeError(f"installed download source changed: {path.name}")
+                observed.append({"path": str(path.relative_to(home)), "device": metadata.st_dev,
+                                 "inode": metadata.st_ino, "mode": oct(mode), "uid": metadata.st_uid,
+                                 "gid": metadata.st_gid, "links": metadata.st_nlink,
+                                 "bytes": metadata.st_size, "sha256": digest(path)})
+            return observed
+
+        sources_before = source_snapshot()
+        successful_read = (r"\[FT-READ-SUCCESS id=17013 bytes=150001 blocks=(?:[2-9]|[1-9][0-9]+) "
+                           r"digest=confirmed done=once barrier=passed\]")
+        unreadable = probe(4002, "ftreadfailure", ["[FT-READ-ERROR-TERMINAL id=17012]"])
+        # The existing source-swap probe replaces and restores one of the selected
+        # user's files after enumeration, so it runs as that user inside this VM.
+        replaced = probe(4001, "ftfiletype", [f"[FT-TYPE-REFUSED value={value} id=17013]"
+                                              for value in (1, 2, 42, 255, -1, -2147483648, 2147483647)])
+        if (len(re.findall(successful_read, unreadable)) != 1
+                or len(re.findall(successful_read, replaced)) != 1
+                or replaced.count("[FT-TYPE-REFUSED ") != 7
+                or len(re.findall(r"\[FT-SOURCE-REFUSED id=17017 file=1 bytes=150001 "
+                                  r"blocks=(?:[2-9]|[1-9][0-9]+) restored=2 barrier=passed\]", replaced)) != 1
+                or source_snapshot() != sources_before
+                or set(os.listdir(sources)) != {"a.jpg", "b.jpg"}
+                or set(os.listdir(destination)) != set(payloads) | {"unreadable-source.txt", "readable-source.jpg"}
+                or os.listdir(home / ".rustdesk-receive")):
+            raise RuntimeError("installed download refusal, recovery or source preservation differs")
+        print("LINUX_RECEIVER_FILE_SOURCE_OBSERVED=" + json.dumps(
+            {"sources": sources_before, "after_matches_before": True}, sort_keys=True), flush=True)
+        print(f"LINUX_RECEIVER_DOWNLOAD=pass peers=2 unreadable=one-error unsupported=7 "
+              "source_swap=after-enumeration prefix_bytes=150001 second_file=one-error "
+              "false_done=absent successful_reads=2 bytes_each=150001 done=once barriers=passed "
+              f"sources=preserved probe_sha256={probe_sha}", flush=True)
         if select.select([cm_fd], [], [], 0)[0] or int(
                 (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19]) != cm["start"]:
             raise RuntimeError("installed CM generation changed during file transactions")
@@ -4572,7 +4625,7 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
         print("LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied "
               "durable=unchanged listener=owned", flush=True)
         if file_workflow:
-            file_cm = installed_file_receive("Receiver-fixture-admin-2026!", second, probe_spec["sha256"])
+            file_cm = installed_file_transfer("Receiver-fixture-admin-2026!", second, probe_spec["sha256"])
     finally:
         try:
             if started:
@@ -4626,7 +4679,7 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
               f"probe_sha256={probe_spec['sha256']} fixture=installed-layout polkit=actual logind=actual "
               "child=supervised cleanup=joined", flush=True)
         return
-    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=17 cpace=15 file_peers=3 stale_refusals=4 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 unit_stops=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
+    print(f"LINUX_SERVICE_RECEIVER_NATIVE=pass cases=17 cpace=15 file_peers=5 stale_refusals=4 races=2 proxy_control=1 admin_grants=1 admin_failures=1 fresh_refusals=1 requester_exits=1 agent_exits=1 supervisor_shutdowns=1 admitted_shutdowns=1 unit_stops=1 session_revocations=1 source={commit} binary_sha256={spec['sha256']} "
           f"probe_sha256={probe_spec['sha256']} "
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 

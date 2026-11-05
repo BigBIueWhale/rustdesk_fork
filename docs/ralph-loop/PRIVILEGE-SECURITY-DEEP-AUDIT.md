@@ -140637,3 +140637,29 @@ e0a03384155e4d6f4a18b8a10782efaa847cf6f4b0ef7b2ed996159a34f4fc64.
 All eight evidence files match CTE and TUF. This audit-only receipt preserves the
 counted ledger. No owned run remains. Continue the remaining installed file paths
 with the same retained artifact; the full release goal remains active.
+
+## 2026-11-05 — installed file downloads and source refusal
+
+Previous turn made progress: installed receive cases pass with exact CM identity,
+file contents/principal and service-stop retirement. Continue the adjacent R-F1/F2
+and R-S0 download acceptance gap before a separate audit topic. Reuse d108183a's
+unchanged production server/probe; no build or artifact generation is needed.
+The full installed receiver profile adds the retained ftreadfailure/ftfiletype
+modes. The UID4002 peer must receive one EACCES-correlated error then 150,001 exact
+bytes on that same keyed connection. UID4001 replaces the announced second source
+with a real FIFO after enumeration/first digest, receives the complete first file
+and one file-1 error without false Done, restores both sources, then successfully
+reuses the unsupported-type job ID. Seven signed enum values must be refused.
+Both peers require exact content, terminal finality and later actual CM barriers;
+source inode/bytes/owner/mode/link metadata must survive and no swap residue remain.
+Existing upload, credential, CM-process and joined-retirement checks stay active.
+
+Source review: fs.rs::open_send_file pins/classifies an O_PATH descriptor before
+readable reopening; connection.rs admits JobType before read-job creation. Linux
+open(2), https://man7.org/linux/man-pages/man2/open.2.html, specifies that O_PATH
+does not open the file for I/O and readable reopening still requires permission.
+This makes the unprivileged installed child, unreadable file and real FIFO useful
+behavioral discriminators. The retained probe validates response contents/order,
+not just log markers. Scope remains debug/headless installed layout; GUI downloads,
+other platforms, broader namespace/content races and final packages remain OPEN.
+Native execution is pending. No product-source change or new LPE closure is claimed.

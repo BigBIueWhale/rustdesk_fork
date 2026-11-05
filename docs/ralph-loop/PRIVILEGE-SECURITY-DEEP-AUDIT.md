@@ -140240,3 +140240,21 @@ unchanged existing jobs, correct error delivery, and admission after exact retir
 Using a separate watched directory excludes legitimate confirmation I/O from the
 enumeration observation. Native results are pending the existing TUF no-NIC VM
 profile; no new acceptance claim is made by this preparation.
+
+TUF HQ1D8eWaDY at 2138695c fails full-parent compilation before any test:
+src/cli.rs:26 still reads the removed PeerConfig.password field. The canonical
+viewer credential is password_prs; LoginConfigHandler::initialize and Client::start
+already load and use that stored derived value. Change the CLI's prompt-necessity
+check to that same field, preserving fresh-password precedence and pre-keying
+validation. This is a required compilation repair, not a new authentication path.
+The existing profile also checks the CLI binary after its native cases.
+
+The failed transaction joins QEMU 650052, retires bounded RAM scratch, and has four
+zero endpoint deltas. Duration 545.381 seconds; peak scratch 6,302,904,320 bytes.
+Under the shared lock, serial/output bytes are verified against their durable
+copies and the exact 3.4-MB private diagnostic tree is inventoried and retired.
+viewer-job-admission-build-2138695c.json is 9,952 bytes, SHA-256
+b0701c6cb9b280ff37146db43bb8cd9379c23ec2350aed97ba1b591381b3edc2;
+its 465-byte retirement receipt has SHA-256
+26c3f7452e416809b93a0cdbfde236c0adaa9523c0dc6418d7b8fbe5655240ff.
+No owned run remains; the viewer correction still requires native execution.

@@ -23,7 +23,7 @@ pub struct Session {
 impl Session {
     fn new(id: &str, conn_type: ConnType, sender: ViewerCommandSender) -> Self {
         let mut password = "".to_owned();
-        if PeerConfig::load(id).password.is_empty() {
+        if PeerConfig::load(id).password_prs.is_empty() {
             match rpassword::prompt_password("Enter password: ") {
                 Ok(p) => password = p,
                 Err(e) => {

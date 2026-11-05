@@ -139981,3 +139981,19 @@ bytes. The next action is the named input soak with app `2ae08e80`/engine `ddb15
 Once the launch record exists, inspect that same exact process/run. Preserve
 both source checkouts and their local Git refs during their active soaks; retain
 bounded partial observations outside Git until execution and cleanup finish.
+
+First CTE launch `JpLkmM3XFR` at `8405251e` refuses the older local candidate
+lock before QEMU creation. The 0.403-second storage monitor reports zero bulk
+allocation; wrapper 1649784 and captured children are absent, RAM is absent and
+141 bytes of exact private records retire under the shared lock. Capsule
+`input-congestion-soak-preflight-8405251e.json` is 3,779 bytes, SHA-256
+97328dd3d73f5e2f931f6ecdf915224d9c00fb0ac6ff299fcbfc7295438219d4.
+Preserve the 46,169-byte old lock as `cte-candidate-lock-before-8405251e.lock`.
+Synchronize the 43,472-byte committed pinned lock, independently matching TUF's
+accepted current-app input, SHA-256
+7be0602c35a77c2dffbe348a567e25d0d5d56c761bbd88b6e403e7b8f5ce827d.
+No resolver, package selection, network acquisition or input-pin change occurs;
+`cte-candidate-lock-sync-8405251e.json` records both identities. Preserve the
+failed capture and retry into its `retry/` subdirectory. The retry launch JSON
+will bind the new final harness source and exact process identity. Ledger bytes
+remain unchanged and the preceding count remains current.

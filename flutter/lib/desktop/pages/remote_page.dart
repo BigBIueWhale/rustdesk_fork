@@ -967,9 +967,6 @@ class _ImagePaintState extends State<ImagePaint> {
       if (true) {
         // both "textureId.value != -1" and "true" seems ok
         final sizeScale = isPeerLinux ? s / displays[i].scale : s;
-        c.traceViewStyle('texture-layout', display: i, renderedScale: sizeScale,
-            renderedSize: Size(displays[i].width * sizeScale,
-                displays[i].height * sizeScale));
         children.add(Positioned(
           left: (displays[i].x - rect.left) * s + offset.dx,
           top: (displays[i].y - rect.top) * s + offset.dy,

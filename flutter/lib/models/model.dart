@@ -55,8 +55,6 @@ import 'package:flutter_hbb/generated_bridge.dart'
     if (dart.library.html) 'package:flutter_hbb/web/bridge.dart';
 import 'package:flutter_hbb/native/custom_cursor.dart'
     if (dart.library.html) 'package:flutter_hbb/web/custom_cursor.dart';
-import 'package:flutter_hbb/native/common.dart'
-    if (dart.library.html) 'package:flutter_hbb/web/common.dart' as platform;
 
 typedef HandleMsgBox = Function(Map<String, dynamic> evt, String id);
 typedef ReconnectHandle = Function(OverlayDialogManager, SessionID);
@@ -2449,8 +2447,6 @@ class CanvasModel with ChangeNotifier {
   bool _customScaleSavePending = false;
   int _customScaleCommitRevision = 0;
   int _viewStyleRevision = 0;
-  final Map<String, String> _viewStyleTrace = {};
-  int _viewStyleTraceCount = 0;
   int _scrollStyleRevision = 0;
   bool _scrollPreferenceSavePending = false;
   int _scrollPreferenceCommitRevision = 0;
@@ -2648,12 +2644,10 @@ class CanvasModel with ChangeNotifier {
       {required CanvasUpdateOwner? owner,
       bool refreshMousePos = true,
       bool notify = true}) async {
-    traceViewStyle('update-start', owner: owner);
     if (!_acceptsOwner(owner)) return false;
     final scaleRevision = _customScaleCommitRevision;
     final styleRevision = _viewStyleRevision;
     final style = await _readViewStyle(owner);
-    traceViewStyle('preference-read', owner: owner, readStyle: style);
     if (!_acceptsOwner(owner) || style == null ||
         scaleRevision != _customScaleCommitRevision ||
         (styleRevision != _viewStyleRevision && style != _lastViewStyle.style)) {
@@ -2715,7 +2709,6 @@ class CanvasModel with ChangeNotifier {
       }
     }
     _resetCanvasOffset(displayWidth, displayHeight);
-    traceViewStyle('geometry-committed', owner: owner, readStyle: style);
     final overflow = _x < 0 || y < 0;
     if (_imageOverflow.value != overflow) {
       _imageOverflow.value = overflow;
@@ -2729,23 +2722,6 @@ class CanvasModel with ChangeNotifier {
       parent.target?.inputModel.refreshMousePos();
     }
     return await tryUpdateScrollStyle(Duration.zero, style, owner: owner);
-  }
-
-  void traceViewStyle(String stage, {CanvasUpdateOwner? owner, String? readStyle,
-      int? display, double? renderedScale, Size? renderedSize}) {
-    if (!platform.presentationTraceEnabled_ || _viewStyleTraceCount >= 64) return;
-    final state = 'owner_current=${owner?.isCurrent} read=$readStyle '
-        'style=${_lastViewStyle.style} revision=$_viewStyleRevision '
-        'scale=$_scale canvas=$_size viewport=${getSize()} '
-        'display=${getDisplayWidth()}x${getDisplayHeight()} '
-        'dpr=${ui.window.devicePixelRatio} offset=$_x,$_y '
-        'texture=$display rendered_scale=$renderedScale rendered_size=$renderedSize';
-    final key = '$stage/$display';
-    if (_viewStyleTrace[key] == state) return;
-    _viewStyleTrace[key] = state;
-    _viewStyleTraceCount++;
-    debugPrint('RUSTDESK_VIEW_GEOMETRY stage=$stage '
-        'canvas=${identityHashCode(this)} sample=$_viewStyleTraceCount $state');
   }
 
   _resetCanvasOffset(int displayWidth, int displayHeight) {

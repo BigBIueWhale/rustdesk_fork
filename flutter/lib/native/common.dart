@@ -1,8 +1,5 @@
 import 'dart:io';
 
-final presentationTraceEnabled_ =
-    Platform.environment['RUSTDESK_PRESENTATION_TRACE'] == '1';
-
 final isAndroid_ = Platform.isAndroid;
 final isIOS_ = Platform.isIOS;
 final isWindows_ = Platform.isWindows;

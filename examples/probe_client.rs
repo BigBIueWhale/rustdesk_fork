@@ -39,7 +39,7 @@
 //!   - `cmfilesamepeersuccessor` : while a same-peer FileTransfer predecessor owns a live
 //!                receive, retain a second keyed CM connection and require a fresh directory
 //!                reply after the predecessor exits and commits its file.
-//!   - `cmfilecollision` : a new receive must refuse two pre-existing fixed sidecar names
+//!   - `cmfilecollision` : a new receive must refuse two pre-existing private artifact names
 //!                without changing either older generation.
 //!   - `cmfilecleanupfailure` : a live receive whose staging name was replaced must report
 //!                the exact cleanup failure to the peer without deleting the replacement.
@@ -98,6 +98,39 @@ const CM_LIVE_STOP_ARM_MARKER: &str = "/tmp/android-emulator-app/cm-live-arm";
 const CM_LIVE_STOP_ARMED_MARKER: &str = "/tmp/android-emulator-app/cm-live-armed";
 const CM_LIVE_STOP_RELEASE_MARKER: &str = "/tmp/android-emulator-app/cm-live-release";
 const CM_PEER_ERROR: &str = "peer-aborted-cm-fixture";
+
+// These probes run beside the real receiver in its isolated replay container.
+// A preceding CM directory reply is the ordering barrier; local observation then
+// checks the actual private artifacts rather than retired public sidecar names.
+fn cm_receive_artifacts_present(dir: &hbb_common::message_proto::FileDirectory, leaf: &str) -> bool {
+    use hbb_common::sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    digest.update(b"rustdesk.receive.file.v1\0");
+    digest.update(leaf.as_bytes());
+    let child = format!("{:x}", digest.finalize());
+    let mut found = 0;
+    for entry in &dir.entries {
+        let Some(suffix) = entry.name.strip_prefix(".rustdesk-receive-") else { continue; };
+        if suffix.len() != 32 || !suffix.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return false;
+        }
+        let container = std::path::Path::new(CM_POSTLOGIN_CREATE_PATH).join(&entry.name);
+        let path = container.join(&child);
+        if !std::fs::symlink_metadata(&container).map(|meta| meta.is_dir()).unwrap_or(false) {
+            return false;
+        }
+        match std::fs::symlink_metadata(&path) {
+            Ok(meta) if meta.is_dir() => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            _ => return false,
+        }
+        if !["payload.download", "resume.digest", "claim.download.lock"].iter().all(|name| {
+            std::fs::symlink_metadata(path.join(name)).map(|meta| meta.is_file()).unwrap_or(false)
+        }) { return false; }
+        found += 1;
+    }
+    found == 1
+}
 
 struct ProbePassword(Vec<u8>);
 
@@ -840,8 +873,8 @@ async fn probe_cm_receive_owner_loss(stream: &mut FramedStream, report: &mut Str
         return false;
     }
 
-    // This CM directory read follows WriteBlock on the same IPC stream. Seeing all three
-    // staging artifacts proves the partial receive was live before this peer disappears.
+    // This CM directory read follows WriteBlock on the same IPC stream. Observe the
+    // actual private artifacts before this peer disappears.
     let mut action = FileAction::new();
     action.set_read_dir(ReadDir {
         path: CM_POSTLOGIN_CREATE_PATH.to_owned(),
@@ -872,11 +905,7 @@ async fn probe_cm_receive_owner_loss(stream: &mut FramedStream, report: &mut Str
                 Some(file_response::Union::Dir(dir))
                     if dir.path == CM_POSTLOGIN_CREATE_PATH =>
                 {
-                    let has = |name: &str| dir.entries.iter().any(|entry| entry.name == name);
-                    if has("orphaned.txt.download")
-                        && has("orphaned.txt.digest")
-                        && has("orphaned.txt.download.lock")
-                    {
+                    if cm_receive_artifacts_present(&dir, "orphaned.txt") {
                         report.push_str("[FT-OWNER-LOSS-STAGED id=17008] ");
                         return true;
                     }
@@ -1080,11 +1109,7 @@ async fn probe_cm_receive_busy(
         if let Some(message::Union::FileResponse(response)) = response.union {
             match response.union {
                 Some(file_response::Union::Dir(dir)) if dir.path == CM_POSTLOGIN_CREATE_PATH => {
-                    let has = |name: &str| dir.entries.iter().any(|entry| entry.name == name);
-                    if !has("contended.txt.download")
-                        || !has("contended.txt.digest")
-                        || !has("contended.txt.download.lock")
-                    {
+                    if !cm_receive_artifacts_present(&dir, "contended.txt") {
                         report.push_str("[FT-BUSY-STAGING-MISSING] ");
                         return false;
                     }
@@ -1246,14 +1271,7 @@ async fn probe_cm_same_peer_successor(stream: &mut FramedStream, report: &mut St
                     if dir.path == CM_POSTLOGIN_CREATE_PATH =>
                 {
                     if dir.entries.iter().any(|entry| entry.name == "contended.txt")
-                        && !dir.entries.iter().any(|entry| {
-                            matches!(
-                                entry.name.as_str(),
-                                "contended.txt.download"
-                                    | "contended.txt.digest"
-                                    | "contended.txt.download.lock"
-                            )
-                        })
+                        && !dir.entries.iter().any(|entry| entry.name.starts_with(".rustdesk-receive-"))
                     {
                         report.push_str("[FT-SAME-PEER-SUCCESSOR-DIR after_predecessor=true committed=true] ");
                         return true;
@@ -1462,10 +1480,7 @@ async fn probe_cm_receive_cleanup_failure(
         match response.union {
             Some(message::Union::FileResponse(response)) => match response.union {
                 Some(file_response::Union::Dir(dir)) if dir.path == CM_POSTLOGIN_CREATE_PATH => {
-                    let has = |name: &str| dir.entries.iter().any(|entry| entry.name == name);
-                    staged = has(&format!("{name}.download"))
-                        && has(&format!("{name}.digest"))
-                        && has(&format!("{name}.download.lock"));
+                    staged = cm_receive_artifacts_present(&dir, name);
                     break;
                 }
                 Some(file_response::Union::Error(error)) => {

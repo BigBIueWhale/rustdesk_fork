@@ -813,6 +813,9 @@ EOS
   cm-file-replay)
     export HOME=/tmp/rd-cm-file-replay
     mkdir -m 0700 "$HOME"
+    cm_receive_fixture() {
+      python3 -I -S /work/scripts/cm-receive-fixture.py "$@"
+    }
     TAMPER_PID=
     BUSY_OWNER_PID=
     BUSY_OWNER_START=
@@ -908,9 +911,7 @@ EOS
     # The probe exits with an incomplete live receive, without a cancel/done/error.
     # Allow the server/CM teardown to run, then require exact retirement below.
     for ((attempt=0; attempt<100; ++attempt)); do
-      if [ ! -e "$HOME/allowed-after-login/orphaned.txt.download" ] \
-          && [ ! -e "$HOME/allowed-after-login/orphaned.txt.digest" ] \
-          && [ ! -e "$HOME/allowed-after-login/orphaned.txt.download.lock" ]; then
+      if cm_receive_fixture retired orphaned.txt >/dev/null 2>&1; then
         break
       fi
       sleep 0.05
@@ -922,17 +923,8 @@ EOS
       [ ! -e "$HOME/allowed-after-login/$name" ] \
         && [ ! -L "$HOME/allowed-after-login/$name" ]
     done
-    for suffix in .download .digest .download.lock; do
-      for name in premature.txt short-terminal.txt peer-error.txt cancelled.txt orphaned.txt; do
-        [ ! -e "$HOME/allowed-after-login/$name$suffix" ] \
-          && [ ! -L "$HOME/allowed-after-login/$name$suffix" ]
-      done
-      [ ! -e "$HOME/allowed-after-login/payload.txt$suffix" ] \
-        && [ ! -L "$HOME/allowed-after-login/payload.txt$suffix" ]
-      for name in first.txt second.txt; do
-        [ ! -e "$HOME/allowed-after-login/$name$suffix" ] \
-          && [ ! -L "$HOME/allowed-after-login/$name$suffix" ]
-      done
+    for name in premature.txt short-terminal.txt peer-error.txt cancelled.txt orphaned.txt payload.txt first.txt second.txt; do
+      cm_receive_fixture retired "$name"
     done
     [ -f "$HOME/allowed-after-login/payload.txt" ] \
       && [ ! -L "$HOME/allowed-after-login/payload.txt" ] \
@@ -969,10 +961,7 @@ EOS
       && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login/orphaned.txt")" = "$(id -u):$(id -g):600" ] \
       && cmp -s -- "$HOME/allowed-after-login/orphaned.txt" \
         <(printf '%s' 'new-owner-after-abrupt-loss-0123456789')
-    for suffix in .download .digest .download.lock; do
-      [ ! -e "$HOME/allowed-after-login/orphaned.txt$suffix" ] \
-        && [ ! -L "$HOME/allowed-after-login/orphaned.txt$suffix" ]
-    done
+    cm_receive_fixture retired orphaned.txt
     timeout --signal=TERM --kill-after=5s 60s \
       /smoke-target/debug/examples/probe_client \
       '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilebusyowner \
@@ -990,7 +979,8 @@ EOS
     done
     [ -f "$HOME/busy-owner.staged" ] && [ ! -L "$HOME/busy-owner.staged" ]
     [ ! -e "$HOME/allowed-after-login/contended.txt" ]
-    cmp -s -- "$HOME/allowed-after-login/contended.txt.download" \
+    busy_artifacts=$(cm_receive_fixture staged contended.txt)
+    cmp -s -- "$busy_artifacts/payload.download" \
       <(printf '%s' 'first-live-owner-exact-bytes-0123456789')
     if pa_refusal_output=$(timeout --signal=TERM --kill-after=2s 8s \
       python3 -I -S /work/scripts/smoke-pa-process-pair-probe.py \
@@ -1004,8 +994,8 @@ EOS
     grep -Fxq 'PA_PRODUCTION_CM_REFUSAL=pass principal=same-uid-unrelated-process action=silent-connect result=eof-before-750ms endpoint=cm-owned-pa server=production network=container-loopback' \
       <<<"$pa_refusal_output"
     "$READY" --is-running "$BUSY_OWNER_PID" "$BUSY_OWNER_START"
-    busy_digest_before=$(sha256sum -- "$HOME/allowed-after-login/contended.txt.digest")
-    busy_lock_before=$(stat -c '%d:%i' -- "$HOME/allowed-after-login/contended.txt.download.lock")
+    busy_digest_before=$(sha256sum -- "$busy_artifacts/resume.digest")
+    busy_lock_before=$(stat -c '%d:%i' -- "$busy_artifacts/claim.download.lock")
     if busy_contender_output=$(timeout --signal=TERM --kill-after=5s 20s \
         /smoke-target/debug/examples/probe_client \
         '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilebusycontender 2>&1); then
@@ -1022,10 +1012,53 @@ EOS
     [ "$(grep -Fc '[FT-BUSY-CONTENDER-REFUSED id=17015]' <<<"$busy_contender_output")" -eq 1 ]
     grep -Fxq 'probe_client: PASS' <<<"$busy_contender_output"
     [ ! -e "$HOME/allowed-after-login/contended.txt" ]
-    cmp -s -- "$HOME/allowed-after-login/contended.txt.download" \
+    cmp -s -- "$busy_artifacts/payload.download" \
       <(printf '%s' 'first-live-owner-exact-bytes-0123456789')
-    [ "$(sha256sum -- "$HOME/allowed-after-login/contended.txt.digest")" = "$busy_digest_before" ]
-    [ "$(stat -c '%d:%i' -- "$HOME/allowed-after-login/contended.txt.download.lock")" = "$busy_lock_before" ]
+    [ "$(sha256sum -- "$busy_artifacts/resume.digest")" = "$busy_digest_before" ]
+    [ "$(stat -c '%d:%i' -- "$busy_artifacts/claim.download.lock")" = "$busy_lock_before" ]
+    # The live owner pins this receiver-created namespace while collision fixtures are seeded.
+    collision_download=$(cm_receive_fixture path collision-download.txt)
+    collision_digest=$(cm_receive_fixture path collision-digest.txt)
+    mkdir -m 0700 -- "$collision_download" "$collision_digest"
+    printf '%s' 'older-download-generation-0123456789' \
+      >"$collision_download/payload.download"
+    printf '%s' 'older-digest-generation-abcdefghij' \
+      >"$collision_digest/resume.digest"
+    chmod 0600 "$collision_download/payload.download" \
+      "$collision_digest/resume.digest"
+    if collision_output=$(timeout --signal=TERM --kill-after=5s 20s \
+        /smoke-target/debug/examples/probe_client \
+        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilecollision 2>&1); then
+      collision_status=0
+    else
+      collision_status=$?
+    fi
+    printf '%s\n' "$collision_output"
+    if [ "$collision_status" -ne 0 ]; then
+      tail -n 120 /tmp/cm-file-server.log >&2
+      exit "$collision_status"
+    fi
+    [ "$(grep -Fc '[FT-COLLISION-REFUSED id=17009 sidecar=download]' <<<"$collision_output")" -eq 1 ]
+    [ "$(grep -Fc '[FT-COLLISION-REFUSED id=17010 sidecar=digest]' <<<"$collision_output")" -eq 1 ]
+    grep -Fxq 'probe_client: PASS' <<<"$collision_output"
+    "$READY" --is-running "$SRV" "$SRV_START"
+    cmp -s -- "$collision_download/payload.download" \
+      <(printf '%s' 'older-download-generation-0123456789')
+    cmp -s -- "$collision_digest/resume.digest" \
+      <(printf '%s' 'older-digest-generation-abcdefghij')
+    for name in collision-download.txt collision-digest.txt; do
+      [ ! -e "$HOME/allowed-after-login/$name" ] \
+        && [ ! -L "$HOME/allowed-after-login/$name" ]
+    done
+    [ ! -e "$collision_download/resume.digest" ] \
+      && [ ! -L "$collision_download/resume.digest" ]
+    [ ! -e "$collision_digest/payload.download" ] \
+      && [ ! -L "$collision_digest/payload.download" ]
+    for collision in "$collision_download" "$collision_digest"; do
+      [ ! -e "$collision/claim.download.lock" ] && [ ! -L "$collision/claim.download.lock" ]
+    done
+    rm -- "$collision_download/payload.download" "$collision_digest/resume.digest"
+    rmdir -- "$collision_download" "$collision_digest"
     [ ! -e "$HOME/same-peer-successor.ready" ] && [ ! -L "$HOME/same-peer-successor.ready" ]
     [ ! -e "$HOME/same-peer-successor.release" ] && [ ! -L "$HOME/same-peer-successor.release" ]
     timeout --signal=TERM --kill-after=5s 40s \
@@ -1066,10 +1099,8 @@ EOS
       && [ "$(stat -c '%u:%g:%a' -- "$HOME/allowed-after-login/contended.txt")" = "$(id -u):$(id -g):600" ] \
       && cmp -s -- "$HOME/allowed-after-login/contended.txt" \
         <(printf '%s' 'first-live-owner-exact-bytes-0123456789')
-    for suffix in .download .digest .download.lock; do
-      [ ! -e "$HOME/allowed-after-login/contended.txt$suffix" ] \
-        && [ ! -L "$HOME/allowed-after-login/contended.txt$suffix" ]
-    done
+    [ ! -e "$busy_artifacts" ] && [ ! -L "$busy_artifacts" ]
+    cm_receive_fixture retired contended.txt
     "$READY" --is-running "$SAME_PEER_SUCCESSOR_PID" "$SAME_PEER_SUCCESSOR_START"
     : >"$HOME/same-peer-successor.release"
     if wait "$SAME_PEER_SUCCESSOR_PID"; then
@@ -1086,61 +1117,23 @@ EOS
     [ "$(grep -Fc '[FT-SAME-PEER-SUCCESSOR-DIR after_predecessor=true committed=true]' <<<"$same_peer_successor_output")" -eq 1 ]
     grep -Fxq 'probe_client: PASS' <<<"$same_peer_successor_output"
     "$READY" --is-running "$SRV" "$SRV_START"
-    printf '%s' 'older-download-generation-0123456789' \
-      >"$HOME/allowed-after-login/collision-download.txt.download"
-    printf '%s' 'older-digest-generation-abcdefghij' \
-      >"$HOME/allowed-after-login/collision-digest.txt.digest"
-    chmod 0600 "$HOME/allowed-after-login/collision-download.txt.download" \
-      "$HOME/allowed-after-login/collision-digest.txt.digest"
-    if collision_output=$(timeout --signal=TERM --kill-after=5s 20s \
-        /smoke-target/debug/examples/probe_client \
-        '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok cmfilecollision 2>&1); then
-      collision_status=0
-    else
-      collision_status=$?
-    fi
-    printf '%s\n' "$collision_output"
-    if [ "$collision_status" -ne 0 ]; then
-      tail -n 120 /tmp/cm-file-server.log >&2
-      exit "$collision_status"
-    fi
-    [ "$(grep -Fc '[FT-COLLISION-REFUSED id=17009 sidecar=download]' <<<"$collision_output")" -eq 1 ]
-    [ "$(grep -Fc '[FT-COLLISION-REFUSED id=17010 sidecar=digest]' <<<"$collision_output")" -eq 1 ]
-    grep -Fxq 'probe_client: PASS' <<<"$collision_output"
-    "$READY" --is-running "$SRV" "$SRV_START"
-    cmp -s -- "$HOME/allowed-after-login/collision-download.txt.download" \
-      <(printf '%s' 'older-download-generation-0123456789')
-    cmp -s -- "$HOME/allowed-after-login/collision-digest.txt.digest" \
-      <(printf '%s' 'older-digest-generation-abcdefghij')
-    for name in collision-download.txt collision-digest.txt; do
-      [ ! -e "$HOME/allowed-after-login/$name" ] \
-        && [ ! -L "$HOME/allowed-after-login/$name" ]
-      [ ! -e "$HOME/allowed-after-login/$name.download.lock" ] \
-        && [ ! -L "$HOME/allowed-after-login/$name.download.lock" ]
-    done
-    [ ! -e "$HOME/allowed-after-login/collision-download.txt.digest" ] \
-      && [ ! -L "$HOME/allowed-after-login/collision-download.txt.digest" ]
-    [ ! -e "$HOME/allowed-after-login/collision-digest.txt.download" ] \
-      && [ ! -L "$HOME/allowed-after-login/collision-digest.txt.download" ]
     [ ! -e "$HOME/cleanup-failure.staged" ] && [ ! -L "$HOME/cleanup-failure.staged" ] \
       && [ ! -e "$HOME/cleanup-failure.tampered" ] && [ ! -L "$HOME/cleanup-failure.tampered" ]
     tamper_cm_receive_staging() {
-      local name=$1 expected=$2 marker=$3 attempt
+      local name=$1 expected=$2 marker=$3 attempt artifacts
       local base="$HOME/allowed-after-login/$name"
       for ((attempt=0; attempt<400; ++attempt)); do
         [ -f "$HOME/$marker.staged" ] && break
         sleep 0.05
       done
       [ -f "$HOME/$marker.staged" ]
-      [ -f "$base.download" ] && [ ! -L "$base.download" ] \
-        && cmp -s -- "$base.download" <(printf '%s' "$expected")
-      [ -f "$base.digest" ] && [ ! -L "$base.digest" ]
-      [ -f "$base.download.lock" ] && [ ! -L "$base.download.lock" ]
+      artifacts=$(cm_receive_fixture staged "$name")
+      cmp -s -- "$artifacts/payload.download" <(printf '%s' "$expected")
       [ ! -e "$base" ] && [ ! -L "$base" ] \
-        && [ ! -e "$base.displaced-download" ] && [ ! -L "$base.displaced-download" ]
-      mv -- "$base.download" "$base.displaced-download"
-      printf '%s' 'replacement-generation-must-survive' >"$base.download"
-      chmod 0600 "$base.download"
+        && [ ! -e "$artifacts/displaced-download" ] && [ ! -L "$artifacts/displaced-download" ]
+      mv -- "$artifacts/payload.download" "$artifacts/displaced-download"
+      printf '%s' 'replacement-generation-must-survive' >"$artifacts/payload.download"
+      chmod 0600 "$artifacts/payload.download"
       printf '%s' 'tampered' >"$HOME/$marker.tampered"
     }
     tamper_cm_receive_staging cleanup-failure.txt \
@@ -1165,14 +1158,15 @@ EOS
     grep -Fxq 'probe_client: PASS' <<<"$cleanup_output"
     "$READY" --is-running "$SRV" "$SRV_START"
     base="$HOME/allowed-after-login/cleanup-failure.txt"
+    artifacts=$(cm_receive_fixture path cleanup-failure.txt)
     [ ! -e "$base" ] && [ ! -L "$base" ]
-    [ -f "$base.download" ] && [ ! -L "$base.download" ] \
-      && [ "$(stat -c '%u:%g:%a' -- "$base.download")" = "$(id -u):$(id -g):600" ] \
-      && cmp -s -- "$base.download" <(printf '%s' 'replacement-generation-must-survive')
-    [ -f "$base.displaced-download" ] && [ ! -L "$base.displaced-download" ] \
-      && cmp -s -- "$base.displaced-download" <(printf '%s' 'partial-before-cleanup-failure')
-    [ ! -e "$base.digest" ] && [ ! -L "$base.digest" ]
-    [ -f "$base.download.lock" ] && [ ! -L "$base.download.lock" ]
+    [ -f "$artifacts/payload.download" ] && [ ! -L "$artifacts/payload.download" ] \
+      && [ "$(stat -c '%u:%g:%a' -- "$artifacts/payload.download")" = "$(id -u):$(id -g):600" ] \
+      && cmp -s -- "$artifacts/payload.download" <(printf '%s' 'replacement-generation-must-survive')
+    [ -f "$artifacts/displaced-download" ] && [ ! -L "$artifacts/displaced-download" ] \
+      && cmp -s -- "$artifacts/displaced-download" <(printf '%s' 'partial-before-cleanup-failure')
+    [ ! -e "$artifacts/resume.digest" ] && [ ! -L "$artifacts/resume.digest" ]
+    [ -f "$artifacts/claim.download.lock" ] && [ ! -L "$artifacts/claim.download.lock" ]
     [ ! -e "$HOME/digest-cleanup-failure.staged" ] \
       && [ ! -L "$HOME/digest-cleanup-failure.staged" ] \
       && [ ! -e "$HOME/digest-cleanup-failure.tampered" ] \
@@ -1198,15 +1192,16 @@ EOS
     grep -Fxq 'probe_client: PASS' <<<"$digest_cleanup_output"
     "$READY" --is-running "$SRV" "$SRV_START"
     base="$HOME/allowed-after-login/digest-cleanup-failure.txt"
+    artifacts=$(cm_receive_fixture path digest-cleanup-failure.txt)
     [ ! -e "$base" ] && [ ! -L "$base" ]
-    [ -f "$base.download" ] && [ ! -L "$base.download" ] \
-      && [ "$(stat -c '%u:%g:%a' -- "$base.download")" = "$(id -u):$(id -g):600" ] \
-      && cmp -s -- "$base.download" <(printf '%s' 'replacement-generation-must-survive')
-    [ -f "$base.displaced-download" ] && [ ! -L "$base.displaced-download" ] \
-      && cmp -s -- "$base.displaced-download" \
+    [ -f "$artifacts/payload.download" ] && [ ! -L "$artifacts/payload.download" ] \
+      && [ "$(stat -c '%u:%g:%a' -- "$artifacts/payload.download")" = "$(id -u):$(id -g):600" ] \
+      && cmp -s -- "$artifacts/payload.download" <(printf '%s' 'replacement-generation-must-survive')
+    [ -f "$artifacts/displaced-download" ] && [ ! -L "$artifacts/displaced-download" ] \
+      && cmp -s -- "$artifacts/displaced-download" \
         <(printf '%s' 'partial-before-digest-cleanup-failure')
-    [ ! -e "$base.digest" ] && [ ! -L "$base.digest" ]
-    [ -f "$base.download.lock" ] && [ ! -L "$base.download.lock" ]
+    [ ! -e "$artifacts/resume.digest" ] && [ ! -L "$artifacts/resume.digest" ]
+    [ -f "$artifacts/claim.download.lock" ] && [ ! -L "$artifacts/claim.download.lock" ]
     source="$HOME/allowed-after-login/unreadable-source.txt"
     printf '%s' 'unreadable-source-fixture' >"$source"
     chmod 000 "$source"
@@ -1268,6 +1263,7 @@ EOS
     for suffix in .download .digest .download.lock; do
       [ ! -e "$viewer_destination$suffix" ] && [ ! -L "$viewer_destination$suffix" ]
     done
+    [ -z "$(find "$viewer_directory" -maxdepth 1 -name '.rustdesk-receive-*' -print -quit)" ]
     viewer_refused="$viewer_directory/viewer-refused.bin"
     viewer_sentinel="$viewer_directory/refusal-sentinel.bin"
     [ ! -e "$viewer_refused" ] && [ ! -L "$viewer_refused" ] \
@@ -1303,6 +1299,7 @@ EOS
     for suffix in .download .digest .download.lock; do
       [ ! -e "$viewer_refused$suffix" ] && [ ! -L "$viewer_refused$suffix" ]
     done
+    [ -z "$(find "$viewer_directory" -maxdepth 1 -name '.rustdesk-receive-*' -print -quit)" ]
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/cm-file-server.log
     wait "$SRV"
     SRV=

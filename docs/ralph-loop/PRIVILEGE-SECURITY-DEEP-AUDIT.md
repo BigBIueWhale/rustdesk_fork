@@ -140298,3 +140298,32 @@ private state and RAM retirement pass. Storage duration 30.961 seconds, peak scr
 SHA-256 0adbd336f2ad870c54a7b9bf86bc25622181d2c89b2decee1cabe46e1a2b2b3f.
 This audit-only receipt preserves the counted ledger. No owned run remains on
 either host; the selected admission checkpoint is verified and the full goal stays active.
+
+## 2026-11-05 — current authenticated CM receive integration
+
+The preceding turn corrected viewer admission, passed all 24 selected native tests
+and the CLI check, and retired both hosts' owned VMs. Select current authenticated
+CM file replay after the receive namespace/pre-I/O changes. This exercises actual
+server/helper/viewer transactions beyond the accepted library and handler results.
+
+The existing replay cannot truthfully observe Linux's current receive state: probe
+barriers and shell checks still select public final.download/final.digest/lock paths.
+The production namespace instead owns a random private container and a per-leaf
+SHA-256 directory containing payload.download, resume.digest and claim.download.lock.
+Repair only these test observations. The authenticated CM directory reply remains
+the ordering barrier, followed by local observation within the same owned guest
+container. The bounded Python observer requires the fixed UID/GID, working directory,
+HOME and fixture root, validates private directory/artifact metadata, and distinguishes
+live staging, a path within a live namespace, and complete per-file retirement.
+The Rust probe requires actual private regular artifacts after its CM barrier.
+
+Move the two collision cases while the legitimate busy owner pins its receiver-created
+namespace. Seed only the two fixture-owned private children, require the original
+errors and unchanged older bytes, then remove those fixture artifacts before releasing
+the legitimate owner. Busy-owner identity/content, cancellation/owner-loss cleanup,
+replacement preservation and digest-cleanup errors remain required. Viewer success
+and recovery additionally require no private namespace left in their destination.
+Production behavior, full replay modes, authorization checks, isolated topology and
+resource limits are unchanged. Shell syntax and Python parsing pass; native results
+remain pending. TUF is clean at ad4f14e3, with 49,205,640 KiB available memory,
+empty owned-run inventory and 33,322,770,432 bytes available in /dev/shm.

@@ -1818,8 +1818,15 @@ def installed_file_receive(value, record, probe_sha):
                 raise RuntimeError(f"installed receive retained unexpected entries: {sorted(names)}")
             time.sleep(0.05)
         directory = destination.lstat()
+        coordinator_metadata = coordinator.lstat()
+        print("LINUX_RECEIVER_FILE_DIRECTORY_OBSERVED=" + json.dumps(
+            {"uid": directory.st_uid, "gid": directory.st_gid, "mode": oct(stat.S_IMODE(directory.st_mode)),
+             "prelogin_exists": os.path.lexists(home / "blocked-before-login")}, sort_keys=True), flush=True)
         if (not stat.S_ISDIR(directory.st_mode)
-                or (directory.st_uid, directory.st_gid, stat.S_IMODE(directory.st_mode)) != (4001, 4001, 0o700)
+                or (directory.st_uid, directory.st_gid, stat.S_IMODE(directory.st_mode)) != (4001, 4001, 0o755)
+                or not stat.S_ISDIR(coordinator_metadata.st_mode)
+                or (coordinator_metadata.st_uid, coordinator_metadata.st_gid,
+                    stat.S_IMODE(coordinator_metadata.st_mode)) != (4001, 4001, 0o700)
                 or os.path.lexists(home / "blocked-before-login")):
             raise RuntimeError("installed receive directory principal or pre-login refusal differs")
         observations = []
@@ -1852,6 +1859,7 @@ def installed_file_receive(value, record, probe_sha):
             if ((uid, gid) != (4001, 4001) or status["Uid"].split() != ["4001"] * 4
                     or status["Gid"].split() != ["4001"] * 4 or int(status["PPid"]) != record["pid"]
                     or status["Groups"].split() not in ([], ["4001"])
+                    or status["Umask"].strip() != "0022"
                     or status["NoNewPrivs"].strip() != "1"
                     or any(int(status[key], 16) for key in ("CapInh", "CapPrm", "CapEff", "CapAmb"))
                     or (executable.st_dev, executable.st_ino) != (installed.st_dev, installed.st_ino)

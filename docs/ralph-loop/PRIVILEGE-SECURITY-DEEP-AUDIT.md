@@ -140574,3 +140574,26 @@ its 459-byte retirement receipt is
 722147801c58da0f8ab18b6a85eebec22c1fc9c69a22047568205b760bb8d35b.
 Nine evidence files match CTE and TUF. Complete durable guest output is retained;
 the terminal-tool failure display was truncated. No owned run remains.
+
+With only the fixture login shell changed, CqzxQJDJ6y at 7e982dbc receives the
+actual CM directory reply. Kernel peer/process proof identifies the selected-user
+CM. The unchanged UID4001 probe reports all expected write, premature/short,
+peer-error, cancel and staged-owner-loss outcomes. The observer then fails its
+combined directory-metadata/pre-login assertion before accepting file contents or
+running reconnect. It had copied mode0700 from smoke-server-stage.sh, which sets
+umask077. Production fs.rs::open_parent_dir_no_follow creates ordinary directories
+with mkdirat mode0777; the shipped systemd unit does not override UMask. The pinned
+systemd252 contract defaults system units to0022:
+https://www.freedesktop.org/software/systemd/man/252/systemd.exec.html#UMask=.
+Check the actual CM Umask0022, export actual destination metadata before asserting
+0755, and retain UID/GID, single-link mode0600 payloads, mode0700 private coordinator,
+pre-login absence, exact bytes and complete retirement. No product permission change.
+The failed observer did not print the offending field, so this source-based
+diagnosis still requires native confirmation.
+
+Terminal tool63546 exits1, all three endpoint deltas are zero and peak scratch is
+4,108,328,960 bytes. Exact QEMU absence, joined RAM retirement and identity-checked
+bounded private-state removal pass. installed-file-login-7e982dbc.json is9,021 bytes,
+SHA-256728a5afd5a7e8fc2f1cd1dcabeec41b534076aac322302e96add18a6273ea52b;
+its459-byte retirement receipt is33bcfe05e203b212c1ded421e9b153c9c2e81a5dd85a35ea615f55cd044bff12.
+All nine retained evidence files match both hosts. No owned run remains.

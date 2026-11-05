@@ -141815,3 +141815,64 @@ view-scaling-input-ledger-72ea5ee3.json is 4,783 bytes, SHA-256
 1d107122ab45f83b3fab79b81bf6d71d95c8870589e84c2d80df2d0b65797bae.
 All eighteen evidence files (249,307 bytes) match CTE/TUF. No owned run
 remains. This receipt leaves the counted ledger unchanged.
+
+## 2026-11-05 — Adaptive downscaling and first-entry click correctness
+
+Previous turn was progress: six native geometry/input cases passed. Continue
+the same R-S0/R-F1 workflow with width-bound 500x500 (76.25%) and height-bound
+700x340 (62.5%) Adaptive windows, then restore 1100x650 Original. This exercises
+both fit axes and inverse input mapping below unit scale. Product source and
+normal app 63f58b5c remain unchanged; reuse its authenticated manifest.
+
+34f76a36 adds three cases and requires nine cases/45 coordinates in both
+receipts. TUF zuiSes3lVq/session 50919 exits 1: the first six cases pass, and
+case seven has four fresh counters with width 470..500, but the first move
+from outside the smaller window leaves the remote pointer at (320,479).
+The harness refuses before clicking. PNG proves the smaller displayed image.
+Capsule view-downscale-first-entry-34f76a36.json, 51,584 bytes, SHA-256
+0934709f3a1860f4d9d7ef958e33ddfd6fa8640d23f62549892cf84c5ad3aabf.
+
+Flutter's Linux entry path can add a pointer without a hover event; motion
+has a separate handler. Primary source:
+https://api.flutter.dev/linux-embedder/fl__pointer__manager_8cc_source.html.
+The application enterOrLeave resets _pointerMovedAfterEnter, and its normal
+processEventToPeer down path sends the position before a first click. 1ed7c5b3
+therefore exercises first-entry clicking directly when the native pre-move
+position lies outside the window. Inside-window movements retain the hover
+check. Every actual press/release coordinate, state/order, deadline and final
+release check remains unchanged. The stage specifically requires case seven's
+first-entry click; no extra movement or controlled-side input manufactures it.
+
+TUF dzYXaatmA7/session 47301 exits 1 earlier, at Original case one/point three.
+The log shows one press at (80,400), then refusal; old diagnostics cannot tell
+whether its identity fields were rejected or the release was absent. This is
+an unresolved intermittent check failure, not a proved stuck-button diagnosis.
+view-downscale-early-button-1ed7c5b3.json, 37,677 bytes, SHA-256
+006952c2f2b2e0e8a9f592f4ed8b9fd0b354aa632e01d875bcd7ec06a92ef2a3.
+Its PNG base64 was split by six stderr control diagnostics; exact removal of
+those lines recovers a 1,947-byte PNG while preserving the complete raw stream.
+f245dac0 flushes the PNG before menu diagnostics and adds exact button/window/
+root/screen/synthetic identity plus elapsed/received/native-pointer failure
+state. No product behavior or acceptance threshold changes.
+
+TUF e8pB4eMv5R/session 15739 at f245dac0 exits zero in 121 outer seconds:
+all nine cases, 45 coordinates within one source pixel, 90 ordered button
+events, both pointers released, same TCP connection and bounded resources.
+The first-entry click reaches (80,80) in 61ms. Overall event completion is
+20–61ms; frame acceptance is 459–1086ms, maximum sampled age 373ms. New cases:
+500x500 width 470..500 in 591ms; 700x340 width 392..413 in 822ms; restored
+Original width 627..660 in 685ms. This measures native delivery and displayed
+counter freshness separately, not input-to-visible response.
+view-downscale-accepted-f245dac0.json, 32,295 bytes, SHA-256
+42c2fba940557f79889a58777c22a98e809fa4431ad5a218ca463a4e2f589858.
+
+Each run has four zero endpoint deltas and joined QEMU/process/private/RAM
+retirement. Failed duplicate bundles are manifest-checked before removal.
+Storage seconds/peak bytes: 125.919/3,021,930,496; 114.270/3,019,898,880;
+127.658/3,021,012,992. All 38 bounded evidence files (1,248,288 bytes) match
+CTE/TUF. No new app/cache generation or owned run remains.
+The later pass does not resolve the earlier click-check failure. Preserve it
+OPEN and use the expanded diagnostics for bounded focused reproduction before
+claiming reliable input acceptance. Custom scaling, non-unit DPI, exact
+subpixel geometry, saved-canvas restart, physical scanout, other platforms and
+full release acceptance also remain OPEN. Count the replaced ledger entry.

@@ -140196,3 +140196,14 @@ Update the ledger's three stale pre-I/O residual references and record this
 scoped correction. Full installed application/peer execution, current final
 artifacts, native non-Linux platforms and independent review remain OPEN.
 Fresh isolated ledger count follows; no unchanged product scenario needs repetition.
+
+Fresh CTE count p7RQpMLzXc at f11f3078 passes all seven controls and the complete
+byte round trip: 398,659 tokens / 1,819,318 bytes, SHA-256
+ca0c9b904b0e80a244560c461e0ecb91ad3164f0b3af1343a286560de728796f.
+Pinned method remains tiktoken-0.12.0/cl100k_base/encode_ordinary. Tool and QEMU
+exit zero; exact QEMU/private/RAM absence and all three zero endpoint deltas
+are verified. Storage duration is 31.313 seconds; peak scratch is 402,837,504 bytes.
+Capsule receive-preopen-ledger-f11f3078.json: 4,497 bytes, SHA-256
+4da92f37d29ab7dc2478e73c56d73597ee5baaa4cf920b19d4a8448771af5b0d.
+This audit-only receipt leaves the counted ledger unchanged. The selected Linux
+component correction is verified; the full release goal remains active.

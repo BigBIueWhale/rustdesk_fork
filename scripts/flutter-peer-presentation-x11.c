@@ -5830,6 +5830,7 @@ static void observe_scale_pixels_after_failure(Display *display, Window window) 
     g_clear_object(&picture);
     g_clear_error(&error);
     g_free(png);
+    fflush(stdout);
 }
 
 static void observe_scale_menu_after_failure(unsigned int pid) {
@@ -5873,7 +5874,8 @@ static int exercise_scaled_mouse(Display *source, Display *display,
     static const int points[][2] = {{80, 80}, {560, 80}, {80, 400}, {560, 400}, {320, 240}};
     Window root = DefaultRootWindow(source), child;
     int origin_x, origin_y, held = 0, result = -1;
-    unsigned int point = 0U;
+    unsigned int point = 0U, received = 0U, events = 0U;
+    uint64_t start = 0U, complete = 0U;
     double scale_x = (viewer->width - 12U) / 640.0;
     double scale_y = (viewer->height - 40U) / 480.0;
     double scale = adaptive ? (scale_x < scale_y ? scale_x : scale_y) : 1.0;
@@ -5891,8 +5893,10 @@ static int exercise_scaled_mouse(Display *source, Display *display,
         int x = -1, y = -1, local_x, local_y;
         int target_x = origin_x + (int)(left + points[point][0] * scale + 0.5);
         int target_y = origin_y + (int)(top + points[point][1] * scale + 0.5);
-        unsigned int mask, received = 0U, events = 0U;
-        uint64_t start = monotonic_millis(), complete = 0U;
+        unsigned int mask;
+        received = events = 0U;
+        start = monotonic_millis();
+        complete = 0U;
         if (mouse_snapshot(source, &x, &y, &mask) != 0 || mask != 0U ||
             mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U ||
             !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U) ||
@@ -5930,9 +5934,12 @@ static int exercise_scaled_mouse(Display *source, Display *display,
                 XNextEvent(source, &event);
                 if (event.type != ButtonPress && event.type != ButtonRelease) continue;
                 printf("FLUTTER_PEER_VIEW_SCALE_INPUT_EVENT sequence=%u point=%u event=%u "
-                       "type=%d state=%u expected=%d,%d actual=%d,%d\n", sequence, point + 1U,
+                       "type=%d state=%u expected=%d,%d actual=%d,%d button=%u "
+                       "window=%lu root=%lu expected_root=%lu same_screen=%d synthetic=%d\n", sequence, point + 1U,
                        received + 1U, event.type, event.xbutton.state,
-                       points[point][0], points[point][1], event.xbutton.x_root, event.xbutton.y_root);
+                       points[point][0], points[point][1], event.xbutton.x_root, event.xbutton.y_root,
+                       event.xbutton.button, event.xbutton.window, event.xbutton.root, root,
+                       event.xbutton.same_screen, event.xbutton.send_event);
                 if (received >= 2U || event.xbutton.window != root || event.xbutton.root != root ||
                     !event.xbutton.same_screen || event.xbutton.send_event || event.xbutton.button != 1U ||
                     event.type != (received == 0U ? ButtonPress : ButtonRelease) ||
@@ -5961,8 +5968,17 @@ static int exercise_scaled_mouse(Display *source, Display *display,
 out:
     if (held && !XTestFakeButtonEvent(display, 1U, False, CurrentTime)) result = -1;
     XSync(display, False);
-    if (result != 0) fprintf(stderr, "FLUTTER_PEER_X11_FAIL scaled mouse sequence=%u point=%u\n",
-                             sequence, point + 1U);
+    if (result != 0) {
+        int source_x = -1, source_y = -1, viewer_x = -1, viewer_y = -1;
+        unsigned int source_mask = UINT_MAX, viewer_mask = UINT_MAX;
+        int source_status = mouse_snapshot(source, &source_x, &source_y, &source_mask);
+        int viewer_status = mouse_snapshot(display, &viewer_x, &viewer_y, &viewer_mask);
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL scaled mouse sequence=%u point=%u received=%u "
+                "events=%u elapsed_ms=%llu source_status=%d source=%d,%d source_mask=%u "
+                "viewer_status=%d viewer=%d,%d viewer_mask=%u\n", sequence, point + 1U,
+                received, events, (unsigned long long)(monotonic_millis() - start),
+                source_status, source_x, source_y, source_mask, viewer_status, viewer_x, viewer_y, viewer_mask);
+    }
     return result;
 }
 

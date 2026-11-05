@@ -129,9 +129,9 @@ OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
 below retains the required authorized behavior.
 
-**Current Linux build verified (2026-11-05).** Build `e2Lp3KgDXh` at `bd65c0c4`
+**Current Linux build verified (2026-11-05).** Build `cMBwpLc2T9` at `63f58b5c`
 passes fresh bridges, the complete Rust/Flutter build, thirteen widget/two native
-command controls and all 73 payload hashes. `monitor-transaction-build-bd65c0c4.json`
+command controls and all 73 payload hashes. `view-style-build-63f58b5c.json`
 binds exact cleanup and four zero listener deltas. The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
 Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-release
@@ -5524,30 +5524,32 @@ test duplication; broader installed, platform and release acceptance is unchange
 | Last-peer history | LocalConfig stores its private candidate before publication, preserving replacement/clear failure and identical retry. Unchanged history avoids a write. Exact registry/session admission precedes history, storage failure preserves the admitted session and duplicate refusal cannot advance history. Unused LocalConfig geometry APIs/storage are absent; old-format files retain live preferences and omit retired geometry on the next save. Active Flutter/per-peer geometry paths remain. | Config component and actual session-add/native bridge with storage denial and healthy retry: `last-peer-159cb6bf.json`. No network peer; full remembered-peer desktop/mobile interaction remains OPEN. |
 | Ordinary option storage and framed transaction (`9fbb652a`, `4e7e2f4a`) | Config2 reads preserve failed sources. Linux single-key saves share the LocalConfig/display-default transaction: a stable owned per-record lease holds a fresh reread, selected mutation, conditional durable replacement and confirmed-cache publication through one retained directory. The previous process-local read/replace path and private whole-record store are removed. Read-only satisfied/missing-empty no-ops, fixed read errors, strict present-value decoding, immutable policy pins and receiver authority remain. Other platforms retain process-local ordering. | At preparation `f066a7b7`, two extended separate-process regressions fail for ordinary options: a completed other-key change is lost, and a held lease is ignored in 3 ms with file/cache changes; 185 controls pass before failure skips the last two groups. The same three test bodies at `4e7e2f4a` pass across all three stores in the 202-case Linux cohort: completed changes survive, contention returns TimedOut near one second with file/cache/lease preserved, the identical retry succeeds, and owner-process exit releases the lock while retaining its inode. Descriptors return 4 to 4. Existing corruption/permission, no-write idempotence, sparse/missing, eight-thread, credential and policy controls pass. `ordinary-option-transaction-f066a7b7.json` binds sources, artifacts, actual A/B outcomes and joined bounded-RAM cleanup. Earlier `ordinary-option-source-9fbb652a.json`, `option-persistence-f895b8a0.json` and `main-ipc-framing-4278b228.json` retain source-admission and framed receiver/permit evidence. These are nonroot Linux library scenarios. Mixed-version/noncooperating writers, peer/credential transactions, namespace/ACL/mount/network-filesystem races, physical crash durability, setting/audio effects, current full app/UI/FFI and installed endpoint/root/cross-UID/role/restart, other target OS, R-S0/R-F5 and release acceptance remain OPEN. |
 
-**Viewer scaling — selection corrected; native geometry OPEN.**
+**Viewer scaling — six native Original/Adaptive cases pass; broader acceptance OPEN.**
 Correction `8185afd7` binds preference saving to the session/client and canvas
 identity, then acquires the current display owner after persistence. Menu
 lifetime governs loading/feedback. Three actual-menu cases fail before it;
-all 48 component cases pass afterward, including retirement and failed-save
-retry, using Flutter 3.24.5 with session/persistence doubles. Evidence:
-`view-style-before-bb5327e3.json`,
-`view-style-accepted-1aa2a22b.json`.
+49 component cases now pass, including actual ImagePaint texture dimensions,
+retirement and failed-save retry. Flutter 3.24.5 uses session/persistence
+doubles: `view-texture-accepted-43e2fea4.json`; earlier A/B evidence remains.
 
-Full Linux app `63f58b5c` builds with Flutter 3.47.5 / engine `ddb1541d`,
-passing 13 widget and two native command controls. All 73 payload hashes are
-verified; only compiled Dart differs from baseline `bd65c0c4`.
-Capsule: `view-style-build-63f58b5c.json`.
-Unchanged native replay `ePaRNbcMWh` now confirms Adaptive in both reopened
-radios and saved state; baseline `8aTUVYBEvI` kept Original. However, sequence
-two still measures width 627..660 instead of about 813 through 2.5 seconds,
-with maximum sampled age 173 ms. Original passes. Capsule:
-`view-scaling-candidate-63f58b5c.json`; earlier baseline:
-`view-scaling-current-3c7b5900.json`. Selection/persistence is corrected;
-complete scaling acceptance is not. Next observe effective canvas style,
-viewport/scale and rendered geometry before another fix.
-Custom scaling, exact subpixel geometry, saved-canvas restart, other platforms
-and release acceptance remain OPEN. Runs join and retire private/RAM state;
-four listener deltas per run are zero. The audit retains full provenance.
+The later apparent geometry failure was counter occlusion: the collapsed
+toolbar covered its first band after Adaptive removed letterboxing. Width
+627..660 was the last decodable sample, not the final screen geometry.
+`view-scaling-pixels-734841c9.json` retains that screen. Fixture `088bc78a`
+insets the counter 48 source pixels; decoding, width, freshness and deadline
+checks remain unchanged. The same diagnostic app then passes all six cases.
+Temporary tracing is removed.
+
+Normal full app `63f58b5c` (Flutter 3.47.5 / engine `ddb1541d`), matching
+current product source, also passes all six 1100x650, 900x700 and 1200x740
+Original/Adaptive cases: four distinct fresh displayed counters per case in
+693–1162 ms, maximum sampled age 310 ms, correct width intervals, unchanged
+authenticated TCP connection and bounded resources.
+`view-scaling-accepted-43e2fea4.json` binds native evidence. Exact subpixel
+geometry, Custom scaling, input mapping at each scale, saved-canvas restart,
+physical scanout, other platforms and release acceptance remain OPEN.
+Each run joins processes, retires private/RAM state and records four zero
+listener deltas. The audit retains provenance and superseded observations.
 
 **Trackpad speed announcements (`70be9d9a`).** The slider now formats its actual
 speed percentage and accessible adjustment predictions. Baseline `c2e9f564`

@@ -141638,3 +141638,115 @@ changed. QEMU/private/RAM retirement passes; storage 30.549 seconds, peak
 37deb32333bc56c39d8c58c8771bb9ef297082b2f172728f43e6a4c04dd2f488.
 All 36 bounded files from this turn (881,692 bytes) match CTE/TUF. No owned
 run remains. This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-11-05 — viewer scaling verified through actual layout and pixels
+
+Continue the demonstrated R-S0 settings workflow through native acceptance,
+following the user's correctness direction. No expanded issue search or new
+rendering correction is needed. The earlier selection correction 8185afd7
+stands; the later claim that Adaptive remained at Original geometry is
+superseded by the actual failed-screen observation below.
+
+Diagnostic 451431c2 temporarily records bounded canvas/read/texture state.
+TUF CR5ydvELme/session 14415 builds all 73 application payloads, thirteen
+widget and two native command controls, exit zero. Capsule
+view-geometry-build-451431c2.json, SHA-256
+43741d0b678461802855702eb5706a7eb9106e1dfb68bb66fe917fb6b41b2ca0,
+binds Flutter 3.47.5 / engine ddb1541d and manifest
+98a53d03dc9cbd3d7e8b6d2a33d498407aba404b1250710d226d8ab90be484c2.
+Outer time is 1,034 seconds; storage 1,040.684 seconds, peak RAM scratch
+11,897,556,992 bytes. Before admission, the obsolete bd65c0c4 comparator's
+manifest and all 73 payloads are verified and its exact generation retired:
+70,349,315 bytes; view-geometry-retire-bd65c0c4.json preserves the record.
+The normal 63f58b5c, designated 7e6f6459 and pending 0ccb2a7e remain intact.
+
+Native 4Dr9AON1me/session 97478 exits 1 on the unchanged counter fixture.
+Eighteen records from one canvas show Adaptive read/current ownership,
+scale 1.2708333333333333 and the same texture-building scale for 640x480.
+Release Size.toString omits dimensions, so those string fields do not
+measure layout. view-geometry-native-451431c2.json retains the trace.
+
+Add an actual ImagePaint/menu layout case, retaining real CanvasModel,
+ImageModel and TextureModel with controlled session/persistence. First run
+R80giA4vqp/session 90065 at 8a1efbbb exits 1: the fixture assumes unit DPI,
+but CanvasModel reads dart:ui's native window at DPR 3 rather than the
+test-binding override. Existing 48 cases pass. Correct the expectation to
+the native view and test Original/Adaptive/Original texture dimensions;
+native resizing remains the X11 scenario's responsibility. This is fixture
+repair, not a product geometry failure. view-texture-fixture-8a1efbbb.json
+retains the first result.
+
+Native ZQm7OoyX5k/session 88832 at 734841c9 reuses diagnostic app 451431c2
+and captures the actual failed screen before reopening the menu. Exit 1:
+the new screen decodes as -1 while the printed 627..660 width belongs to an
+earlier decodable sample. The 200x120 PNG shows widened content and the
+collapsed toolbar handle covering the first counter band. Read-only pixel
+inspection finds the top band at rows 7–17, with the handle across rows
+7–10; the other bands remain 11–12 rows high. The strict complete-band
+decoder rejects the shortened/obscured first band. The retained PNG is
+2,028 bytes, SHA-256
+efa782fb6ce735fc869ee64df64ce224fe358bd6f376d2315c44dc663205f066.
+Capsule view-scaling-pixels-734841c9.json is 42,552 bytes, SHA-256
+6ad2bd135f298d8c2b8eb1d7312202f8bbf6c4cf2683ae20d8fc5d3a50752ed8.
+This corrects the preceding audit's interpretation of persistent wrong width.
+
+Fixture 088bc78a adds --inset-counter only for view-scaling: shift the same
+192-pixel-high counter from source y=0 to y=48, leaving midpoint palette
+probes clear. Source-side root-pixel checks follow that offset. The decoder,
+four-band identity proof, width interval/midpoint tolerances, four advancing
+frames, 1-second freshness, 2.5-second deadline, same connection and resource
+bounds are unchanged. Full app 451431c2 now passes all six cases in TUF
+f4i2aSv4As/session 1539, exit zero, 458–825 ms and maximum sampled age
+375 ms. view-scaling-inset-088bc78a.json binds this same-artifact comparison.
+Remove all 32 temporary product diagnostic lines at fe28d4c2. Product paths
+src, libs, flutter/lib, flutter/linux and flutter/third_party again match
+retained normal app 63f58b5c byte-for-byte in Git.
+
+Normal app 63f58b5c, manifest
+117ece1e1d21fe853d1bcfb1cfcc7d490db4cbcd8f71cc53a9c049b093971e65,
+passes TUF MPnZwbAVtQ/session 14411 at harness 43e2fea4, exit zero:
+
+| Case | Window/style | Width interval | Four fresh frames | Maximum sampled age |
+| --- | --- | --- | --- | --- |
+| 1 | 1100x650 Original | 627..660 | 818 ms | 289 ms |
+| 2 | 1100x650 Adaptive | 781..847 | 1162 ms | 282 ms |
+| 3 | 900x700 Adaptive | 846..900 | 733 ms | 290 ms |
+| 4 | 900x700 Original | 621..666 | 727 ms | 294 ms |
+| 5 | 1200x740 Adaptive | 900..972 | 828 ms | 310 ms |
+| 6 | 1200x740 Original | 624..660 | 693 ms | 299 ms |
+
+All remain on one authenticated TCP connection with bounded resources.
+view-scaling-accepted-43e2fea4.json is 6,397 bytes, SHA-256
+3d6cf19c2e9b393440784f50f4b52a4cf806608c02dcda7ca71ca034b15d1fd1.
+Outer time 112 seconds, storage 118.602 seconds, peak scratch 3,025,756,160.
+
+Component run WdwmrbVRyv/session 75204 at fe28d4c2 passes all 49 cases
+and three parser controls, but exits 1 because the guest receipt still
+expects 48. view-texture-checks-fe28d4c2.json retains this limitation.
+43e2fea4 updates the focused count and the containing auto-disconnect count
+from 347 to 348; the latter suite is not claimed as executed here. TUF
+fAHbZ8QOF3/session 71437 now passes all 49 unchanged cases, three controls,
+guest and outer receipts, exit zero. view-texture-accepted-43e2fea4.json is
+58,878 bytes, SHA-256
+54cf519504036da0fe4de463e0dfc38879bb9aba0677b8e27d088c203351e4eb.
+Outer time 242 seconds, storage 246.030 seconds, peak scratch 6,384,861,184.
+
+Flutter's Texture contract says the parent determines the rectangle and
+the backend image scales to it:
+https://api.flutter.dev/flutter/widgets/Texture-class.html.
+The component test measures that actual RenderBox after menu selection;
+the separate native scenario measures visible pixels. Neither layer alone
+establishes Custom zoom, exact subpixel geometry, input mapping at each
+scale, saved-canvas restart, physical scanout, other platforms, full R-F5,
+installed/release artifacts or complete R-S0. Those remain OPEN.
+
+Every run above records four zero host listener deltas and exact process,
+private-state and bounded RAM retirement. Failed-run duplicate bundles are
+hash-checked against their canonical artifact before identity-checked removal.
+Source and refs stay frozen on both hosts during each live run. After normal
+app acceptance, verify and retire the completed diagnostic generation
+451431c2 under identity 66306:89031431, freeing 70,365,699 bytes; preserve
+63f58b5c, 7e6f6459 and 0ccb2a7e unchanged. Capsule
+view-scaling-retire-trace-451431c2.json retains all 73 payload identities.
+All 92 bounded evidence files (2,130,607 bytes) match CTE/TUF. No owned run
+remains. Update the existing ledger entry, then count it in isolation.

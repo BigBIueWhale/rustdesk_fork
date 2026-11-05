@@ -379,7 +379,7 @@ def supervise(image, argv):
     require([link['ifname'] for link in json.loads(initial_links)] == ['lo'], 'guest NIC present')
     require(not os.path.lexists(ENDPOINT), 'supervisor endpoint occupied')
     subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=ENV, check=True, timeout=3)
-    owner = Impairment(image, '--network-congestion' in argv)
+    owner = Impairment(image, '--network-congestion' in argv or '--input-congestion' in argv)
     child = None
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
         listener.bind(ENDPOINT)

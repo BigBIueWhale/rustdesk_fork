@@ -139717,3 +139717,41 @@ Exact processes/private/RAM retire, peak scratch is 402,825,216 bytes, and all
 three endpoint deltas are zero. `input-recovery-ledger-92d9ef04.json` is 7,464
 bytes, SHA-256 fd641323955681af1fa37acb195b72e5828ccd6754483a0469f3f7dff34875f1.
 This audit-only receipt leaves the counted ledger unchanged. No owned run remains.
+
+## 2026-11-05 — input recovery during partial loss and congestion
+
+Previous turn is progress: the complete-outage input result and independent
+measurement/cleanup reconciliation are accepted. Continue R-F5's real input
+coverage under the already calibrated partial-loss and bandwidth/jitter profiles
+before an impaired multi-hour session or another settings component check.
+Retain app `2ae08e80`; this is missing evidence, not a demonstrated product defect.
+
+The [pinned iproute2 netem documentation](https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-netem.8)
+distinguishes independent random loss from Gilbert-Elliott state transitions and
+notes timer granularity. The [TBF contract](https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-tbf.8)
+describes token-based throttling and explains why a child qdisc owns the effective
+queue limit. Reuse the existing native calibration, packet-size controls,
+parameter readback and bounded child queue; never flush queued packets to recover.
+XTEST synthesis still requires actual viewer pixels as its response evidence.
+
+`--input-loss` uses random 3%, random 8% and the existing burst profile;
+`--input-congestion` uses 80 +/- 30 ms jitter, aggregate 32 kbit/s and both.
+Each profile lasts 20 seconds (at most 500 ms observer delay before restoration).
+Send one unique input at a time, with the existing 200-ms no-input control between
+requests. Restore healthy conditions on elapsed time even while a response is
+outstanding. The last request is submitted before restoration and must be visible
+within 2,500 ms afterward; record its age at restoration, total latency, publication
+time, actual pixel acquisition time and displayed age. During impairment, latency
+may exceed the healthy bound; the fixed interval plus recovery deadline bounds
+that wait. A static latest response's publication age is recorded, not mistaken
+for continuing animation. Every recovered normal request retains the 1,000-ms
+response/age checks. Four 120-request windows retain the original fixed baseline
+and 250-ms p95/p99 drift allowance. No baseline is redefined.
+
+Require actual loss/packet counters, all ordered identities, the same connection
+and window, released keys and bounded viewer resources. Native compilation and
+the two complete-peer jobs are pending. These are bounded integration jobs,
+expected roughly five to six minutes each including boot/build of the three small
+drivers; the application is not rebuilt. The controller ceiling is 300 seconds.
+Kernel loss/jitter seeds remain uncontrolled, so reproducible sequence/tail
+coverage, other workloads/platforms and impaired long sessions remain OPEN.

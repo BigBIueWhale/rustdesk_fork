@@ -30,7 +30,7 @@ case "$PEER_SCENARIO" in
   recent-search|native-components) EXPECTED_RESTARTS=0 ;;
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
-  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-recovery|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
+  session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|input-latency|input-recovery|input-loss|input-congestion|input-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource|account-stores) EXPECTED_RESTARTS=3 ;;
   view-only|view-only-save-failure) EXPECTED_RESTARTS=0 ;;
   viewer-suspend|network-impairment|network-loss|network-congestion|clipboard-text|clipboard-images|keyboard-input|keyboard-modes|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
@@ -46,7 +46,7 @@ readonly DRIVERS
 LONG_SOAK=0
 INPUT_RESPONSE=0
 case "$PEER_SCENARIO" in viewer-soak|input-soak) LONG_SOAK=1 ;; esac
-case "$PEER_SCENARIO" in input-latency|input-recovery|input-soak) INPUT_RESPONSE=1 ;; esac
+case "$PEER_SCENARIO" in input-latency|input-recovery|input-loss|input-congestion|input-soak) INPUT_RESPONSE=1 ;; esac
 readonly LONG_SOAK INPUT_RESPONSE
 ACCOUNT_STORE_PID= ACCOUNT_STORE_START=
 
@@ -295,7 +295,9 @@ assert_loopback_only_interface() {
   if [ "$PEER_SCENARIO:${1:-}" = network-impairment:viewer ] \
     || [ "$PEER_SCENARIO:${1:-}" = network-loss:viewer ] \
     || [ "$PEER_SCENARIO:${1:-}" = network-congestion:viewer ] \
-    || [ "$PEER_SCENARIO:${1:-}" = input-recovery:viewer ]; then
+    || [ "$PEER_SCENARIO:${1:-}" = input-recovery:viewer ] \
+    || [ "$PEER_SCENARIO:${1:-}" = input-loss:viewer ] \
+    || [ "$PEER_SCENARIO:${1:-}" = input-congestion:viewer ]; then
     expected=$'lo\nrd-netem'
   fi
   interfaces="$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" \
@@ -1793,6 +1795,8 @@ PY
     [ "$PEER_SCENARIO" != viewer-soak ] || controller_args+=(--viewer-soak)
     [ "$PEER_SCENARIO" != input-latency ] || controller_args+=(--input-latency)
     [ "$PEER_SCENARIO" != input-recovery ] || controller_args+=(--input-recovery)
+    [ "$PEER_SCENARIO" != input-loss ] || controller_args+=(--input-loss)
+    [ "$PEER_SCENARIO" != input-congestion ] || controller_args+=(--input-congestion)
     [ "$PEER_SCENARIO" != input-soak ] || controller_args+=(--input-soak)
     [ "$PEER_SCENARIO" != view-scaling ] || controller_args+=(--view-scaling)
     [ "$PEER_SCENARIO" != session-close ] || controller_args+=(--session-close)
@@ -1831,6 +1835,7 @@ PY
         || fail 'source and observer monotonic clock namespaces differ'
     fi
     case "$PEER_SCENARIO" in input-latency|input-recovery) controller_timeout=240s ;; esac
+    case "$PEER_SCENARIO" in input-loss|input-congestion) controller_timeout=300s ;; esac
     if [ "$LONG_SOAK" -eq 1 ]; then
       controller_timeout=14700s
       [ "$PEER_SCENARIO" != input-soak ] || controller_timeout=14900s
@@ -2030,6 +2035,15 @@ PY
       elif [ "$PEER_SCENARIO" = credential-menu ] || [ "$PEER_SCENARIO" = credential-menu-accessible ]; then
         viewer_result='viewer=joined xvfb=joined credential_menu=passed generations=3 password_entries=1 saved_credential=empty next_prompt=required'
       fi
+    elif [ "$PEER_SCENARIO" = input-loss ] || [ "$PEER_SCENARIO" = input-congestion ]; then
+      profiles=random3,random8,burst
+      [ "$PEER_SCENARIO" != input-congestion ] || profiles=jitter,bandwidth,bandwidth-jitter
+      [ "$(grep -c '^FLUTTER_PEER_INPUT_LATENCY_SAMPLE ' <<<"$controller_output")" -eq 480 ] \
+        && [ "$(grep -c '^FLUTTER_PEER_INPUT_RECOVERY_WINDOW ' <<<"$controller_output")" -eq 4 ] \
+        && [ "$(grep -c '^FLUTTER_PEER_INPUT_DEGRADED_OK ' <<<"$controller_output")" -eq 3 ] \
+        && grep -Fxq "FLUTTER_PEER_INPUT_DEGRADATION_OK profiles=$profiles cycles=3 hold_ms=20000 samples=480 recovery_limit_ms=2500 deadline_ms=1000 p95_drift_ms=250 p99_drift_ms=250 stable_connection=true resources=bounded input=viewer-xtest pixels=viewer-root" \
+          <<<"$controller_output" || fail 'native degraded input recovery observation is incomplete'
+      viewer_result='viewer=joined xvfb=joined input_latency_samples=480 recovery_cycles=3 stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = input-recovery ]; then
       [ "$(grep -c '^FLUTTER_PEER_INPUT_LATENCY_SAMPLE ' <<<"$controller_output")" -eq 480 ] \
         && [ "$(grep -c '^FLUTTER_PEER_INPUT_RECOVERY_WINDOW ' <<<"$controller_output")" -eq 4 ] \

@@ -737,6 +737,8 @@ case "$#:${1:-}" in
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
                 --network-congestion) FLUTTER_NETWORK_IMPAIRMENT=3 ;;
                 --input-recovery) FLUTTER_NETWORK_IMPAIRMENT=4 ;;
+                --input-loss) FLUTTER_NETWORK_IMPAIRMENT=5 ;;
+                --input-congestion) FLUTTER_NETWORK_IMPAIRMENT=6 ;;
                 --clipboard-text) FLUTTER_CLIPBOARD_TEXT=1 ;;
                 --clipboard-images) FLUTTER_CLIPBOARD_TEXT=2 ;;
                 --keyboard-input) FLUTTER_KEYBOARD_INPUT=1 ;;
@@ -827,7 +829,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--input-latency|--input-recovery|--input-soak|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'PE artifact canonicalization checks: %s --pe-canonicalizer-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
@@ -5466,6 +5468,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
             2) guest_invocation+=' --network-loss' ;;
             3) guest_invocation+=' --network-congestion' ;;
             4) guest_invocation+=' --input-recovery' ;;
+            5) guest_invocation+=' --input-loss' ;;
+            6) guest_invocation+=' --input-congestion' ;;
         esac
     fi
 elif [ "$MODE" = dart-audit ]; then
@@ -9123,6 +9127,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         2) peer_scenario=network-loss ;;
         3) peer_scenario=network-congestion ;;
         4) peer_scenario=input-recovery ;;
+        5) peer_scenario=input-loss ;;
+        6) peer_scenario=input-congestion ;;
     esac
     require_exact_fixed_receipt \
         "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-$peer_scenario network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 build=absent" \

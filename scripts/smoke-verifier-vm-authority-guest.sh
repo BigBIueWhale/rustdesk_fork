@@ -325,6 +325,8 @@ case "$#:${8:-}" in
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
                 --network-congestion) FLUTTER_NETWORK_IMPAIRMENT=3 ;;
                 --input-recovery) FLUTTER_NETWORK_IMPAIRMENT=4 ;;
+                --input-loss) FLUTTER_NETWORK_IMPAIRMENT=5 ;;
+                --input-congestion) FLUTTER_NETWORK_IMPAIRMENT=6 ;;
                 --clipboard-text) FLUTTER_CLIPBOARD_TEXT=1 ;;
                 --clipboard-images) FLUTTER_CLIPBOARD_TEXT=2 ;;
                 --keyboard-input) FLUTTER_KEYBOARD_INPUT=1 ;;
@@ -14693,6 +14695,8 @@ run_flutter_peer_presentation() {
             2) peer_args+=(--network-loss) ;;
             3) peer_args+=(--network-congestion) ;;
             4) peer_args+=(--input-recovery) ;;
+            5) peer_args+=(--input-loss) ;;
+            6) peer_args+=(--input-congestion) ;;
         esac
         impairment_supervisor=(/usr/bin/python3 -I -S "$source_root/scripts/flutter-peer-netem.py"
             "$DEV_CHECK_IMAGE_CONFIG_ID" --)
@@ -14860,6 +14864,8 @@ run_flutter_peer_presentation() {
         [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 2 ] || peer_scenario=network-loss
         [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 3 ] || peer_scenario=network-congestion
         [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 4 ] || peer_scenario=input-recovery
+        [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 5 ] || peer_scenario=input-loss
+        [ "$FLUTTER_NETWORK_IMPAIRMENT" -ne 6 ] || peer_scenario=input-congestion
         peer_cycles=1
         [ "$(grep -Fxc 'FLUTTER_PEER_NETEM_JOINED status=0 namespace=retired socket=removed' "$output")" -eq 1 ] \
             || fail 'packet impairment supervisor did not join cleanly'

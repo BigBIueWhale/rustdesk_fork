@@ -141223,3 +141223,13 @@ application on synthetic equal-size X11 monitors. Physical/mixed-DPI displays,
 changing topology, other platforms and installed/release acceptance remain OPEN.
 Replace the earlier individual-only ledger row in place and freshly count it;
 the goal remains active.
+
+Fresh CTE count Bql2aCNjhM at 21846bd7 passes: 399,939 tokens /
+1,825,712 bytes, SHA-256
+498c1715679727de0a6f7a3a448acc5afdc984e19c5785f003b0c293f5f43d6c.
+Session 5926 exits zero with seven controls, whole-input round trip, three zero
+endpoint deltas and exact QEMU/private/RAM retirement. Storage lasts 30.562 seconds,
+peak 402,915,328 bytes. Capsule monitor-all-ledger-21846bd7.json is 4,490 bytes,
+SHA-256 ee0bd52d0756d5e46b73cca906eba04bb65157fb35240e3bf4446e451b0e482b.
+All 27 bounded evidence files (342,443 bytes) match CTE/TUF. This audit-only
+receipt leaves the counted ledger unchanged; no owned run remains.

@@ -271,7 +271,7 @@ void main() {
         if (transition == 'retired during save') {
           expect(_canvasState(session), before);
         } else {
-          expect(session.canvasModel.viewStyle, kRemoteViewStyleAdaptive);
+          expect(session.canvasModel.viewStyle.style, kRemoteViewStyleAdaptive);
           expect(session.canvasModel.scale, greaterThan(1));
           expect(session.inputModel.refreshes, 1);
         }

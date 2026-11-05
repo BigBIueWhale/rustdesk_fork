@@ -5867,7 +5867,98 @@ static void observe_scale_menu_after_failure(unsigned int pid) {
     fflush(stdout);
 }
 
-static int exercise_view_scaling(Display *display, ViewerWindow *viewer,
+static int exercise_scaled_mouse(Display *source, Display *display,
+                                 const ViewerWindow *viewer, unsigned int sequence,
+                                 int adaptive) {
+    static const int points[][2] = {{80, 80}, {560, 80}, {80, 400}, {560, 400}, {320, 240}};
+    Window root = DefaultRootWindow(source), child;
+    int origin_x, origin_y, held = 0, result = -1;
+    unsigned int point = 0U;
+    double scale_x = (viewer->width - 12U) / 640.0;
+    double scale_y = (viewer->height - 40U) / 480.0;
+    double scale = adaptive ? (scale_x < scale_y ? scale_x : scale_y) : 1.0;
+    /* Normal Linux window at unit DPI: 5px resize padding, 1px border,
+     * 28px tab bar. Derive targets from the fixture geometry, never from
+     * the received pointer or application-reported canvas coordinates. */
+    double left = 6.0 + (viewer->width - 12.0 - 640.0 * scale) / 2.0;
+    double top = 34.0 + (viewer->height - 40.0 - 480.0 * scale) / 2.0;
+    if (!XTranslateCoordinates(display, viewer->window, DefaultRootWindow(display),
+                               0, 0, &origin_x, &origin_y, &child)) return -1;
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    for (; point < sizeof(points) / sizeof(points[0]); ++point) {
+        int x = -1, y = -1, local_x, local_y;
+        int target_x = origin_x + (int)(left + points[point][0] * scale + 0.5);
+        int target_y = origin_y + (int)(top + points[point][1] * scale + 0.5);
+        unsigned int mask, received = 0U, events = 0U;
+        uint64_t start = monotonic_millis(), complete = 0U;
+        if (mouse_snapshot(source, &x, &y, &mask) != 0 || mask != 0U ||
+            mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U ||
+            !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U) ||
+            !XTestFakeMotionEvent(display, DefaultScreen(display), target_x, target_y, CurrentTime))
+            goto out;
+        XSync(display, False);
+        do {
+            if (mouse_snapshot(source, &x, &y, &mask) != 0 || mask != 0U) goto out;
+            if (abs(x - points[point][0]) <= 1 && abs(y - points[point][1]) <= 1) break;
+            if (sleep_millis(10U) != 0) goto out;
+        } while (monotonic_millis() - start < RECOVERY_LIMIT_MS);
+        if (abs(x - points[point][0]) > 1 || abs(y - points[point][1]) > 1) {
+            fprintf(stderr, "FLUTTER_PEER_VIEW_SCALE_INPUT_POSITION sequence=%u point=%u "
+                    "expected=%d,%d actual=%d,%d viewer=%d,%d\n", sequence, point + 1U,
+                    points[point][0], points[point][1], x, y, target_x, target_y);
+            goto out;
+        }
+        if (!XTestFakeButtonEvent(display, 1U, True, CurrentTime)) goto out;
+        held = 1;
+        if (!XTestFakeButtonEvent(display, 1U, False, CurrentTime)) goto out;
+        held = 0;
+        XSync(display, False);
+        while (monotonic_millis() - start < RECOVERY_LIMIT_MS) {
+            while (XPending(source) != 0) {
+                XEvent event;
+                if (++events > 128U) goto out;
+                XNextEvent(source, &event);
+                if (event.type != ButtonPress && event.type != ButtonRelease) continue;
+                printf("FLUTTER_PEER_VIEW_SCALE_INPUT_EVENT sequence=%u point=%u event=%u "
+                       "type=%d state=%u expected=%d,%d actual=%d,%d\n", sequence, point + 1U,
+                       received + 1U, event.type, event.xbutton.state,
+                       points[point][0], points[point][1], event.xbutton.x_root, event.xbutton.y_root);
+                if (received >= 2U || event.xbutton.window != root || event.xbutton.root != root ||
+                    !event.xbutton.same_screen || event.xbutton.send_event || event.xbutton.button != 1U ||
+                    event.type != (received == 0U ? ButtonPress : ButtonRelease) ||
+                    event.xbutton.state != (received == 0U ? 0U : Button1Mask) ||
+                    abs(event.xbutton.x_root - points[point][0]) > 1 ||
+                    abs(event.xbutton.y_root - points[point][1]) > 1) goto out;
+                if (++received == 2U) complete = monotonic_millis();
+            }
+            if (complete != 0U && monotonic_millis() - complete >= 100U) break;
+            if (sleep_millis(10U) != 0) goto out;
+        }
+        if (received != 2U || complete == 0U || monotonic_millis() - start >= RECOVERY_LIMIT_MS ||
+            mouse_snapshot(source, &x, &y, &mask) != 0 || mask != 0U ||
+            abs(x - points[point][0]) > 1 || abs(y - points[point][1]) > 1 ||
+            mouse_snapshot(display, &local_x, &local_y, &mask) != 0 || mask != 0U ||
+            local_x != target_x || local_y != target_y ||
+            !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto out;
+        printf("FLUTTER_PEER_VIEW_SCALE_INPUT_POINT_OK sequence=%u point=%u expected=%d,%d "
+               "actual=%d,%d viewer=%d,%d elapsed_ms=%llu released=both\n", sequence, point + 1U,
+               points[point][0], points[point][1], x, y, target_x, target_y,
+               (unsigned long long)(complete - start));
+    }
+    printf("FLUTTER_PEER_VIEW_SCALE_INPUT_CASE_OK sequence=%u points=5 events=10 tolerance_px=1 "
+           "released=both\n", sequence);
+    result = 0;
+out:
+    if (held && !XTestFakeButtonEvent(display, 1U, False, CurrentTime)) result = -1;
+    XSync(display, False);
+    if (result != 0) fprintf(stderr, "FLUTTER_PEER_X11_FAIL scaled mouse sequence=%u point=%u\n",
+                             sequence, point + 1U);
+    return result;
+}
+
+static int exercise_view_scaling(Display *source, Display *display, ViewerWindow *viewer,
                                   SourceHistory *history, const ConnectionIdentity *connection,
                                   const ProcessResources *baseline) {
     /* At unit DPI the normal Linux viewport reserves 40 vertical pixels for
@@ -5879,6 +5970,16 @@ static int exercise_view_scaling(Display *display, ViewerWindow *viewer,
     AtspiAccessible *show = NULL, *hide = NULL;
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     int result = -1;
+    unsigned char mapping[32];
+    int source_major = 2, source_minor = 0, viewer_major = 2, viewer_minor = 0;
+    if (DisplayWidth(source, DefaultScreen(source)) != 640 ||
+        DisplayHeight(source, DefaultScreen(source)) != 480 ||
+        XIQueryVersion(source, &source_major, &source_minor) != Success ||
+        XIQueryVersion(display, &viewer_major, &viewer_minor) != Success ||
+        XGetPointerMapping(source, mapping, sizeof(mapping)) < 1 || mapping[0] != 1U ||
+        XGetPointerMapping(display, mapping, sizeof(mapping)) < 1 || mapping[0] != 1U) goto out;
+    XSelectInput(source, DefaultRootWindow(source), ButtonPressMask | ButtonReleaseMask);
+    XSync(source, False);
     if (query_named_accessible((unsigned int)viewer->pid, "Show toolbar", deadline, &show, 0) != 0 ||
         query_named_accessible((unsigned int)viewer->pid, "Hide toolbar", deadline, &hide, 0) != 0 ||
         (show == NULL) == (hide == NULL)) goto out;
@@ -5928,7 +6029,10 @@ static int exercise_view_scaling(Display *display, ViewerWindow *viewer,
             }
             if (distinct < 4U && sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto out;
         }
-        if (distinct != 4U || read_connection_identity(&after) != 0 ||
+        uint64_t frame_elapsed = monotonic_millis() - start;
+        if (distinct != 4U ||
+            exercise_scaled_mouse(source, display, viewer, sequence + 1U, cases[sequence].adaptive) != 0 ||
+            read_connection_identity(&after) != 0 ||
             !same_connection(connection, &after) ||
             read_process_resources(viewer->pid, &resources) != 0 ||
             !resources_are_bounded(baseline, &resources)) {
@@ -5943,7 +6047,7 @@ static int exercise_view_scaling(Display *display, ViewerWindow *viewer,
                "width_interval=%u..%u distinct=4 elapsed_ms=%llu maximum_age_ms=%llu\n",
                sequence + 1U, cases[sequence].adaptive ? "adaptive" : "original",
                viewer->width, viewer->height, minimum, maximum,
-               (unsigned long long)(monotonic_millis() - start), (unsigned long long)maximum_age);
+               (unsigned long long)frame_elapsed, (unsigned long long)maximum_age);
         print_resources("view-scaling", sequence + 1U, &resources);
         fflush(stdout);
     }
@@ -8220,7 +8324,7 @@ int main(int argc, char **argv) {
             display, &viewer, &history, &current_connection, &baseline_resources, 0U) :
             session_close ? exercise_session_close(
             display, &viewer, argv[4], &current_connection) : view_scaling ? exercise_view_scaling(
-            display, &viewer, &history, &current_connection, &baseline_resources) :
+            source, display, &viewer, &history, &current_connection, &baseline_resources) :
             screenshot_unavailable ? exercise_screenshot_save_unavailable(
             &viewer, &current_connection, &baseline_resources) : mouse_retirement ? exercise_mouse_retirement(
             source, display, &viewer, argv[4], &current_connection) : mouse_input ? exercise_mouse_input(
@@ -8267,7 +8371,8 @@ int main(int argc, char **argv) {
                  "encoder_bitrate=confirmed pixels=fresh stable_connection=true resources=bounded");
         } else if (view_scaling) {
             puts("FLUTTER_PEER_VIEW_SCALING_OK cases=6 styles=original,adaptive "
-                 "geometry=pixel-witness pixels=fresh stable_connection=true resources=bounded");
+                 "geometry=pixel-witness input_points=30 tolerance_px=1 pixels=fresh "
+                 "stable_connection=true resources=bounded");
         } else if (screenshot_unavailable) {
             puts("FLUTTER_PEER_SCREENSHOT_SAVE_UNAVAILABLE_OK screenshot_received=true "
                  "save=unavailable error=visible stable_connection=true");

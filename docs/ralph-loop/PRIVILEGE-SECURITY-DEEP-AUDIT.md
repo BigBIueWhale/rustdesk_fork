@@ -139553,3 +139553,11 @@ This closes packet-size calibration and the named Linux recovery scenarios, not
 R-F5 or release acceptance. Next decisive work is calibrated bandwidth/jitter and
 input-to-visible recovery; long-session, other-role/platform/MTU/offload and
 reproducible loss-sequence/tail coverage remain OPEN. Count the final ledger once.
+
+Fresh isolated count `8sJ03cYEDK` at `a51d45c1` passes seven controls and the whole
+input round trip in 28 workload seconds: 396,316 tokens / 1,809,546 bytes,
+SHA-256 b7af605b805d34a46507ef7aea4b313f428d9f2f54c7f7cc3e648af3280f7fe8.
+Exact processes/private/RAM retire; peak scratch is 402,821,120 bytes and all three
+endpoint deltas are zero. `packet-size-ledger-a51d45c1.json` is 7,929 bytes,
+SHA-256 8bdc1f62016930c97f0d0df954316062f5c0279f78757328b670dc5fc963f34d.
+This audit-only receipt leaves the counted ledger unchanged. No owned run remains.

@@ -1380,7 +1380,8 @@ class FfiModel with ChangeNotifier {
         if (ffi == null ||
             reconnectDisplays.isEmpty ||
             !await selectRemoteDisplays(
-                ffi, expectedSessionId, reconnectDisplays)) {
+                ffi, expectedSessionId, reconnectDisplays,
+                expectedTopologyRevision: topologyRevision)) {
           ffi?._reportSessionStreamFailure(expectedSessionId, peerId,
               'The previous display selection could not be restored');
           return;
@@ -1470,10 +1471,11 @@ class FfiModel with ChangeNotifier {
     // move to the first display and set fullscreen
     final ffi = parent.target;
     if (ffi == null ||
-        !await selectRemoteDisplays(ffi, expectedSessionId, [0])) {
+        !await selectRemoteDisplays(ffi, expectedSessionId, [0],
+            expectedTopologyRevision: expectedTopologyRevision)) {
       return;
     }
-    if (!await switchToNewDisplay(0, expectedSessionId, peerId,
+    if (!await _applyDisplaySwitch(0, expectedSessionId, peerId,
         expectedTopologyRevision: expectedTopologyRevision)) return;
     await tryMoveToScreenAndSetFullscreen(screenRectList[0]);
     if (!isCurrentDisplayTopology(
@@ -1563,7 +1565,8 @@ class FfiModel with ChangeNotifier {
                 isPeerPrimaryDisplayValid ? 0 : pi.primaryDisplay;
             final ffi = parent.target;
             if (ffi == null ||
-                !await selectRemoteDisplays(ffi, sessionId, [newDisplay])) {
+                !await selectRemoteDisplays(ffi, sessionId, [newDisplay],
+                    expectedTopologyRevision: topologyRevision)) {
               return;
             }
             if (!isCurrentDisplayTopology(sessionId, topologyRevision)) {
@@ -1573,7 +1576,7 @@ class FfiModel with ChangeNotifier {
             if (_pi.isSupportMultiUiSession) {
               // If the peer supports multi-ui-session, no switch display message will be send back.
               // We need to update the display manually.
-              if (!await switchToNewDisplay(newDisplay, sessionId, peerId,
+              if (!await _applyDisplaySwitch(newDisplay, sessionId, peerId,
                   expectedTopologyRevision: topologyRevision)) return;
             }
           } else {
@@ -1640,46 +1643,60 @@ class FfiModel with ChangeNotifier {
       final display = int.parse(evt['display_idx']);
       final ffi = parent.target;
       if (ffi == null ||
-          !await selectRemoteDisplays(ffi, sessionId, [display])) {
+          !await selectRemoteDisplays(ffi, sessionId, [display],
+              expectedTopologyRevision: topologyRevision)) {
         return;
       }
-      if (!await switchToNewDisplay(display, sessionId, peerId,
+      if (!await _applyDisplaySwitch(display, sessionId, peerId,
           expectedTopologyRevision: topologyRevision)) return;
     }
     notifyListeners();
   }
 
-  Future<bool> switchToNewDisplay(
-      int display, SessionID sessionId, String peerId,
-      {bool updateCursorPos = false,
-      int? expectedTopologyRevision}) async {
-    if (expectedTopologyRevision == null) {
-      final ffi = parent.target;
-      if (ffi == null || !ffi.isCurrentSession(sessionId)) return false;
-      final expectedClientOwnerId = ffi.clientOwnerId;
-      var applied = false;
-      try {
-        final disposition = await ffi.submitSessionEvent(
-            sessionId, expectedClientOwnerId, () async {
-          applied = await _applyDisplaySwitch(
-              display, sessionId, peerId, updateCursorPos, null);
-        });
-        return disposition == SessionEventDisposition.completed &&
-            applied &&
-            ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId);
-      } catch (error) {
-        debugPrint('Local display topology failed: ${error.runtimeType}');
-        ffi._reportSessionStreamFailure(sessionId, peerId,
-            'The remote session state became inconsistent');
-        return false;
-      }
+  Future<bool> selectDisplayInTheSameTab(int display, List<int> displays,
+      SessionID sessionId, SessionID expectedClientOwnerId,
+      {bool updateCursorPos = false}) async {
+    final ffi = parent.target;
+    if (ffi == null ||
+        !ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId)) {
+      return false;
     }
-    return _applyDisplaySwitch(display, sessionId, peerId, updateCursorPos,
-        expectedTopologyRevision);
+    var applied = false;
+    try {
+      final disposition = await ffi.submitSessionEvent(
+          sessionId, expectedClientOwnerId, () async {
+        final topologyRevision = currentDisplayTopologyRevision(sessionId);
+        if (topologyRevision == null ||
+            !ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId)) {
+          return;
+        }
+        if (pi.currentDisplay == display) {
+          applied = true;
+          return;
+        }
+        if (!await selectRemoteDisplays(ffi, sessionId, displays,
+            expectedTopologyRevision: topologyRevision)) return;
+        if (pi.forceTextureRender && display != kAllDisplayValue) {
+          ffi.imageModel.clearImage();
+        }
+        applied = await _applyDisplaySwitch(display, sessionId, ffi.id,
+            updateCursorPos: updateCursorPos);
+      });
+      return disposition == SessionEventDisposition.completed &&
+          applied &&
+          ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId);
+    } catch (error, stackTrace) {
+      debugPrint('Local display topology failed: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      ffi._reportSessionStreamFailure(sessionId, ffi.id,
+          'The remote session state became inconsistent');
+      return false;
+    }
   }
 
   Future<bool> _applyDisplaySwitch(int display, SessionID sessionId,
-      String peerId, bool updateCursorPos, int? expectedTopologyRevision) async {
+      String peerId,
+      {bool updateCursorPos = false, int? expectedTopologyRevision}) async {
     final topologyRevision = expectedTopologyRevision ??
         _beginDisplayTopologyMutation(sessionId);
     if (topologyRevision == null ||

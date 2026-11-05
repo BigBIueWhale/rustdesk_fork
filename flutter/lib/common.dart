@@ -3390,8 +3390,14 @@ Future<List<Rect>> getScreenRectList() async {
 }
 
 Future<bool> selectRemoteDisplays(
-    FFI ffi, SessionID expectedSessionId, List<int> displays) {
+    FFI ffi, SessionID expectedSessionId, List<int> displays,
+    {required int expectedTopologyRevision}) async {
   final expectedClientOwnerId = ffi.clientOwnerId;
+  bool isCurrent() => ffi.isCurrentSessionOwner(
+      expectedSessionId, expectedClientOwnerId) &&
+      ffi.ffiModel.isCurrentDisplayTopology(
+          expectedSessionId, expectedTopologyRevision);
+  if (!isCurrent()) return false;
   if (displays.any(
       (display) => display < -0x80000000 || display > 0x7fffffff)) {
     if (ffi.isCurrentSessionOwner(
@@ -3404,38 +3410,31 @@ Future<bool> selectRemoteDisplays(
         'hasRetry': 'false',
       }, expectedSessionId, ffi.id);
     }
-    return Future.value(false);
+    return false;
   }
   final requestedDisplays = Int32List.fromList(displays);
-  return ffi.submitDisplaySelection(
-      expectedSessionId, expectedClientOwnerId, () async {
-    if (!ffi.isCurrentSessionOwner(
+  // The caller owns the ordered session-state lane through the UI commit.
+  try {
+    await bind.sessionSwitchDisplay(
+      sessionId: expectedSessionId,
+      clientOwnerId: expectedClientOwnerId,
+      value: requestedDisplays,
+    );
+  } catch (error) {
+    if (ffi.isCurrentSessionOwner(
         expectedSessionId, expectedClientOwnerId)) {
-      return false;
+      debugPrint('Display selection failed: $error');
+      ffi.ffiModel.handleMsgBox({
+        'type': 'error',
+        'title': 'Connection Error',
+        'text': 'Display selection failed: $error',
+        'link': '',
+        'hasRetry': 'false',
+      }, expectedSessionId, ffi.id);
     }
-    try {
-      await bind.sessionSwitchDisplay(
-        sessionId: expectedSessionId,
-        clientOwnerId: expectedClientOwnerId,
-        value: requestedDisplays,
-      );
-    } catch (error) {
-      if (ffi.isCurrentSessionOwner(
-          expectedSessionId, expectedClientOwnerId)) {
-        debugPrint('Display selection failed: $error');
-        ffi.ffiModel.handleMsgBox({
-          'type': 'error',
-          'title': 'Connection Error',
-          'text': 'Display selection failed: $error',
-          'link': '',
-          'hasRetry': 'false',
-        }, expectedSessionId, ffi.id);
-      }
-      return false;
-    }
-    return ffi.isCurrentSessionOwner(
-        expectedSessionId, expectedClientOwnerId);
-  });
+    return false;
+  }
+  return isCurrent();
 }
 
 Future<bool> openMonitorInTheSameTab(int i, FFI ffi, PeerInfo pi,
@@ -3443,23 +3442,13 @@ Future<bool> openMonitorInTheSameTab(int i, FFI ffi, PeerInfo pi,
   final displays = i == kAllDisplayValue
       ? List.generate(pi.displays.length, (index) => index)
       : [i];
-  // Try clear image model before switching from all displays
-  // 1. The remote side has multiple displays.
-  // 2. Do not use texture render.
-  // 3. Connect to Display 1.
-  // 4. Switch to multi-displays `kAllDisplayValue`
-  // 5. Switch to Display 2.
-  // Then the remote page will display last picture of Display 1 at the beginning.
   final expectedSessionId = ffi.sessionId;
-  if (!await selectRemoteDisplays(ffi, expectedSessionId, displays)) {
-    return false;
-  }
-  if (pi.forceTextureRender && i != kAllDisplayValue) {
-    ffi.imageModel.clearImage();
-  }
-  return ffi.ffiModel.switchToNewDisplay(
-      i, expectedSessionId, ffi.id,
-      updateCursorPos: updateCursorPos);
+  final expectedClientOwnerId = ffi.clientOwnerId;
+  return ffi.submitDisplaySelection(
+      expectedSessionId, expectedClientOwnerId, () =>
+          ffi.ffiModel.selectDisplayInTheSameTab(
+              i, displays, expectedSessionId, expectedClientOwnerId,
+              updateCursorPos: updateCursorPos));
 }
 
 // Open new tab or window to show this monitor.

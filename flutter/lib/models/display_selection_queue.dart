@@ -1,6 +1,6 @@
 import 'dart:async';
 
-/// Serializes normal-worker FFI display admissions for one exact owner without
+/// Serializes display admission and UI commit for one exact owner without
 /// retaining an unbounded backlog. One operation may run and only the latest
 /// successor is retained; superseded or retired callers complete `false` and
 /// must not commit UI state.

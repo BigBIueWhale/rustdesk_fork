@@ -140626,3 +140626,14 @@ OPEN. The tray lacks its dynamically loaded library in this fixture; no UI pass 
 claimed. Its no-UI CM also logs gtk_main_quit assertions on idle notifications;
 this test proves final service-stop retirement, not standalone idle-exit behavior.
 Update the current ledger and count it once. The broader goal remains active.
+
+Fresh CTE count OujOMQ7sHz at 9e72c279: 399,574 tokens / 1,823,716 bytes,
+SHA-256 520f3b58109ec1d046dfd598587d3fc29d0990d36648d435d9e45c6382e21823.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary passes seven controls and the
+whole-input byte round trip. Three endpoint deltas are zero; exact QEMU/private/RAM
+retirement passes. Supervisor 31.057 seconds, peak scratch 402,776,064 bytes.
+installed-file-ledger-9e72c279.json is 4,496 bytes, SHA-256
+e0a03384155e4d6f4a18b8a10782efaa847cf6f4b0ef7b2ed996159a34f4fc64.
+All eight evidence files match CTE and TUF. This audit-only receipt preserves the
+counted ledger. No owned run remains. Continue the remaining installed file paths
+with the same retained artifact; the full release goal remains active.

@@ -140726,3 +140726,15 @@ both outcomes, retire all fixtures/actors, then fail if either replacement chang
 All authority operations remain inside the owned zero-NIC disposable VM, using
 the existing bounded RAM lane. This is preparation, not a reproduced defect yet;
 it exercises root library admission, not installed GUI behavior or a shell gain.
+
+First attempt tLvZRwNkH1 at 9227511d stops at five test-driver E0599 errors:
+the nested syscall_window module lacks MetadataExt. No native root-driver or new
+substitution case runs. Add that test-only trait import; product source is unchanged.
+Session87310 exits1, peak RAM scratch4,053,311,488 bytes, all four endpoint deltas
+zero. Exact QEMU/RAM retirement and identity-checked private removal pass under
+the shared lock. receive-setup-compile-9227511d.json is10,350 bytes, SHA-256
+41b57d44e7a95184e79dd9be3a2b3912be29fafba52285157a07676e6d045e2b;
+its461-byte retirement receipt is
+3d0adfdb36f55e35ba13df16adc4a16249de54ce6cd71a85411942911dd3016a.
+Ten bounded evidence files match CTE/TUF; complete durable output preserves the
+compiler errors despite truncated terminal display. No owned run remains.

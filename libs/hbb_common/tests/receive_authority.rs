@@ -741,7 +741,7 @@ mod linux {
             convert::TryFrom,
             fs,
             io::{self, Read},
-            os::unix::{ffi::OsStringExt, process::{CommandExt, ExitStatusExt}},
+            os::unix::{ffi::OsStringExt, fs::MetadataExt, process::{CommandExt, ExitStatusExt}},
             path::{Path, PathBuf},
             process::{Child, Command, Stdio},
             time::{Duration, Instant},

@@ -139967,3 +139967,17 @@ then launch the non-interactive integration job with capture control
 `.harness-state/input-congestion-soak-nov05-control`. Its launch JSON will bind
 the exact final source, command and PID/start ticks. Keep CTE's checkout frozen
 while it runs. Initial partial observations cannot establish full acceptance.
+
+Fresh CTE count `aEftbjHCk8` at `333617c6` passes seven controls and the
+whole-input round trip: **397,910 tokens / 1,815,911 bytes**, SHA-256
+0681a0d405e42af6b95852584fd9e494d263de7d8789e025d2155b7d8a06a5ac.
+Exact processes/private/RAM retire; peak scratch is 402,833,408 bytes and all
+three decoded endpoint deltas are zero. Capsule
+`input-congestion-soak-ledger-333617c6.json`: 7,862 bytes, SHA-256
+c04e1374e1c0eceb0856e5f0d37f9be44c1d5c114b5c78f41664b59525ba8d04.
+This audit-only receipt leaves the counted ledger unchanged. Final prelaunch
+inspection sees 33,870,404 KiB available RAM and 33,215,635,456 available tmpfs
+bytes. The next action is the named input soak with app `2ae08e80`/engine `ddb1541d`.
+Once the launch record exists, inspect that same exact process/run. Preserve
+both source checkouts and their local Git refs during their active soaks; retain
+bounded partial observations outside Git until execution and cleanup finish.

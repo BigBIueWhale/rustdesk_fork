@@ -141761,3 +141761,46 @@ view-scaling-ledger-5f0b6c3e.json is 4,777 bytes, SHA-256
 db2700f742d0deeca5495570ea013544af3680e44428c6e21b6dc21e8fa354fa.
 All 100 bounded evidence files (2,247,852 bytes) match both hosts. No owned
 run remains. This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-11-05 — native mouse coordinates through Original/Adaptive scaling
+
+Continue R-S0/R-F1 functional correctness: the previous checkpoint proves
+visible scaling; this slice verifies that input reaches the corresponding
+remote coordinates. Reuse normal full app 63f58b5c and its existing manifest
+117ece1e1d21fe853d1bcfb1cfcc7d490db4cbcd8f71cc53a9c049b093971e65.
+Product paths remain identical; no product correction or rebuild is needed.
+
+Harness e79b9542 extends the existing six scale/window cases with five
+source targets: (80,80), (560,80), (80,400), (560,400), (320,240).
+Expected viewer positions derive from the 640x480 fixture and normal Linux
+unit-DPI viewport (5px resize padding, 1px border, 28px tab bar), independently
+of received pointer positions and application canvas readback. Declare one
+source-pixel rounding tolerance, 2.5-second per-point deadline and 100ms
+post-release observation. Inject motion/left press/release only through the
+viewer X server. Observe native source events, exact button/order/pre-event
+state, coordinates, no extra pair and released core/XI2 state on both servers.
+The geometry/freshness thresholds remain unchanged; connection/resource
+checks follow the input exercise too. Stage and outer receipts require it.
+
+X.org defines root coordinates at event time and the preceding button state:
+https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XButtonEvent.3.html.
+Its XQueryPointer contract supplies current root coordinates and logical state:
+https://xorg.freedesktop.org/releases/X11R6.9.0/doc/html/XQueryPointer.3.html.
+These distinguish actual delivered input from an application acknowledgement.
+
+TUF vEnKdrPZFP/session 3607 exits zero in 116 outer seconds. All 30 points
+and 60 ordered button events pass; maximum coordinate error is one pixel,
+native event completion 20–27ms. Six geometry cases retain four fresh counters
+within 510–1827ms, maximum sampled frame age 356ms, the same authenticated
+TCP connection and bounded resources. Native drivers compile twice identically;
+the app is unchanged. Capsule view-scaling-input-e79b9542.json is 18,231 bytes,
+SHA-256 c541a74965b3a343f1cc5777279e78bbf456f36964e0ed524d9c0af5bc1184b4.
+
+All four endpoint deltas are zero. QEMU/processes, private state and RAM
+retire; storage time is 122.194 seconds, peak scratch 3,020,529,664 bytes.
+Ten bounded evidence files, 132,459 bytes, match CTE/TUF. No new app/cache
+generation or owned run remains; source/refs were frozen throughout execution.
+Scope is full-app Linux X11/Xvfb at unit DPI, Original and adaptive enlargement.
+Custom/downscaling, non-unit DPI, saved-canvas restart, physical scanout,
+other platforms, input-to-visible latency and full release acceptance remain
+OPEN. Replace the existing ledger entry and count it in isolation.

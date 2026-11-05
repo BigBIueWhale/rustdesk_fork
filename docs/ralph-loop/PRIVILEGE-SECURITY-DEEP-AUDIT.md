@@ -141624,3 +141624,17 @@ step is bounded observation of effective canvas style, viewport/display size,
 scale and the rendered texture geometry during the same failed transition.
 No extra product patch or relaxed assertion is justified by this run alone.
 Custom, restart, other-platform and release acceptance remain open.
+
+Fresh CTE ledger count TwYBdlSVi3/session 82178 at 4bd0d6ce exits zero:
+399,908 tokens / 1,825,557 bytes, SHA-256
+f19a26f8e118e2d95d700050e1d66dba250ce7a8ec42f1f7a91cd547e26613fc.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method, seven controls
+and whole-input round trip pass. Before/during endpoint deltas are zero;
+after has zero additions and one removal, retained as unattributed external
+state. Owned IP sockets are kernel-denied; no host service is inspected or
+changed. QEMU/private/RAM retirement passes; storage 30.549 seconds, peak
+402,849,792 bytes. Capsule view-style-native-ledger-4bd0d6ce.json is
+4,782 bytes, SHA-256
+37deb32333bc56c39d8c58c8771bb9ef297082b2f172728f43e6a4c04dd2f488.
+All 36 bounded files from this turn (881,692 bytes) match CTE/TUF. No owned
+run remains. This audit-only receipt leaves the counted ledger unchanged.

@@ -528,6 +528,8 @@ pub struct Client {
     pub registry_generation: i64,
     pub authorized: bool,
     pub disconnected: bool,
+    #[serde(rename = "elapsed_seconds")]
+    duration: CmConnectionDuration,
     pub is_file_transfer: bool,
     pub is_view_camera: bool,
     pub is_terminal: bool,
@@ -553,6 +555,31 @@ pub struct Client {
     #[serde(skip)]
     #[cfg(not(any(target_os = "ios")))]
     tx: CmEgressSender,
+}
+
+#[derive(Clone)]
+enum CmConnectionDuration {
+    Running(std::time::Instant),
+    Finished(std::time::Duration),
+}
+
+impl CmConnectionDuration {
+    fn elapsed(&self) -> std::time::Duration {
+        match self {
+            Self::Running(start) => start.elapsed(),
+            Self::Finished(elapsed) => *elapsed,
+        }
+    }
+
+    fn finish(&mut self) {
+        *self = Self::Finished(self.elapsed());
+    }
+}
+
+impl serde::Serialize for CmConnectionDuration {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_u64(self.elapsed().as_secs())
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -630,6 +657,9 @@ impl CmClientRegistry {
         self.generation = generation;
         client.registry_generation = generation;
         client.source_generation = source_generation;
+        if client.authorized {
+            client.duration = CmConnectionDuration::Running(std::time::Instant::now());
+        }
         self.pending_admissions.insert(client.id, generation);
         Ok(CmClientOwner {
             id: client.id,
@@ -763,6 +793,7 @@ impl CmClientRegistry {
         if close {
             self.clients.remove(&owner.id);
         } else if let Some(client) = self.clients.get_mut(&owner.id) {
+            client.duration.finish();
             client.disconnected = true;
         }
         true
@@ -1219,6 +1250,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             registry_generation: 0,
             authorized,
             disconnected: false,
+            duration: CmConnectionDuration::Finished(std::time::Duration::ZERO),
             is_file_transfer,
             is_view_camera,
             is_terminal,
@@ -7709,6 +7741,7 @@ mod tests {
             registry_generation: 1,
             authorized: true,
             disconnected: false,
+            duration: CmConnectionDuration::Finished(std::time::Duration::ZERO),
             is_file_transfer: false,
             is_view_camera: false,
             is_terminal: false,
@@ -7763,6 +7796,7 @@ mod tests {
             registry_generation: 0,
             authorized: true,
             disconnected: false,
+            duration: CmConnectionDuration::Finished(std::time::Duration::ZERO),
             is_file_transfer: false,
             is_view_camera: false,
             is_terminal: false,
@@ -7784,6 +7818,61 @@ mod tests {
             cm_auth_token: format!("token-{peer_id}"),
             tx,
         }
+    }
+
+    #[test]
+    #[cfg(not(any(target_os = "ios")))]
+    fn cm_connection_duration_follows_registry_lifetime() {
+        fn seconds(client: &Client) -> u64 {
+            let encoded = serde_json::to_value(client).unwrap();
+            assert!(encoded.get("duration").is_none());
+            encoded["elapsed_seconds"].as_u64().unwrap()
+        }
+
+        let mut registry = CmClientRegistry::default();
+        let mut waiting = registry_test_client(8, "waiting");
+        waiting.authorized = false;
+        let (waiting_owner, _) = registry.admit(&mut waiting, 1).unwrap();
+        assert!(matches!(waiting.duration, CmConnectionDuration::Finished(_)));
+        assert_eq!(seconds(&waiting), 0);
+        assert!(registry.retire(waiting_owner, true));
+
+        let mut first = registry_test_client(7, "first");
+        let (first_owner, _) = registry.admit(&mut first, 1).unwrap();
+        assert_eq!(seconds(&first), 0);
+        let current = registry.current_mut(first_owner).unwrap();
+        current.duration = CmConnectionDuration::Running(
+            std::time::Instant::now()
+                .checked_sub(std::time::Duration::from_secs(65))
+                .unwrap(),
+        );
+        assert_eq!(seconds(current), 65);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        assert!(seconds(current) >= 66);
+
+        assert!(registry.retire(first_owner, false));
+        let stopped = registry.current_mut(first_owner).unwrap().clone();
+        assert!(stopped.disconnected);
+        let final_duration = stopped.duration.elapsed();
+        let final_seconds = seconds(&stopped);
+        std::thread::sleep(std::time::Duration::from_millis(1100));
+        assert!(registry.retire(first_owner, false));
+        let current = registry.current_mut(first_owner).unwrap();
+        assert_eq!(current.duration.elapsed(), final_duration);
+        assert_eq!(seconds(current), final_seconds);
+        assert_eq!(seconds(&stopped), final_seconds);
+
+        let mut replacement = registry_test_client(7, "replacement");
+        let (new_owner, _) = registry.admit(&mut replacement, 2).unwrap();
+        assert_ne!(new_owner, first_owner);
+        assert!(!registry.retire(first_owner, false));
+        let current = registry.current_mut(new_owner).unwrap();
+        assert!(!current.disconnected);
+        assert!(matches!(current.duration, CmConnectionDuration::Running(_)));
+        assert_eq!(seconds(current), 0);
+        assert!(registry.retire(new_owner, true));
+        assert!(registry.clients.is_empty());
+        println!("CM_DURATION_NATIVE=pass pending=zero elapsed=monotonic stop=frozen clone=preserved replacement=fresh stale=ignored registry=empty");
     }
 
     #[test]

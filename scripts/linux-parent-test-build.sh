@@ -18,6 +18,7 @@ build_linux_parent_test() {
         || "$work:$receipt_prefix" = /tmp/android-client-drain:ANDROID_CLIENT_DRAIN \
         || "$work:$receipt_prefix" = /tmp/cm-read-tick:CM_READ_TICK \
         || "$work:$receipt_prefix" = /tmp/cm-file-log:CM_FILE_LOG \
+        || "$work:$receipt_prefix" = /tmp/cm-duration:CM_DURATION \
         || "$work:$receipt_prefix" = /tmp/idle-timeout:IDLE_TIMEOUT ]] \
         && [ "$PWD" = /source ] && [ "$(id -u):$(id -g)" = 1000:1000 ] \
         && [ "${CARGO_TARGET_DIR:-}" = /cargo-target ] \
@@ -25,9 +26,9 @@ build_linux_parent_test() {
         && [ "$(stat -c '%u:%g:%a' -- "$work")" = 1000:1000:700 ] \
         || { echo 'Linux parent compiler entry authority differs' >&2; return 1; }
     local build_budget=600
-    if [[ "$receipt_prefix" = REMOTE_RESTART || "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = LOCAL_FILE_LISTING || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK || "$receipt_prefix" = CM_FILE_LOG || "$receipt_prefix" = IDLE_TIMEOUT ]]; then build_budget=240; fi
+    if [[ "$receipt_prefix" = REMOTE_RESTART || "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = LOCAL_FILE_LISTING || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK || "$receipt_prefix" = CM_FILE_LOG || "$receipt_prefix" = CM_DURATION || "$receipt_prefix" = IDLE_TIMEOUT ]]; then build_budget=240; fi
     local features=linux-pkg-config
-    if [[ "$receipt_prefix" = REMOTE_RESTART || "$receipt_prefix" = OPTION_ACK || "$receipt_prefix" = FILE_RECEIVE_PARENT || "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = LOCAL_FILE_LISTING || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK || "$receipt_prefix" = CM_FILE_LOG || "$receipt_prefix" = IDLE_TIMEOUT ]]; then
+    if [[ "$receipt_prefix" = REMOTE_RESTART || "$receipt_prefix" = OPTION_ACK || "$receipt_prefix" = FILE_RECEIVE_PARENT || "$receipt_prefix" = VIEWER_CREDENTIAL || "$receipt_prefix" = VIEWER_RESUME || "$receipt_prefix" = LOCAL_FILE_LISTING || "$receipt_prefix" = ANDROID_CLIENT_DRAIN || "$receipt_prefix" = CM_READ_TICK || "$receipt_prefix" = CM_FILE_LOG || "$receipt_prefix" = CM_DURATION || "$receipt_prefix" = IDLE_TIMEOUT ]]; then
         features=linux-pkg-config,flutter
     fi
     local test_manifest=/source/Cargo.toml test_name=librustdesk test_source=/source/src/lib.rs

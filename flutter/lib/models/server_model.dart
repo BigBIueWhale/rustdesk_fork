@@ -92,6 +92,8 @@ CmClientStateReconciliation reconcileCmClientState(
         rebuildTabs = true;
       }
       existing.copyNativeStateFrom(candidate);
+    } else {
+      existing.elapsedSeconds.value = candidate.elapsedSeconds.value;
     }
     reconciled.add(existing);
   }
@@ -926,6 +928,7 @@ class Client {
   int voiceCallId = 0;
 
   RxInt unreadChatMessageCount = 0.obs;
+  final RxInt elapsedSeconds = 0.obs;
 
   Client(this.id, this.authorized, this.isFileTransfer, this.isViewCamera,
       this.name, this.peerId, this.keyboard, this.clipboard, this.audio);
@@ -934,6 +937,11 @@ class Client {
     id = json['id'];
     registryGeneration = json['registry_generation'];
     authorized = json['authorized'];
+    final elapsed = json['elapsed_seconds'];
+    if (elapsed is! int || elapsed < 0) {
+      throw const FormatException('invalid CM connection duration');
+    }
+    elapsedSeconds.value = elapsed;
     isFileTransfer = json['is_file_transfer'];
     // TODO: no entry then default.
     isViewCamera = json['is_view_camera'];
@@ -958,6 +966,7 @@ class Client {
     data['id'] = id;
     data['registry_generation'] = registryGeneration;
     data['authorized'] = authorized;
+    data['elapsed_seconds'] = elapsedSeconds.value;
     data['is_file_transfer'] = isFileTransfer;
     data['is_view_camera'] = isViewCamera;
     data['is_terminal'] = isTerminal;
@@ -1006,6 +1015,7 @@ class Client {
   void copyNativeStateFrom(Client other) {
     id = other.id;
     registryGeneration = other.registryGeneration;
+    elapsedSeconds.value = other.elapsedSeconds.value;
     authorized = other.authorized;
     isFileTransfer = other.isFileTransfer;
     isViewCamera = other.isViewCamera;

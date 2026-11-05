@@ -85,7 +85,7 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     final refreshed = _refresh(client, _sample(125));
     expect(identical(refreshed, client), isTrue);
-    await _show(tester, refreshed);
+    await tester.pump();
     expect(find.text('00:02:05'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });

@@ -358,41 +358,13 @@ class _CloseButton extends StatelessWidget {
   }
 }
 
-class _CmHeader extends StatefulWidget {
+class _CmHeader extends StatelessWidget {
   final Client client;
 
   const _CmHeader({Key? key, required this.client}) : super(key: key);
 
   @override
-  State<_CmHeader> createState() => _CmHeaderState();
-}
-
-class _CmHeaderState extends State<_CmHeader>
-    with AutomaticKeepAliveClientMixin {
-  Client get client => widget.client;
-
-  final _time = 0.obs;
-  Timer? _timer;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(Duration(seconds: 1), (_) {
-      if (client.authorized && !client.disconnected) {
-        _time.value = _time.value + 1;
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    super.build(context);
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10.0),
@@ -482,7 +454,7 @@ class _CmHeaderState extends State<_CmHeader>
                       Obx(
                         () => Text(
                           formatDurationToTime(
-                            Duration(seconds: _time.value),
+                            Duration(seconds: client.elapsedSeconds.value),
                           ),
                           style: TextStyle(color: Colors.white),
                         ),
@@ -516,9 +488,6 @@ class _CmHeaderState extends State<_CmHeader>
       ),
     );
   }
-
-  @override
-  bool get wantKeepAlive => true;
 
   Widget _buildClientAvatar() {
     return buildAvatarWidget(

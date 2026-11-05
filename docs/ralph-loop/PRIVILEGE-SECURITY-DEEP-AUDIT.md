@@ -139709,3 +139709,11 @@ No owned run remains. This closes only these Linux software-display outage/input
 scenarios. Partial-loss/bandwidth/jitter input recovery, impaired multi-hour
 sessions, physical scanout, other roles/platforms and release acceptance remain
 OPEN. No product correction or additional runtime replay is justified here.
+
+Fresh isolated ledger count `3k6bacWxMc` at `92d9ef04` passes seven controls and
+the whole-input round trip in 28 workload seconds: **397,107 tokens / 1,812,712
+bytes**, SHA-256 e478033eaf2c467eb60ed993341307ffab698c2ed12c896b844a0db4cbddbaee.
+Exact processes/private/RAM retire, peak scratch is 402,825,216 bytes, and all
+three endpoint deltas are zero. `input-recovery-ledger-92d9ef04.json` is 7,464
+bytes, SHA-256 fd641323955681af1fa37acb195b72e5828ccd6754483a0469f3f7dff34875f1.
+This audit-only receipt leaves the counted ledger unchanged. No owned run remains.

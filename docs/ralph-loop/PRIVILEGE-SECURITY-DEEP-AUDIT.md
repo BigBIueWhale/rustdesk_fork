@@ -139406,3 +139406,32 @@ two unattributed additions, retained without foreign-process inspection or
 mutation. `current-linux-ledger-dd21a276.json` is 7,749 bytes, SHA-256
 234e47aed38b737b40cebc9015f3983829d59be1bcbfa815f938eacf00b9b617.
 This audit-only receipt leaves the counted ledger unchanged. No owned run remains.
+
+## 2026-11-05 — packet-loss transport and displayed-frame correlation
+
+Previous turn is progress: current Linux compilation, bundle integrity and the
+environment-setter ABI removal are accepted at 2ae08e80. Select R-F5's unexplained
+12,226-ms displayed age during the earlier burst-loss profile. That run recovered
+after restoration; neither permanent lag nor a transport/application cause was
+established. Reusing the current app for direct timing evidence takes priority
+over another static artifact inventory. Shared-parent receive layout, installed
+authorization and other release obligations remain OPEN.
+
+Research: [ss](https://man7.org/linux/man-pages/man8/ss.8.html) exposes socket
+identity, queues, TCP timers, RTT and retransmission counters without changing the
+application socket. [RFC 6298 section 5](https://www.rfc-editor.org/rfc/rfc6298.html#section-5)
+requires retransmission backoff; it is a possible explanation to measure, not an
+attribution. Retain [netem's receiver-ingress placement](https://man7.org/linux/man-pages/man8/tc-netem.8.html)
+and the existing random3/random8/burst profiles. Kernel loss sequences remain
+uncontrolled; no reproducible-seed or exhaustive-tail claim follows.
+
+The existing guest-only supervisor now records bounded 200-ms-target TCP snapshots
+from its retained private namespace, requiring the same two endpoint/socket
+identities and the server's shared monotonic clock. Snapshots retain raw kernel
+statistics and observation start/end times; they neither tune sockets nor alter
+the network profile. The existing pixel controller adds timestamped source/viewer
+states and known/unknown age observations during partial loss. Authorized peers,
+product source, actual pixel oracle, 2,500-ms recovery deadline, 1,000-ms freshness
+limit, healthy follow-up, stable connection and resource/cleanup checks remain.
+The sampler has a finite count/record budget and requires observations for every
+requested impairment profile. No native result is claimed before the replay.

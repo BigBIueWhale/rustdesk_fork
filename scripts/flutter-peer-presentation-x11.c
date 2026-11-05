@@ -2033,6 +2033,7 @@ static int exercise_network_impairment(Display *source, Display *display,
         unsigned int hold_ms = partial_loss ? loss_cases[cycle].hold_ms : outage_cases[cycle].hold_ms;
         uint64_t held_from, progress_at, resumed_at, first_fresh, recovery_age, recovery_ms;
         uint64_t impaired_maximum_age = 0U;
+        uint64_t next_observation = 0U;
         unsigned int impaired_distinct = 0U;
         int64_t previous_source, initial_source, previous_viewer = -1;
         ConnectionIdentity after = {{0}, {0}, 0UL};
@@ -2056,12 +2057,22 @@ static int exercise_network_impairment(Display *source, Display *display,
             if (partial_loss) {
                 uint64_t captured_us = 0U, age = 0U;
                 int64_t state = viewer_state(display, viewer, &captured_us);
-                if (x11_frame_age(history, "/coord", state, captured_us, &age) == 0) {
+                int age_known = x11_frame_age(history, "/coord", state, captured_us, &age) == 0;
+                if (age_known) {
                     if (age > impaired_maximum_age) impaired_maximum_age = age;
                     if (previous_viewer >= 0 && state > previous_viewer) impaired_distinct += 1U;
                     previous_viewer = state;
                 }
                 if (history->failed) goto failed;
+                if (now >= next_observation) {
+                    printf("FLUTTER_PEER_NETWORK_PIXEL cycle=%u profile=%s "
+                           "started_ms=%llu captured_us=%llu source_state=%lld viewer_state=%lld "
+                           "age_known=%d age_ms=%llu\n", cycle + 1U, profile,
+                           (unsigned long long)now, (unsigned long long)captured_us,
+                           (long long)current, (long long)state,
+                           age_known, (unsigned long long)age);
+                    next_observation = now + 200U;
+                }
             }
             if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto failed;
         }

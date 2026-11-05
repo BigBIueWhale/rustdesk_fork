@@ -33,6 +33,11 @@ class Impairment:
         self.namespace = self.process = None
         self.interface = self.ingress = False
         self.current_profile = None
+        self.transport_active = False
+        self.transport_identity = None
+        self.transport_next = 0
+        self.transport_count = 0
+        self.transport_profiles = {}
 
     def run(self, *args):
         require(self.namespace is not None, 'namespace is not attached')
@@ -65,6 +70,8 @@ class Impairment:
         self.process = os.pidfd_open(pid)
         self.namespace = os.open(f'/proc/{pid}/ns/net', os.O_RDONLY | os.O_CLOEXEC)
         require(alive(self.process) and self.inspect(cid) == pid, 'server generation changed')
+        require(os.stat(f'/proc/{pid}/ns/time').st_ino == os.stat('/proc/self/ns/time').st_ino,
+                'server and transport observer clocks differ')
         require(os.fstat(self.namespace).st_ino != os.stat('/proc/self/ns/net').st_ino,
                 'initial guest namespace is forbidden')
         require([item['ifname'] for item in json.loads(self.run('ip', '-j', 'link', 'show'))]
@@ -90,6 +97,59 @@ class Impairment:
         self.run('tc', 'qdisc', 'replace', 'dev', 'rd-netem', 'root', 'handle', '1:',
                  'netem', 'limit', '64', *options[name])
         self.current_profile = name
+        if name != 'healthy':
+            self.transport_active = True
+            self.transport_profiles.setdefault(name, 0)
+
+    def observe_transport(self):
+        if not self.transport_active or time.monotonic_ns() < self.transport_next:
+            return
+        started = time.monotonic_ns()
+        self.transport_next = started + 200_000_000
+        require(self.transport_count < 1024, 'transport observation budget exceeded')
+        raw = self.run('ss', '-H', '-O', '-n', '-t', '-i', '-e', '-o',
+                       'state', 'established', '(', 'sport', '=', ':21118',
+                       'or', 'dport', '=', ':21118', ')')
+        completed = time.monotonic_ns()
+        require(len(raw.encode()) <= 8192, 'transport snapshot exceeds bound')
+        records = []
+        for line in raw.splitlines():
+            fields = line.split()
+            if fields and fields[0] == 'ESTAB':
+                fields = fields[1:]
+            require(len(fields) >= 4 and all(value.isdecimal() for value in fields[:2]),
+                    'transport queue columns differ')
+            local, peer = fields[2:4]
+            require(all(re.fullmatch(r'127\.0\.0\.1:[1-9][0-9]{0,4}', value)
+                        for value in (local, peer)) and '127.0.0.1:21118' in (local, peer),
+                    'transport endpoint differs')
+            inode = re.findall(r'\bino:([1-9][0-9]*)\b', line)
+            cookie = re.findall(r'\bsk:([0-9a-f]+)\b', line)
+            require(len(inode) == len(cookie) == 1 and re.search(r'\buid:1000\b', line),
+                    'transport socket identity differs')
+            records.append(dict(local=local, peer=peer, inode=int(inode[0]),
+                                cookie=cookie[0], recv_queue=int(fields[0]),
+                                send_queue=int(fields[1]), raw=line))
+        require(len(records) <= 2, 'transport has more than one connection')
+        identity = {(r['local'], r['peer'], r['inode'], r['cookie']) for r in records}
+        if self.transport_identity is None:
+            require(len(identity) == 2 and records[0]['local'] == records[1]['peer']
+                    and records[0]['peer'] == records[1]['local'],
+                    'transport does not contain the established peer pair')
+            self.transport_identity = identity
+        require(identity <= self.transport_identity, 'transport connection changed')
+        complete = len(identity) == 2
+        require(complete or self.current_profile == 'healthy',
+                'transport closed during impairment')
+        if complete and self.current_profile in self.transport_profiles:
+            self.transport_profiles[self.current_profile] += 1
+        self.transport_count += 1
+        print('FLUTTER_PEER_TCP_SNAPSHOT=' + json.dumps(
+            dict(sequence=self.transport_count, profile=self.current_profile,
+                 started_us=started // 1000, completed_us=completed // 1000,
+                 complete=complete, sockets=records), sort_keys=True), flush=True)
+        if not records:
+            self.transport_active = False
 
     def snapshot(self, request):
         queues = json.loads(self.run('tc', '-s', '-j', 'qdisc', 'show', 'dev', 'rd-netem'))
@@ -165,6 +225,7 @@ def supervise(image, argv):
             child = subprocess.Popen(argv)
             requests = 0
             while child.poll() is None:
+                owner.observe_transport()
                 try:
                     channel, _ = listener.accept()
                 except socket.timeout:
@@ -198,6 +259,15 @@ def supervise(image, argv):
                     finally:
                         os.close(requester)
             status = child.wait()
+            if status == 0:
+                require(owner.transport_profiles
+                        and all(count >= 2 for count in owner.transport_profiles.values()),
+                        'impairment transport observations are incomplete')
+                print('FLUTTER_PEER_TCP_OBSERVED=' + json.dumps(
+                    dict(samples=owner.transport_count, profiles=owner.transport_profiles,
+                         interval_ms=200, clock='shared-monotonic', socket_pair='retained',
+                         source='ss-inet-diag', product_socket_changes=False), sort_keys=True),
+                      flush=True)
         finally:
             if child is not None and child.poll() is None:
                 child.terminate()

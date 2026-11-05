@@ -322,8 +322,8 @@ static uint8_t x11_frame_component(unsigned long pixel, unsigned long mask) {
     return (uint8_t)((value * 255UL + normalized / 2UL) / normalized);
 }
 
-static int64_t x11_frame_capture(Display *display, Window window,
-                                 uint8_t pixels[X11_FRAME_BYTES], uint64_t *captured_us) {
+static int x11_frame_capture_pixels(Display *display, Window window,
+                                    uint8_t pixels[X11_FRAME_BYTES], uint64_t *captured_us) {
     XWindowAttributes attributes, root_attributes, after;
     Window child;
     int root_x, root_y, after_x, after_y;
@@ -377,7 +377,28 @@ static int64_t x11_frame_capture(Display *display, Window window,
         }
     }
     XDestroyImage(image);
-    return *captured_us != 0U ? x11_frame_decode(pixels) : -1;
+    return *captured_us != 0U ? 0 : -1;
+}
+
+static int64_t x11_frame_capture(Display *display, Window window,
+                                 uint8_t pixels[X11_FRAME_BYTES], uint64_t *captured_us) {
+    return x11_frame_capture_pixels(display, window, pixels, captured_us) == 0 ?
+        x11_frame_decode(pixels) : -1;
+}
+
+/* Two equal monitors share one captured image. Repeat each existing sample to
+ * inspect a half with the unchanged decoder; no interpolation invents pixels. */
+static inline int64_t x11_frame_decode_half(const uint8_t pixels[X11_FRAME_BYTES],
+                                            unsigned int side, uint8_t half[X11_FRAME_BYTES]) {
+    if (side > 1U) return -1;
+    for (unsigned int y = 0U; y < X11_FRAME_HEIGHT; ++y) {
+        for (unsigned int x = 0U; x < X11_FRAME_WIDTH; ++x) {
+            unsigned int source_x = side * (X11_FRAME_WIDTH / 2U) + x / 2U;
+            memcpy(half + (y * X11_FRAME_WIDTH + x) * 3U,
+                   pixels + (y * X11_FRAME_WIDTH + source_x) * 3U, 3U);
+        }
+    }
+    return x11_frame_decode(half);
 }
 
 #endif

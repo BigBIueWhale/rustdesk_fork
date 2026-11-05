@@ -2151,9 +2151,13 @@ PY
         [ "$(grep -Ec "^FLUTTER_PEER_MONITOR_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
           || fail "monitor case $sequence is absent or duplicated"
       done
-      grep -Fxq 'FLUTTER_PEER_MONITOR_SWITCH_OK monitors=2 phases=left,right,left fresh_frames=12 pointer_targets=6 stable_connection=true same_window=true resources=bounded' \
+      for sequence in 1 2; do
+        [ "$(grep -Ec "^FLUTTER_PEER_MONITOR_ALL_CASE_OK sequence=$sequence " <<<"$controller_output")" -eq 1 ] \
+          || fail "all-monitor case $sequence is absent or duplicated"
+      done
+      grep -Fxq 'FLUTTER_PEER_MONITOR_SWITCH_OK monitors=2 phases=left,all,right,all,left fresh_frames=28 pointer_targets=14 stable_connection=true same_window=true resources=bounded' \
         <<<"$controller_output" || fail 'native monitor switching result is absent'
-      viewer_result='viewer=joined xvfb=joined monitor_switch=passed phases=3 pixels=fresh pointer=matched stable_connection=true'
+      viewer_result='viewer=joined xvfb=joined monitor_switch=passed phases=5 pixels=fresh pointer=matched stable_connection=true'
     elif [ "$PEER_SCENARIO" = session-close ]; then
       grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
         <<<"$controller_output" || fail 'native session-close result is absent'

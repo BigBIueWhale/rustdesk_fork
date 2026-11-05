@@ -74,6 +74,21 @@ static int unit_cases(void) {
     memset(pixels, 180, sizeof(pixels));
     make_pixels(pixels, 0x01020304U, 0U, 50U, 100U);
     REQUIRE(x11_frame_decode(pixels) == 0x01020304);
+    {
+        uint8_t half[X11_FRAME_BYTES];
+        memset(pixels, 180, sizeof(pixels));
+        make_pixels(pixels, 0x01020304U, 0U, 0U, 100U);
+        make_pixels(pixels, 0x05060709U, 0U, 100U, 100U);
+        REQUIRE(x11_frame_decode_half(pixels, 0U, half) == 0x01020304);
+        REQUIRE(x11_frame_decode_half(pixels, 1U, half) == 0x05060709);
+        REQUIRE(x11_frame_decode_half(pixels, 2U, half) < 0);
+        for (unsigned int y = 0U; y < X11_FRAME_HEIGHT; ++y)
+            memset(pixels + (y * X11_FRAME_WIDTH + 100U) * 3U, 180, 100U * 3U);
+        REQUIRE(x11_frame_decode_half(pixels, 0U, half) == 0x01020304);
+        REQUIRE(x11_frame_decode_half(pixels, 1U, half) < 0);
+        make_pixels(pixels, 0x05060709U, 60U, 0U, 100U);
+        REQUIRE(x11_frame_decode_half(pixels, 0U, half) < 0);
+    }
 
     REQUIRE(mkdtemp(directory) != NULL);
     REQUIRE(snprintf(path, sizeof(path), "%s/frame-source.log", directory) > 0);
@@ -130,6 +145,7 @@ static int unit_cases(void) {
     puts("ANDROID_FRAME_NATIVE_X11_CASES=pass full_bits=32 reordered=refused incomplete=refused "
          "ambiguous=refused unknown=refused clock=refused mode=refused link=refused fifo=refused "
          "history=bounded uncertainty=sticky cleanup=joined");
+    puts("X11_FRAME_HALF_CASES=pass identities=distinct blank=refused ambiguous=refused side=bounded");
     fflush(stdout);
     return 0;
 }

@@ -261,7 +261,7 @@ elif [ "$PEER_SCENARIO" = monitor-switch ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined monitor_switch=passed phases=3 pixels=fresh pointer=matched stable_connection=true'
+  VIEWER_RESULT='viewer=joined xvfb=joined monitor_switch=passed phases=5 pixels=fresh pointer=matched stable_connection=true'
 elif [ "$PEER_SCENARIO" = session-close ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

@@ -6009,6 +6009,114 @@ out:
     return result;
 }
 
+static int exercise_all_monitors(Display *source, Display *display,
+                                  const ViewerWindow *viewer, SourceHistory *history,
+                                  const ConnectionIdentity *connection,
+                                  const ProcessResources *baseline, unsigned int sequence,
+                                  const int reference_x[2], const int reference_y[2]) {
+    static const int dx[2] = {-47, 73}, dy[2] = {37, 61};
+    unsigned int pid = (unsigned int)viewer->pid, pairs = 0U;
+    unsigned int minimum[2] = {0}, maximum[2] = {0};
+    int64_t previous[2] = {-1, -1}, observed[2] = {-1, -1};
+    uint64_t maximum_age[2] = {0}, started, deadline;
+    const char *phase = "chooser";
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    ProcessResources resources = {0};
+    ViewerWindow current = {0};
+    if (viewer->width % 2U != 0U || quality_toolbar(pid) != 0 ||
+        activate_named_control(pid, "Select monitor") != 0 ||
+        activate_named_control(pid, "all monitors") != 0 ||
+        activate_named_control(pid, "Hide toolbar") != 0) goto failed;
+    phase = "fresh-pixels-on-both-monitors";
+    started = monotonic_millis();
+    deadline = started + RECOVERY_LIMIT_MS;
+    while (monotonic_millis() < deadline && pairs < 4U) {
+        uint8_t pixels[X11_FRAME_BYTES], half[X11_FRAME_BYTES];
+        uint64_t captured_us = 0U, ages[2] = {0};
+        int accepted = x11_frame_capture_pixels(display, viewer->window, pixels, &captured_us) == 0;
+        if (accepted) {
+            for (unsigned int side = 0U; side < 2U; ++side) {
+                observed[side] = x11_frame_decode_half(pixels, side, half);
+                if (x11_frame_age(history, "/coord", observed[side], captured_us, &ages[side]) != 0 ||
+                    observed[side] <= previous[side] || ((uint32_t)observed[side] & 1U) != side ||
+                    ages[side] > FRESH_LIMIT_MS ||
+                    counter_width_interval(half, (uint32_t)observed[side], viewer->width / 2U,
+                                           &minimum[side], &maximum[side]) != 0 ||
+                    maximum[side] - minimum[side] > 100U ||
+                    minimum[side] + maximum[side] < 1240U ||
+                    minimum[side] + maximum[side] > 1320U) accepted = 0;
+            }
+        }
+        if (history->failed) goto failed;
+        if (accepted && monotonic_millis() < deadline) {
+            ++pairs;
+            for (unsigned int side = 0U; side < 2U; ++side) {
+                previous[side] = observed[side];
+                if (ages[side] > maximum_age[side]) maximum_age[side] = ages[side];
+            }
+        }
+        if (pairs < 4U && sleep_millis(SAMPLE_INTERVAL_MS) != 0) goto failed;
+    }
+    if (pairs != 4U) {
+        fprintf(stderr, "FLUTTER_PEER_MONITOR_ALL_PIXELS_FAILED pairs=%u observed=%lld,%lld "
+                "width_intervals=%u..%u,%u..%u\n", pairs,
+                (long long)observed[0], (long long)observed[1],
+                minimum[0], maximum[0], minimum[1], maximum[1]);
+        goto failed;
+    }
+    phase = "remote-pointer-on-both-monitors";
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    for (unsigned int side = 0U; side < 2U; ++side) {
+        printf("FLUTTER_PEER_MONITOR_ALL_PIXELS_OK sequence=%u side=%u distinct=4 "
+               "width_interval=%u..%u maximum_age_ms=%llu\n", sequence, side,
+               minimum[side], maximum[side], (unsigned long long)maximum_age[side]);
+        for (unsigned int point = 0U; point < 2U; ++point) {
+            Window child;
+            int x = -1, y = -1, before_x, before_y, local_x, local_y;
+            int expected_x = reference_x[point] + (int)side * 640;
+            int expected_y = reference_y[point];
+            unsigned int mask = 0U, stable = 0U;
+            if (mouse_snapshot(source, &before_x, &before_y, &mask) != 0 || mask != 0U ||
+                !XTranslateCoordinates(display, viewer->window, DefaultRootWindow(display),
+                    (int)viewer->width / 2 + (side ? 320 : -320) + dx[point],
+                    (int)viewer->height / 2 + dy[point], &local_x, &local_y, &child) ||
+                !XTestFakeMotionEvent(display, DefaultScreen(display), local_x, local_y, CurrentTime))
+                goto failed;
+            XSync(display, False);
+            deadline = monotonic_millis() + RECOVERY_LIMIT_MS;
+            while (monotonic_millis() < deadline && stable < 3U) {
+                if (mouse_snapshot(source, &x, &y, &mask) != 0 || mask != 0U) goto failed;
+                stable = x == expected_x && y == expected_y ? stable + 1U : 0U;
+                if (stable < 3U && sleep_millis(25U) != 0) goto failed;
+            }
+            if (stable != 3U || monotonic_millis() >= deadline) {
+                fprintf(stderr, "FLUTTER_PEER_MONITOR_ALL_POINTER_FAILED sequence=%u side=%u "
+                        "point=%u root=%d,%d expected=%d,%d\n", sequence, side, point + 1U,
+                        x, y, expected_x, expected_y);
+                goto failed;
+            }
+            printf("FLUTTER_PEER_MONITOR_ALL_POINTER_OK sequence=%u side=%u point=%u "
+                   "root=%d,%d stable_scans=3\n", sequence, side, point + 1U, x, y);
+        }
+    }
+    phase = "identity-and-resources";
+    if (find_viewer_window(display, viewer->pid, &current) != 0 ||
+        current.window != viewer->window || current.width != viewer->width ||
+        current.height != viewer->height || read_connection_identity(&after) != 0 ||
+        !same_connection(connection, &after) || read_process_resources(viewer->pid, &resources) != 0 ||
+        !resources_are_bounded(baseline, &resources)) goto failed;
+    printf("FLUTTER_PEER_MONITOR_ALL_CASE_OK sequence=%u fresh_frames=8 pointer_targets=4 "
+           "elapsed_ms=%llu stable_connection=true same_window=true resources=bounded\n",
+           sequence, (unsigned long long)(monotonic_millis() - started));
+    print_resources("monitor-all", sequence, &resources);
+    fflush(stdout);
+    return 0;
+failed:
+    fprintf(stderr, "FLUTTER_PEER_MONITOR_ALL_FAILED sequence=%u phase=%s\n", sequence, phase);
+    return -1;
+}
+
 static int exercise_monitor_switch(Display *source, Display *display,
                                     const ViewerWindow *viewer, SourceHistory *history,
                                     const ConnectionIdentity *connection,
@@ -6132,6 +6240,11 @@ static int exercise_monitor_switch(Display *source, Display *display,
                (unsigned long long)maximum_age, (unsigned long long)(monotonic_millis() - started));
         print_resources("monitor-switch", sequence + 1U, &resources);
         fflush(stdout);
+        if (!burst && sequence < 2U) {
+            phase = "all-monitors";
+            if (exercise_all_monitors(source, display, viewer, history, connection, baseline,
+                                      sequence + 1U, reference_x, reference_y) != 0) goto failed;
+        }
     }
     return 0;
 failed:
@@ -8091,8 +8204,8 @@ int main(int argc, char **argv) {
             puts("FLUTTER_PEER_MONITOR_BURST_OK monitors=2 bursts=4 clicks=66 phases=5 fresh_frames=20 "
                  "pointer_targets=10 stable_connection=true same_window=true resources=bounded");
         } else if (monitor_switch) {
-            puts("FLUTTER_PEER_MONITOR_SWITCH_OK monitors=2 phases=left,right,left fresh_frames=12 "
-                 "pointer_targets=6 stable_connection=true same_window=true resources=bounded");
+            puts("FLUTTER_PEER_MONITOR_SWITCH_OK monitors=2 phases=left,all,right,all,left fresh_frames=28 "
+                 "pointer_targets=14 stable_connection=true same_window=true resources=bounded");
         } else if (background_close) {
             puts("FLUTTER_PEER_BACKGROUND_CLOSE_OK action=pointer first=retired second=preserved "
                  "pixels=fresh final_close=passed main=usable");

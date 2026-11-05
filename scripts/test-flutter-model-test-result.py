@@ -247,7 +247,7 @@ class ResultTests(unittest.TestCase):
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (1, 14))
             return
         if SINGLE_PROFILE == "modifier-release":
-            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (5, 121))
+            self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (5, 126))
             return
         if SINGLE_PROFILE == "connection-page":
             self.assertEqual(self.parse(self.events(SINGLE_PROFILE), SINGLE_PROFILE), (2, 18))
@@ -342,7 +342,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("settings-sidebar"), "settings-sidebar"), (1, 6))
         self.assertEqual(self.parse(self.events("mobile-build-date"), "mobile-build-date"), (1, 8))
         self.assertEqual(self.parse(self.events("desktop-theme"), "desktop-theme"), (1, 56))
-        self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 121))
+        self.assertEqual(self.parse(self.events("modifier-release"), "modifier-release"), (5, 126))
         self.assertEqual(self.parse(self.events("connect-password"), "connect-password"), (1, 14))
         self.assertEqual(self.parse(self.events("credential-dialog"), "credential-dialog"), (10, 117))
         with tempfile.TemporaryDirectory() as root:

@@ -4858,17 +4858,18 @@ out:
 typedef struct {
     const char *key, *choice, *new_connection, *settings, *language, *light;
     unsigned int index;
+    int rtl;
 } LanguageChoice;
 
 static const LanguageChoice language_choices[] = {
-    {"default", "Default", "New connection", "Settings", "Language", "Light", 0U},
-    {"fr", "Français (fr)", "Nouvelle connexion", "Paramètres", "Langue", "Clair", 16U},
-    {"pt-pt", "Português (Portugal) (pt-pt)", "Nova ligação", "Configurações", "Linguagem", "Claro", 35U},
-    {"en", "English (en)", "New connection", "Settings", "Language", "Light", 9U},
+    {"default", "Default", "New connection", "Settings", "Language", "Light", 0U, 0},
+    {"fr", "Français (fr)", "Nouvelle connexion", "Paramètres", "Langue", "Clair", 16U, 0},
+    {"pt-pt", "Português (Portugal) (pt-pt)", "Nova ligação", "Configurações", "Linguagem", "Claro", 35U, 0},
+    {"en", "English (en)", "New connection", "Settings", "Language", "Light", 9U, 0},
 };
 
 static const LanguageChoice hebrew_choice = {
-    "he", "עברית (he)", "חיבור חדש", "הגדרות", "שפה", "בהיר", 19U
+    "he", "עברית (he)", "חיבור חדש", "הגדרות", "שפה", "בהיר", 19U, 1
 };
 
 static int read_accessible_rect(AtspiAccessible *control, AtspiRect *rect);
@@ -4952,8 +4953,10 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
     const LanguageChoice *before = &language_choices[generation - 1U];
     const LanguageChoice *after_choice = generation < 4U ? &language_choices[generation] : before;
     if (direction_case) {
-        if (generation != 1U) return -1;
-        after_choice = &hebrew_choice;
+        if (generation > 3U) return -1;
+        before = generation == 1U ? &language_choices[0] :
+                 generation == 2U ? &hebrew_choice : &language_choices[3];
+        after_choice = generation == 1U ? &hebrew_choice : &language_choices[3];
     }
     unsigned int pid = (unsigned int)viewer->pid, connected = 0U, listeners = 0U;
     ConnectionIdentity after = {{0}, {0}, 0UL};
@@ -4964,12 +4967,13 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
     char control[256];
     int length = snprintf(control, sizeof(control), "%s\n%s", before->language, before->choice);
     if (length < 0 || (size_t)length >= sizeof(control)) return -1;
-    if (activate_header_control(display, viewer->window, pid, before->new_connection) != 0 ||
+    if (observe_header_control(display, viewer->window, pid, before->new_connection,
+                               before->rtl, 1) != 0 ||
         find_main_window(display, viewer->pid, &main) != 0 ||
-        activate_header_control(display, main, pid, before->settings) != 0 ||
+        observe_header_control(display, main, pid, before->settings, before->rtl, 1) != 0 ||
         observe_language(pid, before, generation, "restored") != 0) goto out;
-    if (direction_case && observe_language_direction(pid, before, 0) != 0) goto out;
-    if (generation < 4U) {
+    if (direction_case && observe_language_direction(pid, before, before->rtl) != 0) goto out;
+    if (before != after_choice) {
         if (click_main_control(display, main, pid, control) != 0 ||
             sleep_millis(350U) != 0) goto out;
         /* get_langs sorts keys and appends their codes. DropdownButton focuses its
@@ -4982,12 +4986,13 @@ static int exercise_language_restart(Display *display, const ViewerWindow *viewe
         if (click_main_control(display, main, pid, after_choice->choice) != 0 ||
             observe_language(pid, after_choice, generation, "changed") != 0) goto out;
     }
-    if (direction_case && observe_language_direction(pid, after_choice, 1) != 0) goto out;
+    if (direction_case && before != after_choice &&
+        observe_language_direction(pid, after_choice, after_choice->rtl) != 0) goto out;
     /* Keep the settings window alive while querying the other window's label;
      * destroying an accessibility root mid-query cannot establish translation. */
     Window existing_main = main;
     if (observe_header_control(display, viewer->window, pid, after_choice->new_connection,
-                               direction_case, 0) != 0 ||
+                               after_choice->rtl, 0) != 0 ||
         find_main_window(display, viewer->pid, &main) != 0 ||
         main != existing_main ||
         close_viewer(display, main) != 0) goto out;
@@ -7704,6 +7709,8 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--language-english") != 0 &&
                                     strcmp(argv[5], "--language-restore") != 0 &&
                                     strcmp(argv[5], "--language-direction") != 0 &&
+                                    strcmp(argv[5], "--language-direction-english") != 0 &&
+                                    strcmp(argv[5], "--language-direction-restore") != 0 &&
                                     strcmp(argv[5], "--theme-appearance") != 0 &&
                                     strcmp(argv[5], "--theme-save-failure") != 0 &&
                                     strcmp(argv[5], "--credential-retry") != 0 &&
@@ -7725,7 +7732,8 @@ int main(int argc, char **argv) {
               "--keyboard-translate, --keyboard-repeat, "
               "--quality-best, --quality-low, --quality-balanced, --quality-restore, "
               "--language-french, --language-portugal, --language-english, --language-restore, "
-              "--language-direction, --native-components\n", stderr);
+              "--language-direction, --language-direction-english, --language-direction-restore, "
+              "--native-components\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
               "VIEWER_START [--viewer-suspend|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--input-congestion-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
@@ -7735,7 +7743,7 @@ int main(int argc, char **argv) {
     unsigned int language_generation = 0U;
     unsigned int quality_generation = 0U;
     unsigned int keyboard_generation = 0U;
-    int language_direction = argc == 6 && strcmp(argv[5], "--language-direction") == 0;
+    int language_direction = 0;
     if (argc == 6) {
         static const char *phases[] = {"--theme-light", "--theme-dark", "--theme-system", "--theme-restore"};
         for (unsigned int i = 0U; i < 4U; ++i)
@@ -7744,6 +7752,14 @@ int main(int argc, char **argv) {
             "--language-french", "--language-portugal", "--language-english", "--language-restore"};
         for (unsigned int i = 0U; i < 4U; ++i)
             if (strcmp(argv[5], language_phases[i]) == 0) language_generation = i + 1U;
+        static const char *direction_phases[] = {
+            "--language-direction", "--language-direction-english", "--language-direction-restore"};
+        for (unsigned int i = 0U; i < 3U; ++i) {
+            if (strcmp(argv[5], direction_phases[i]) == 0) {
+                language_direction = 1;
+                language_generation = i + 1U;
+            }
+        }
         static const char *quality_phases[] = {
             "--quality-best", "--quality-low", "--quality-balanced", "--quality-restore"};
         for (unsigned int i = 0U; i < 4U; ++i)
@@ -7753,11 +7769,12 @@ int main(int argc, char **argv) {
         for (unsigned int i = 0U; i < 4U; ++i)
             if (strcmp(argv[5], keyboard_phases[i]) == 0) keyboard_generation = i + 1U;
     }
-    if (language_direction) language_generation = 1U;
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
-    if (language_generation == 2U)
+    if (language_direction && language_generation == 2U)
+        expected_remote_title_suffix = " - שלוט בשולחן עבודה מרוחק - RustDesk";
+    else if (!language_direction && language_generation == 2U)
         expected_remote_title_suffix = " - Contrôler un bureau à distance - RustDesk";
-    else if (language_generation == 3U)
+    else if (!language_direction && language_generation == 3U)
         expected_remote_title_suffix = " - Controle o Ambiente de Trabalho à distância - RustDesk";
     int credential_retry = argc == 6 && strcmp(argv[5], "--credential-retry") == 0;
     int credential_forget = argc == 6 && strcmp(argv[5], "--credential-forget") == 0;

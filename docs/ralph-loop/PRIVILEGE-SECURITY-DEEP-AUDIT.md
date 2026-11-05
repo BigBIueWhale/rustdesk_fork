@@ -141380,3 +141380,28 @@ peak 402,849,792 bytes. Capsule language-ledger-10d32e8f.json is 4,773 bytes,
 SHA-256 47448443955feb3f9a5d694f8b8fb134b73c89d6f77385d80a844c461146d8d8.
 All 41 bounded evidence files (893,471 bytes) match CTE/TUF. This audit-only
 receipt leaves the counted ledger unchanged; no owned run remains.
+
+## 2026-11-05 — native language direction across application restart
+
+The previous turn is progress: the existing locale correction passes its sixteen
+component cases and live native Hebrew transition. Continue R-S0's selected
+settings workflow through its explicit remaining restart gap, ahead of creating
+a new runit fixture. Both app roots read the confirmed local language when built;
+the settings callback persists first, reads back and reloads windows. Startup
+must resolve that saved value before layout. Flutter's initial-locale and inherited
+Row-direction contracts support the expected behavior:
+https://api.flutter.dev/flutter/material/MaterialApp/locale.html and
+https://api.flutter.dev/flutter/widgets/Flex/textDirection.html.
+
+Extend the existing --language-direction replay to three actual viewer processes:
+Default to Hebrew, restored Hebrew to English, then restored English with no
+write. Each prior process must exit zero and join before the next starts. The
+driver checks translated settings, radio geometry, header tooltips, actual current
+frames, resources and connection identity within each process. The original
+controlled server/listener must survive all three launches. Read saved lang only
+after join; the fixture does not set it. Password entry remains native and checked
+in every generation; matching the Hebrew window title preserves exact discovery.
+The source-bound app bd65c0c4 and engine ddb1541d are reused. Product code and
+existing component evidence are unchanged; no defect is presumed from this gap.
+Shell syntax and whitespace checks pass. Isolated driver compilation and the
+three-generation native replay follow; restart acceptance remains unproved.

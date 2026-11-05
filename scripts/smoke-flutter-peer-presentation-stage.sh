@@ -1658,6 +1658,7 @@ PY
     [ "$PEER_SCENARIO" != credential-menu-accessible ] || viewer_generations=3
     [ "$PEER_SCENARIO" != theme-restart ] || viewer_generations=4
     [ "$PEER_SCENARIO" != language-restart ] || viewer_generations=4
+    [ "$PEER_SCENARIO" != language-direction ] || viewer_generations=3
     [ "$PEER_SCENARIO" != quality-restart ] || viewer_generations=4
     [ "$PEER_SCENARIO" != keyboard-restart ] || viewer_generations=4
     if [ "$PEER_SCENARIO" = theme-appearance ] || [ "$PEER_SCENARIO" = theme-restart ]; then
@@ -1749,7 +1750,8 @@ PY
       theme_phases=(light dark system restore)
       controller_args+=("--theme-${theme_phases[viewer_generation - 1]}")
     elif [ "$PEER_SCENARIO" = language-direction ]; then
-      controller_args+=(--language-direction)
+      language_phases=(--language-direction --language-direction-english --language-direction-restore)
+      controller_args+=("${language_phases[viewer_generation - 1]}")
     elif [ "$PEER_SCENARIO" = language-restart ]; then
       language_phases=(french portugal english restore)
       controller_args+=("--language-${language_phases[viewer_generation - 1]}")
@@ -1948,7 +1950,7 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = language-restart ] || [ "$PEER_SCENARIO" = quality-restart ] || [ "$PEER_SCENARIO" = keyboard-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
+    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = language-restart ] || [ "$PEER_SCENARIO" = language-direction ] || [ "$PEER_SCENARIO" = quality-restart ] || [ "$PEER_SCENARIO" = keyboard-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
@@ -1982,13 +1984,20 @@ PY
         || fail 'native quality restart observation count differs'
       viewer_result='viewer=joined xvfb=joined quality_restart=passed generations=4 choices=best,low,balanced storage=verified encoder_bitrate=confirmed pixels=fresh'
     elif [ "$PEER_SCENARIO" = language-direction ]; then
-      grep -Fxq 'FLUTTER_PEER_LANGUAGE_PHASE_OK generation=1 restored=default selected=he native_labels=true remote_label=true stable_connection=true fresh_pixels=4 resources=bounded' \
+      language_before=(default he en)
+      language_after=(he en en)
+      direction_before=(ltr rtl ltr)
+      direction_after=(rtl ltr ltr)
+      language_index=$((viewer_generation - 1))
+      grep -Fxq "FLUTTER_PEER_LANGUAGE_PHASE_OK generation=$viewer_generation restored=${language_before[language_index]} selected=${language_after[language_index]} native_labels=true remote_label=true stable_connection=true fresh_pixels=4 resources=bounded" \
         <<<"$controller_output" || fail 'native language direction result is absent'
-      [ "$(grep -Ec '^FLUTTER_PEER_LANGUAGE_DIRECTION_OK selected=default direction=ltr row_x=[0-9]+ row_width=[0-9]+ radio_x=[0-9]+ radio_width=[0-9]+ samples=3$' <<<"$controller_output")" -eq 1 ] \
-        || fail 'native initial language direction differs'
-      [ "$(grep -Ec '^FLUTTER_PEER_LANGUAGE_DIRECTION_OK selected=he direction=rtl row_x=[0-9]+ row_width=[0-9]+ radio_x=[0-9]+ radio_width=[0-9]+ samples=3$' <<<"$controller_output")" -eq 1 ] \
-        || fail 'native Hebrew language direction differs'
-      viewer_result='viewer=joined xvfb=joined language_direction=passed selected=he direction=rtl labels=verified storage=verified pixels=fresh'
+      [ "$(grep -Ec "^FLUTTER_PEER_LANGUAGE_DIRECTION_OK selected=${language_before[language_index]} direction=${direction_before[language_index]} row_x=[0-9]+ row_width=[0-9]+ radio_x=[0-9]+ radio_width=[0-9]+ samples=3$" <<<"$controller_output")" -eq 1 ] \
+        || fail 'native restored language direction differs'
+      if [ "$viewer_generation" -lt 3 ]; then
+        [ "$(grep -Ec "^FLUTTER_PEER_LANGUAGE_DIRECTION_OK selected=${language_after[language_index]} direction=${direction_after[language_index]} row_x=[0-9]+ row_width=[0-9]+ radio_x=[0-9]+ radio_width=[0-9]+ samples=3$" <<<"$controller_output")" -eq 1 ] \
+          || fail 'native changed language direction differs'
+      fi
+      viewer_result='viewer=joined xvfb=joined language_direction=passed generations=3 choices=he,en directions=rtl,ltr labels=verified storage=verified pixels=fresh'
     elif [ "$PEER_SCENARIO" = language-restart ]; then
       language_before=(default fr pt-pt en)
       language_after=(fr pt-pt en en)
@@ -2433,7 +2442,7 @@ PY
     if [ "$viewer_generations" -gt 1 ]; then
       if [ "$PEER_SCENARIO" = theme-restart ]; then
         printf 'FLUTTER_PEER_THEME_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
-      elif [ "$PEER_SCENARIO" = language-restart ]; then
+      elif [ "$PEER_SCENARIO" = language-restart ] || [ "$PEER_SCENARIO" = language-direction ]; then
         printf 'FLUTTER_PEER_LANGUAGE_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       elif [ "$PEER_SCENARIO" = quality-restart ]; then
         printf 'FLUTTER_PEER_QUALITY_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
@@ -2463,7 +2472,8 @@ try:
             raise ValueError()
     key, receipt = 'theme', 'THEME'
     if sys.argv[2] == 'language-direction':
-        key, receipt, expected = 'lang', 'LANGUAGE', 'he'
+        key, receipt = 'lang', 'LANGUAGE'
+        expected = ('he', 'en', 'en')[int(sys.argv[1]) - 1]
     elif sys.argv[2] == 'language-restart':
         key, receipt = 'lang', 'LANGUAGE'
         expected = ('fr', 'pt-pt', 'en', 'en')[int(sys.argv[1]) - 1]

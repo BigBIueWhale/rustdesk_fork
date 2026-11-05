@@ -221,7 +221,7 @@ elif [ "$PEER_SCENARIO" = language-direction ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined language_direction=passed selected=he direction=rtl labels=verified storage=verified pixels=fresh'
+  VIEWER_RESULT='viewer=joined xvfb=joined language_direction=passed generations=3 choices=he,en directions=rtl,ltr labels=verified storage=verified pixels=fresh'
 elif [ "$PEER_SCENARIO" = language-restart ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

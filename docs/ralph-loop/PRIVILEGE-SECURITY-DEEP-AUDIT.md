@@ -141040,3 +141040,14 @@ final-package acceptance. Other platforms/suspend, sustained load and R-S0/R-F5
 remain OPEN. The next broader acceptance is the required installed graphical
 session under load. Replace the existing ledger checkpoint/recovery entry in
 place and count the revised ledger; the goal remains active.
+
+Fresh CTE count YlEoeTmWk1 at 10356aed passes: 399,912 tokens /
+1,825,575 bytes, SHA-256
+d8276ba0ef25f01a3c679e634612997ba04dc303c8ebce197a000c378b8de2b9.
+Session 31038 exits zero with seven controls, whole-input round trip, three
+zero endpoint deltas and exact QEMU/private/RAM retirement. Storage is 30.532s,
+peak 402,915,328 bytes. Capsule service-limiter-live-ledger-10356aed.json is
+4,500 bytes, SHA-256
+63fa833c79de74c26016d72d2abff8b23f733134b0237833a7dcb65799785bb6.
+All seventeen evidence files from this slice (222,178 bytes) match CTE/TUF.
+This audit-only receipt leaves the counted ledger unchanged; no owned run remains.

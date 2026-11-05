@@ -141435,3 +141435,16 @@ verified under the shared lock; storage lasts 134.014 seconds, peak scratch
 3,024,183,296 bytes. Ten bounded evidence files (111,816 bytes) match CTE/TUF;
 no owned run remains. Update the existing locale ledger entry and freshly count
 it. The broader release goal remains active.
+
+Fresh CTE count o5KspzLWkm at d2e486b1 passes: 399,831 tokens /
+1,825,363 bytes, SHA-256
+d4823c206c1bb074012f4e0b20225e57788b5f2506ce7cc31288ff86d4a955b8.
+Session 35614 exits zero with seven controls and the whole-input round trip.
+Before/during endpoint deltas are zero; the final snapshot retains one addition
+and no removals as unattributed external state. The sealed owned process tree
+is kernel-denied IP sockets; no pre-existing service is inspected or changed.
+Exact QEMU/private/RAM retirement passes. Storage lasts 30.623 seconds, peak
+402,849,792 bytes. Capsule language-restart-ledger-d2e486b1.json is 4,781 bytes,
+SHA-256 25d50675069864161943efb97722a77514441fccd6476797cdb0a38b3def6c57.
+All eighteen bounded evidence files (230,981 bytes) match CTE/TUF. This audit-only
+receipt leaves the counted ledger unchanged; no owned run remains.

@@ -110472,53 +110472,6 @@ durable-run peak 249,856 bytes. QEMU 222169 joins exit 0; its PID, RAM
 `run.zv39mfrc` and active owned roots are absent. All endpoint deltas are zero.
 This audit-only receipt leaves the counted ledger unchanged.
 
-## 2026-11-05 — Linux receive admission before I/O
-
-After the congestion checkpoint, select the three still-failing receive pre-I/O
-regressions under R-S8/R-S0. A reproduced filesystem correctness gap takes priority
-over extending passed congestion scenarios. The intervening user clarification
-preserves intentional host/DMZ restrictions and removes no such boundary.
-
-Unchanged source 5695d0ad, CTE HFZCfLjPRV, runs `--hbb-common-fs`: the filesystem
-group reports 217 passes and five failures. The three existing FIFO replacement
-tests observe EOWNERDEAD from their calibrated kernel denial of I/O opens. The
-current LinuxRegularChild checks a pathname, then opens that mutable name again.
-Two additional failures are stale fixtures: the frame-receipt test identifies an
-unselected job by its old vector position despite round-robin rotation, and the
-hard-link test creates sidecars outside the current private receive namespace.
-Correct their selection/location while retaining the original safety assertions;
-also require preservation of the refused hard-linked sidecar itself.
-
-Baseline capsule `receive-preopen-baseline-5695d0ad.json` is 10,264 bytes, SHA-256
-08d25923dd964c952ffbcf086729f6d19273df06647ebd92bc0e9af3b1458e75.
-The terminal tool exits 1 (guest Cargo 101); QEMU joins with exit zero, all four
-endpoint deltas are zero and peak RAM scratch is 3,513,892,864 bytes. Exact QEMU
-absence and RAM retirement are verified; private diagnostics are inventoried and
-removed with the existing identity-checked helper under the shared lock. The
-466-byte retirement receipt SHA-256 is
-fa4f31925fdf05eb2522dad0a031ca755e6c0cf93f29dc48dba5e034889cc824.
-The evidence reconciler first rejected duplicated summary lines, then the known
-packaged virtiofsd symlink; both observation assumptions were corrected against
-the retained bytes without repeating the guest or weakening product assertions.
-
-Linux primary references: https://man7.org/linux/man-pages/man2/open.2.html,
-https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html and
-https://man7.org/linux/man-pages/man5/proc_thread-self.5.html. O_PATH permits
-metadata-only classification without device/FIFO I/O; exclusive creation refuses
-an existing child; proc descriptor reopening remains subject to access checks.
-Use thread-self so a surviving worker does not depend on the leader's lifetime.
-
-The correction retains an O_PATH/no-follow object through type admission and
-readable/writable reopening, checks descriptor and child identity, and never
-falls back to the original pathname. Missing-file creation is exclusive; an
-EEXIST competitor receives one metadata-only reacquisition, preserving legitimate
-regular-file winners without an unbounded retry. Existing non-Linux paths are
-unchanged. Add regular-to-regular replacement coverage for all three access modes
-and both existing/open-or-create operations; extend the existing native worker
-lifetime fixture with real read-only receive inspection and byte preservation.
-Validation pending: unchanged three pre-I/O regressions and neighboring workflows
-in `--hbb-common-fs`, then `--file-metadata-tests` for worker lifetime and native
-receive-authority integration. No corrected runtime acceptance is claimed yet.
 
 
 ## 2026-10-28 — retire unused legacy-ID main IPC
@@ -140134,3 +140087,71 @@ Storage duration is 31.266 seconds and peak scratch is 402,767,872 bytes.
 Capsule `congestion-results-ledger-2386e31a.json`: 4,577 bytes, SHA-256
 81c184cb2234ea640618c5a02d26a8c5d036b8b82455cbbed19e9e0336f89391.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-11-05 — Linux receive admission before I/O
+
+After the congestion checkpoint, select the three still-failing receive pre-I/O
+regressions under R-S8/R-S0. A reproduced filesystem correctness gap takes priority
+over extending passed congestion scenarios. The intervening user clarification
+preserves intentional host/DMZ restrictions and removes no such boundary.
+
+Unchanged source 5695d0ad, CTE HFZCfLjPRV, runs `--hbb-common-fs`: the filesystem
+group reports 217 passes and five failures. The three existing FIFO replacement
+tests observe EOWNERDEAD from their calibrated kernel denial of I/O opens. The
+current LinuxRegularChild checks a pathname, then opens that mutable name again.
+Two additional failures are stale fixtures: the frame-receipt test identifies an
+unselected job by its old vector position despite round-robin rotation, and the
+hard-link test creates sidecars outside the current private receive namespace.
+Correct their selection/location while retaining the original safety assertions;
+also require preservation of the refused hard-linked sidecar itself.
+
+Baseline capsule `receive-preopen-baseline-5695d0ad.json` is 10,264 bytes, SHA-256
+08d25923dd964c952ffbcf086729f6d19273df06647ebd92bc0e9af3b1458e75.
+The terminal tool exits 1 (guest Cargo 101); QEMU joins with exit zero, all four
+endpoint deltas are zero and peak RAM scratch is 3,513,892,864 bytes. Exact QEMU
+absence and RAM retirement are verified; private diagnostics are inventoried and
+removed with the existing identity-checked helper under the shared lock. The
+466-byte retirement receipt SHA-256 is
+fa4f31925fdf05eb2522dad0a031ca755e6c0cf93f29dc48dba5e034889cc824.
+The evidence reconciler first rejected duplicated summary lines, then the known
+packaged virtiofsd symlink; both observation assumptions were corrected against
+the retained bytes without repeating the guest or weakening product assertions.
+
+Linux primary references: https://man7.org/linux/man-pages/man2/open.2.html,
+https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html and
+https://man7.org/linux/man-pages/man5/proc_thread-self.5.html. O_PATH permits
+metadata-only classification without device/FIFO I/O; exclusive creation refuses
+an existing child; proc descriptor reopening remains subject to access checks.
+Use thread-self so a surviving worker does not depend on the leader's lifetime.
+
+The correction retains an O_PATH/no-follow object through type admission and
+readable/writable reopening, checks descriptor and child identity, and never
+falls back to the original pathname. Missing-file creation is exclusive; an
+EEXIST competitor receives one metadata-only reacquisition, preserving legitimate
+regular-file winners without an unbounded retry. Existing non-Linux paths are
+unchanged. Add regular-to-regular replacement coverage for all three access modes
+and both existing/open-or-create operations; extend the existing native worker
+lifetime fixture with real read-only receive inspection and byte preservation.
+Validation pending: unchanged three pre-I/O regressions and neighboring workflows
+in `--hbb-common-fs`, then `--file-metadata-tests` for worker lifetime and native
+receive-authority integration. No corrected runtime acceptance is claimed yet.
+
+The first corrected run, CTE HekGpzfOhi at 7585c794, passes all 223 filesystem
+tests, including the three unchanged pre-I/O regressions, six regular-replacement
+combinations and repaired hard-link fixture. The enclosing guest then rejects
+the default selector's obsolete required name
+rename_file_replaces_a_symlink_leaf_without_touching_its_target. Current rename
+behavior preserves existing targets and permits moving a source symlink to a
+vacant name. Replace that stale selector entry with both current behavioral
+tests; no rename product code or acceptance assertion changes. Whole-profile
+acceptance remains pending, so this is not reported as a successful harness run.
+
+Candidate capsule receive-preopen-candidate-7585c794.json is 10,048 bytes,
+SHA-256 34ff51935460fecaa7d96611076b2ae586bcf152afff4783762b30ae9c041e72.
+It preserves the guest failure tail, exact source and artifact identities,
+four zero endpoint deltas, QEMU exit zero/absence and joined RAM/private cleanup.
+Peak scratch is 3,799,646,208 bytes over 231.909 seconds. Retirement receipt:
+467 bytes, SHA-256 614e9126f6624c95bfe3609f310ad3a36ef1a45ce4e044c2ab8e95866ec84cea.
+Re-run the failed default profile after the selector repair, then complete the
+planned native metadata/authority integration. Move this entry to the journal's
+end; its initial insertion matched an earlier repeated ledger-count sentence.

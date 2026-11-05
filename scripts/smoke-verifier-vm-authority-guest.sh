@@ -3747,7 +3747,8 @@ run_focused_rust_tests() {
             fs::tests::create_dir_refuses_a_symlink_parent_without_mutating_its_target
             fs::tests::rename_file_rejects_invalid_new_name
             fs::tests::rename_file_accepts_valid_new_name
-            fs::tests::rename_file_replaces_a_symlink_leaf_without_touching_its_target
+            fs::tests::rename_file_moves_a_source_symlink_without_touching_its_target
+            fs::tests::file_metadata_rename_existing_targets_are_preserved
             fs::tests::rename_file_refuses_a_symlink_parent_without_mutating_its_target
             fs::tests::rename_admitted_entry_refuses_a_replaced_source_name
             fs::tests::rename_admitted_entry_stays_with_its_retained_parent_after_path_swap

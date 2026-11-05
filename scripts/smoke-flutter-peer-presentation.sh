@@ -77,6 +77,7 @@ case "$#:${1:-}" in
         --viewer-suspend) PEER_SCENARIO=viewer-suspend ;;
         --viewer-isolation) PEER_SCENARIO=viewer-isolation ;;
         --viewer-soak) PEER_SCENARIO=viewer-soak ;;
+        --congestion-soak) PEER_SCENARIO=congestion-soak ;;
         --input-latency) PEER_SCENARIO=input-latency ;;
         --input-recovery) PEER_SCENARIO=input-recovery ;;
         --input-loss) PEER_SCENARIO=input-loss ;;
@@ -170,7 +171,7 @@ readonly SUPPLIED_SOURCE_ARCHIVE SUPPLIED_SOURCE_COMMIT \
   BUILD_APP_ONLY APP_BUILD_CONTEXT APP_MANIFEST_SHA256 APP_ENGINE_CONTEXT
 readonly PEER_SCENARIO
 LONG_SOAK=0
-case "$PEER_SCENARIO" in viewer-soak|input-soak) LONG_SOAK=1 ;; esac
+case "$PEER_SCENARIO" in viewer-soak|congestion-soak|input-soak) LONG_SOAK=1 ;; esac
 readonly LONG_SOAK
 PRESENTATION_TRACE=1
 [ "$LONG_SOAK" -eq 0 ] || PRESENTATION_TRACE=0
@@ -372,11 +373,12 @@ elif [ "$PEER_SCENARIO" = input-soak ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined input_soak_hours=4 input_latency_samples=7320 stable_connection=true resources=bounded'
-elif [ "$PEER_SCENARIO" = viewer-soak ]; then
+elif [ "$PEER_SCENARIO" = viewer-soak ] || [ "$PEER_SCENARIO" = congestion-soak ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined soak_hours=4 stable_connection=true resources=bounded'
+  [ "$PEER_SCENARIO" != congestion-soak ] || VIEWER_RESULT+=' congestion_cycles=12'
 elif [ "$PEER_SCENARIO" = viewer-isolation ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -821,7 +823,8 @@ inspect_container_contract() {
     || [ "$label:$PEER_SCENARIO" = viewer:network-congestion ] \
     || [ "$label:$PEER_SCENARIO" = viewer:input-recovery ] \
     || [ "$label:$PEER_SCENARIO" = viewer:input-loss ] \
-    || [ "$label:$PEER_SCENARIO" = viewer:input-congestion ]; then
+    || [ "$label:$PEER_SCENARIO" = viewer:input-congestion ] \
+    || [ "$label:$PEER_SCENARIO" = viewer:congestion-soak ]; then
     expected_impairment_mounts=1
   fi
   local receipt_ends=0
@@ -1389,7 +1392,8 @@ echo '== authenticate through the real prompt and observe current pixels across 
 impairment_mount=()
 if [ "$PEER_SCENARIO" = network-impairment ] || [ "$PEER_SCENARIO" = network-loss ] \
   || [ "$PEER_SCENARIO" = network-congestion ] || [ "$PEER_SCENARIO" = input-recovery ] \
-  || [ "$PEER_SCENARIO" = input-loss ] || [ "$PEER_SCENARIO" = input-congestion ]; then
+  || [ "$PEER_SCENARIO" = input-loss ] || [ "$PEER_SCENARIO" = input-congestion ] \
+  || [ "$PEER_SCENARIO" = congestion-soak ]; then
   /usr/bin/python3 -I -S "$SOURCE_SNAPSHOT/scripts/flutter-peer-netem.py" --attach "$SERVER_CID"
   impairment_mount=(--mount 'type=bind,source=/run/rustdesk-verifier-vm/netem.sock,target=/netem.sock,readonly,bind-recursive=disabled')
 fi

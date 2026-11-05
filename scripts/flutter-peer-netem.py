@@ -28,9 +28,11 @@ def alive(fd):
 
 
 class Impairment:
-    def __init__(self, image, congestion=False):
+    def __init__(self, image, congestion=False, long_soak=False):
         self.image = image
         self.congestion = congestion
+        self.long_soak = long_soak
+        self.transport_fast_until = self.transport_bytes = 0
         self.namespace = self.process = None
         self.interface = self.ingress = False
         self.current_profile = None
@@ -230,6 +232,9 @@ print(json.dumps(samples))
             self.run('tc', 'qdisc', 'replace', 'dev', 'rd-netem', 'root', 'handle', '1:',
                      'netem', 'limit', '64', *options[name])
         self.current_profile = name
+        if self.long_soak:
+            self.transport_next = 0
+            self.transport_fast_until = time.monotonic_ns() + 5_000_000_000
         if self.congestion and name in ('bandwidth', 'bandwidth-jitter'):
             root = next(q for q in self.congestion_queues() if q['kind'] == 'tbf')
             self.congestion_start = (time.monotonic_ns(), root)
@@ -241,8 +246,11 @@ print(json.dumps(samples))
         if not self.transport_active or time.monotonic_ns() < self.transport_next:
             return
         started = time.monotonic_ns()
-        self.transport_next = started + 200_000_000
-        require(self.transport_count < 1024, 'transport observation budget exceeded')
+        interval_ms = 30000 if (self.long_soak and self.current_profile == 'healthy'
+                               and started >= self.transport_fast_until) else 200
+        self.transport_next = started + interval_ms * 1_000_000
+        require(self.transport_count < (2304 if self.long_soak else 1024),
+                'transport observation budget exceeded')
         raw = self.run('ss', '-H', '-O', '-n', '-t', '-i', '-e', '-o',
                        'state', 'established', '(', 'sport', '=', ':21118',
                        'or', 'dport', '=', ':21118', ')')
@@ -283,12 +291,16 @@ print(json.dumps(samples))
         if complete and self.current_profile in self.transport_profiles:
             self.transport_profiles[self.current_profile] += 1
         self.transport_count += 1
-        print('FLUTTER_PEER_TCP_SNAPSHOT=' + json.dumps(
+        record = 'FLUTTER_PEER_TCP_SNAPSHOT=' + json.dumps(
             dict(sequence=self.transport_count, profile=self.current_profile,
                  started_us=started // 1000, completed_us=completed // 1000,
                  complete=complete, sockets=records,
                  queues=self.congestion_queues() if self.congestion else None),
-            sort_keys=True), flush=True)
+            sort_keys=True)
+        if self.long_soak:
+            self.transport_bytes += len(record.encode()) + 1
+            require(self.transport_bytes <= 6 * 1024 * 1024, 'soak transport evidence exceeds bound')
+        print(record, flush=True)
         if not records:
             self.transport_active = False
 
@@ -379,7 +391,9 @@ def supervise(image, argv):
     require([link['ifname'] for link in json.loads(initial_links)] == ['lo'], 'guest NIC present')
     require(not os.path.lexists(ENDPOINT), 'supervisor endpoint occupied')
     subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=ENV, check=True, timeout=3)
-    owner = Impairment(image, '--network-congestion' in argv or '--input-congestion' in argv)
+    long_soak = '--congestion-soak' in argv
+    owner = Impairment(image, long_soak or '--network-congestion' in argv or '--input-congestion' in argv,
+                       long_soak)
     child = None
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
         listener.bind(ENDPOINT)
@@ -410,8 +424,8 @@ def supervise(image, argv):
                         require(not flags and data and len(data) < 128, 'invalid request frame')
                         request = data.decode('ascii')
                         requests += 1
-                        # One attachment, nine profile/restore pairs, one failure restore.
-                        require(requests <= 20, 'request budget exceeded')
+                        # Attachment, at most twelve (soak) or nine profile pairs, failure restore.
+                        require(requests <= (26 if long_soak else 20), 'request budget exceeded')
                         if request.startswith('attach '):
                             require(peer_namespace == os.stat('/proc/self/ns/net').st_ino,
                                     'attachment requires the guest orchestrator')
@@ -438,7 +452,10 @@ def supervise(image, argv):
                     dict(samples=owner.transport_count, profiles=owner.transport_profiles,
                          interval_ms=200, clock='shared-monotonic', socket_pair='retained',
                          source='ss-inet-diag', product_socket_changes=False,
-                         packet_sizes=sizes), sort_keys=True),
+                         packet_sizes=sizes,
+                         **(dict(healthy_interval_ms=30000, recovery_fast_ms=5000,
+                                 snapshot_limit=2304, snapshot_bytes=owner.transport_bytes)
+                            if long_soak else {})), sort_keys=True),
                       flush=True)
         finally:
             if child is not None and child.poll() is None:

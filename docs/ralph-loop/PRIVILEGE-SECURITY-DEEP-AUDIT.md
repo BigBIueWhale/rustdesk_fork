@@ -139407,6 +139407,50 @@ mutation. `current-linux-ledger-dd21a276.json` is 7,749 bytes, SHA-256
 234e47aed38b737b40cebc9015f3983829d59be1bcbfa815f938eacf00b9b617.
 This audit-only receipt leaves the counted ledger unchanged. No owned run remains.
 
+### 2026-11-05 — R-F5 congestion during a four-hour display session
+
+The previous engineering slice made progress: six mixed-degradation input
+scenarios passed with exact retirement. The intervening user clarification
+confirmed existing instructions; it added no product evidence. Continue R-F5's
+impaired multi-hour freshness requirement, ahead of another short scenario,
+because healthy four-hour controls and short impaired recovery already pass.
+
+Add `--congestion-soak` to the existing complete-peer replay, reusing app
+`2ae08e80` and engine `ddb1541d`. Keep the 241 one-minute pixel windows and fixed
+first-window quantiles. Before windows 1, 61, 121 and 181, run the existing three
+20-second profiles: 80 +/- 30 ms jitter, aggregate 32 kbit/s and both. Each
+restoration still requires four fresh states within 2,500 ms, three seconds of
+healthy follow-up, the same connection/window and bounded resources. Acquire
+a fresh pixel witness before starting the next healthy window. Never reset the
+original p95/p99 baseline or flush queued packets to satisfy recovery.
+
+Every healthy window retains its 1,000-ms age/gap ceiling, 95% valid samples,
+at least 1,000 samples and 60 distinct states, and 250-ms p95/p99 drift bound.
+Require four rounds/twelve cycles and at least 14,700 seconds, including 14,460
+seconds of healthy observation. Controller/VM ceilings are 15,120/15,360 seconds;
+server observation retains its original resource and per-minute CPU limits.
+Existing source history and log bounds cover that duration without expansion.
+
+Keep transport observations at 200 ms during impairments and five seconds after
+restoration, then 30 seconds during healthy intervals. Reset the sampling deadline
+on each profile transition. Bound snapshots to 2,304 and 6 MiB within the existing
+8-MiB workload output ceiling. Admit the unchanged 10-GiB guest/7-GiB RAM scratch
+profile with monitoring and joined cleanup; freeze TUF's checkout during execution.
+
+Rechecked primary iproute2 v6.1.0 documentation:
+[TBF](https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-tbf.8)
+describes token throttling and the child queue's effective limit;
+[netem](https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-netem.8)
+describes delay variation and queue limits. Retain calibrated parameter readback,
+actual packet/byte counters and in-place restoration; do not infer conditions from
+requested settings alone. Kernel jitter sequences remain uncontrolled.
+
+Adapt the existing exact-loop accounting fixture to the additional arguments;
+its healthy cases must abort if they accidentally enter an impairment branch.
+Native accounting regression and real-duration execution are pending. No product
+change or full R-F5 acceptance is claimed. Other impairment classes, workloads,
+roles/platforms, physical scanout and release acceptance remain OPEN.
+
 ## 2026-11-05 — packet-loss transport and displayed-frame correlation
 
 Previous turn is progress: current Linux compilation, bundle integrity and the

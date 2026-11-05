@@ -14,9 +14,10 @@ import time
 def main():
     assert len(sys.argv) == 6 and os.getuid() != 0 and os.getgid() != 0
     pid, start, source_pid, source_start, scenario = sys.argv[1:]
-    assert scenario in ('viewer-soak', 'input-soak')
-    minimum_seconds = 14639 if scenario == 'input-soak' else 14459
-    minimum_windows = 243 if scenario == 'input-soak' else 240
+    assert scenario in ('viewer-soak', 'input-soak', 'congestion-soak')
+    minimum_seconds = 14699 if scenario == 'congestion-soak' else 14639 if scenario == 'input-soak' else 14459
+    minimum_windows = 244 if scenario == 'congestion-soak' else 243 if scenario == 'input-soak' else 240
+    maximum_seconds = 15120 if scenario == 'congestion-soak' else 14700
     pid, source_pid = int(pid), int(source_pid)
     coord = pathlib.Path('/coord')
 
@@ -72,7 +73,7 @@ def main():
             current = sample()
             now = time.monotonic()
             samples += 1
-            assert now - began <= 14700 and not (coord / 'stop').exists()
+            assert now - began <= maximum_seconds and not (coord / 'stop').exists()
             assert current['threads'] <= baseline['threads'] + 8
             assert current['fds'] <= baseline['fds'] + 16
             assert current['rss_bytes'] <= baseline['rss_bytes'] + 128 * 1024 * 1024

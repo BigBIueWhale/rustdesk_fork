@@ -4377,13 +4377,14 @@ out:
     return result;
 }
 
-static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHistory *history,
+static int exercise_viewer_soak(Display *source, Display *display, ViewerWindow *viewer, SourceHistory *history,
                                 const char *start, const ConnectionIdentity *connection,
-                                const ProcessResources *baseline) {
+                                const ProcessResources *baseline, int congestion) {
     enum { WINDOWS = 241, WINDOW_MS = 60000, DRIFT_MS = 250 };
     int coord = open_coord_root(), process = -1, pidfd = -1, result = -1;
     char path[64], state = '\0';
     unsigned int baseline_p95 = 0U, baseline_p99 = 0U, window = 0U;
+    unsigned int impairment_rounds = 0U;
     uint64_t began = monotonic_millis(), last_fresh = began, previous = began;
     int64_t previous_state = -1;
     snprintf(path, sizeof(path), "/proc/%lu", viewer->pid);
@@ -4392,6 +4393,25 @@ static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHi
     if (coord < 0 || process < 0 || pidfd < 0 || began == 0U ||
         isolation_marker(coord, "soak.begin", 1) != 0) goto out;
     for (window = 0U; window < WINDOWS; ++window) {
+        if (congestion && window != 0U && (window - 1U) % 60U == 0U) {
+            uint64_t captured = 0U, age = 0U;
+            if (dprintf(3, "FLUTTER_PEER_CONGESTION_SOAK_BEGIN round=%u before_window=%u\n",
+                        impairment_rounds + 1U, window) < 0 ||
+                exercise_network_impairment(source, display, viewer, history, viewer->pid,
+                                             connection, baseline, 2) != 0) goto out;
+            /* Start the next healthy window from a fresh pixel witness, never from elapsed time alone. */
+            int64_t identity = viewer_state(display, viewer, &captured);
+            uint64_t now = monotonic_millis();
+            if (now < previous || identity < previous_state ||
+                x11_frame_age(history, "/coord", identity, captured, &age) != 0 ||
+                age > FRESH_LIMIT_MS) goto out;
+            previous_state = identity;
+            previous = last_fresh = now;
+            ++impairment_rounds;
+            if (dprintf(3, "FLUTTER_PEER_CONGESTION_SOAK_RECOVERED round=%u before_window=%u "
+                        "age_ms=%llu identity=%lld\n", impairment_rounds, window,
+                        (unsigned long long)age, (long long)identity) < 0) goto out;
+        }
         unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0};
         unsigned int samples = 0U, valid = 0U, distinct = 0U, maximum_age = 0U;
         uint64_t window_start = monotonic_millis(), maximum_gap = 0U;
@@ -4472,12 +4492,18 @@ static int exercise_viewer_soak(Display *display, ViewerWindow *viewer, SourceHi
         fflush(stdout);
     }
     uint64_t finished = monotonic_millis();
-    if (finished == 0U || finished < previous || finished - began < (uint64_t)WINDOWS * WINDOW_MS ||
+    if (finished == 0U || finished < previous ||
+        (congestion && impairment_rounds != 4U) ||
+        finished - began < (uint64_t)WINDOWS * WINDOW_MS + impairment_rounds * 60000ULL ||
         isolation_marker(coord, "soak.done", 1) != 0 ||
         wait_isolation_marker(coord, "soak.observed", 5000U) != 0) goto out;
     puts("FLUTTER_PEER_SOAK_OK baseline_ms=60000 duration_ms=14400000 windows=240 "
          "freshness_limit_ms=1000 p95_drift_ms=250 p99_drift_ms=250 "
          "stable_connection=true resources=bounded x11_pixels=true");
+    if (congestion)
+        puts("FLUTTER_PEER_CONGESTION_SOAK_OK rounds=4 cycles=12 windows=241 "
+             "profiles=jitter,bandwidth,bandwidth-jitter hold_ms=20000 recovery_limit_ms=2500 "
+             "healthy_duration_ms=14460000 baseline=fixed stable_connection=true resources=bounded");
     result = 0;
 out:
     if (result != 0)
@@ -7482,6 +7508,7 @@ int main(int argc, char **argv) {
 
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
                                     strcmp(argv[5], "--viewer-soak") != 0 &&
+                                    strcmp(argv[5], "--congestion-soak") != 0 &&
                                     strcmp(argv[5], "--input-latency") != 0 &&
                                     strcmp(argv[5], "--input-recovery") != 0 &&
                                     strcmp(argv[5], "--input-loss") != 0 &&
@@ -7551,7 +7578,7 @@ int main(int argc, char **argv) {
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction, --native-components\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -7814,9 +7841,11 @@ int main(int argc, char **argv) {
         return result == 0 ? 0 : 1;
     }
 
-    if (argc == 6 && strcmp(argv[5], "--viewer-soak") == 0) {
-        int result = exercise_viewer_soak(display, &viewer, &history, argv[4],
-                                          &current_connection, &baseline_resources);
+    if (argc == 6 && (strcmp(argv[5], "--viewer-soak") == 0 ||
+                      strcmp(argv[5], "--congestion-soak") == 0)) {
+        int result = exercise_viewer_soak(source, display, &viewer, &history, argv[4],
+                                          &current_connection, &baseline_resources,
+                                          strcmp(argv[5], "--congestion-soak") == 0);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

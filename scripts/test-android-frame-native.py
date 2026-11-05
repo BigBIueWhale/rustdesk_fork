@@ -487,6 +487,17 @@ static int resources_are_bounded(const ProcessResources *before, const ProcessRe
 #define close fixture_close
 #define syscall fixture_syscall
 '''
+    if not before:
+        fixture += r'''
+static int exercise_network_impairment(Display *source, Display *display, ViewerWindow *viewer,
+                                      SourceHistory *history, unsigned long pid,
+                                      const ConnectionIdentity *connection,
+                                      const ProcessResources *baseline, int network_mode) {
+    (void)source; (void)display; (void)viewer; (void)history; (void)pid;
+    (void)connection; (void)baseline; (void)network_mode;
+    abort(); /* Healthy accounting cases must never enter a network scenario. */
+}
+'''
     fixture += loops + r'''
 int main(int argc, char **argv) {
     if (argc != 2 || strlen(argv[1]) != 1U || argv[1][0] < '0' || argv[1][0] > '9' ||
@@ -496,12 +507,15 @@ int main(int argc, char **argv) {
     SourceHistory history = {0};
     ConnectionIdentity connection = {{0}, {0}, 0UL};
     ProcessResources baseline = {100U, 2U, 3U};
-    int status = exercise_viewer_soak(NULL, &viewer, &history, "1", &connection, &baseline);
+    int status = SOAK_CALL;
     printf("X11_SOAK_ACCOUNTING_RESULT mode=%u status=%d tail_samples=%u clock_faults=%u\n",
            mode, status, tail_samples, clock_faults);
     return 0;
 }
 '''
+    fixture = fixture.replace("SOAK_CALL", (
+        'exercise_viewer_soak(NULL, &viewer, &history, "1", &connection, &baseline)' if before else
+        'exercise_viewer_soak(NULL, NULL, &viewer, &history, "1", &connection, &baseline, 0)'))
     source = Path(f"/build/soak-accounting-{role}.c")
     binary = Path(f"/build/soak-accounting-{role}")
     source.write_text(fixture)

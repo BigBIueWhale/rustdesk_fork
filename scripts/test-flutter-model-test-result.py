@@ -300,7 +300,7 @@ class ResultTests(unittest.TestCase):
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 52, "peer-search": 36,
                                   "restart-dialog": 9, "desktop-theme": 56,
-                                  "settings-sidebar": 6, "mobile-build-date": 8, "custom-scale": 48, "cm-duration": 9}[SINGLE_PROFILE]))
+                                  "settings-sidebar": 6, "mobile-build-date": 8, "custom-scale": 49, "cm-duration": 9}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),
@@ -329,7 +329,7 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(self.parse(self.events("file-progress"), "file-progress"), (1, 52))
         self.assertEqual(self.parse(self.events("audio-input"), "audio-input"), (4, 49))
         self.assertEqual(self.parse(self.events("reconnect"), "reconnect"), (2, 15))
-        self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 48))
+        self.assertEqual(self.parse(self.events("custom-scale"), "custom-scale"), (1, 49))
         self.assertEqual(self.parse(self.events("trackpad-speed"), "trackpad-speed"), (2, 16))
         self.assertEqual(self.parse(self.events("virtual-mouse-buttons"), "virtual-mouse-buttons"), (1, 17))
         self.assertEqual(self.parse(self.events("virtual-joystick"), "virtual-joystick"), (1, 8))

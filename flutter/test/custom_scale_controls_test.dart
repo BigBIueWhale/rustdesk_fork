@@ -8,10 +8,14 @@ import 'package:flutter_hbb/common.dart' show SessionID;
 import 'package:flutter_hbb/common/widgets/custom_scale_base.dart';
 import 'package:flutter_hbb/common/widgets/toolbar.dart';
 import 'package:flutter_hbb/consts.dart';
+import 'package:flutter_hbb/desktop/pages/remote_page.dart' show ImagePaint;
 import 'package:flutter_hbb/desktop/widgets/remote_toolbar.dart' show RdoMenuButton;
+import 'package:flutter_hbb/models/desktop_render_texture.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart' show RxBool;
+import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
 class _Preferences implements CanvasPreferences {
@@ -75,7 +79,10 @@ class _Topology implements FfiModel {
       ..width = 2
       ..height = 2);
   @override
-  ui.Rect get rect => const ui.Rect.fromLTWH(0, 0, 2, 2);
+  ui.Rect get rect => ui.Rect.fromLTWH(0, 0,
+      pi.displays.single.width.toDouble(), pi.displays.single.height.toDouble());
+  @override
+  bool get isPeerLinux => true;
   @override
   bool isCurrentDisplayTopology(SessionID id, int revision) => id == sessionId && revision == 0;
   @override
@@ -104,6 +111,8 @@ class _Session implements FFI {
   late final _Topology ffiModel = _Topology(sessionId);
   @override
   late final ImageModel imageModel = ImageModel(WeakReference<FFI>(this));
+  @override
+  late final TextureModel textureModel = TextureModel(WeakReference<FFI>(this));
   @override
   late final CanvasModel canvasModel = CanvasModel(WeakReference<FFI>(this),
       preferences: preferences, customScaleWriter: writer);
@@ -218,6 +227,62 @@ Future<void> _openViewStyle(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('view style selection sizes the actual texture across window changes', (tester) async {
+    tester.view.physicalSize = const Size(1100, 650);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final session = _Session()..preferences.style = kRemoteViewStyleOriginal;
+    session.ffiModel.pi.displays.single
+      ..width = 640
+      ..height = 480;
+    session.imageModel.setUseTextureRender(true);
+    session.textureModel.setTextureId(display: 0, id: 1);
+    var failures = 0;
+    Future<String> save(SessionID id, String value) async {
+      expect(id, session.sessionId);
+      session.preferences.style = value;
+      return value;
+    }
+    final canvas = session.canvasModel;
+    try {
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: MultiProvider(
+        providers: [ChangeNotifierProvider<CanvasModel>.value(value: canvas),
+          ChangeNotifierProvider<ImageModel>.value(value: session.imageModel)],
+        child: Stack(children: [
+          ImagePaint(ffi: session, id: 'peer', zoomCursor: RxBool(false),
+              cursorOverImage: RxBool(false), keyboardEnabled: RxBool(false),
+              remoteCursorMoved: RxBool(false)),
+          _ViewStyleMenu(session, save, () => failures++),
+        ]),
+      ))));
+      for (final (windowSize, label, expectedWidth) in [
+        (const Size(1100, 650), 'Scale original', 640.0),
+        (const Size(1100, 650), 'Scale adaptive', 640 * 610 / 480),
+        (const Size(900, 700), 'Scale adaptive', 880.0),
+        (const Size(900, 700), 'Scale original', 640.0),
+        (const Size(1200, 740), 'Scale adaptive', 640 * 700 / 480),
+        (const Size(1200, 740), 'Scale original', 640.0),
+      ]) {
+        tester.view.physicalSize = windowSize;
+        await tester.pumpAndSettle();
+        await _openViewStyle(tester);
+        await tester.tap(find.text(label));
+        await tester.pumpAndSettle();
+        expect(failures, 0);
+        expect(tester.takeException(), isNull);
+        final texture = find.byType(Texture);
+        expect(texture, findsOneWidget);
+        expect(tester.getSize(texture).width, closeTo(expectedWidth, 1e-6));
+        expect(tester.getSize(texture).height, closeTo(expectedWidth * 480 / 640, 1e-6));
+        expect(tester.widget<Texture>(texture).textureId, 1);
+      }
+    } finally {
+      await _finish(tester, [session]);
+      await session.textureModel.dispose();
+    }
+  });
+
   for (final transition in ['before selection', 'during save', 'menu removal',
       'retired before selection', 'retired during save', 'failed save retry']) {
     testWidgets('view style menu $transition preserves session-owned selection', (tester) async {

@@ -129,17 +129,14 @@ OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
 below retains the required authorized behavior.
 
-**Current Linux build and bridge ABI verified (2026-11-05).** Build `iWDS6Qwwdn`
-at `2ae08e80` passes fresh bridge generation, the complete Rust/Flutter build,
-thirteen widget/two native command controls and all 73 payload hashes.
-The compiled library retains exactly 225 bridge exports: only `wire_main_set_env`
-is removed from the accepted `59b51e80` artifact; no export is added. All eighteen
-retired account exports remain absent, and the required environment reader remains.
-`current-linux-build-2ae08e80.json` and `current-linux-abi-2ae08e80.json` bind
-the result, exact process/private/RAM retirement and four zero listener deltas.
-The Flutter 3.47.5 candidate is not canonical SDK promotion. Current native-session,
-installed/package, other-platform and final-release acceptance remain OPEN.
-The separate dependency/native-asset inventory observer still has no accepted result.
+**Current Linux build verified (2026-11-05).** Build `e2Lp3KgDXh` at `bd65c0c4`
+passes fresh bridges, the complete Rust/Flutter build, thirteen widget/two native
+command controls and all 73 payload hashes. `monitor-transaction-build-bd65c0c4.json`
+binds exact cleanup and four zero listener deltas. The separate 225-export ABI
+inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
+Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-release
+and dependency/native-asset inventory acceptance remain OPEN; the current monitor
+runtime result is under R-S11go.
 
 **Checkpoint (2026-11-04):** Further Android account-API artifact validation is
 OPEN. Run `CQ4XBSwjHA` was cancelled before a build/native-test verdict;
@@ -14819,13 +14816,14 @@ Exact-current zero-interface QEMU execution, Windows peer/service behavior, and 
 
 ### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality (2026-08-13)
 
-**OPEN: rapid selection has a reproduced final-choice failure; the caller
-correction is unverified.** Named Dart evidence and ordinary Linux full-app
-selection pass within their scopes below. The viewer model and
+**Linux rapid-selection regression passes; broader acceptance OPEN.**
+Named Dart and full-app results retain their scopes below. The viewer model and
 `src/{client.rs,client/io_loop.rs,flutter.rs,flutter_ffi.rs,ui_session_interface.rs}`,
 with `src/server/connection.rs` and `flutter/lib/common.dart`, implement one
 connection-session/UI-owner display-selection transaction. Dart snapshots an
-exactly representable selection and uses one running/one latest operation.
+exactly representable selection and retains one running/one latest transaction
+through native admission and awaited UI geometry. Both execute in the session-state
+lane; incoming topology handlers already in that lane do not enqueue recursively.
 Native admission validates a nonempty, distinct bounded inventory and derives
 the capture union from every live native UI owner, independently of caller flags.
 
@@ -14843,8 +14841,8 @@ Evidence paths are relative to `.harness-state/verifier-vm/`.
 
 | Evidence | Observation and limit |
 | --- | --- |
-| `monitor-burst-97d9eab8.json`, run `0vebGh5CF0` | Retained app `f043c5ae` passes the left baseline, then shows fresh right-monitor frames after sixteen injected clicks ending on the left: 49 wrong-display observations, maximum observed age 308 ms. XTEST injection does not prove every click was consumed. The caller skips a choice equal to committed state despite a pending choice; its unverified correction is stashed as `03ed0880cdbe32b69630cab4bfa44fc7cf722247`. Four listener deltas are zero and owned VM/RAM/private state retires. Corrected-app build and the same `--monitor-burst` replay remain required on resumption. |
-| `monitor-switch-34429165.json`, run `DYNUOcKfwO` | The 109-second isolated replay reuses app `f043c5ae` and engine `ddb1541d`. The actual chooser selects left/right/left; twelve advancing display-specific counters are fresh (maximum sampled age 293 ms). Six native remote pointer targets match the exact 640-pixel monitor offset and 120/24-pixel displacement, preserving window/TCP identity and resource bounds. Topology, processes, container and VM/RAM/private state retire; four listener deltas are zero. Synthetic equal-size X11 monitors only: initial absolute viewport calibration, physical/mixed-DPI displays, topology changes, rapid selection, other platforms and installed/release acceptance remain OPEN. Reproduce retained-app replay with `--monitor-switch`. |
+| `monitor-burst-bd65c0c4.json`, run `Oe16w55E1f` | Corrected full app passes all four bursts/66 clicks, five pixel cases/20 advancing counters and ten remote pointer targets. Final choices are left/right/right/left; maximum sampled frame age is 218 ms, with unchanged window/TCP identity and bounded resources. The toolbar preserves pending intent; admission and geometry finish before the next choice. The unchanged scenario failed on retained `2ae08e80` and caller-only `236f5fea`; their capsules and the older `97d9eab8` result remain historical evidence. XTEST injection alone does not prove click consumption; pixels and native pointer positions decide acceptance. Four endpoint deltas are zero and exact VM/private/RAM state retires. Equal-size synthetic Linux X11 monitors only; physical/mixed-DPI/topology changes, other platforms and release acceptance remain OPEN. Reproduce with `--monitor-burst`. |
+| `monitor-switch-34429165.json`, run `DYNUOcKfwO` | The 109-second isolated replay reuses app `f043c5ae` and engine `ddb1541d`. The actual chooser selects left/right/left; twelve advancing display-specific counters are fresh (maximum sampled age 293 ms). Six native remote pointer targets match the exact 640-pixel monitor offset and 120/24-pixel displacement, preserving window/TCP identity and resource bounds. Topology, processes, container and VM/RAM/private state retire; four listener deltas are zero. Synthetic equal-size X11 monitors only: initial absolute viewport calibration, physical/mixed-DPI displays, topology changes, other platforms and installed/release acceptance remain OPEN; rapid selection has the newer result above. Reproduce retained-app replay with `--monitor-switch`. |
 | `monitor-topology-0e186c64.json`, run `a1NOOvm5Pa` | The 40-second isolated lane configures two named 640×480 RandR monitors at (0,0)/(640,0) on one 1280×480 Xvfb root. Production public enumeration/capture returns exact names, primary/origin/dimensions and distinct red/blue first/center/last pixels. Independent XTest/XQueryPointer and XGetImage calibrate left/right/left coordinates and colors. The fixture explicitly restores the automatic monitor; Xvfb, container, VM/RAM/private cleanup passes with three zero listener deltas. This establishes the topology/capture prerequisite, not Flutter chooser, remote input, changing-frame presentation, physical displays or full-application acceptance. Reproduce with `--x11-display-tests --monitor-topology`. |
 | `display-selection-checker-removed-a7677551.json` | The 1,817-line source-text checker and four entrypoints are deleted. The existing zero-NIC authority transaction passed in 96 seconds, including syntax checks of the edited scripts and joined cleanup. Product and executable regressions were unchanged and were not replayed. |
 | `flutter-model-tests-run.wsETbwBgjB.serial.log`, source `d63f45ae` | Fresh generated bridges and 23 suites/258 Dart tests passed in 311 integration seconds, with three parser methods and joined isolated cleanup. Production selection/session/frame queues ran with controlled callbacks; native FFI, complete callers, browsers, peers and installed authority were not exercised. |

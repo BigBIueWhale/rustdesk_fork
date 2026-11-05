@@ -141051,3 +141051,101 @@ peak 402,915,328 bytes. Capsule service-limiter-live-ledger-10356aed.json is
 63fa833c79de74c26016d72d2abff8b23f733134b0237833a7dcb65799785bb6.
 All seventeen evidence files from this slice (222,178 bytes) match CTE/TUF.
 This audit-only receipt leaves the counted ledger unchanged; no owned run remains.
+
+## 2026-11-05 — rapid monitor choices commit as one ordered operation
+
+Follow the user's correctness direction: select the reproduced R-S11go/R-S11gq
+monitor-choice failure ahead of a new runit fixture or unrelated UI cleanup.
+The existing native --monitor-burst scenario decides actual final display,
+freshness, input mapping, connection/window identity and resource bounds.
+Its four bursts contain 16/17/16/17 injected clicks, ending left/right/right/left;
+each selected case requires four advancing display-specific pixel counters
+within 2.5 seconds, age at most one second, and two actual remote pointer targets.
+The scenario and thresholds are unchanged.
+
+TUF baseline 2MSLc8wSoI, session 24207, exits 1 at harness b1f92cbe using
+retained app 2ae08e80 and engine ddb1541d. The left baseline passes, then the
+first sixteen-click burst ending left produces one accepted left frame and
+fifty wrong right-display observations (maximum observed age 301 ms).
+Capsule monitor-burst-current-b1f92cbe.json (34,414 bytes; SHA-256
+93a5d7a101446fd3797ae2a1170796e1557b521c8826931a994987ba582e7721)
+binds raw output, unchanged scenario, exact artifacts and joined retirement.
+Intervening unrelated source changes mean this is not a sole-edit binary A/B
+against the final candidate; the relevant chooser/queue/model sources match
+the pre-correction path.
+
+236f5fea removes the toolbar's committed-display shortcut for same-tab choices:
+that choice can supersede a different pending request. The full Rust/Flutter
+build yWJ0WSH3yp passes thirteen widget/two native command controls and all
+73 payload hashes; manifest f4f961eecbc2e226bec4062d7ae98d76807db3e58ccb65451c9f44871d4be7ee.
+Native replay cx5NceDt94, session 81637, still exits 1: first burst gives one
+left frame, zero wrong-display samples and 54 unknown samples, with a local
+topology StateError. That is a failed intermediate, not acceptance.
+monitor-burst-236f5fea.json (34,277 bytes; SHA-256
+d3edac378a0b73aa044b76aaee288f9c411f331233016cdd58d44e8c0e285dd7)
+retains its diagnostic and exact cleanup.
+
+Source review finds that DisplaySelectionQueue drained at native admission,
+before common.dart queued/awaited local geometry. A following admission could
+therefore replace native handler ownership before the predecessor's exact
+renderer-size commit. Dart's asynchronous contract permits other work at await:
+https://dart.dev/libraries/async/async-await. bd65c0c4 holds the existing bounded
+selection queue through the complete operation; admission, image retirement
+and awaited geometry now execute together in the existing session-state lane.
+Incoming topology handlers admit directly within that lane using their captured
+revision, avoiding recursive queue waits. The final no-op decision occurs only
+after preceding state work. Exact owner/revision checks and native refusal remain.
+The queue retains one running and one latest waiting choice; there is no new
+worker, retry, timeout, transport queue or reconnect. Independent-window behavior
+is unchanged. More useful error/stack diagnostics retain actual failure context.
+
+Final TUF build e2Lp3KgDXh, session 71411, exits zero with fresh bridges,
+thirteen widget/two native controls and all 73 payload hashes independently
+verified. Manifest 275102c8113f9bc566fc543d626fc4faa6d7aa13a0efdff8feb5aa15c1cb26ce;
+capsule monitor-transaction-build-bd65c0c4.json (13,387 bytes; SHA-256
+2889bb6e7c27493f8f354d348d10cd20195a50574fb8b2b719a3a16b5fbde2c9).
+It uses the same authenticated engine/toolchain recipe as the intermediate:
+the full build is an explicit noninteractive integration prerequisite, not an
+ordinary quick check. Storage lasts 1043.156 seconds, peak RAM scratch
+11,896,451,072 bytes; four endpoint deltas are zero and QEMU/private/RAM retire.
+
+Unchanged native replay Oe16w55E1f, session 68729, exits zero in 112 seconds.
+All four bursts/66 clicks pass, producing final left/right/right/left selections.
+Five cases yield twenty distinct fresh counters and ten native pointer targets:
+left coordinates (273,263)/(393,287), right (913,263)/(1033,287), exact 640-pixel
+origin difference and 120/24 displacement. Per-case maximum sampled ages are
+110/218/125/203/96 ms; total case times 891/755/1031/800/1301 ms. The same window
+and TCP connection persist, with 45 file descriptors throughout and bounded
+RSS/threads. XTEST injection alone is not application-consumption evidence;
+the actual pixels and remote XQueryPointer targets establish the final state
+(https://xorg.freedesktop.org/archive/X11R7.7/doc/libXtst/xtestlib.html).
+
+Capsule monitor-burst-bd65c0c4.json (8,738 bytes; SHA-256
+756079f6c7e85c1b41b6d9100cdb2ccae0e5ec0b3c2968b065a43ca1a4097cb0)
+binds exact command/artifacts, all case/burst/pointer/resource observations,
+23,355-byte raw guest output (SHA-256
+c3f93d2b7296cbc066f4bcdb8fdc0f560fac89cd4da11f23cd9fc7de44f45629)
+and cleanup. The native source/server/Xvfb join, listener closes and automatic
+monitor topology is restored. Four host endpoint deltas are zero. Storage lasts
+118.615 seconds, peak RAM scratch 3,025,108,992 bytes; exact QEMU absence and
+private/RAM retirement are independently checked under the shared lock.
+
+Storage and retention: both failed replays join QEMU and retire RAM before the
+identity-checked private-tree helper removes their duplicate bundle diagnostics;
+bounded viewer logs, identities and digests remain. The obsolete 59b51e80 bundle
+is retired after verifying its full manifest and payload inventory, reclaiming
+70,553,600 allocated file bytes. Build admission LwolGfHJAc refuses a fifth
+generation before QEMU/artifact creation. After preserving the full intermediate
+build manifest/runtime evidence on both hosts, failed 236f5fea is retired by
+exact identity and 74-file verification, reclaiming 70,557,696 allocated file
+bytes. Its retirement/admission receipts remain; the four-generation cap is
+unchanged. No source, canonical input, pending 0ccb2a7e or designated 7e6f6459
+baseline is removed.
+
+All 63 bounded evidence files (1,531,118 bytes) match CTE/TUF. No owned run
+remains. This closes the reproduced rapid-choice failure for the exact full
+Linux application on synthetic equal-size X11 monitors. Physical/mixed-DPI
+displays, topology changes, cross-version/platform behavior, sustained recovery,
+installed/release artifacts and broader R-S0/R-F5 acceptance remain OPEN.
+Replace the existing monitor row and build checkpoint in place; count the
+revised ledger. The goal remains active.

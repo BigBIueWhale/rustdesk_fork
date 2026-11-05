@@ -140773,3 +140773,14 @@ name, including ordinary-user/cross-mount placement and crash recovery. Preserve
 these two failing cases together with all prior replacement/resume/lifecycle
 controls. No persistent-directory exception or permission dependency is introduced.
 Update the current ledger's explicit STOP-SHIP entry; keep the full goal active.
+
+Fresh CTE count nBOpQHPlrp at 26a87c8d:399,841 tokens /1,824,942 bytes,
+SHA-256 04b302df8846cbcce7d125a70173093b2b1b7b31b5dc9a0d96975d99ec2b0903.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary passes seven controls and whole
+byte round trip. Session73182 exits zero; storage31.040s, peak402,780,160 bytes,
+three zero endpoint deltas and exact QEMU/private/RAM retirement. Capsule
+receive-setup-ledger-26a87c8d.json is4,494 bytes, SHA-256
+d3bdeabc5158221484b5959509e584df8028fc9a17ee676bd4578978f317ea25.
+All eight count files match CTE/TUF. This audit-only receipt leaves the counted
+ledger unchanged. No owned run remains; staging creation/recovery is the next
+correction, with both native preservation regressions retained as required failures.

@@ -37,6 +37,8 @@ ENV = {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"}
 ADMIN_PASSWORD = "Receiver-admin-PAM-2026!"
 INVALID_ADMIN_PASSWORD = "Receiver-invalid-PAM-2026!"
 AUTH_TIMEOUT_ROOT_PASSWORD = "Receiver-timeout-root-2026!"
+OPENRC_PACKAGES = {"openrc": "0.45.2-2+deb12u1", "librc1": "0.45.2-2+deb12u1",
+                   "libeinfo1": "0.45.2-2+deb12u1", "insserv": "1.24.0-1"}
 
 
 def guard():
@@ -110,7 +112,7 @@ def prepare_container(openrc=False):
 
 
 def openrc_runtime_path(path):
-    return (path in {"/etc/rc.conf", "/sbin/openrc", "/sbin/openrc-run",
+    return (path in {"/etc/rc.conf", "/etc/insserv.conf", "/sbin/openrc", "/sbin/openrc-run",
                      "/sbin/rc-service", "/sbin/rc-status", "/sbin/rc-update"}
             or path.startswith("/lib/rc/")
             or re.fullmatch(r"/lib/x86_64-linux-gnu/lib(?:rc|einfo)\.so\.[0-9.]+", path) is not None)
@@ -118,8 +120,8 @@ def openrc_runtime_path(path):
 
 def prepare_openrc():
     versions = run(["/usr/bin/dpkg-query", "--show", "--showformat=${Package}\t${Version}\n",
-                    "openrc", "librc1", "libeinfo1"]).stdout
-    expected = {name: "0.45.2-2+deb12u1" for name in ("openrc", "librc1", "libeinfo1")}
+                    *OPENRC_PACKAGES]).stdout
+    expected = OPENRC_PACKAGES
     if dict(line.split("\t", 1) for line in versions.splitlines()) != expected:
         raise RuntimeError("pinned OpenRC runtime package versions differ")
     listing = run(["/usr/bin/dpkg-query", "--listfiles", *expected]).stdout.splitlines()
@@ -142,7 +144,7 @@ def prepare_openrc():
         files[name] = {"bytes": size, "sha256": digest(destination), "mode": mode}
         if digest(source) != files[name]["sha256"]:
             raise RuntimeError("OpenRC runtime copy differs")
-    if not {"/etc/rc.conf", "/sbin/openrc", "/sbin/openrc-run", "/sbin/rc-service"} <= files.keys():
+    if not {"/etc/rc.conf", "/etc/insserv.conf", "/sbin/openrc", "/sbin/openrc-run", "/sbin/rc-service"} <= files.keys():
         raise RuntimeError("OpenRC runtime entrypoints are absent")
     (target / "manifest.json").write_text(json.dumps({"versions": expected, "files": files}, sort_keys=True))
     print(f"LINUX_OPENRC_PREPARE=pass version=0.45.2-2+deb12u1 files={len(files)} bytes={total}", flush=True)
@@ -155,7 +157,7 @@ def install_openrc():
     if manifest.stat().st_size > 65536:
         raise RuntimeError("OpenRC runtime manifest exceeds its bound")
     description = json.loads(manifest.read_text())
-    if description["versions"] != {name: "0.45.2-2+deb12u1" for name in ("openrc", "librc1", "libeinfo1")}:
+    if description["versions"] != OPENRC_PACKAGES:
         raise RuntimeError("OpenRC runtime version receipt differs")
     files = description["files"]
     if not 4 <= len(files) <= 256:
@@ -3482,10 +3484,28 @@ def service_openrc(commit, binary_sha, probe_sha):
                                  "operation_seconds": time.monotonic() - began})
             active = None
             print("LINUX_OPENRC_OBSERVED=" + json.dumps(observations[-1], sort_keys=True), flush=True)
-        if (record_path.exists() or list((runtime / "started").iterdir()) or credential() != durable
-                or digest(script) != digest(source) or unit.exists()
-                or Path(f"/proc/self/task/{os.getpid()}/children").read_text().split() != before_children):
-            raise RuntimeError("OpenRC lifecycle left process/manager state or changed its source/credential")
+        final = {"record_present": os.path.lexists(record_path),
+                 "started_services": sorted(path.name for path in (runtime / "started").iterdir()),
+                 "credential_unchanged": credential() == durable,
+                 "script_unchanged": digest(script) == digest(source),
+                 "systemd_unit_present": os.path.lexists(unit),
+                 "children_before": before_children,
+                 "children_after": Path(f"/proc/self/task/{os.getpid()}/children").read_text().split()}
+        extra_children = []
+        for pid in set(final["children_after"]) - set(before_children):
+            proc = Path("/proc") / pid
+            try:
+                fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                extra_children.append({"pid": int(pid), "state": fields[0].decode(),
+                                       "parent": int(fields[1]), "start": int(fields[19]),
+                                       "comm": (proc / "comm").read_text().strip()})
+            except FileNotFoundError:
+                extra_children.append({"pid": int(pid), "state": "absent"})
+        print("LINUX_OPENRC_FINAL=" + json.dumps({**final, "extra_children": extra_children}, sort_keys=True), flush=True)
+        if (final["record_present"] or final["started_services"] or not final["credential_unchanged"]
+                or not final["script_unchanged"] or final["systemd_unit_present"]
+                or final["children_after"] != before_children):
+            raise RuntimeError("OpenRC final lifecycle state differs; see LINUX_OPENRC_FINAL")
         stopped = run(["/sbin/rc-service", "rustdesk", "status"], allowed=(3,), env=manager_env)
         print("LINUX_OPENRC_STOPPED=" + json.dumps({"exit": stopped.returncode,
               "stdout": stopped.stdout, "stderr": stopped.stderr}, sort_keys=True), flush=True)

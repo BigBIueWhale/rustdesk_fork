@@ -3,12 +3,13 @@ import 'dart:ui' show Color, Rect;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter_hbb/common.dart' show mouseButtonsToPeer;
+import 'package:flutter_hbb/common.dart' show SessionID, mouseButtonsToPeer;
 import 'package:flutter_hbb/common/widgets/remote_input.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart' show FFI, FfiModel, CanvasModel, CursorModel;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:uuid/uuid.dart';
 
 class _Owner implements FFI {
   @override
@@ -67,18 +68,30 @@ class _DisplayModel extends FfiModel {
 }
 
 class _CoordinateOwner extends _Owner {
-  _CoordinateOwner(String platform) {
+  _CoordinateOwner(String platform, {Stopwatch? mouseControlClock}) {
     final parent = WeakReference<FFI>(this);
     ffiModel = _DisplayModel(parent)..pi.platform = platform;
     canvasModel = CanvasModel(parent);
-    cursorModel = CursorModel(parent);
+    cursorModel = CursorModel(parent, elapsedClock: mouseControlClock);
   }
+  @override
+  final SessionID sessionId = Uuid().v4obj();
+  @override
+  bool isCurrentSession(SessionID expected) => expected == sessionId;
   @override
   late final FfiModel ffiModel;
   @override
   late final CanvasModel canvasModel;
   @override
   late final CursorModel cursorModel;
+}
+
+class _MouseControlClock implements Stopwatch {
+  @override
+  int elapsedMilliseconds = 0;
+  @override
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw StateError('Unexpected mouse-control clock operation');
 }
 
 class _CoordinateInput extends _Input {
@@ -354,6 +367,60 @@ void main() {
       ]);
     } finally { model.close(); }
   });
+
+  for (final release in ['up', 'cancel', 'partial', 'hover', 'after-timeout']) {
+    test('physical mouse local takeover preserves $release release', () {
+      final clock = _MouseControlClock();
+      final owner = _CoordinateOwner(kPeerPlatformLinux, mouseControlClock: clock);
+      final model = _CoordinateInput(owner);
+      try {
+        expect(owner.cursorModel.updateCursorPosition(
+            12, 24, 'mouse-handoff', owner.sessionId, 0), isTrue);
+        model.move(3);
+        expect(model.peerButtons, [('down', 'left'), ('down', 'right')]);
+        clock.elapsedMilliseconds = 2000;
+        expect(owner.cursorModel.updateCursorPosition(
+            32, 44, 'mouse-handoff', owner.sessionId, 0), isTrue);
+        expect(owner.cursorModel.isPeerControlProtected, isTrue);
+        expect(owner.cursorModel.gotMouseControl, isFalse);
+        model.messages.clear();
+        model.move(3, position: const Offset(90, 90));
+        expect(model.messages, isEmpty);
+        if (release == 'after-timeout') {
+          clock.elapsedMilliseconds += kMouseControlTimeoutMSec;
+          expect(owner.cursorModel.isPeerControlProtected, isFalse);
+        }
+        switch (release) {
+          case 'cancel':
+            model.onPointCancelImage(const PointerCancelEvent(
+                kind: PointerDeviceKind.mouse, position: Offset(80, 80)));
+            break;
+          case 'partial':
+            model.move(1, position: const Offset(90, 90));
+            expect(model.peerButtons, [('up', 'right')]);
+            model.up();
+            break;
+          case 'hover':
+            model.onPointHoverImage(const PointerHoverEvent(
+                kind: PointerDeviceKind.mouse, position: Offset(80, 80)));
+            break;
+          default:
+            model.up();
+        }
+        model.up();
+        expect(model.peerButtons, release == 'partial'
+            ? [('up', 'right'), ('up', 'left')]
+            : [('up', 'left'), ('up', 'right')]);
+        expect(model.messages.every((m) => m['type'] == 'up' &&
+            m['x'] == '0' && m['y'] == '0'), isTrue);
+        expect(owner.cursorModel.gotMouseControl, isFalse);
+        // A release must not reacquire control for a following stationary press.
+        model.messages.clear();
+        model.move(1, position: const Offset(90, 90));
+        expect(model.messages, isEmpty);
+      } finally { model.close(); }
+    });
+  }
 
   test('physical mouse outside presses and movement remain rejected', () {
     for (final platform in peers) {

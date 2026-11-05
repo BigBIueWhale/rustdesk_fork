@@ -2015,7 +2015,8 @@ class InputModel {
     if (isViewCamera) return null;
     double x = offset.dx;
     double y = max(0.0, offset.dy);
-    if (_checkPeerControlProtected(x, y)) {
+    // A release retires the button without reclaiming the controlled-side pointer.
+    if (evt['type'] != _kMouseEventUp && _checkPeerControlProtected(x, y)) {
       return null;
     }
 

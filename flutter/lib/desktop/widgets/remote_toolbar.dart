@@ -1189,18 +1189,18 @@ class _MonitorMenu extends StatelessWidget {
       // If show monitors in toolbar(`buildMultiMonitorMenu()`), then the menu will dismiss automatically.
       _menuDismissCallback(ffi);
     }
-    RxInt display = CurrentDisplayState.find(id);
-    if (display.value != i) {
-      final isChooseDisplayToOpenInNewWindow = pi.isSupportMultiDisplay &&
-          bind.sessionGetDisplaysAsIndividualWindows(
-                  sessionId: ffi.sessionId) ==
-              'Y';
-      if (isChooseDisplayToOpenInNewWindow) {
+    final isChooseDisplayToOpenInNewWindow = pi.isSupportMultiDisplay &&
+        bind.sessionGetDisplaysAsIndividualWindows(
+                sessionId: ffi.sessionId) ==
+            'Y';
+    if (isChooseDisplayToOpenInNewWindow) {
+      if (CurrentDisplayState.find(id).value != i) {
         openMonitorInNewTabOrWindow(i, ffi.id, pi);
-      } else {
-        await openMonitorInTheSameTab(i, ffi, pi,
-            updateCursorPos: !isMulti);
       }
+    } else {
+      // A choice of the committed display can supersede another pending choice.
+      await openMonitorInTheSameTab(i, ffi, pi,
+          updateCursorPos: !isMulti);
     }
   }
 }

@@ -110472,6 +110472,21 @@ durable-run peak 249,856 bytes. QEMU 222169 joins exit 0; its PID, RAM
 `run.zv39mfrc` and active owned roots are absent. All endpoint deltas are zero.
 This audit-only receipt leaves the counted ledger unchanged.
 
+At 305.419 capture seconds, TUF `As53eP1Smj` is still live with the exact
+wrapper PID/start ticks 135096/4633201. All three native drivers compiled twice
+with identical bytes. Baseline minute p95/p99/max age is 294/312/330 ms;
+the first complete post-recovery minute is 297/315/325 ms. The first three
+20-second congestion cycles pass the existing recovery checks; the independent
+fresh witness after the round is 343 ms. All 348 observed TCP snapshots retain
+the same pair, with healthy sampling reduced to the declared interval. The two
+restricted intervals deliver 76,171/75,634 bytes in 20.025/20.059 seconds with
+throttling counters advancing. Three initial endpoint deltas decode to zero.
+HEAD and local origin/master on TUF remain `d48f838d`, with a clean checkout.
+The bounded CTE checkpoint `congestion-soak-first-round-d48f838d.json` records
+this live observation and its partial-log hash. This is **not** full-duration
+acceptance. Continue the same session 6835/run; require all 241 windows, twelve
+cycles, final resource receipts and exact retirement before closing this condition.
+
 ## 2026-10-28 — retire unused legacy-ID main IPC
 
 The previous locale-selection turn made verified progress. This continuation
@@ -139481,6 +139496,15 @@ Keep TUF's checkout at `d48f838d` through final acceptance; CTE evidence/status
 commits may advance independently. Do not restart on an observation timeout.
 Full-duration result and exact cleanup remain pending. The ledger now names this
 running job; a fresh isolated token count is required for that edit.
+
+Fresh CTE count `hFeEGhl8v7` at `d0011c8d` passes seven controls and the
+whole-input round trip: **397,750 tokens / 1,815,231 bytes**, SHA-256
+cf4a521c20c759d7113b97c89ef823bfd8bd76aed8f9f6240ff057934340ce2a.
+Capture takes 30.929 seconds. Exact processes/private/RAM retire, peak scratch
+is 402,964,480 bytes and all three decoded endpoint deltas are zero. Capsule
+`congestion-soak-ledger-d0011c8d.json`: 7,594 bytes, SHA-256
+48baa44866a88cfd37c7d7c09ddc3b22de9d8bedb1776db7cbf96fe9fe06487e.
+This audit-only receipt leaves the counted ledger unchanged.
 
 ## 2026-11-05 — packet-loss transport and displayed-frame correlation
 

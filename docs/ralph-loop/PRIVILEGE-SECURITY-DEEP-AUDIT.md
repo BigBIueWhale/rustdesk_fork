@@ -140663,3 +140663,26 @@ behavioral discriminators. The retained probe validates response contents/order,
 not just log markers. Scope remains debug/headless installed layout; GUI downloads,
 other platforms, broader namespace/content races and final packages remain OPEN.
 Native execution is pending. No product-source change or new LPE closure is claimed.
+
+TUF 9tTEuVKIlh at 1ad79d62 passes: 17 credential/lifecycle scenarios, 15 CPace
+controls and five FileTransfer peers. The additional UID4002 peer receives the
+unreadable-source terminal error and a complete 150,001-byte/two-block download
+with one Done and a CM barrier. UID4001 receives seven unsupported-type errors,
+then 150,001 exact first-file bytes in two blocks and one file-1 error after the
+announced second file is replaced by a real FIFO. No false Done is accepted;
+the sources are restored, CM barrier passes and the same connection successfully
+reuses the unsupported job ID for another complete two-block download. All four
+source inodes, exact contents, UID/GID4001, mode000/0600 and single links survive;
+there is no hidden swap residue. Existing receive, credential and exact CM process
+checks also pass. CM PID8876/start9042, parent8744, exits/reaps at normal unit stop.
+
+Tool session74975 terminates zero; outer94s, storage99.392s, peak RAM scratch
+4,103,090,176 bytes. Three decoded endpoint deltas are zero. Under the shared lock,
+exact QEMU absence, retired RAM/private state and no remaining run are verified.
+installed-download-1ad79d62.json is 108,691 bytes, SHA-256
+c48769cb7b271a1a8de5f5d5cb864bbbacf8e745df8887bf3f55dbab7cc6a843.
+Eight bounded evidence files match CTE and TUF. The unchanged 117,399,752-byte
+artifact set remains only on TUF; no build/cache generation was added. Update the
+current transfer ledger entry and count once. Named installed download paths now
+have evidence; full GUI/platform/final-package and remaining receive namespace,
+concurrency/crash/resource acceptance stay OPEN. The full goal remains active.

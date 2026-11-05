@@ -2993,6 +2993,8 @@ finished:
     return result;
 }
 
+static int quality_toolbar(unsigned int pid);
+
 static int exercise_mouse_input(Display *source, Display *display,
                                 const ViewerWindow *viewer,
                                 const ConnectionIdentity *connection,
@@ -3032,6 +3034,11 @@ static int exercise_mouse_input(Display *source, Display *display,
     for (unsigned int i = 0U; i < 9U; ++i) if (mapping[i] != i + 1U) return -1;
     if (XGetPointerMapping(display, mapping, sizeof(mapping)) < 9) return -1;
     for (unsigned int i = 0U; i < 9U; ++i) if (mapping[i] != i + 1U) return -1;
+    /* Cursor-position notifications drive the viewer's local-user handoff. */
+    if (quality_toolbar((unsigned int)viewer->pid) != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "Display settings") != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "Show remote cursor") != 0 ||
+        activate_named_control((unsigned int)viewer->pid, "Hide toolbar") != 0) return -1;
     if (return_focus_with_pointer(display, viewer) != 0 || sleep_millis(250U) != 0 ||
         !XTranslateCoordinates(display, viewer->window,
             RootWindow(display, DefaultScreen(display)),
@@ -3128,7 +3135,9 @@ static int exercise_mouse_input(Display *source, Display *display,
                     observed_x != end_x || observed_y != end_y || mask != bit ||
                     !mouse_buttons_match(source, button) ||
                     !mouse_buttons_match(display, button)) {
-                    fprintf(stderr, "FLUTTER_PEER_X11_FAIL local mouse takeover not retained\n");
+                    fprintf(stderr, "FLUTTER_PEER_X11_FAIL local mouse takeover not retained "
+                            "expected=%d,%d actual=%d,%d mask=%u\n",
+                            end_x, end_y, observed_x, observed_y, mask);
                     goto finished;
                 }
                 if (sleep_millis(10U) != 0) goto finished;

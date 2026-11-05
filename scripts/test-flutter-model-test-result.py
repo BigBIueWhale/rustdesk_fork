@@ -300,7 +300,7 @@ class ResultTests(unittest.TestCase):
                                   "draggable-divider": 22, "file-columns": 13,
                                   "file-progress": 52, "peer-search": 36,
                                   "restart-dialog": 9, "desktop-theme": 56,
-                                  "settings-sidebar": 6, "mobile-build-date": 8, "custom-scale": 42, "cm-duration": 8}[SINGLE_PROFILE]))
+                                  "settings-sidebar": 6, "mobile-build-date": 8, "custom-scale": 42, "cm-duration": 9}[SINGLE_PROFILE]))
             return
         self.assertEqual(
             self.parse(self.events("models"), "models"),

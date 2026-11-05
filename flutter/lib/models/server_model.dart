@@ -928,7 +928,7 @@ class Client {
   int voiceCallId = 0;
 
   RxInt unreadChatMessageCount = 0.obs;
-  final RxInt elapsedSeconds = 0.obs;
+  final RxnInt elapsedSeconds = RxnInt(0);
 
   Client(this.id, this.authorized, this.isFileTransfer, this.isViewCamera,
       this.name, this.peerId, this.keyboard, this.clipboard, this.audio);
@@ -938,7 +938,8 @@ class Client {
     registryGeneration = json['registry_generation'];
     authorized = json['authorized'];
     final elapsed = json['elapsed_seconds'];
-    if (elapsed is! int || elapsed < 0) {
+    if (!json.containsKey('elapsed_seconds') ||
+        (elapsed != null && (elapsed is! int || elapsed < 0))) {
       throw const FormatException('invalid CM connection duration');
     }
     elapsedSeconds.value = elapsed;

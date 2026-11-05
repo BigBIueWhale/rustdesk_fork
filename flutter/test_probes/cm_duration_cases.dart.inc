@@ -130,4 +130,17 @@ void main() {
     expect(find.text('25:01:01'), findsOneWidget);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets('CM duration reports an unavailable clock without inventing elapsed time', (tester) async {
+    final client = Client.fromJson(_sample(0)..['elapsed_seconds'] = null);
+    await _show(tester, client);
+    expect(find.text('Connected'), findsOneWidget);
+    expect(find.text('--:--:--'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.text('--:--:--'), findsOneWidget);
+    _refresh(client, _sample(7));
+    await tester.pump();
+    expect(find.text('00:00:07'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }

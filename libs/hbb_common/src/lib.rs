@@ -1,4 +1,5 @@
 pub mod compress;
+pub mod connection_time;
 pub mod platform;
 pub mod protos;
 pub use bytes;

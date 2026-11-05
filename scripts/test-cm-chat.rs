@@ -12,7 +12,7 @@ mod chat_tests {
             registry_generation: 0,
             authorized: true,
             disconnected: false,
-            duration: CmConnectionDuration::Finished(std::time::Duration::ZERO),
+            duration: CmConnectionDuration::Finished(Some(std::time::Duration::ZERO)),
             is_file_transfer: conn_type == ipc::CmAuthConnType::FileTransfer,
             is_view_camera: conn_type == ipc::CmAuthConnType::ViewCamera,
             is_terminal: conn_type == ipc::CmAuthConnType::Terminal,

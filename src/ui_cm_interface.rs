@@ -559,14 +559,21 @@ pub struct Client {
 
 #[derive(Clone)]
 enum CmConnectionDuration {
-    Running(std::time::Instant),
-    Finished(std::time::Duration),
+    Running(Option<hbb_common::connection_time::BootTime>),
+    Finished(Option<std::time::Duration>),
 }
 
 impl CmConnectionDuration {
-    fn elapsed(&self) -> std::time::Duration {
+    fn elapsed(&self) -> Option<std::time::Duration> {
         match self {
-            Self::Running(start) => start.elapsed(),
+            Self::Running(Some(start)) => match start.elapsed() {
+                Ok(elapsed) => Some(elapsed),
+                Err(error) => {
+                    log::error!("Connection duration is unavailable: {error}");
+                    None
+                }
+            },
+            Self::Running(None) => None,
             Self::Finished(elapsed) => *elapsed,
         }
     }
@@ -578,7 +585,7 @@ impl CmConnectionDuration {
 
 impl serde::Serialize for CmConnectionDuration {
     fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_u64(self.elapsed().as_secs())
+        serde::Serialize::serialize(&self.elapsed().map(|elapsed| elapsed.as_secs()), serializer)
     }
 }
 
@@ -657,8 +664,8 @@ impl CmClientRegistry {
         self.generation = generation;
         client.registry_generation = generation;
         client.source_generation = source_generation;
-        if client.authorized {
-            client.duration = CmConnectionDuration::Running(std::time::Instant::now());
+        if !client.authorized {
+            client.duration = CmConnectionDuration::Finished(Some(std::time::Duration::ZERO));
         }
         self.pending_admissions.insert(client.id, generation);
         Ok(CmClientOwner {
@@ -1237,6 +1244,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         name: String,
         avatar: String,
         authorized: bool,
+        connected_at: Option<hbb_common::connection_time::BootTime>,
         keyboard: bool,
         clipboard: bool,
         audio: bool,
@@ -1250,7 +1258,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
             registry_generation: 0,
             authorized,
             disconnected: false,
-            duration: CmConnectionDuration::Finished(std::time::Duration::ZERO),
+            duration: CmConnectionDuration::Running(connected_at),
             is_file_transfer,
             is_view_camera,
             is_terminal,
@@ -1572,7 +1580,7 @@ where
                                 break;
                             }
                             match data {
-                                Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, privacy_mode, cm_auth_token} => {
+                                Data::Login{id, is_file_transfer, is_view_camera, is_terminal, port_forward, conn_type, peer_id, name, avatar, authorized, connected_at, keyboard, clipboard, audio, file, file_transfer_enabled: _file_transfer_enabled, privacy_mode, cm_auth_token} => {
                                     log::debug!("conn_id: {}", id);
                                     if self.client_owner.is_some() {
                                         log::warn!(
@@ -1651,6 +1659,7 @@ where
                                         name,
                                         avatar,
                                         authorized,
+                                        connected_at,
                                         keyboard,
                                         clipboard,
                                         audio,
@@ -2473,6 +2482,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                 name,
                 avatar,
                 authorized,
+                connected_at,
                 keyboard,
                 clipboard,
                 audio,
@@ -2522,6 +2532,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                     name,
                     avatar,
                     authorized,
+                    connected_at,
                     keyboard,
                     clipboard,
                     audio,
@@ -3981,6 +3992,7 @@ mod tests {
             name: "name".to_owned(),
             avatar: String::new(),
             authorized: true,
+            connected_at: Some(hbb_common::connection_time::BootTime::now().unwrap()),
             keyboard: true,
             clipboard: true,
             audio: true,
@@ -6109,6 +6121,7 @@ mod tests {
                 "owner".to_owned(),
                 String::new(),
                 true,
+                Some(hbb_common::connection_time::BootTime::now().unwrap()),
                 true,
                 true,
                 true,
@@ -7706,6 +7719,7 @@ mod tests {
             name: "owner".to_owned(),
             avatar: String::new(),
             authorized: true,
+            connected_at: Some(hbb_common::connection_time::BootTime::now().unwrap()),
             port_forward: String::new(),
             conn_type: ipc::CmAuthConnType::Remote,
             keyboard: true,
@@ -7741,7 +7755,7 @@ mod tests {
             registry_generation: 1,
             authorized: true,
             disconnected: false,
-            duration: CmConnectionDuration::Finished(std::time::Duration::ZERO),
+            duration: CmConnectionDuration::Finished(Some(std::time::Duration::ZERO)),
             is_file_transfer: false,
             is_view_camera: false,
             is_terminal: false,
@@ -7796,7 +7810,7 @@ mod tests {
             registry_generation: 0,
             authorized: true,
             disconnected: false,
-            duration: CmConnectionDuration::Finished(std::time::Duration::ZERO),
+            duration: CmConnectionDuration::Running(Some(hbb_common::connection_time::BootTime::now().unwrap())),
             is_file_transfer: false,
             is_view_camera: false,
             is_terminal: false,
@@ -7841,14 +7855,8 @@ mod tests {
         let (first_owner, _) = registry.admit(&mut first, 1).unwrap();
         assert_eq!(seconds(&first), 0);
         let current = registry.current_mut(first_owner).unwrap();
-        current.duration = CmConnectionDuration::Running(
-            std::time::Instant::now()
-                .checked_sub(std::time::Duration::from_secs(65))
-                .unwrap(),
-        );
-        assert_eq!(seconds(current), 65);
         std::thread::sleep(std::time::Duration::from_millis(1100));
-        assert!(seconds(current) >= 66);
+        assert!(seconds(current) >= 1);
 
         assert!(registry.retire(first_owner, false));
         let stopped = registry.current_mut(first_owner).unwrap().clone();
@@ -7870,9 +7878,110 @@ mod tests {
         assert!(!current.disconnected);
         assert!(matches!(current.duration, CmConnectionDuration::Running(_)));
         assert_eq!(seconds(current), 0);
+        for start in [None, Some(serde_json::from_value(serde_json::json!(u64::MAX)).unwrap())] {
+            current.duration = CmConnectionDuration::Running(start);
+            assert!(serde_json::to_value(&*current).unwrap()["elapsed_seconds"].is_null());
+            current.duration.finish();
+            assert!(serde_json::to_value(&*current).unwrap()["elapsed_seconds"].is_null());
+        }
         assert!(registry.retire(new_owner, true));
         assert!(registry.clients.is_empty());
-        println!("CM_DURATION_NATIVE=pass pending=zero elapsed=monotonic stop=frozen clone=preserved replacement=fresh stale=ignored registry=empty");
+        println!("CM_DURATION_NATIVE=pass pending=zero elapsed=boot-clock stop=frozen clone=preserved replacement=fresh stale=ignored unavailable=null registry=empty");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn cm_connection_duration_survives_process_and_admission_delay() {
+        use hbb_common::anyhow::{anyhow, ensure};
+        use tokio::io::{AsyncBufReadExt, BufReader};
+        const CHILD_SOCKET: &str = "RUSTDESK_CM_DURATION_TEST_SOCKET";
+        const ID: i32 = 2_000_300_117;
+        const CASE: &str = "ui_cm_interface::tests::cm_connection_duration_survives_process_and_admission_delay";
+
+        if let Some(path) = std::env::var_os(CHILD_SOCKET) {
+            let io = tokio::net::UnixStream::connect(path).await.unwrap();
+            let mut peer = ipc::ConnectionTmpl::new(io);
+            peer.send(&cm_test_login(ID)).await.unwrap();
+            println!("CM_DURATION_CHILD=login-sent");
+            io::stdout().flush().unwrap();
+            assert!(matches!(peer.next().await.unwrap(), Some(Data::ChatMessage { text }) if text == "finish"));
+            peer.send(&Data::Disconnected).await.unwrap();
+            return;
+        }
+
+        let directory = CmFileTestDir::new("duration");
+        let path = directory.join("cm.sock");
+        let listener = tokio::net::UnixListener::bind(&path).unwrap();
+        let mut child = tokio::process::Command::new(std::env::current_exe().unwrap())
+            .args([CASE, "--exact", "--nocapture", "--test-threads=1"])
+            .env(CHILD_SOCKET, &path)
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::inherit())
+            .kill_on_drop(true)
+            .spawn().unwrap();
+        let mut output = BufReader::new(child.stdout.take().unwrap()).lines();
+        let mut runner_task: Option<tokio::task::JoinHandle<()>> = None;
+        let ui = CmTaskOwnerTestUi::default();
+        let outcome = tokio::time::timeout(std::time::Duration::from_secs(8), async {
+            let (runner_io, _) = listener.accept().await?;
+            loop {
+                let line = output.next_line().await?.ok_or_else(|| anyhow!("clock child exited before sending login"))?;
+                if line.ends_with("CM_DURATION_CHILD=login-sent") { break; }
+            }
+            // The serialized Login is already queued by a separate process.
+            tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+            let (tx, rx) = cm_egress_channel();
+            let mut runner = IpcTaskRunner {
+                stream: ipc::ConnectionTmpl::new(runner_io),
+                cm: ConnectionManager::new(ui.clone(), 0),
+                tx: tx.clone(), rx, close: true, conn_id: 0, client_owner: None,
+                file_authority: CmFileAuthority::absent(),
+                cm_auth_token: String::new(),
+            };
+            runner_task = Some(tokio::spawn(async move {
+                runner.run_with_authority_validator(
+                    |_, _, _| async { Ok(ipc::CmConnectionAuthority { valid: true, file: false, clipboard: false }) },
+                    || false,
+                ).await;
+            }));
+            while !ui.added.load(Ordering::Acquire) {
+                tokio::task::yield_now().await;
+            }
+            {
+                let registry = CLIENTS.read().unwrap();
+                let client = registry.clients.get(&ID).ok_or_else(|| anyhow!("CM did not retain admitted client"))?;
+                let value = serde_json::to_value(client)?;
+                ensure!(value["elapsed_seconds"].as_u64().filter(|value| *value >= 1).is_some(), "CM lost time before admission");
+            }
+            tx.send(Data::ChatMessage { text: "finish".to_owned() }).map_err(|error| anyhow!("{error}"))?;
+            while output.next_line().await?.is_some() {}
+            ensure!(child.wait().await?.success(), "clock child failed");
+            runner_task.as_mut().ok_or_else(|| anyhow!("CM runner disappeared"))?.await?;
+            runner_task = None;
+            let frozen = {
+                let registry = CLIENTS.read().unwrap();
+                let client = registry.clients.get(&ID).ok_or_else(|| anyhow!("CM lost disconnected history"))?;
+                ensure!(client.disconnected, "CM did not observe disconnect");
+                client.duration.elapsed().ok_or_else(|| anyhow!("final duration unavailable"))?
+            };
+            tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+            ensure!(CLIENTS.read().unwrap().clients.get(&ID).and_then(|client| client.duration.elapsed()) == Some(frozen), "disconnected duration advanced");
+            Ok::<(), hbb_common::anyhow::Error>(())
+        }).await;
+        if child.try_wait().unwrap().is_none() {
+            child.start_kill().unwrap();
+            child.wait().await.unwrap();
+        }
+        if let Some(task) = runner_task {
+            task.abort();
+            assert!(task.await.unwrap_err().is_cancelled());
+        }
+        if let Some(client) = CLIENTS.write().unwrap().clients.remove(&ID) {
+            assert!(client.disconnected || outcome.is_err() || outcome.as_ref().unwrap().is_err());
+        }
+        drop(listener);
+        outcome.expect("two-process CM duration scenario timed out").unwrap();
+        println!("CM_DURATION_PROCESS=pass sender=child receiver=production-ipc queued_delay_ms=1100 origin=preserved stop=frozen child=joined runner=joined authority=fixture");
     }
 
     #[test]

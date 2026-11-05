@@ -451,14 +451,15 @@ class _CmHeader extends StatelessWidget {
                       style: TextStyle(color: Colors.white),
                     ).marginOnly(right: 8.0),
                     if (client.authorized)
-                      Obx(
-                        () => Text(
-                          formatDurationToTime(
-                            Duration(seconds: client.elapsedSeconds.value),
-                          ),
+                      Obx(() {
+                        final elapsed = client.elapsedSeconds.value;
+                        return Text(
+                          elapsed == null
+                              ? '--:--:--'
+                              : formatDurationToTime(Duration(seconds: elapsed)),
                           style: TextStyle(color: Colors.white),
-                        ),
-                      )
+                        );
+                      })
                   ],
                 ))
               ],

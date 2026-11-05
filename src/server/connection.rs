@@ -5111,6 +5111,7 @@ pub struct Connection {
     port_forward_address: String,
     tx_to_cm: mpsc::Sender<ipc::Data>,
     authorized: bool,
+    connected_at: Option<hbb_common::connection_time::BootTime>,
     credential_generation: u64,
     #[cfg(target_os = "android")]
     android_server_generation: u64,
@@ -6549,6 +6550,7 @@ impl Connection {
             port_forward_address: "".to_owned(),
             tx_to_cm,
             authorized: false,
+            connected_at: None,
             credential_generation,
             #[cfg(target_os = "android")]
             android_server_generation: android_generation.unwrap_or_default(),
@@ -7776,7 +7778,15 @@ impl Connection {
                     .await;
                 return None;
             }
-            Some(Ok(())) => {}
+            Some(Ok(())) => {
+                self.connected_at = match hbb_common::connection_time::BootTime::now() {
+                    Ok(start) => Some(start),
+                    Err(error) => {
+                        log::error!("Connection duration is unavailable: {error}");
+                        None
+                    }
+                };
+            }
         }
         let resource_publication = self
             .authed_conn_id
@@ -8323,6 +8333,7 @@ impl Connection {
             name,
             avatar: self.lr.avatar.clone(),
             authorized,
+            connected_at: self.connected_at,
             keyboard: self.keyboard,
             clipboard: self.clipboard,
             audio: self.audio,

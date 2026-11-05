@@ -2608,6 +2608,7 @@ pub enum Data {
         name: String,
         avatar: String,
         authorized: bool,
+        connected_at: Option<hbb_common::connection_time::BootTime>,
         port_forward: String,
         conn_type: CmAuthConnType,
         keyboard: bool,

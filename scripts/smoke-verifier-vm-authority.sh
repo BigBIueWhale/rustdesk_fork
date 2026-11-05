@@ -7801,13 +7801,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = file
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = cm-duration ]; then
     mapfile -t cm_duration_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'CM_DURATION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=1 groups=1 unchanged=before-after execution_seconds=[0-9]+$'
+            'CM_DURATION_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=2 groups=1 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#cm_duration_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'CM_DURATION_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'CM duration artifact receipt differs'
     require_exact_fixed_receipt \
-        "CM_DURATION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=1 target=linux-x86_64 scope=production-cm-registry-clock-and-snapshots installed=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "CM_DURATION_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=2 target=linux-x86_64 scope=production-cm-clock-and-two-process-ipc installed=unexecuted rust=1.75.0 features=linux-pkg-config,flutter vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly generated_bridge=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'CM duration parent compilation and native component result'
     [ "$(/usr/bin/grep -Ec 'CM_DURATION_BRIDGE=pass rust_sha256=[0-9a-f]{64} io_sha256=[0-9a-f]{64} unchanged=before-after' "$SERIAL_LOG")" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'CM_DURATION_BRIDGE=' "$SERIAL_LOG")" -eq 1 ] \
@@ -9453,7 +9453,7 @@ else
             'focused Flutter credential-dialog receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = cm-duration ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_CM_DURATION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=8 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-cm-duration-native-doubles cleanup=joined" \
+            "FLUTTER_CM_DURATION_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=9 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-cm-duration-native-doubles cleanup=joined" \
             'focused Flutter CM duration receipt'
     elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = settings-sidebar || "$FLUTTER_TEST_PROFILE" = mobile-build-date || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
         require_exact_fixed_receipt \
@@ -10175,8 +10175,8 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = cm-duration ]; then
         printf '%s\n' "${cm_duration_artifacts[@]}"
-        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test ui_cm_interface::tests::cm_connection_duration_follows_registry_lifetime \.\.\. ok|CM_DURATION_NATIVE=.*'
-        printf 'CM_DURATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=1 target=linux-x86_64 scope=production-cm-registry-clock-and-snapshots installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE 'test ui_cm_interface::tests::cm_connection_duration_[a-z_]+ \.\.\. ok|CM_DURATION_(NATIVE|PROCESS)=.*'
+        printf 'CM_DURATION_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=2 target=linux-x86_64 scope=production-cm-clock-and-two-process-ipc installed=unexecuted network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = cm-file-log ]; then
         printf '%s\n' "${cm_file_log_artifacts[@]}"

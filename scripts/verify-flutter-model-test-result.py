@@ -1956,6 +1956,7 @@ AUDIO_MUTE_TESTS = {
 
 
 CM_DURATION_TESTS = {
+    'CM duration reports an unavailable clock without inventing elapsed time',
     'CM duration starts at zero for a fresh connection',
     'CM duration is absent before authorization',
     'CM duration renders an existing connection on first mount',

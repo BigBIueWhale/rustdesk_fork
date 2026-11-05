@@ -140898,3 +140898,14 @@ installed-app timing, process restart, actual suspension, other-platform executi
 and full R-S0 acceptance remain OPEN. The next decisive timing acceptance is an
 installed authenticated connection measured through startup and suspend/resume.
 The ledger checkpoint is replaced in place; its required fresh count follows.
+
+Fresh CTE count W86yjgWt6H at 8d2ed5c1 passes: 399,864 tokens /
+1,825,118 bytes, SHA-256
+8ae6dac88eba3e52597c58a16bd3f9e2ae1395749bb493c2345defd6be741c25.
+Session 81310 exits zero, with seven controls, whole-input round trip, three
+zero endpoint deltas and exact QEMU/private/RAM retirement. Storage is 34.733s,
+peak 402,718,720 bytes. Capsule cm-duration-origin-ledger-8d2ed5c1.json is
+4,496 bytes, SHA-256
+a237568982d6826ebbed8ba6887e0cbeaa2340fa682114a678268c0d93fd1808.
+All eight count evidence files match CTE/TUF. This audit-only receipt leaves
+the counted ledger unchanged; no owned run remains.

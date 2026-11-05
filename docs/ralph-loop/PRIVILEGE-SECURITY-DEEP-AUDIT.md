@@ -139644,3 +139644,38 @@ no endpoint additions and one unattributed final removal; no foreign process is
 inspected or changed. `congestion-ledger-54f883b7.json` is 7,839 bytes, SHA-256
 b9491bb3aec5fb0456440089597f911a9a2056d8f0ac8fad9f59306925194b83.
 This audit-only receipt leaves the counted ledger unchanged. No owned run remains.
+
+## 2026-11-05 — input-to-visible recovery across complete outages
+
+Previous turn is progress: calibrated bandwidth/jitter display recovery passes.
+Continue R-F5 with the missing input-response observation, ahead of another
+settings component check. The existing event-driven source binds each response
+to one unique four-digit native request followed by Return; automatic animation
+stops at bootstrap. Reuse that source, retained app 2ae08e80 and admitted TUF VM.
+No product tuning or rebuild is justified before this measurement.
+
+The [XTEST contract](https://xorg.freedesktop.org/archive/current/doc/libXtst/xtestlib.html)
+provides input synthesis, not proof of its remote visible effect. Keep actual
+viewer-root pixels, source publication ordering, released-key checks and shared
+monotonic clocks as the response oracle. [TCP retransmission behavior](https://www.rfc-editor.org/rfc/rfc6298.html#section-5)
+can delay pending input after restoration; record total request latency separately
+from restoration-to-visible latency instead of omitting the blocked interval.
+
+`--input-recovery` measures 120 healthy requests, then three complete outages
+requested for 2/6/2 seconds, each followed by another 120 healthy requests. One
+unique request is submitted after each loss profile is applied. Throughout the
+outage, source and viewer identities and publication count must remain unchanged;
+actual drop counters must advance. After restoration, that exact pending response
+must appear within 2,500 ms. Each subsequent healthy request retains the existing
+1,000-ms limit and 200-ms no-input/no-response control. Four separately reported
+windows compare p95/p99 against the fixed initial baseline with the existing
+250-ms drift allowance. All 483 measured/pending requests must keep ordered unique
+identities; connection/window and resource bounds remain. The test records XTEST
+to Xvfb-visible software response, not physical input or scanout.
+
+The shared response-wait helper preserves the existing normal/soak checks while
+allowing the pending response's deadline to start at restoration. The scenario
+uses the existing 240-second controller ceiling and should finish in a few minutes
+including boot; no full app build runs. Shell parsing and whitespace review pass.
+Native compilation/execution are pending; partial loss, bandwidth/jitter input
+recovery, impaired long sessions and other-role/platform acceptance remain OPEN.

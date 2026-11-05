@@ -4005,15 +4005,104 @@ static int wait_for_input_slot(uint64_t deadline) {
     return now >= previous && now >= deadline && now - deadline <= 100U ? 0 : -1;
 }
 
+static int wait_for_input_response(Display *display, ViewerWindow *viewer,
+                                   SourceHistory *history, int64_t expected,
+                                   uint64_t request_us, uint64_t deadline_from_us,
+                                   unsigned int budget_ms, uint64_t *elapsed_us) {
+    if (request_us == 0U || deadline_from_us < request_us) return -1;
+    for (;;) {
+        uint64_t captured = 0U, now_us, age = 0U;
+        int64_t identity = viewer_state(display, viewer, &captured);
+        now_us = x11_frame_monotonic_us();
+        if (now_us < deadline_from_us || now_us - deadline_from_us > budget_ms * 1000ULL ||
+            identity > expected || x11_frame_refresh(history, "/coord") != 0 ||
+            history->count > (uint64_t)expected + 1U) return -1;
+        if (identity == expected) {
+            if (captured < request_us || history->count != (uint64_t)expected + 1U ||
+                history->publication_us[expected] < request_us ||
+                x11_frame_age(history, "/coord", identity, captured, &age) != 0 ||
+                age > FRESH_LIMIT_MS) return -1;
+            now_us = x11_frame_monotonic_us();
+            if (now_us < deadline_from_us || now_us - deadline_from_us > budget_ms * 1000ULL)
+                return -1;
+            *elapsed_us = now_us - request_us;
+            return 0;
+        }
+        if (sleep_millis(10U) != 0) return -1;
+    }
+}
+
+static int exercise_input_outage(Display *source, Display *display, ViewerWindow *viewer,
+                                  SourceHistory *history, const ConnectionIdentity *connection,
+                                  int64_t *expected, unsigned int request, unsigned int cycle) {
+    const unsigned int holds_ms[] = {2000U, 6000U, 2000U};
+    unsigned long long before_drops = 0ULL, before_packets = 0ULL;
+    unsigned long long after_drops = 0ULL, after_packets = 0ULL;
+    uint64_t request_us = 0U, restored_us = 0U, elapsed_us = 0U, previous = 0U;
+    unsigned int quiet_samples = 0U;
+    ConnectionIdentity current = {{0}, {0}, 0UL};
+    ViewerWindow same_viewer = {0};
+    int result = -1;
+    const char *phase = "apply";
+    if (cycle >= sizeof(holds_ms) / sizeof(holds_ms[0]) ||
+        *expected < 0 || *expected + 1 >= X11_FRAME_HISTORY_LIMIT ||
+        network_profile("loss", &before_drops, &before_packets) != 0) goto out;
+    request_us = x11_frame_monotonic_us();
+    phase = "request";
+    if (request_us == 0U || send_response_request(display, request) != 0) goto out;
+    previous = request_us;
+    phase = "outage-no-response";
+    while (x11_frame_monotonic_us() - request_us < holds_ms[cycle] * 1000ULL) {
+        uint64_t captured = 0U, now_us = x11_frame_monotonic_us();
+        if (now_us < previous || viewer_state(display, viewer, &captured) != *expected ||
+            source_state(source) != *expected || x11_frame_refresh(history, "/coord") != 0 ||
+            history->count != (uint64_t)*expected + 1U) goto out;
+        previous = now_us;
+        ++quiet_samples;
+        if (sleep_millis(20U) != 0) goto out;
+    }
+    restored_us = x11_frame_monotonic_us();
+    phase = "restore";
+    if (restored_us < previous || quiet_samples < holds_ms[cycle] / 100U ||
+        network_profile("healthy", &after_drops, &after_packets) != 0 ||
+        after_drops <= before_drops) goto out;
+    ++*expected;
+    phase = "pending-response";
+    if (wait_for_input_response(display, viewer, history, *expected, request_us,
+                                restored_us, RECOVERY_LIMIT_MS, &elapsed_us) != 0 ||
+        inspect_viewer_candidate(display, viewer->window, viewer->pid, &same_viewer) != 1 ||
+        same_viewer.window != viewer->window || read_connection_identity(&current) != 0 ||
+        !same_connection(connection, &current) || !keyboard_is_released(source) ||
+        !keyboard_is_released(display)) goto out;
+    printf("FLUTTER_PEER_INPUT_RECOVERY_PENDING_OK cycle=%u request=%u identity=%lld "
+           "requested_hold_ms=%u held_us=%llu input_elapsed_us=%llu recovery_us=%llu "
+           "quiet_samples=%u drops=%llu same_window=true stable_connection=true\n",
+           cycle + 1U, request, (long long)*expected, holds_ms[cycle],
+           (unsigned long long)(restored_us - request_us), (unsigned long long)elapsed_us,
+           (unsigned long long)(elapsed_us - (restored_us - request_us)), quiet_samples,
+           after_drops - before_drops);
+    result = 0;
+out:
+    if (result != 0) {
+        fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-recovery phase=%s cycle=%u request=%u\n",
+                phase, cycle + 1U, request);
+        if (network_profile("healthy", &after_drops, &after_packets) != 0)
+            fputs("FLUTTER_PEER_X11_FAIL input recovery restoration; supervisor retains cleanup\n", stderr);
+    }
+    return result;
+}
+
 static int exercise_input_latency(Display *source, Display *display, ViewerWindow *viewer,
                                    SourceHistory *history, const ConnectionIdentity *connection,
-                                   const ProcessResources *baseline, const char *start, int soak) {
+                                   const ProcessResources *baseline, const char *start,
+                                   int soak, int recovery) {
     enum { SAMPLES = 120, QUIET_MS = 200, SOAK_WINDOWS = 61, SLOT_MS = 2000, DRIFT_MS = 250 };
     int coord = open_coord_root(), process = -1, pidfd = -1, result = -1;
     int64_t expected = -1;
     unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0}, maximum = 0U, trial = 0U;
     unsigned int baseline_p95 = 0U, baseline_p99 = 0U;
-    unsigned int trials = soak ? SOAK_WINDOWS * SAMPLES : SAMPLES;
+    unsigned int trials = soak ? SOAK_WINDOWS * SAMPLES : recovery ? 4U * SAMPLES : SAMPLES;
+    unsigned int request = 0U;
     char path[64], state = '\0';
     const char *phase = "setup";
     Window focus, initial_focus;
@@ -4058,6 +4147,9 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
     if (measurement_start == 0U ||
         (soak && isolation_marker(coord, "soak.begin", 1) != 0)) goto out;
     for (trial = 0U; trial < trials; ++trial) {
+        if (recovery && trial != 0U && trial % SAMPLES == 0U &&
+            exercise_input_outage(source, display, viewer, history, connection,
+                                   &expected, ++request, trial / SAMPLES - 1U) != 0) goto out;
         phase = "cadence";
         if (soak && wait_for_input_slot(measurement_start + (uint64_t)trial * SLOT_MS) != 0) goto out;
         phase = "quiet";
@@ -4083,26 +4175,10 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         ++expected;
         phase = "request";
         start_us = x11_frame_monotonic_us();
-        if (start_us == 0U || send_response_request(display, trial + 1U) != 0) goto out;
+        if (start_us == 0U || send_response_request(display, ++request) != 0) goto out;
         phase = "response";
-        for (;;) {
-            uint64_t captured = 0U, now_us, age = 0U;
-            int64_t identity = viewer_state(display, viewer, &captured);
-            now_us = x11_frame_monotonic_us();
-            if (now_us < start_us || now_us - start_us > FRESH_LIMIT_MS * 1000U ||
-                identity > expected || x11_frame_refresh(history, "/coord") != 0 ||
-                history->count > (uint64_t)expected + 1U) goto out;
-            if (identity == expected) {
-                if (captured < start_us || history->count != (uint64_t)expected + 1U ||
-                    history->publication_us[expected] < start_us ||
-                    x11_frame_age(history, "/coord", identity, captured, &age) != 0 ||
-                    age > FRESH_LIMIT_MS) goto out;
-                elapsed_us = x11_frame_monotonic_us() - start_us;
-                if (elapsed_us > FRESH_LIMIT_MS * 1000U) goto out;
-                break;
-            }
-            if (sleep_millis(10U) != 0) goto out;
-        }
+        if (wait_for_input_response(display, viewer, history, expected, start_us,
+                                    start_us, FRESH_LIMIT_MS, &elapsed_us) != 0) goto out;
         unsigned int latency = (unsigned int)((elapsed_us + 999U) / 1000U);
         phase = "resources";
         if (!viewer_pidfd_alive(pidfd) ||
@@ -4116,7 +4192,21 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         if (latency > maximum) maximum = latency;
         printf("FLUTTER_PEER_INPUT_LATENCY_SAMPLE index=%u request=%u identity=%lld elapsed_us=%llu "
                "quiet_samples=%u input=native-request response=visible-pixels\n",
-               trial, trial + 1U, (long long)expected, (unsigned long long)elapsed_us, quiet_samples);
+               trial, request, (long long)expected, (unsigned long long)elapsed_us, quiet_samples);
+        if (recovery && (trial + 1U) % SAMPLES == 0U) {
+            unsigned int window = trial / SAMPLES;
+            unsigned int p95 = latency_percentile(histogram, SAMPLES, 95U);
+            unsigned int p99 = latency_percentile(histogram, SAMPLES, 99U);
+            if (window == 0U) { baseline_p95 = p95; baseline_p99 = p99; }
+            phase = "recovered-envelope";
+            if (p95 > baseline_p95 + DRIFT_MS || p99 > baseline_p99 + DRIFT_MS) goto out;
+            printf("FLUTTER_PEER_INPUT_RECOVERY_WINDOW index=%u samples=120 p95_ms=%u p99_ms=%u "
+                   "maximum_ms=%u baseline_p95_ms=%u baseline_p99_ms=%u\n",
+                   window, p95, p99, maximum, baseline_p95, baseline_p99);
+            print_resources("input-recovery", window, &resources);
+            memset(histogram, 0, sizeof(histogram));
+            maximum = 0U;
+        }
         if (soak && (trial + 1U) % 30U == 0U &&
             dprintf(3, "FLUTTER_PEER_INPUT_SOAK_PROGRESS samples=%u of=7320 "
                     "elapsed_ms=%llu window_maximum_ms=%u rss_kib=%llu threads=%u fds=%u\n",
@@ -4149,6 +4239,11 @@ static int exercise_input_latency(Display *source, Display *display, ViewerWindo
         puts("FLUTTER_PEER_INPUT_SOAK_OK baseline_ms=240000 duration_ms=14400000 windows=60 "
              "samples=7320 interval_ms=2000 deadline_ms=1000 p95_drift_ms=250 p99_drift_ms=250 "
              "stable_connection=true resources=bounded input=viewer-xtest pixels=viewer-root");
+    } else if (recovery) {
+        puts("FLUTTER_PEER_INPUT_RECOVERY_OK cycles=3 holds_ms=2000,6000,2000 samples=480 "
+             "pending_inputs=3 recovery_limit_ms=2500 deadline_ms=1000 p95_drift_ms=250 "
+             "p99_drift_ms=250 stable_connection=true resources=bounded input=viewer-xtest "
+             "response=controlled-native-request pixels=viewer-root");
     } else {
         printf("FLUTTER_PEER_INPUT_LATENCY_OK samples=120 deadline_ms=1000 p95_ms=%u p99_ms=%u "
                "maximum_ms=%u stable_connection=true resources=bounded input=viewer-xtest "
@@ -7272,6 +7367,7 @@ int main(int argc, char **argv) {
     if (argc != 5 && (argc != 6 || (strcmp(argv[5], "--viewer-suspend") != 0 &&
                                     strcmp(argv[5], "--viewer-soak") != 0 &&
                                     strcmp(argv[5], "--input-latency") != 0 &&
+                                    strcmp(argv[5], "--input-recovery") != 0 &&
                                     strcmp(argv[5], "--input-soak") != 0 &&
                                     strcmp(argv[5], "--isolation-slow") != 0 &&
                                     strcmp(argv[5], "--isolation-healthy") != 0 &&
@@ -7337,7 +7433,7 @@ int main(int argc, char **argv) {
               "--language-french, --language-portugal, --language-english, --language-restore, "
               "--language-direction, --native-components\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--input-latency|--input-recovery|--input-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -7583,10 +7679,12 @@ int main(int argc, char **argv) {
     }
 
     if (argc == 6 && (strcmp(argv[5], "--input-latency") == 0 ||
+                      strcmp(argv[5], "--input-recovery") == 0 ||
                       strcmp(argv[5], "--input-soak") == 0)) {
         int result = exercise_input_latency(source, display, &viewer, &history,
                                            &current_connection, &baseline_resources,
-                                           argv[4], strcmp(argv[5], "--input-soak") == 0);
+                                           argv[4], strcmp(argv[5], "--input-soak") == 0,
+                                           strcmp(argv[5], "--input-recovery") == 0);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

@@ -3043,6 +3043,8 @@ static int exercise_mouse_input(Display *source, Display *display,
         injected_held != 0U) return -1;
     XSelectInput(source, root, ButtonPressMask | ButtonReleaseMask | PointerMotionMask);
     XSync(source, False);
+    if (exercise_mouse_chords(source, display, viewer, connection, baseline) != 0 ||
+        exercise_mouse_bursts(source, display, viewer, connection, baseline) != 0) goto finished;
     for (unsigned int i = 0U; i < sizeof(cases) / sizeof(cases[0]); ++i) {
         unsigned int button = cases[i].button;
         unsigned int bit = button <= 5U ? 1U << (button + 7U) : 0U;
@@ -3056,8 +3058,6 @@ static int exercise_mouse_input(Display *source, Display *display,
         Window focus;
         int revert;
         if (cases[i].action == MOUSE_TAKEOVER) {
-            if (exercise_mouse_chords(source, display, viewer, connection, baseline) != 0 ||
-                exercise_mouse_bursts(source, display, viewer, connection, baseline) != 0) goto finished;
             /* Keep prior controls unchanged. Enable position notifications for this
                handoff and let the cursor subscription's initialization grace expire. */
             XSelectInput(source, root, NoEventMask);

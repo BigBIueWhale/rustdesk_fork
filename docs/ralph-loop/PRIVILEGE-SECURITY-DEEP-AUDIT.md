@@ -141405,3 +141405,33 @@ The source-bound app bd65c0c4 and engine ddb1541d are reused. Product code and
 existing component evidence are unchanged; no defect is presumed from this gap.
 Shell syntax and whitespace checks pass. Isolated driver compilation and the
 three-generation native replay follow; restart acceptance remains unproved.
+
+TUF 1vCe6Cf28h/session 49490 at c9cd6efd exits zero in 127 seconds. All three
+drivers compile twice byte-identically; the controller digest is
+32e9d3d410504a8d0a2e8f0b2ece54c8f239e96a6079b6ac69c77b5f8c9ac95a.
+Separate viewer PIDs 234, 345 and 440 authenticate through the actual password
+prompt. The second opens with the Hebrew title, settings and RTL geometry before
+any language write, then changes to English/LTR. The third restores English/LTR
+without writing. Five sets of three direction samples pass; translated controls
+in main and remote windows remain operable. The former process joins before each
+new launch, and saved lang reads he/en/en after the respective zero-exit joins.
+
+Each generation retains its own connection while settings are exercised. Twelve
+post-settings fresh counters pass, with maximum ages 282/300/302 ms and first
+fresh samples in 4/11/4 ms. Phase descriptors are 45/44/44 and RSS/threads stay
+within existing bounds. The original controlled server/listener persists through
+all launches, then source/server/Xvfb join with zero replacements. This accepts
+Linux RTL startup restoration, return to LTR and its subsequent restoration on
+the current app; no new product change was necessary. Other native languages,
+OS-locale acquisition, physical devices, other platforms and release acceptance
+remain OPEN. Existing sixteen-case component evidence remains valid.
+
+Capsule language-restart-c9cd6efd.json is 11,185 bytes, SHA-256
+b012c9196deb236c64563d74b2a65a217466232e22aef22d681ebf0b49ecc863.
+Raw output is 22,123 bytes, SHA-256
+e5f3d9985671aa3b2050a9d2ad38a1cae00344d5d2e7d97fa58a06cac15e8646.
+Four endpoint deltas are zero. Exact QEMU absence and private/RAM retirement are
+verified under the shared lock; storage lasts 134.014 seconds, peak scratch
+3,024,183,296 bytes. Ten bounded evidence files (111,816 bytes) match CTE/TUF;
+no owned run remains. Update the existing locale ledger entry and freshly count
+it. The broader release goal remains active.

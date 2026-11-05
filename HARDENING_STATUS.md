@@ -547,7 +547,7 @@ restoration, concurrent windows/writers, other failures/input forms, physical
 devices, other platforms and installed/release acceptance. Native View mode
 acceptance does not establish those behaviors or complete R-S0/R-F5 coverage.
 
-**Language locale/direction — native Hebrew transition accepted; broader acceptance OPEN.**
+**Language locale/direction — native Hebrew/English restart accepted; broader acceptance OPEN.**
 Correction `ee5e3c41` connects both app roots to the selected framework locale and
 resolved direction. At `c6c8f69b`, TUF `CM7Rx8rwEc` passes all sixteen rendered
 locale cases and three parser controls in 95 seconds: startup, live Hebrew/Arabic/
@@ -556,18 +556,20 @@ catalogue aliases and every advertised framework delegate. The two fixture repai
 use a build-callback-safe assertion and the pinned SDK's Arabic label; assertions
 remain intact. This component uses Flutter 3.24.5.
 
-Native `M84CZuKvex` reuses full app `bd65c0c4` / engine `ddb1541d` (Flutter 3.47.5).
-Actual English LTR and Hebrew RTL radio geometry each pass three samples; both
-windows show translated controls. The same connection presents four fresh frames
-with maximum sampled age 280 ms, bounded resources and saved Hebrew after viewer
-join. All processes/private/RAM state retire; four endpoint deltas are zero.
-Capsules: `locale-component-c6c8f69b.json`, `language-direction-c6c8f69b.json`.
-The retained `62cff9d8` baseline fails the unchanged direction observer. Initial
-current replay `l88JxLPCEv` already passed direction but exposed a hardcoded LTR
-header-hover position; its RTL correction preserves exact translated-tooltip
-matching. Intervening product changes preclude a sole-edit binary A/B claim.
-RTL restart restoration, other native languages, OS-locale acquisition, physical
-devices, other platforms and installed/release acceptance remain OPEN.
+Native `1vCe6Cf28h` at `c9cd6efd` reuses full app `bd65c0c4` / engine `ddb1541d`
+(Flutter 3.47.5). Three separately authenticated viewer processes select Hebrew,
+restore Hebrew and switch to English, then restore English without writing.
+Five sets of three radio-bound samples prove LTR/RTL layout; both windows show
+translated controls. Each process preserves its connection and presents four
+fresh frames after the settings check (maximum sampled ages 282/300/302 ms),
+within existing resource bounds. Preferences read he/en/en after zero-exit joins;
+the original controlled server remains. Processes/private/RAM state retire with
+four zero endpoint deltas. Capsules: `locale-component-c6c8f69b.json` and
+`language-restart-c9cd6efd.json`; the audit retains the preceding live-transition
+pass and original `62cff9d8` direction failure. The header observer follows actual
+RTL placement while retaining exact-tooltip matching. Intervening product changes
+preclude a sole-edit binary A/B claim. Other native languages, OS-locale acquisition,
+physical devices, other platforms and installed/release acceptance remain OPEN.
 
 **Checkpoint (2026-11-02):** Differing-keyboard-layout work is OPEN.
 Its unexecuted one-file observer draft is preserved in stash

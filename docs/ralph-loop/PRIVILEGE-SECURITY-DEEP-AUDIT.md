@@ -140207,3 +140207,36 @@ Capsule receive-preopen-ledger-f11f3078.json: 4,497 bytes, SHA-256
 4da92f37d29ab7dc2478e73c56d73597ee5baaa4cf920b19d4a8448771af5b0d.
 This audit-only receipt leaves the counted ledger unchanged. The selected Linux
 component correction is verified; the full release goal remains active.
+
+## 2026-11-05 — viewer transfer-job admission and confirmation capacity
+
+The preceding clarification turn verified saved instructions but made no product
+progress. Select the eight reproduced viewer admission failures recorded in the
+file-enumeration ledger: SendFiles and AddJob retain an excess job and may enumerate
+or dispatch before refusal. This concrete resource defect takes priority over
+repairing stale sidecar assumptions in the broader authenticated CM replay.
+
+The connection owner now admits both creation paths before enumeration, job
+construction or peer dispatch. Each direction counts its retained vector, including
+paused jobs, plus its FileConfirmations owner. Moving a job to confirmation cannot
+release capacity; cancellation remains charged until next() collects its exact
+completion. Returning a confirmed job exchanges one owner for the other in the
+same serialized connection loop. Existing limits remain 32 in each direction;
+refusal reports a job error without closing the session, and retirement permits retry.
+No protocol, dependency, runtime, privilege or host policy changes.
+
+Source review covers every viewer insertion and confirmation/cancellation path,
+the shared confirmation owner, and the controlled-side limits. Tokio's official
+JoinHandle documentation confirms that cancellation is not completion and dropping
+the handle detaches work: https://docs.rs/tokio/latest/tokio/task/struct.JoinHandle.html.
+The repository owner additionally retains returned jobs and cleanup until collection;
+its len(), not its noncancelled checkpoint iterator, therefore supplies the budget.
+
+The original eight distinguishing admission scenarios are unchanged. The same test
+now also runs eight actual confirmation-owner scenarios: both directions, both UI
+commands, successful return or cancellation. They require refusal while the worker
+is retained, no scan of a separate source directory, no ordered encrypted peer action,
+unchanged existing jobs, correct error delivery, and admission after exact retirement.
+Using a separate watched directory excludes legitimate confirmation I/O from the
+enumeration observation. Native results are pending the existing TUF no-NIC VM
+profile; no new acceptance claim is made by this preparation.

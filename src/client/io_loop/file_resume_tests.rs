@@ -706,4 +706,106 @@ async fn viewer_job_limit_precedes_scan_dispatch_and_recovers() {
         }
     }
     assert!(refused.is_empty(), "unbounded or incorrectly refused admission: {refused:?}");
+    pending_confirmations_retain_job_capacity().await;
+}
+
+async fn pending_confirmations_retain_job_capacity() {
+    for receiving in [false, true] {
+        for restore in [false, true] {
+            for cancel_pending in [false, true] {
+                let fixture = Fixture::new();
+                std::fs::write(fixture.0.join("source"), b"retained payload").unwrap();
+                let scan_source = fixture.0.join("scan-source");
+                std::fs::create_dir(&scan_source).unwrap();
+                std::fs::write(scan_source.join("file"), b"admitted scan").unwrap();
+                let handler = Session::<crate::viewer_pipeline_smoke_tests::ViewerPipelineUi>::default();
+                {
+                    let mut config = handler.lc.write().unwrap();
+                    config.conn_type = ConnType::FILE_TRANSFER;
+                    config.version = hbb_common::get_version_number("1.4.7");
+                }
+                let (command_sender, receiver_channel) = client::viewer_command_channel();
+                let (_, refresh) = viewer_video_refresh_channel();
+                let mut remote = Remote::new(handler, receiver_channel, command_sender, refresh);
+                let mut pending = if receiving { receiver(&fixture, 16) } else { sender(&fixture) };
+                if receiving {
+                    pending.inspect_receive_digest(&FileTransferDigest {
+                        id: 371, file_num: 0, file_size: 16, last_modified: 19,
+                        ..Default::default()
+                    }, false).await.unwrap();
+                }
+                let jobs = if receiving { &mut remote.write_jobs } else { &mut remote.read_jobs };
+                for id in 1..=31 {
+                    jobs.push(if receiving {
+                        fs::TransferJob::new_write(id, fs::JobType::Generic,
+                            "peer-source".to_owned(), fixture.0.clone(), 0, false, true, true)
+                    } else {
+                        fs::TransferJob::new_read(id, fs::JobType::Generic,
+                            "peer-destination".to_owned(), fixture.0.clone(), 0, false, false, true).unwrap()
+                    });
+                }
+                jobs.push(pending);
+                assert!(remote.prepare_file_confirmation(371, receiving, 0, 0));
+                let (mut viewer, mut peer) = keyed_pair().await;
+                if cancel_pending {
+                    assert!(remote.handle_msg_from_ui(Data::CancelJob(371), &mut viewer).await);
+                    let actions = actions_before_barrier(&mut viewer, &mut peer).await;
+                    assert_eq!(actions.len(), 1);
+                    assert!(matches!(&actions[0].union,
+                        Some(file_action::Union::Cancel(value)) if value.id == 371));
+                }
+                let request = || {
+                    let args = (400, fs::JobType::Generic,
+                        scan_source.to_str().unwrap().to_owned(),
+                        fixture.0.join("destination").to_str().unwrap().to_owned(),
+                        0, false, receiving);
+                    if restore { Data::AddJob(args) } else { Data::SendFiles(args) }
+                };
+                let snapshot = |remote: &Remote<crate::viewer_pipeline_smoke_tests::ViewerPipelineUi>| {
+                    let jobs = if receiving { &remote.write_jobs } else { &remote.read_jobs };
+                    jobs.iter().map(|job| serde_json::to_string(&job.gen_meta()).unwrap())
+                        .collect::<Vec<_>>()
+                };
+                let before = snapshot(&remote);
+                assert_eq!(before.len(), 31);
+                let owner = if receiving { &remote.write_confirmations } else { &remote.read_confirmations };
+                assert_eq!(owner.len(), 1);
+                assert_eq!(owner.metas().count(), usize::from(!cancel_pending));
+                let watch = DirectoryOpenWatch::new(&scan_source);
+                assert!(remote.handle_msg_from_ui(request(), &mut viewer).await);
+                assert!(actions_before_barrier(&mut viewer, &mut peer).await.is_empty());
+                assert!(!watch.take_opened());
+                assert_eq!(snapshot(&remote), before);
+                let direction = if receiving { "write" } else { "read" };
+                assert_eq!(remote.handler.take_errors(), vec![format!(
+                    "unexpected file job error 400/-1: too many retained {direction} jobs (limit 32)")]);
+                let owner = if receiving { &mut remote.write_confirmations } else { &mut remote.read_confirmations };
+                let completion = time::timeout(Duration::from_secs(3), owner.next()).await.unwrap();
+                assert_eq!(owner.len(), 0);
+                assert_eq!(completion.job.as_ref().unwrap().is_none(), cancel_pending);
+                assert!(remote.complete_file_confirmation(completion, receiving, &mut viewer).await);
+                let actions = actions_before_barrier(&mut viewer, &mut peer).await;
+                assert_eq!(actions.len(), usize::from(!cancel_pending));
+                if !cancel_pending {
+                    assert_eq!(snapshot(&remote).len(), 32);
+                    assert!(remote.handle_msg_from_ui(request(), &mut viewer).await);
+                    assert!(actions_before_barrier(&mut viewer, &mut peer).await.is_empty());
+                    assert_eq!(remote.handler.take_errors().len(), 1);
+                    assert!(remote.handle_msg_from_ui(Data::CancelJob(371), &mut viewer).await);
+                    assert_eq!(actions_before_barrier(&mut viewer, &mut peer).await.len(), 1);
+                }
+                assert_eq!(snapshot(&remote).len(), 31);
+                watch.take_opened();
+                assert!(remote.handle_msg_from_ui(request(), &mut viewer).await);
+                assert_eq!(actions_before_barrier(&mut viewer, &mut peer).await.len(), usize::from(!restore));
+                assert_eq!(watch.take_opened(), !receiving);
+                assert_eq!(snapshot(&remote).len(), 32);
+                assert!(remote.handler.take_errors().is_empty());
+                assert!(remote.file_flow_failure.is_none());
+                assert_eq!(std::fs::read(fixture.0.join("source")).unwrap(), b"retained payload");
+                remote.audio_thread.close_and_join().await;
+                println!("VIEWER_JOB_CONFIRMATION_CAPACITY=pass receiving={receiving} restore={restore} cancelled={cancel_pending} retained=32 excess=refused retry=admitted");
+            }
+        }
+    }
 }

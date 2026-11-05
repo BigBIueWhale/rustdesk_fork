@@ -2019,8 +2019,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
             }
             Data::SendFiles((id, r#type, path, to, file_num, include_hidden, is_remote)) => {
-                if self.file_confirmation_pending(id) {
-                    self.handle_job_status(id, file_num, Some("file confirmation is still pending".to_owned()));
+                if !self.admit_file_job(id, file_num, is_remote) {
                     return true;
                 }
                 log::info!("send files, is remote {}", is_remote);
@@ -2093,8 +2092,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
             }
             Data::AddJob((id, r#type, path, to, file_num, include_hidden, is_remote)) => {
-                if self.file_confirmation_pending(id) {
-                    self.handle_job_status(id, file_num, Some("file confirmation is still pending".to_owned()));
+                if !self.admit_file_job(id, file_num, is_remote) {
                     return true;
                 }
                 let od = can_enable_overwrite_detection(self.handler.lc.read().unwrap().version);
@@ -2605,6 +2603,28 @@ impl<T: InvokeUiSession> Remote<T> {
 
     fn file_confirmation_pending(&self, id: i32) -> bool {
         self.read_confirmations.contains(id) || self.write_confirmations.contains(id)
+    }
+
+    fn admit_file_job(&mut self, id: i32, file_num: i32, receiving: bool) -> bool {
+        if self.file_confirmation_pending(id) {
+            self.handle_job_status(id, file_num, Some("file confirmation is still pending".to_owned()));
+            return false;
+        }
+        let (retained, limit, direction) = if receiving {
+            (self.write_jobs.len() + self.write_confirmations.len(),
+                fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN, "write")
+        } else {
+            (self.read_jobs.len() + self.read_confirmations.len(),
+                fs::MAX_ACTIVE_FILE_TRANSFER_READ_JOBS_PER_CONN, "read")
+        };
+        // Paused jobs and confirmations retain capacity, including cancelled workers
+        // until their exact completion is collected by this connection owner.
+        if retained >= limit {
+            self.handle_job_status(id, -1,
+                Some(format!("too many retained {direction} jobs (limit {limit})")));
+            return false;
+        }
+        true
     }
 
     fn prepare_file_confirmation(

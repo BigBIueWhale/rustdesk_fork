@@ -140327,3 +140327,40 @@ Production behavior, full replay modes, authorization checks, isolated topology 
 resource limits are unchanged. Shell syntax and Python parsing pass; native results
 remain pending. TUF is clean at ad4f14e3, with 49,205,640 KiB available memory,
 empty owned-run inventory and 33,322,770,432 bytes available in /dev/shm.
+
+TUF XcozisSm7q at 15c97c02 completes its current-source ten-artifact build and
+the full authenticated CM file replay. All required file transactions pass:
+pre-login refusal, authorized creation, premature/short writes, exact single and
+multiple commits, peer error/cancel/owner-loss cleanup, reconnect, live-owner
+contention, same-peer successor, preserved older collisions, both replacement
+cleanup errors, direct-read failure then success, and production Session download,
+symlink refusal and fresh-connection recovery. The actual private namespaces and
+artifacts are observed by the repaired fixture. Same-UID unrelated production-CM
+_pa connection refusal also passes. The actual server artifact is
+9f2b4ca16d828db940aaeeb53cce1d14ed180a8f4fd31573daf592c1eeab2bc7;
+the production viewer libtest is
+405480fc03e57f784c88588c99e8339b3b1f22e4f1ccef172e86d08ad19a68cb.
+
+The complete profile exits 1 in its subsequent PulseAudio product-pair stage:
+graphical Remote login reports Remote input service is unavailable. The private
+PulseAudio monitor and Unix-only Xvfb start, but audio/video acceptance is absent.
+Current loader source requires the private root-owned provider24 library. This
+replay's artifact inventory and mounts do not stage that provider. The detailed
+server initialization log is not exported, so do not assert the precise native
+failure from the generic login error. Next necessary work is source-bound provider
+staging in the disposable guest and bounded server failure-log export, then native
+pair execution. Keep production admission, all full-profile checks and isolation.
+
+Supervisor duration is 292.086 seconds, peak scratch 6,366,941,184 bytes within
+the existing 16-GiB profile. All four decoded endpoint deltas are zero. Under the
+shared lock, QEMU 896217 is absent, the RAM workspace is retired, and the exact
+bounded private tree is inventoried and removed with identity verification.
+cm-private-receive-15c97c02.json is 14,959 bytes, SHA-256
+9189dd0786924d9077705a5b4fae87c48d86b8c012917e9bca75b2b12963ae47;
+its 458-byte retirement receipt has SHA-256
+82df0a896a66f659b0403eb7a7b5c1fcab9bc51bf752de92b46311a19352d5d4.
+Eight raw/outer files plus both records match on CTE and TUF. Terminal-tool output
+was truncated; the complete 454,502-byte durable guest log is retained and hashed.
+No owned run remains. This accepts the named Linux non-root server/CM/Session
+transactions; full profile, installed root receiver, Flutter/device/platform,
+release-artifact and independent-review acceptance remain OPEN.

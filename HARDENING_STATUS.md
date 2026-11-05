@@ -6160,6 +6160,27 @@ inspection/mutation, with source-bound kernel host-IP denial and exact owned cle
 They are not zero endpoint-delta results. Full installed application/peer workflows,
 current release artifacts, other platforms and independent review remain OPEN.
 
+**Authenticated Linux CM receive integration — named cases passed; full profile PARTIAL.**
+At `15c97c02`, TUF `XcozisSm7q` builds the current server, helper and production
+Rust `Session` test artifacts. The replay observes actual private receive files,
+replacing obsolete public-sidecar checks. It passes pre-login refusal, authorized
+creation, premature/short-write cleanup, exact single/multiple-file commits,
+peer-error/cancel/owner-loss cleanup, reconnect, competing-owner refusal,
+same-peer successor admission, collision preservation and both replacement-cleanup
+error paths. Direct-read error followed by success and the production viewer's
+150,001-byte download, symlink refusal and fresh-connection recovery pass; the
+same-UID unrelated `_pa` peer is refused before its request. These are real
+authenticated non-root Linux server/CM exchanges with a test UI, not installed
+root-receiver, Flutter UI or other-platform acceptance.
+
+The complete `--cm-file-replay` profile exits 1 afterward: its separate graphical
+Remote/audio pair reports `Remote input service is unavailable`. No current
+audio/video pass is claimed. Capsule `cm-private-receive-15c97c02.json` and its
+retirement receipt retain exact source/artifact identities, observations and raw
+logs on CTE and TUF. The 292.086-second run peaks at 6,366,941,184 scratch bytes;
+all four endpoint deltas are zero. QEMU, RAM and exact private diagnostics retire.
+The `_pa` entry below records the remaining fixture prerequisite.
+
 **Recording outputs — named Linux file/mux, I/O and timeline components accepted; installed/platform acceptance OPEN.**
 `libs/scrap/src/common/record.rs` creates output exclusively, borrows factory metadata and
 retains no pathname for deletion. Created short, unwritten and incomplete outputs remain.
@@ -19195,6 +19216,16 @@ release input (archive SHA-256
 `50f18b087a3ecfb69f8221546136101733cc1415cdb42778af70261bf2376115`;
 manifest SHA-256
 `e09cd86e2c54ef0df9348fad5343ce051b2ee28fecc7808e50228474fd32da34`).
+
+Current-source replay `15c97c02`/`XcozisSm7q` passes the complete CM file stage
+and wrong-peer `_pa` refusal, but the later graphical Remote login refuses input
+worker startup. The fixture does not build/stage the current private input provider
+at `/usr/lib/rustdesk-fork/libxdo.so.3`; the loader requires root-owned ancestry
+and provider version `3.20160805.1-rustdesk24`. The server's detailed startup log
+was not exported, so the exact native initialization failure is unclassified.
+Next: stage the source-bound provider inside the disposable guest, retain bounded
+server failure diagnostics, and re-exercise the required production pair without
+weakening input admission. The older audio/video result above is historical.
 
 **Native source selection and recording retirement passed — `6325be96`.**
 At that historical source, System Sound resolves the current default output's monitor through PulseAudio

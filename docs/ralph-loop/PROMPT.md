@@ -84,6 +84,10 @@ selection under the release priorities; it does not require a separate task-spec
 Do not turn a request to switch tasks into a continuing authorization barrier. Follow applicable
 model capability restrictions for the particular action and continue useful permitted work.
 
+This clarification applies only to generic task-switch requests. Specific intentional user
+restrictions remain binding, including CTE's public DMZ exposure: all ports and network protocols
+are forwarded from the public internet. Preserve the host and network isolation requirements below.
+
 User authorization persists across turns, compactions, and goal resumptions. A specific instruction
 to resume a task also authorizes the necessary research, implementation decisions, builds, focused
 tests, fixture/harness repairs, and cleanup needed to complete and verify that task on already-authorized

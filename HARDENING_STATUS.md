@@ -4064,9 +4064,26 @@ burst stall's cause remains unresolved. The kernel chooses the loss sequence;
 fixed profiles do not establish exact sequence reproduction or exhaustive tails.
 QEMU joins after 185.108 seconds, 3,009,855,488 bytes peak RAM scratch retires,
 and four listener deltas are zero. Evidence: `packet-loss-af86725f.json` on CTE/TUF.
-Further impairment/recovery investigation is OPEN by the user pivot.
+Further impairment/recovery investigation remains OPEN and eligible for release-priority work.
+
+At `accf88fd`, TUF `4tiidxWNtF` reuses current app `2ae08e80` and passes the same
+three loss profiles and unchanged recovery criteria. Four fresh states recover in
+656/555/650 ms; healthy follow-up maximum ages are 309/304/316 ms against a 326-ms
+baseline. During-loss maxima are 664/483/13,647 ms. The new observer retains 341 TCP
+and 251 timestamped pixel samples on the same connection. Across 62 consecutive
+burst samples, both receive queues are empty, server/viewer send queues remain
+1,990/47 bytes, and reported RTO rises from 408 to 6,528 ms with backoff 1–5.
+The viewer's received-byte counter stays unchanged for 12.887 sampled seconds,
+overlapping a frozen displayed state while the source advances. Delivery and
+freshness return before loss removal. This supports a transport contribution to
+the observed stall; it does not establish every application-stage delay or a
+permanent backlog. Loopback MTU 65,535/MSS 32,768 and uncontrolled loss sequences
+limit realism and reproducibility. Next: calibrate packet sizing/offload and loss
+repetition before choosing a product transport change. The 185.247-second run
+retires all owned processes and RAM scratch (3,019,358,208-byte peak), with four
+zero listener deltas. Evidence: `packet-loss-transport-accf88fd.json` on CTE/TUF.
 Bandwidth/jitter, MTU/offload, input-visible timing, multi-hour sessions and other
-roles/platforms remain OPEN;
+roles/platforms remain OPEN.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;
@@ -14357,7 +14374,7 @@ sandbox implementation and checker-repair history remain in Git.
   `verify.sh`'s source checks do not establish present Windows/POSIX or installed
   behavior. Fresh exact-artifact authorized/refused operations, replacement races,
   persistence/finalization/cleanup, principal/platform coverage and R-S0 acceptance
-  remain OPEN. Separate receive/send producer parks are unchanged. Classification:
+  remain OPEN. Classification:
   `receive-write-contract-ef4fcf96.json`.
 
 ## Closed excision and direct-only presentation backlog

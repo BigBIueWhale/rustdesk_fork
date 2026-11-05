@@ -139435,3 +139435,37 @@ product source, actual pixel oracle, 2,500-ms recovery deadline, 1,000-ms freshn
 limit, healthy follow-up, stable connection and resource/cleanup checks remain.
 The sampler has a finite count/record budget and requires observations for every
 requested impairment profile. No native result is claimed before the replay.
+
+TUF `4tiidxWNtF` passes the three current-app cycles in 185.247 seconds. Four fresh
+states recover in 656/555/650 ms; healthy follow-up maxima 309/304/316 ms remain
+below the 326-ms baseline maximum. During impairment, maxima are 664/483/13,647 ms.
+Window/TCP identity and resource bounds pass; RSS rises at most 11,072 KiB,
+descriptors remain 45 and threads decrease. No product/socket setting changed.
+
+All 251 recorded pixel ages are known. The 341 TCP observations take 5.136–35.589 ms
+(median 6.932); start intervals are 206.773–377.250 ms (median 207.413). Sampling is
+therefore not exactly 200 ms. Viewer received bytes plateau from 137.229 to 150.116
+guest-monotonic seconds (12.887 seconds). Overlapping pixels retain state 269 while
+source states advance 271–321. Across the first 62 plateau samples, both receive
+queues are zero and server/viewer send queues stay 1,990/47 bytes; reported RTO
+rises 408–6,528 ms with backoff 1–5. Queue drain, renewed delivery and fresh pixels
+precede restoration at 153.530 seconds. This supports transport contribution to
+the stall, not exclusive attribution or evidence of permanent post-restoration lag.
+The 200-ms pixel records peak at 13,453 ms; the unchanged faster oracle observes
+13,647 ms. Preserve that sampling distinction. MTU 65,535/MSS 32,768 and uncontrolled
+kernel loss sequences require calibration before a product transport decision.
+
+Four decoded listener deltas are zero. Wrapper 9828/QEMU 10874 and captured children
+are absent by pidfd; private/RAM state is absent under the shared lock. Scratch
+peaks at 3,019,358,208 bytes. Capsule `packet-loss-transport-accf88fd.json` is 30,380
+bytes, SHA-256 e9c7ec5e6ecfda05990149f79943fc84a10c2b712a9a0a2895e434e0a63fb1d5.
+Eighteen evidence files / 819,825 bytes match CTE/TUF. They include the first capture
+observer's ProcessLookupError before guest startup: its exact processes and three
+tiny private files were reconciled/retired before retry. Catching short-lived child
+disappearance fixed the ephemeral capture observer; it was not a product failure.
+
+The user's clarification explicitly preserves intentional restrictions, particularly
+CTE's public DMZ exposure. Add that distinction to the existing authorization
+paragraph and remove the last false receive/send-producer park sentence. Comparison
+against the prompt before `2c3186bf` proves the host/isolation/DMZ section and every
+following specific restriction byte-identical. No host restriction is relaxed.

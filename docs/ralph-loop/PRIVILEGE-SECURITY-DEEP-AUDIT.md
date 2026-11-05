@@ -139804,3 +139804,11 @@ This completes the named event-driven Linux input scenarios with one outstanding
 request. Concurrent animation/input, impaired multi-hour sessions, other
 roles/platforms/workloads, physical scanout, reproducible sequences/tails and
 release acceptance remain OPEN. No product change is justified by these passes.
+
+Fresh count `bXInEigaXs` at `79715726` passes seven controls and the whole-input
+round trip in 27 workload seconds: **397,583 tokens / 1,814,560 bytes**, SHA-256
+90c8fecb512adb542157988f8d684b67dd44894f075b17f1ba2b51358fee729f.
+Exact processes/private/RAM retire, peak scratch is 402,829,312 bytes and all
+three endpoint deltas are zero. `mixed-input-ledger-79715726.json` is 7,813 bytes,
+SHA-256 383eaa7b2056be7c5ddf525292e02e83b126cae593eadec85640bb5652a1e0ce.
+This audit-only receipt leaves the counted ledger unchanged. No owned run remains.

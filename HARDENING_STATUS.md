@@ -125,12 +125,17 @@ OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
 below retains the required authorized behavior.
 
-**Checkpoint (2026-11-04):** Further Linux application dependency/artifact
-validation is OPEN. Build `aMRuM2TUs8` at `59b51e80` completes with
-thirteen widget/two native command controls and all 73 payload hashes verified.
-`dependency-app-build-59b51e80.json` binds exact process/private/RAM retirement
-and four zero listener deltas. The additional native/asset inventory observer
-has no accepted result.
+**Current Linux build and bridge ABI verified (2026-11-05).** Build `iWDS6Qwwdn`
+at `2ae08e80` passes fresh bridge generation, the complete Rust/Flutter build,
+thirteen widget/two native command controls and all 73 payload hashes.
+The compiled library retains exactly 225 bridge exports: only `wire_main_set_env`
+is removed from the accepted `59b51e80` artifact; no export is added. All eighteen
+retired account exports remain absent, and the required environment reader remains.
+`current-linux-build-2ae08e80.json` and `current-linux-abi-2ae08e80.json` bind
+the result, exact process/private/RAM retirement and four zero listener deltas.
+The Flutter 3.47.5 candidate is not canonical SDK promotion. Current native-session,
+installed/package, other-platform and final-release acceptance remain OPEN.
+The separate dependency/native-asset inventory observer still has no accepted result.
 
 **Checkpoint (2026-11-04):** Further Android account-API artifact validation is
 OPEN. Run `CQ4XBSwjHA` was cancelled before a build/native-test verdict;
@@ -208,8 +213,9 @@ generation excludes the setter and all fourteen unchanged connection-password
 dialog cases pass, with three focused result controls and exact source checks.
 The runner now selects those controls explicitly; broader model failures remain open. Evidence: `environment-bridge-821088a1.json` and the audit's matching entry.
 All four endpoint deltas are zero; exact processes and private/RAM state retire.
-This is unused-API retirement, not a demonstrated LPE. Full native-library ABI,
-application/web/device and installed release acceptance remain OPEN.
+The current Linux build above verifies native-library ABI removal while preserving
+every other previous bridge export. This is unused-API retirement, not a demonstrated
+LPE. Native-session, web/device and installed release acceptance remain OPEN.
 
 **Checkpoint (2026-11-04):** Android permission native-workflow acceptance is
 OPEN; the accepted Kotlin callback correction below remains valid.

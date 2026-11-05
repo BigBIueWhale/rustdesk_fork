@@ -139357,3 +139357,41 @@ Required result: current bridge/Rust/Flutter build, existing widget/native comma
 controls, exact bundle manifest, and artifact/API inspection. Build success alone
 does not establish installed authority, native functionality, other platforms,
 cold final-release equality or release readiness.
+
+The preceding turn made progress: exact TUF launcher files were restored from
+group-writable checkout modes to 0755/0644, with unchanged Git-matching bytes.
+The first launch refused before creating a VM; wrapper 8238 is absent and no
+run directory or child remained. `current-linux-preflight-2ae08e80.json` binds
+that repair. The host network guard was unchanged. Comparison with the prompt
+before restriction cleanup confirms the host/network and explicit DMZ sections
+are byte-identical; only generic task pivots lost their inferred permanent bans.
+
+TUF `iWDS6Qwwdn` at `2ae08e80` completes in 1,058.487 seconds. Fresh bridge,
+full release-mode Rust library, thirteen widget/two native command cases,
+support executable and Flutter bundle pass. All 73 payload files / 70,332,436
+bytes match the manifest, SHA-256
+52395f154d6a6a877ce121fcf722610cadb5dcf1353ebc1df66338b35b3114a1.
+GNU readelf inspection of the actual old/new libraries finds exactly 226/225
+defined global bridge exports: only `wire_main_set_env` disappears, none is
+added, and every retained name survives. The eighteen retired account exports
+remain absent; six positive controls include the required environment reader.
+The new library SHA-256 is
+a5747d5e1e8e32d037fe1f0a02f2de9065a43d09313c2d06b732bbcb1da1dbbb.
+
+Four decoded host listener deltas are zero. Exact wrapper/QEMU 8268/8898 and
+captured children are absent by pidfd; private state and the bounded RAM
+workspace retire under the shared lock. Scratch peaks at 11,895,861,248 bytes.
+`current-linux-build-2ae08e80.json` is 11,680 bytes, SHA-256
+f90c3e45b07f23e25938288f6a63fa81f1156faa3d731f632f2cca988fc1128b;
+`current-linux-abi-2ae08e80.json` is 21,393 bytes, SHA-256
+8cf4bd671d915ee3744b0cf3e8cb47e3459cd7fd109ddca3e4a0a865746f514f.
+Eighteen build/ABI evidence files match CTE/TUF. Four additional records bind
+preflight repair and exact retirement of superseded a3192591 after all payload
+hashes were verified; designated baseline, pending artifact and latest accepted
+59b51e80 remain, keeping the app cache at four generations after this build.
+
+No product or harness code change was needed. This closes current Linux
+compilation and the environment-setter ABI gap, not native-session/settings,
+installed authorization, mobile/web, canonical SDK promotion or final-release
+acceptance. The separate unfinished dependency/native-asset observer remains
+OPEN. Record this checkpoint and count the updated ledger once.

@@ -140784,3 +140784,52 @@ d3bdeabc5158221484b5959509e584df8028fc9a17ee676bd4578978f317ea25.
 All eight count files match CTE/TUF. This audit-only receipt leaves the counted
 ledger unchanged. No owned run remains; staging creation/recovery is the next
 correction, with both native preservation regressions retained as required failures.
+
+## 2026-11-05 — connection-duration correctness correction
+
+The user redirects work toward correctness. Select the reproduced CM duration
+defect; receive staging remains OPEN. Recover the six-file draft from preserved
+stash f78e5d91, review it and complete the native test entry. Commit eae83f2e
+replaces the per-header callback counter with a native registry-owned Instant/
+finished Duration, serialized as elapsed_seconds through existing snapshots.
+Same-owner time samples update the reactive field without rebuilding tabs;
+disconnect freezes the value, and a new registry owner gets a fresh clock.
+The elapsed origin is CM admission, not remote authentication. This is a bounded
+correction, not complete connection-timing or R-S0 acceptance.
+
+Primary API review: https://api.dart.dev/dart-async/Timer/Timer.periodic.html
+documents callback timing variation; https://doc.rust-lang.org/std/time/struct.Instant.html
+supports elapsed measurement independent of wall-clock changes and notes platform
+variation across suspension. No suspend-time guarantee is inferred here.
+
+CTE BP1xWeDxUR, session 50879, exits zero at eae83f2e: all eight rendered
+production-header/model cases pass, versus two passes/six failures at 0d3365e2.
+The delayed-repaint case now observes the reactive update without remounting.
+Native snapshots are doubles. Both source-copy checks and three parser controls
+pass. Capsule cm-duration-rendered-eae83f2e.json is 10,072 bytes, SHA-256
+0524dfa52a11a112b197433f69d4e29b603eb459e33cde1c354a02884422447c.
+Storage duration is 270.278s; peak RAM scratch is 6,384,607,232 bytes.
+
+TUF BGUfUqwkwD, session 12077, exits one before compilation: the guest selector
+omitted --cm-duration. Capsule cm-duration-entry-eae83f2e.json retains that
+failure (9,207 bytes; SHA-256 264209d057b71ef8913d980cf3967490934c5df82632f7d77a92d701c13557ee).
+The exact one-line entry correction is dcc26cf6; no product change follows the
+rendered pass. TUF replay oCsZD49bHQ, session 57315, exits zero: full Linux
+library compilation with Flutter features takes 106s, and the one exact test
+passes in 2.20s. Artifact SHA-256:
+ca116c8f10c982e1a67e9ef6b9fed7ff1dbda8f562c0f9af4064a79000bd203d.
+It exercises actual registry admission/retirement and JSON serialization with a
+controlled 65-second seed plus a real 1.1-second elapsed wait, frozen repeated
+retirement/clone, fresh replacement, stale-owner refusal and empty final registry.
+Capsule cm-duration-native-dcc26cf6.json is 6,130 bytes, SHA-256
+01693f3ea2fd62d866dd5cb03812fbe2b47978e0f5e1acd0fd88739b46bcad33.
+Storage duration is 366.187s; peak RAM scratch is 6,303,277,056 bytes.
+
+All three runs have four zero endpoint deltas, joined QEMU, pidfd absence and
+retired private/RAM state verified under the shared lock. The failed run's bounded
+diagnostics were captured before identity-checked removal. Thirty bounded evidence
+files match CTE and TUF. No owned run remains; the draft stash is preserved.
+Timing before CM admission, CM process restart, suspension and installed/other-OS
+integration remain OPEN. Next decisive work is an actual application timing
+comparison against authenticated connection lifetime. Update the existing ledger
+checkpoint in place and perform its required fresh count; keep the goal active.

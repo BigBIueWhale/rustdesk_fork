@@ -79,14 +79,15 @@ OPEN before native fixture implementation or execution. The verified
 `60e3fb0a` service artifact remains available; manager and installed/release
 acceptance remain unproved.
 
-**Checkpoint (2026-11-04):** Connection-manager duration (R-S0) is
-OPEN. The unchanged-product rendered baseline at `0d3365e2` passes
-two controls and fails six cases, including header recreation and connection
-replacement. Other cases use prospective duration samples; native elapsed-time
-production and timing across CM startup/restart remain unproved. The unverified
-six-file correction is preserved in stash
-`f78e5d91eec30c4d6f90b780e54bd08cafbb1a44`. Evidence and joined cleanup:
-`cm-duration-before-0d3365e2.json`.
+**Checkpoint (2026-11-05):** CM duration's widget-counter defect is corrected
+at `eae83f2e`: the native registry owns elapsed time and freezes it on disconnect;
+Flutter displays snapshots without a per-header timer. All eight rendered cases
+pass, against two passes/six failures at `0d3365e2`. At `dcc26cf6`, the full Linux
+library test target compiles and its focused clock/retirement/replacement test
+passes. Evidence: `cm-duration-before-0d3365e2.json`,
+`cm-duration-rendered-eae83f2e.json`, `cm-duration-native-dcc26cf6.json`.
+**OPEN:** timing before CM admission, process restart, suspension and installed/
+cross-platform acceptance; R-S0 remains open. The audit retains scope and cleanup.
 
 **Checkpoint (2026-11-04):** The four single-Rust-test execution guards remain
 OPEN before implementation.

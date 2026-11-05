@@ -139461,6 +139461,27 @@ under the shared lock. Failure capsule `congestion-soak-accounting-failed-23f609
 is 8,387 bytes, SHA-256
 21a8be3a757c5bd3dcd1ad344c2446fc181aef0a3b2e03be2cbf3dead7ca55f9.
 
+CTE retry `nBL6r8WOhl` at `d48f838d` passes in 84.089 capture seconds.
+All ten candidate accounting cases pass; the unchanged historical loop reproduces
+seven discrepancies and passes three controls. The current full controller compiles;
+neighboring frame/oracle cases pass. These accounting cases use synthetic clocks
+and observation/process/resource adapters, not four hours of real pixels.
+Exact processes/private/RAM retire; peak scratch is 3,732,877,312 bytes and all
+three decoded host endpoint deltas are zero. Capsule
+`congestion-soak-accounting-d48f838d.json`: 11,377 bytes, SHA-256
+1c77085d905621fadee87c288d3f5977a91587c1d34386dcc7e013293363944c.
+
+Start real-duration TUF run `As53eP1Smj` on the same committed harness after
+read-only admission: 49,473,556 KiB MemAvailable, empty owned run inventory and
+33,322,782,720 available tmpfs bytes. Capture control is
+`.harness-state/congestion-soak-d48f838d-control`; launch PID 135096 and its recorded
+start ticks identify the wrapper. The retained tool session is 6835. Current
+inspection proves that exact wrapper live and three initial endpoint deltas zero.
+Keep TUF's checkout at `d48f838d` through final acceptance; CTE evidence/status
+commits may advance independently. Do not restart on an observation timeout.
+Full-duration result and exact cleanup remain pending. The ledger now names this
+running job; a fresh isolated token count is required for that edit.
+
 ## 2026-11-05 — packet-loss transport and displayed-frame correlation
 
 Previous turn is progress: current Linux compilation, bundle integrity and the

@@ -4177,6 +4177,16 @@ multi-hour freshness. Concurrent animation/input workloads, other roles/platform
 physical scanout, reproducible loss/jitter sequences and tails, and final release
 acceptance remain OPEN.
 
+**Impaired multi-hour display soak — running, acceptance pending.** TUF
+`As53eP1Smj` at `d48f838d` reuses app `2ae08e80` for four rounds of jitter,
+32-kbit/s bandwidth and their combination across 241 one-minute healthy windows.
+The original baseline and freshness/resource limits remain fixed. CTE prerequisite
+`nBL6r8WOhl` passes all ten exact-loop accounting cases plus native frame checks;
+processes/RAM retire and three endpoint deltas are zero. Capsule:
+`congestion-soak-accounting-d48f838d.json`. The full-duration run and its cleanup
+must complete before acceptance; retain TUF's source unchanged and observe this
+same job. Broader R-F5 coverage remains OPEN.
+
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;
 all 196 package versions and every other lock entry remain unchanged. The old

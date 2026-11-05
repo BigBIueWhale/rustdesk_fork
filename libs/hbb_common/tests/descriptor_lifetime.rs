@@ -1,6 +1,7 @@
 #[cfg(target_os = "linux")]
 mod linux {
     use hbb_common::fs::{self as product, JobType, TransferJob};
+    use hbb_common::message_proto::FileTransferDigest;
     use hbb_common::socket_surface::{read_process_socket_surface, check_surface, SurfaceCheck};
     use std::{
         collections::BTreeSet,
@@ -71,6 +72,15 @@ mod linux {
             }
             good &= result;
         }
+        let inspected = matches!(product::inspect_write_destination(false, root.join("file"),
+            &FileTransferDigest { file_size: 4, ..Default::default() }),
+            Ok(product::DigestCheckResult::NeedConfirm(_)));
+        let preserved = fs::read(root.join("file")).map(|bytes| bytes == b"data").unwrap_or(false);
+        let receive = inspected && preserved;
+        if report {
+            println!("FILE_METADATA_DESCRIPTOR_LIFETIME=case mode={mode} operation=receive-inspection ok={receive}");
+        }
+        good &= receive;
         good & socket_observations(mode, report)
     }
 
@@ -157,13 +167,13 @@ mod linux {
             let resources = stdout.lines().filter(|line| line.starts_with("FILE_METADATA_DESCRIPTOR_LIFETIME=resources ")).count();
             let sockets = stdout.lines().filter(|line| line.starts_with("SOCKET_DESCRIPTOR_LIFETIME=case ")).count();
             println!("FILE_METADATA_DESCRIPTOR_LIFETIME=child mode={mode} success={} timed_out={timed_out} cleanup=joined", output.status.success());
-            good &= output.status.success() && !timed_out && cases == 3 && kernel == 1 && resources == 1
+            good &= output.status.success() && !timed_out && cases == 4 && kernel == 1 && resources == 1
                 && sockets == 3;
         }
         fs::remove_dir_all(&root).expect("retire the private fixture after both child joins");
         assert!(!root.exists());
         if !good { std::process::exit(1); }
-        println!("FILE_METADATA_DESCRIPTOR_LIFETIME=pass modes=2 cases=6 children=joined fixture=retired");
+        println!("FILE_METADATA_DESCRIPTOR_LIFETIME=pass modes=2 cases=8 children=joined fixture=retired");
         println!("SOCKET_DESCRIPTOR_LIFETIME=pass modes=2 cases=6 children=joined fixture=retired");
     }
 }

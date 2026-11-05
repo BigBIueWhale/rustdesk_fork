@@ -1810,15 +1810,33 @@ fn open_regular_child_io(
 struct LinuxRegularChild<'a> {
     parent: &'a std::fs::File,
     name: &'a std::ffi::CStr,
+    object: Option<std::fs::File>,
 }
 
 #[cfg(target_os = "linux")]
 impl<'a> LinuxRegularChild<'a> {
     fn acquire(parent: &'a std::fs::File, name: &'a std::ffi::CStr) -> std::io::Result<Self> {
-        use std::os::unix::io::AsRawFd;
+        use std::os::unix::io::{AsRawFd, FromRawFd};
 
-        let _ = fstatat_regular_no_follow(parent.as_raw_fd(), name)?;
-        Ok(Self { parent, name })
+        // Pin and classify the child before any open that could reach device or FIFO I/O.
+        let fd = unsafe {
+            crate::libc::openat(parent.as_raw_fd(), name.as_ptr(),
+                crate::libc::O_PATH | crate::libc::O_NOFOLLOW | crate::libc::O_CLOEXEC)
+        };
+        let object = if fd < 0 {
+            let error = std::io::Error::last_os_error();
+            if error.kind() != std::io::ErrorKind::NotFound {
+                return Err(error);
+            }
+            None
+        } else {
+            let file = unsafe { std::fs::File::from_raw_fd(fd) };
+            if !stat_is_regular(&unix_fstat(&file)?) {
+                return Err(io_invalid_input("receive target is not a regular file"));
+            }
+            Some(file)
+        };
+        Ok(Self { parent, name, object })
     }
 
     fn open(
@@ -1826,13 +1844,41 @@ impl<'a> LinuxRegularChild<'a> {
         access: RegularFileAccess,
         creation: ReceiveFileCreation,
     ) -> std::io::Result<std::fs::File> {
-        use std::os::unix::io::AsRawFd;
+        use std::os::unix::{fs::OpenOptionsExt, io::AsRawFd};
 
-        open_regular_child_io(
-            self.parent.as_raw_fd(),
-            self.name,
-            regular_child_flags(access, creation),
-        )
+        let parent_fd = self.parent.as_raw_fd();
+        match (self.object.as_ref(), creation) {
+            (_, ReceiveFileCreation::CreateNew) => open_regular_child_io(
+                parent_fd, self.name, regular_child_flags(access, ReceiveFileCreation::CreateNew),
+            ),
+            (Some(object), _) => {
+                let expected = unix_fstat(object)?;
+                unix_require_same_object(&expected,
+                    &unix_fstatat_no_follow(parent_fd, self.name)?, "receive child")?;
+                // This proc reference resolves the retained object, never the mutable child name.
+                let file = std::fs::OpenOptions::new()
+                    .read(matches!(access, RegularFileAccess::Read | RegularFileAccess::ReadWrite))
+                    .write(matches!(access, RegularFileAccess::Write | RegularFileAccess::ReadWrite))
+                    .custom_flags(crate::libc::O_CLOEXEC | crate::libc::O_NONBLOCK | crate::libc::O_NOCTTY)
+                    .open(format!("/proc/thread-self/fd/{}", object.as_raw_fd()))?;
+                unix_require_same_object(&expected, &unix_fstat(&file)?, "reopened receive child")?;
+                unix_require_same_object(&expected,
+                    &unix_fstatat_no_follow(parent_fd, self.name)?, "receive child")?;
+                Ok(file)
+            }
+            (None, ReceiveFileCreation::Existing) =>
+                Err(std::io::Error::from_raw_os_error(crate::libc::ENOENT)),
+            (None, ReceiveFileCreation::OpenOrCreate) => {
+                match open_regular_child_io(parent_fd, self.name,
+                    regular_child_flags(access, ReceiveFileCreation::CreateNew)) {
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                        // Admit a competing creator's object through the same metadata-only path.
+                        Self::acquire(self.parent, self.name)?.open(access, ReceiveFileCreation::Existing)
+                    }
+                    result => result,
+                }
+            }
+        }
     }
 }
 
@@ -8127,8 +8173,9 @@ mod tests {
                         && block.data.as_ref() == vec![0x7a; 4_096].as_slice()
                 )
         ));
-        assert_eq!(jobs[1].transferred, 0);
-        assert!(jobs[1].data_stream.is_none());
+        let waiting = jobs.iter().find(|job| job.id() == 42).expect("retain the unselected job");
+        assert_eq!(waiting.transferred, 0);
+        assert!(waiting.data_stream.is_none());
         receipt
             .await
             .expect("the writer must retain exact completion ownership")
@@ -10631,7 +10678,8 @@ mod tests {
             let secret = tmp.join("must-not-truncate");
             let secret_contents = format!("secret-{job_id}").into_bytes();
             std::fs::write(&secret, &secret_contents).expect("write hard-link target");
-            std::fs::hard_link(&secret, tmp.join(&format!("incoming.bin{sidecar_suffix}")))
+            let sidecar = receive_fixture_path(&tmp.join("incoming.bin"), sidecar_suffix);
+            std::fs::hard_link(&secret, &sidecar)
                 .expect("precreate receive sidecar as a hard link");
 
             let mut job = new_write_job(job_id, tmp.path.clone(), "incoming.bin")
@@ -10650,6 +10698,7 @@ mod tests {
                 secret_contents,
                 "a refused receive must not alter a hard-linked target"
             );
+            assert_eq!(std::fs::read(&sidecar).expect("preserve the refused sidecar"), secret_contents);
             assert!(!tmp.join("incoming.bin").exists());
             assert!(!receive_fixture_path(&tmp.join("incoming.bin"), ".download.lock").exists());
             if sidecar_suffix == ".download" {
@@ -11787,6 +11836,31 @@ mod tests {
     fn receive_missing_create_refuses_fifo_swap_before_io_open() {
         assert_receive_type_precedes_io_open("create",
             "fs::tests::receive_missing_create_refuses_fifo_swap_before_io_open");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn receive_regular_acquisition_refuses_a_replaced_regular_file() {
+        let tmp = TestTempDir::new("rustdesk_receive_regular_swap");
+        std::fs::create_dir_all(&tmp.path).unwrap();
+        let target = tmp.join("target");
+        let displaced = tmp.join("displaced");
+        let parent = open_parent_dir_no_follow(&tmp.path, false).unwrap();
+        let name = cstring_file_name(&target).unwrap();
+        for access in [RegularFileAccess::Read, RegularFileAccess::Write, RegularFileAccess::ReadWrite] {
+            for creation in [ReceiveFileCreation::Existing, ReceiveFileCreation::OpenOrCreate] {
+                std::fs::write(&target, b"original").unwrap();
+                let acquired = LinuxRegularChild::acquire(&parent, &name).unwrap();
+                std::fs::rename(&target, &displaced).unwrap();
+                std::fs::write(&target, b"replacement").unwrap();
+                assert_eq!(acquired.open(access, creation).unwrap_err().kind(),
+                    std::io::ErrorKind::PermissionDenied);
+                assert_eq!(std::fs::read(&target).unwrap(), b"replacement");
+                assert_eq!(std::fs::read(&displaced).unwrap(), b"original");
+                std::fs::remove_file(&target).unwrap();
+                std::fs::remove_file(&displaced).unwrap();
+            }
+        }
     }
 
     #[cfg(target_os = "linux")]

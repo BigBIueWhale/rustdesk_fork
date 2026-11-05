@@ -6771,7 +6771,7 @@ run_focused_rust_tests() {
                                     "$lifetime_sha" "$lifetime_status"
                                 exit "$lifetime_status"
                             fi
-                            printf "FILE_METADATA_DESCRIPTOR_ARTIFACT=pass sha256=%s executable=%s modes=2 cases=6 unchanged=before-after\n" \
+                            printf "FILE_METADATA_DESCRIPTOR_ARTIFACT=pass sha256=%s executable=%s modes=2 cases=8 unchanged=before-after\n" \
                                 "$lifetime_sha" "$lifetime_executable"
                             cargo test --offline --locked -p hbb_common --test receive_authority --no-run \
                                 --message-format=json-render-diagnostics --color never \
@@ -7958,9 +7958,9 @@ PY
             [ "$(grep -Ec '^SOCKET_POLICY_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/surface-[0-9a-f]{16} tests=7 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'SOCKET_POLICY_ARTIFACT=' "$output")" -eq 1 ] \
                 || fail 'socket policy artifact receipt differs'
-            [ "$(grep -Ec '^FILE_METADATA_DESCRIPTOR_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/descriptor_lifetime-[0-9a-f]{16} modes=2 cases=6 unchanged=before-after$' "$output")" -eq 1 ] \
+            [ "$(grep -Ec '^FILE_METADATA_DESCRIPTOR_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/descriptor_lifetime-[0-9a-f]{16} modes=2 cases=8 unchanged=before-after$' "$output")" -eq 1 ] \
                 && [ "$(grep -Fc 'FILE_METADATA_DESCRIPTOR_ARTIFACT=' "$output")" -eq 1 ] \
-                && [ "$(grep -Fxc 'FILE_METADATA_DESCRIPTOR_LIFETIME=pass modes=2 cases=6 children=joined fixture=retired' "$output")" -eq 1 ] \
+                && [ "$(grep -Fxc 'FILE_METADATA_DESCRIPTOR_LIFETIME=pass modes=2 cases=8 children=joined fixture=retired' "$output")" -eq 1 ] \
                 || fail 'filesystem worker descriptor lifetime receipt differs'
         fi
         fi

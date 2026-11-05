@@ -110472,6 +110472,54 @@ durable-run peak 249,856 bytes. QEMU 222169 joins exit 0; its PID, RAM
 `run.zv39mfrc` and active owned roots are absent. All endpoint deltas are zero.
 This audit-only receipt leaves the counted ledger unchanged.
 
+## 2026-11-05 — Linux receive admission before I/O
+
+After the congestion checkpoint, select the three still-failing receive pre-I/O
+regressions under R-S8/R-S0. A reproduced filesystem correctness gap takes priority
+over extending passed congestion scenarios. The intervening user clarification
+preserves intentional host/DMZ restrictions and removes no such boundary.
+
+Unchanged source 5695d0ad, CTE HFZCfLjPRV, runs `--hbb-common-fs`: the filesystem
+group reports 217 passes and five failures. The three existing FIFO replacement
+tests observe EOWNERDEAD from their calibrated kernel denial of I/O opens. The
+current LinuxRegularChild checks a pathname, then opens that mutable name again.
+Two additional failures are stale fixtures: the frame-receipt test identifies an
+unselected job by its old vector position despite round-robin rotation, and the
+hard-link test creates sidecars outside the current private receive namespace.
+Correct their selection/location while retaining the original safety assertions;
+also require preservation of the refused hard-linked sidecar itself.
+
+Baseline capsule `receive-preopen-baseline-5695d0ad.json` is 10,264 bytes, SHA-256
+08d25923dd964c952ffbcf086729f6d19273df06647ebd92bc0e9af3b1458e75.
+The terminal tool exits 1 (guest Cargo 101); QEMU joins with exit zero, all four
+endpoint deltas are zero and peak RAM scratch is 3,513,892,864 bytes. Exact QEMU
+absence and RAM retirement are verified; private diagnostics are inventoried and
+removed with the existing identity-checked helper under the shared lock. The
+466-byte retirement receipt SHA-256 is
+fa4f31925fdf05eb2522dad0a031ca755e6c0cf93f29dc48dba5e034889cc824.
+The evidence reconciler first rejected duplicated summary lines, then the known
+packaged virtiofsd symlink; both observation assumptions were corrected against
+the retained bytes without repeating the guest or weakening product assertions.
+
+Linux primary references: https://man7.org/linux/man-pages/man2/open.2.html,
+https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html and
+https://man7.org/linux/man-pages/man5/proc_thread-self.5.html. O_PATH permits
+metadata-only classification without device/FIFO I/O; exclusive creation refuses
+an existing child; proc descriptor reopening remains subject to access checks.
+Use thread-self so a surviving worker does not depend on the leader's lifetime.
+
+The correction retains an O_PATH/no-follow object through type admission and
+readable/writable reopening, checks descriptor and child identity, and never
+falls back to the original pathname. Missing-file creation is exclusive; an
+EEXIST competitor receives one metadata-only reacquisition, preserving legitimate
+regular-file winners without an unbounded retry. Existing non-Linux paths are
+unchanged. Add regular-to-regular replacement coverage for all three access modes
+and both existing/open-or-create operations; extend the existing native worker
+lifetime fixture with real read-only receive inspection and byte preservation.
+Validation pending: unchanged three pre-I/O regressions and neighboring workflows
+in `--hbb-common-fs`, then `--file-metadata-tests` for worker lifetime and native
+receive-authority integration. No corrected runtime acceptance is claimed yet.
+
 
 ## 2026-10-28 — retire unused legacy-ID main IPC
 

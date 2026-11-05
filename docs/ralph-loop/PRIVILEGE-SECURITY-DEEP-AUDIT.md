@@ -141367,3 +141367,16 @@ binary A/B or complete localization acceptance. RTL restart restoration, other
 native languages, OS-locale acquisition, physical devices, other platforms and
 installed/release acceptance remain OPEN. Replace the stale ledger checkpoint
 with this result and freshly count it. The broader release goal remains active.
+
+Fresh CTE count 49XteOU0rS at 10d32e8f passes: 399,799 tokens /
+1,825,189 bytes, SHA-256
+e947038c41e9176afdb76cafec539551c35bd1432352048f8a72f10e434b8055.
+Session 43037 exits zero with seven controls and the whole-input round trip.
+Before/during endpoint deltas are zero; the final snapshot has zero additions
+and five removals, retained as unattributed external changes. The sealed owned
+process tree is kernel-denied IP sockets; no pre-existing service is inspected
+or changed. Exact QEMU/private/RAM retirement passes. Storage lasts 30.723 seconds,
+peak 402,849,792 bytes. Capsule language-ledger-10d32e8f.json is 4,773 bytes,
+SHA-256 47448443955feb3f9a5d694f8b8fb134b73c89d6f77385d80a844c461146d8d8.
+All 41 bounded evidence files (893,471 bytes) match CTE/TUF. This audit-only
+receipt leaves the counted ledger unchanged; no owned run remains.

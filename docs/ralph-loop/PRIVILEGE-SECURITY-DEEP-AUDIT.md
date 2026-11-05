@@ -139451,6 +139451,16 @@ Native accounting regression and real-duration execution are pending. No product
 change or full R-F5 acceptance is claimed. Other impairment classes, workloads,
 roles/platforms, physical scanout and release acceptance remain OPEN.
 
+Focused CTE run `GCpX8W79ke` at `23f60985` stops at controller compilation:
+the guest source closure omits `flutter-peer-wakelock.h`; inspection also finds
+the included `flutter-peer-recent-search.h` absent. Add both to the existing
+authenticated input inventory and guest payload. No accounting result or
+four-hour run is claimed. Exact processes and RAM retire, all three endpoint
+deltas are zero, and 141,899 bytes of inventoried private diagnostics retire
+under the shared lock. Failure capsule `congestion-soak-accounting-failed-23f60985.json`
+is 8,387 bytes, SHA-256
+21a8be3a757c5bd3dcd1ad344c2446fc181aef0a3b2e03be2cbf3dead7ca55f9.
+
 ## 2026-11-05 — packet-loss transport and displayed-frame correlation
 
 Previous turn is progress: current Linux compilation, bundle integrity and the

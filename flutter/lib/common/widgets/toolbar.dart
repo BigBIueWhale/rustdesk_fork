@@ -346,33 +346,41 @@ Future<List<TRadioMenu<String>>> toolbarViewStyle(
     VoidCallback? showFailure,
 }) async {
   final canvas = ffi.canvasModel;
-  final owner = canvas.captureUpdateOwner();
-  bool current() => context.mounted && owner != null && owner.isCurrent;
-  if (!current()) return [];
+  final sessionId = ffi.sessionId;
+  final clientOwnerId = ffi.clientOwnerId;
+  bool current() => identical(ffi.canvasModel, canvas) &&
+      ffi.isCurrentSessionOwner(sessionId, clientOwnerId);
+  bool menuCurrent() => context.mounted && current();
+  void failed() {
+    if (!menuCurrent()) return;
+    if (showFailure != null) {
+      showFailure();
+    } else {
+      showToast(translate('Failed'));
+    }
+  }
+  if (!menuCurrent()) return [];
   late final String groupValue;
   try {
-    final loaded = await (loadStyle?.call(owner!.sessionId) ??
-        bind.sessionGetViewStyle(sessionId: owner!.sessionId));
-    if (!current()) return [];
+    final loaded = await (loadStyle?.call(sessionId) ??
+        bind.sessionGetViewStyle(sessionId: sessionId));
+    if (!menuCurrent()) return [];
     if (loaded == null) throw StateError('Session is unavailable');
     groupValue = loaded;
   } catch (error) {
     debugPrint('Failed to load view style: $error');
-    if (current()) {
-      if (showFailure != null) {
-        showFailure();
-      } else {
-        showToast(translate('Failed'));
-      }
-    }
+    failed();
     return [];
   }
   onChanged(String? value) async {
     await selectSessionViewStyle(value,
-      saveStyle: (value) => saveStyle?.call(owner!.sessionId, value) ??
-          bind.sessionSetViewStyle(sessionId: owner!.sessionId, value: value),
-      updateCanvas: () => canvas.updateViewStyle(owner: owner),
-      isCurrent: current, showFailure: showFailure);
+      saveStyle: (value) => saveStyle?.call(sessionId, value) ??
+          bind.sessionSetViewStyle(sessionId: sessionId, value: value),
+      // The preference belongs to the session; geometry uses the display that
+      // is current after persistence, even if the menu has already closed.
+      updateCanvas: () => canvas.updateViewStyle(owner:
+          canvas.captureUpdateOwner(expectedSessionId: sessionId)),
+      isCurrent: current, showFailure: failed);
   }
 
   return [

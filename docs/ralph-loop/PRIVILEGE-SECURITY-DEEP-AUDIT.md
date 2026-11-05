@@ -140434,3 +140434,30 @@ bytes. cm-input-provider-ledger-64f75b3d.json is 4,499 bytes, SHA-256
 3472d4c990eb3978ac30ce8b6616a0a700a99a3064d847c8d70cfd3a2e3331ed.
 All eight count evidence files match CTE and TUF. This audit-only receipt preserves
 the counted ledger; no owned run remains. The full goal remains active.
+
+## 2026-11-05 — current installed Linux service authorization checkpoint
+
+Previous turn made progress: the complete non-root CM/file/media replay passed
+after its input-provider prerequisite was supplied. Continue toward installed
+workflows by validating the stable root credential authority and selected-user
+child with current production artifacts. This precedes extending installed file
+transactions; ordinary-user CM success cannot prove installed service ownership.
+Shared-parent/mount-root receive cleanup remains an independent OPEN design and
+behavioral obligation and is not closed by this work.
+
+The four retained peer sets on TUF bind older product sources. None can supply a
+current installed acceptance claim under the existing production-source equality
+guard. Build one current reusable set with --linux-service-artifact-build, then
+run the existing full --linux-service-receiver-tests profile against its exact
+manifest. Keep the actual polkit/PAM/logind, root/unauthorized callers, password
+rotation, restart, credential races, session revocation and admitted shutdown
+checks. No new installed scenario or product correction is claimed in advance.
+
+Source review finds the generic wrong-image fixture still connects to the retired
+/tmp/RustDesk-service namespace; production config.rs and the installed startup/
+handoff/crash fixtures use /run/RustDesk-service. Correct that one test path without
+changing its refusal oracle. Preserve the deliberate legacy-parent preservation
+control and the valid credential-storage fields. TUF is clean at 42bfd7df with
+49,171,036 KiB MemAvailable, 33,322,758,144 bytes available in /dev/shm and no owned
+run. The retained current-source artifact is an intentional reusable test input;
+all disposable build bulk stays in the shared admitted RAM workspace.

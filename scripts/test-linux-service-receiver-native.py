@@ -4329,7 +4329,7 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
                 peer = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 try:
                     peer.settimeout(5)
-                    peer.connect(f"/tmp/RustDesk-service/ipc{endpoint}")
+                    peer.connect(f"/run/RustDesk-service/ipc{endpoint}")
                     try:
                         data = peer.recv(1)
                     except ConnectionResetError:

@@ -8933,7 +8933,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     require_exact_fixed_receipt \
-        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
+        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-unary network=container-none' \
         'Android emulator frame-endpoint receipt'
     if [ "$ANDROID_RUNTIME_SOAK" -eq 1 ]; then
         require_exact_fixed_receipt \
@@ -8944,7 +8944,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused' \
         'Android emulator frame-parser self-test receipt'
     require_exact_fixed_receipt \
-        'ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=pass scenarios=7' \
+        'ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=pass scenarios=10' \
         'Android emulator frame-observer self-test receipt'
     mapfile -t android_frame_observer_build_receipts < <(
         /usr/bin/grep -Eo \
@@ -8955,7 +8955,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         || { /usr/bin/tail -n 240 "$SERIAL_LOG" >&2; fail 'Android frame-observer build receipt is absent or duplicated'; }
     mapfile -t android_frame_observer_receipts < <(
         /usr/bin/grep -Eo \
-            'ANDROID_EMULATOR_FRAME_OBSERVER=pass endpoint=127\.0\.0\.1:8554 transport=grpc-stream format=rgb888 orientation=bottom-up frames_received=[1-9][0-9]* frames_published=[1-9][0-9]* last_seq=[0-9]+ cleanup=joined' \
+            'ANDROID_EMULATOR_FRAME_OBSERVER=pass endpoint=127\.0\.0\.1:8554 transport=grpc-unary interval_ms=100 deadline_ms=250 format=rgb888 orientation=bottom-up frames_received=[1-9][0-9]* frames_published=[1-9][0-9]* last_seq=[0-9]+ cleanup=joined' \
             "$SERIAL_LOG" || true
     )
     [ "${#android_frame_observer_receipts[@]}" -eq 1 ] \

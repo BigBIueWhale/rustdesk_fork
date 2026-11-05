@@ -1727,7 +1727,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     done
     [ "$grpc_ready" -eq 1 ] \
         || fail 'the emulator display observer is not one exact isolated [::]:8554 listener'
-    printf 'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none\n'
+    printf 'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-unary network=container-none\n'
 fi
 
 boot_ready=0

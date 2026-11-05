@@ -4,12 +4,18 @@ import com.google.protobuf.ByteString;
 import io.grpc.CallOptions;
 import io.grpc.ManagedChannel;
 import io.grpc.MethodDescriptor;
+import io.grpc.Server;
+import io.grpc.ServerServiceDefinition;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 import io.grpc.netty.NettyChannelBuilder;
+import io.grpc.netty.NettyServerBuilder;
 import io.grpc.protobuf.ProtoUtils;
 import io.grpc.stub.ClientCalls;
+import io.grpc.stub.ServerCallStreamObserver;
+import io.grpc.stub.ServerCalls;
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
@@ -22,13 +28,15 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.EnumSet;
-import java.util.Iterator;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public final class AndroidEmulatorFrameObserver {
     private static final String HOST = "127.0.0.1";
@@ -37,17 +45,17 @@ public final class AndroidEmulatorFrameObserver {
     private static final int DESIRED_HEIGHT = 200;
     private static final int MAX_FRAME_BYTES = DESIRED_WIDTH * DESIRED_HEIGHT * 3;
     private static final long STARTUP_LIMIT_NANOS = Duration.ofMinutes(15).toNanos();
-    private static final long MIN_PUBLICATION_INTERVAL_NANOS =
-            Duration.ofMillis(25).toNanos();
+    private static final long CAPTURE_INTERVAL_NANOS = Duration.ofMillis(100).toNanos();
+    private static final long CAPTURE_DEADLINE_MS = 250;
     private static final Set<PosixFilePermission> PRIVATE_FILE_PERMISSIONS =
             EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
-    private static final MethodDescriptor<ImageFormat, Image> SCREENSHOT_STREAM =
+    private static final MethodDescriptor<ImageFormat, Image> SCREENSHOT =
             MethodDescriptor.<ImageFormat, Image>newBuilder()
-                    .setType(MethodDescriptor.MethodType.SERVER_STREAMING)
+                    .setType(MethodDescriptor.MethodType.UNARY)
                     .setFullMethodName(
                             MethodDescriptor.generateFullMethodName(
                                     "android.emulation.control.EmulatorController",
-                                    "streamScreenshot"))
+                                    "getScreenshot"))
                     .setRequestMarshaller(
                             ProtoUtils.marshaller(ImageFormat.getDefaultInstance()))
                     .setResponseMarshaller(ProtoUtils.marshaller(Image.getDefaultInstance()))
@@ -117,7 +125,7 @@ public final class AndroidEmulatorFrameObserver {
         }
     }
 
-    private static Frame validate(Image image, long previousSequence, boolean first) {
+    private static Frame validate(Image image, long sequence) {
         ImageFormat format = image.getFormat();
         if (format.getFormat() != ImageFormat.ImgFormat.RGB888) {
             throw new IllegalArgumentException("emulator returned a non-RGB888 frame");
@@ -125,13 +133,14 @@ public final class AndroidEmulatorFrameObserver {
         int width = format.getWidth();
         int height = format.getHeight();
         ByteString payload = image.getImage();
-        long sequence = Integer.toUnsignedLong(image.getSeq());
-        if (!first && sequence <= previousSequence) {
-            throw new IllegalArgumentException("emulator frame sequence did not increase");
+        // Unary screenshots have no stream sequence. Count completed captures;
+        // the pixel counter, not this observation identity, dates the content.
+        if (image.getSeq() != 0 || sequence <= 0 || sequence > 0xFFFFFFFFL) {
+            throw new IllegalArgumentException("screenshot or capture sequence differs");
         }
         long timestampUs = image.getTimestampUs();
         if (timestampUs <= 0) {
-            throw new IllegalArgumentException("emulator frame has no generation timestamp");
+            throw new IllegalArgumentException("emulator frame has no capture timestamp");
         }
         long observedEpochUs = Math.multiplyExact(System.currentTimeMillis(), 1_000L);
         long observedMonotonicNs = System.nanoTime();
@@ -233,6 +242,17 @@ public final class AndroidEmulatorFrameObserver {
         }
     }
 
+    private static Frame capture(ManagedChannel channel, ImageFormat request, long sequence) {
+        Image image =
+                ClientCalls.blockingUnaryCall(
+                        channel,
+                        SCREENSHOT,
+                        CallOptions.DEFAULT.withDeadlineAfter(
+                                CAPTURE_DEADLINE_MS, TimeUnit.MILLISECONDS),
+                        request);
+        return validate(image, sequence);
+    }
+
     private static int observe(Path outputRoot) throws Exception {
         requirePrivateDirectory(outputRoot);
         Path stop = outputRoot.resolve("stop");
@@ -267,7 +287,7 @@ public final class AndroidEmulatorFrameObserver {
                 TimeUnit.MILLISECONDS);
         long startupDeadline = System.nanoTime() + STARTUP_LIMIT_NANOS;
         long previousSequence = 0;
-        long lastPublicationNs = 0;
+        long nextCaptureNs = System.nanoTime();
         long framesReceived = 0;
         long framesPublished = 0;
         boolean receivedAny = false;
@@ -281,24 +301,21 @@ public final class AndroidEmulatorFrameObserver {
         try {
             while (!stopRequested(stop)) {
                 try {
-                    Iterator<Image> stream =
-                            ClientCalls.blockingServerStreamingCall(
-                                    channel, SCREENSHOT_STREAM, CallOptions.DEFAULT, request);
-                    while (!stopRequested(stop) && stream.hasNext()) {
-                        Frame frame = validate(stream.next(), previousSequence, !receivedAny);
-                        receivedAny = true;
-                        framesReceived++;
-                        previousSequence = frame.sequence();
-                        if (!frame.visible()) {
-                            continue;
-                        }
-                        if (lastPublicationNs != 0
-                                && frame.observedMonotonicNs() - lastPublicationNs
-                                        < MIN_PUBLICATION_INTERVAL_NANOS) {
-                            continue;
-                        }
+                    long remaining = nextCaptureNs - System.nanoTime();
+                    if (remaining > 0) {
+                        TimeUnit.NANOSECONDS.sleep(remaining);
+                    }
+                    if (stopRequested(stop)) {
+                        break;
+                    }
+                    // One RPC at a time, with no catch-up burst after a slow call.
+                    nextCaptureNs = System.nanoTime() + CAPTURE_INTERVAL_NANOS;
+                    Frame frame = capture(channel, request, previousSequence + 1);
+                    receivedAny = true;
+                    framesReceived++;
+                    previousSequence = frame.sequence();
+                    if (frame.visible()) {
                         writeAtomically(outputRoot, "latest.frame", encode(frame));
-                        lastPublicationNs = frame.observedMonotonicNs();
                         framesPublished++;
                         if (framesPublished == 1) {
                             writeAtomically(
@@ -308,15 +325,14 @@ public final class AndroidEmulatorFrameObserver {
                                             .getBytes(StandardCharsets.US_ASCII));
                         }
                     }
-                    if (!stopRequested(stop)) {
-                        throw new IllegalStateException("emulator screenshot stream ended");
-                    }
                 } catch (StatusRuntimeException error) {
                     if (stopRequested(stop)) {
                         break;
                     }
                     if (!receivedAny
-                            && error.getStatus().getCode() == Status.Code.UNAVAILABLE
+                            && (error.getStatus().getCode() == Status.Code.UNAVAILABLE
+                                    || error.getStatus().getCode() == Status.Code.FAILED_PRECONDITION
+                                    || error.getStatus().getCode() == Status.Code.DEADLINE_EXCEEDED)
                             && System.nanoTime() < startupDeadline) {
                         sleepBeforeRetry(stop);
                         continue;
@@ -353,7 +369,8 @@ public final class AndroidEmulatorFrameObserver {
                         .getBytes(StandardCharsets.US_ASCII));
         System.out.printf(
                 "ANDROID_EMULATOR_FRAME_OBSERVER=pass endpoint=127.0.0.1:8554 "
-                        + "transport=grpc-stream format=rgb888 orientation=bottom-up "
+                        + "transport=grpc-unary interval_ms=100 deadline_ms=250 "
+                        + "format=rgb888 orientation=bottom-up "
                         + "frames_received=%d frames_published=%d last_seq=%d cleanup=joined%n",
                 framesReceived, framesPublished, previousSequence);
         return 0;
@@ -375,10 +392,9 @@ public final class AndroidEmulatorFrameObserver {
                                         .setWidth(width)
                                         .setHeight(height))
                         .setImage(ByteString.copyFrom(pixels))
-                        .setSeq(7)
                         .setTimestampUs(System.currentTimeMillis() * 1_000L)
                         .build();
-        Frame frame = validate(image, 6, false);
+        Frame frame = validate(image, 1);
         writeAtomically(root, "latest.frame", encode(frame));
         byte[] encoded = Files.readAllBytes(root.resolve("latest.frame"));
         int offset = encoded.length - pixels.length;
@@ -412,16 +428,15 @@ public final class AndroidEmulatorFrameObserver {
             ImageFormat format = valid.getFormat();
             scenarios++;
             try {
-                validate(valid, 7, false);
-                throw new AssertionError("duplicate sequence was accepted");
+                validate(valid.toBuilder().setSeq(7).build(), 1);
+                throw new AssertionError("nonzero unary sequence was accepted");
             } catch (IllegalArgumentException expected) {
                 scenarios++;
             }
             try {
                 validate(
                         valid.toBuilder().setImage(ByteString.copyFrom(new byte[3])).build(),
-                        6,
-                        false);
+                        1);
                 throw new AssertionError("truncated frame was accepted");
             } catch (IllegalArgumentException expected) {
                 scenarios++;
@@ -433,14 +448,13 @@ public final class AndroidEmulatorFrameObserver {
                                         format.toBuilder()
                                                 .setFormat(ImageFormat.ImgFormat.RGBA8888))
                                 .build(),
-                        6,
-                        false);
+                        1);
                 throw new AssertionError("wrong pixel format was accepted");
             } catch (IllegalArgumentException expected) {
                 scenarios++;
             }
             try {
-                validate(valid.toBuilder().setTimestampUs(0).build(), 6, false);
+                validate(valid.toBuilder().setTimestampUs(0).build(), 1);
                 throw new AssertionError("missing timestamp was accepted");
             } catch (IllegalArgumentException expected) {
                 scenarios++;
@@ -450,10 +464,8 @@ public final class AndroidEmulatorFrameObserver {
                             valid.toBuilder()
                                     .setFormat(format.toBuilder().setWidth(0).setHeight(0))
                                     .setImage(ByteString.EMPTY)
-                                    .setSeq(8)
                                     .build(),
-                            7,
-                            false);
+                            1);
             if (empty.visible() || empty.pixels().length != 0) {
                 throw new AssertionError("documented inactive-display frame was not retained empty");
             }
@@ -463,14 +475,19 @@ public final class AndroidEmulatorFrameObserver {
                         valid.toBuilder()
                                 .setFormat(format.toBuilder().setWidth(0).setHeight(200))
                                 .setImage(ByteString.EMPTY)
-                                .setSeq(8)
                                 .build(),
-                        7,
-                        false);
+                        1);
                 throw new AssertionError("partially empty dimensions were accepted");
             } catch (IllegalArgumentException expected) {
                 scenarios++;
             }
+            try {
+                validate(valid, 0x100000000L);
+                throw new AssertionError("capture sequence overflow was accepted");
+            } catch (IllegalArgumentException expected) {
+                scenarios++;
+            }
+            scenarios += testCaptureRpc(valid);
         } finally {
             Files.deleteIfExists(root.resolve("latest.frame"));
             Files.deleteIfExists(root);
@@ -478,6 +495,73 @@ public final class AndroidEmulatorFrameObserver {
         System.out.printf(
                 "ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=pass scenarios=%d%n", scenarios);
         return 0;
+    }
+
+    private static int testCaptureRpc(Image image) throws Exception {
+        AtomicBoolean withhold = new AtomicBoolean();
+        CountDownLatch cancelled = new CountDownLatch(1);
+        Server server =
+                NettyServerBuilder.forAddress(new InetSocketAddress(HOST, 0))
+                        .addService(
+                                ServerServiceDefinition.builder(
+                                                "android.emulation.control.EmulatorController")
+                                        .addMethod(
+                                                SCREENSHOT,
+                                                ServerCalls.asyncUnaryCall(
+                                                        (request, response) -> {
+                                                            if (withhold.get()) {
+                                                                ((ServerCallStreamObserver<Image>) response)
+                                                                        .setOnCancelHandler(cancelled::countDown);
+                                                            } else {
+                                                                response.onNext(image);
+                                                                response.onCompleted();
+                                                            }
+                                                        }))
+                                        .build())
+                        .build();
+        ManagedChannel channel = null;
+        try {
+            server.start();
+            channel =
+                    NettyChannelBuilder.forAddress(HOST, server.getPort()).usePlaintext().build();
+            // Connect the fixture before measuring the normal capture deadline.
+            ClientCalls.blockingUnaryCall(
+                    channel, SCREENSHOT, CallOptions.DEFAULT.withDeadlineAfter(5, TimeUnit.SECONDS),
+                    image.getFormat());
+            Frame first = capture(channel, image.getFormat(), 1);
+            Frame second = capture(channel, image.getFormat(), 2);
+            if (first.sequence() != 1 || second.sequence() != 2
+                    || !Arrays.equals(first.pixels(), second.pixels())
+                    || first.timestampUs() != image.getTimestampUs()
+                    || second.timestampUs() != image.getTimestampUs()) {
+                throw new AssertionError("repeated capture lost pixels or rewrote the timestamp");
+            }
+            withhold.set(true);
+            try {
+                capture(channel, image.getFormat(), 3);
+                throw new AssertionError("unanswered screenshot exceeded its deadline");
+            } catch (StatusRuntimeException error) {
+                if (error.getStatus().getCode() != Status.Code.DEADLINE_EXCEEDED
+                        || !cancelled.await(5, TimeUnit.SECONDS)) {
+                    throw new AssertionError("screenshot deadline did not cancel the RPC", error);
+                }
+            }
+        } finally {
+            if (channel != null) {
+                channel.shutdownNow();
+            }
+            server.shutdownNow();
+            try {
+                if (channel != null && !channel.awaitTermination(10, TimeUnit.SECONDS)) {
+                    throw new AssertionError("capture RPC client did not terminate");
+                }
+            } finally {
+                if (!server.awaitTermination(10, TimeUnit.SECONDS)) {
+                    throw new AssertionError("capture RPC server did not terminate");
+                }
+            }
+        }
+        return 2;
     }
 
     private static void writeFailure(Path root, Throwable error) {

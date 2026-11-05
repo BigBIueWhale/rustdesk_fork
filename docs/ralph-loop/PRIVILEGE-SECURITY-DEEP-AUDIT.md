@@ -142250,3 +142250,37 @@ android-soak-ledger-46694146.json: 4,776 bytes, SHA-256
 ae963d7704d062e90555d4f9373f0739c078863aeb9c28e9fbbf57d59142c67f.
 All 53 bounded evidence files/1,537,015 bytes match CTE/TUF. This final audit
 receipt leaves the counted ledger unchanged; the full goal remains active.
+
+## 2026-11-06 — timed Android framebuffer acquisition; native validation pending
+
+The status-only turn made no implementation progress. Resume the same R-F5
+healthy long-session control with the retained matching 9b22f10f APK and peer.
+This prerequisite enables the selected sustained test; unrelated settings work
+does not decide the missing long-session acceptance.
+
+The pinned proto above distinguishes change-triggered streamScreenshot from
+unary getScreenshot. Official EmulatorService.cpp blob
+1478faac7e566b7d8ef9ab5d1a69aa6d448feae7 confirms that the stream waits for
+display/sensor changes, while getScreenshot timestamps before copying the
+current framebuffer. Source:
+https://android.googlesource.com/platform/external/qemu/+/refs/heads/emu-master-dev/android/android-grpc/services/emulator-controller/server/src/android/emulation/control/EmulatorService.cpp
+This upstream implementation is supporting research, not proof of the exact
+pinned binary. Native execution remains required. The gRPC deadline contract
+is https://grpc.io/docs/guides/deadlines/.
+
+AndroidEmulatorFrameObserver now requests one RGB888 screenshot every 100 ms,
+with a 250-ms RPC deadline, one in-flight request and no catch-up burst. Each
+completed capture gets a local observation sequence; the returned capture
+timestamp and actual pixels are preserved. Pixel-encoded source history still
+determines content age. Startup-only unavailable/not-yet-rendered/deadline
+refusals retain the existing bounded backoff; a later RPC failure is fatal.
+The existing stop marker cancels and joins the channel and watcher.
+
+The Java self-test adds capture-counter overflow, two real loopback unary
+captures returning identical pixels/timestamps, and a withheld-response
+deadline with server-side cancellation and joined client/server termination.
+The fixture runs only inside the isolated observer container. Existing
+format/length/empty/row-order tests remain; all four receipt consumers now
+expect the unary transport and ten cases. Shell syntax and git diff checks
+pass. Java compilation, executable cases and emulator acceptance have not yet
+run at this checkpoint. No product or acceptance-limit change is included.

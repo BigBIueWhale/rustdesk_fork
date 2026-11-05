@@ -1226,7 +1226,7 @@ fi
     || die 'Android emulator frame-observer output exceeds its bound'
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 mapfile -t endpoint_receipts < <(grep -Fx \
-    'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-stream network=container-none' \
+    'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-unary network=container-none' \
     "$RUNTIME_LOG" || true)
 [ "${#endpoint_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android emulator frame-endpoint receipt is absent or duplicated'; }
@@ -1236,7 +1236,7 @@ mapfile -t frame_parser_receipts < <(grep -Fx \
 [ "${#frame_parser_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-parser self-test receipt is absent or duplicated'; }
 mapfile -t frame_observer_self_test_receipts < <(grep -Fx \
-    'ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=pass scenarios=7' \
+    'ANDROID_EMULATOR_FRAME_OBSERVER_SELF_TEST=pass scenarios=10' \
     "$OBSERVER_LOG" || true)
 [ "${#frame_observer_self_test_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-observer self-test receipt is absent or duplicated'; }
@@ -1246,7 +1246,7 @@ mapfile -t frame_observer_build_receipts < <(grep -E \
 [ "${#frame_observer_build_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-observer build receipt is absent or duplicated'; }
 mapfile -t frame_observer_receipts < <(grep -E \
-    '^ANDROID_EMULATOR_FRAME_OBSERVER=pass endpoint=127\.0\.0\.1:8554 transport=grpc-stream format=rgb888 orientation=bottom-up frames_received=[1-9][0-9]* frames_published=[1-9][0-9]* last_seq=[0-9]+ cleanup=joined$' \
+    '^ANDROID_EMULATOR_FRAME_OBSERVER=pass endpoint=127\.0\.0\.1:8554 transport=grpc-unary interval_ms=100 deadline_ms=250 format=rgb888 orientation=bottom-up frames_received=[1-9][0-9]* frames_published=[1-9][0-9]* last_seq=[0-9]+ cleanup=joined$' \
     "$OBSERVER_LOG" || true)
 [ "${#frame_observer_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$OBSERVER_LOG" >&2; die 'Android emulator frame-observer runtime receipt is absent or duplicated'; }

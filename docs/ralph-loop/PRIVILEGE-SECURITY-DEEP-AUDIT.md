@@ -141163,3 +141163,63 @@ monitor-ledger-ac09d073.json (4,703 bytes) has SHA-256
 6cb4b8612a4df0a6a4b5c483238ff318d3d616ba3acf206f784c727ad5631016.
 All 71 bounded evidence files (1,648,763 bytes) match CTE/TUF. This audit-only
 receipt leaves the counted ledger unchanged; no owned run remains.
+
+## 2026-11-05 — combined monitor view and return to individual displays
+
+Continue the user's functional-correctness direction with R-S11go/R-S11gq.
+The previous native scenarios covered individual monitor selections, while the
+latest ordered-selection fix also serves the combined view. Validate that view
+using the retained full application before starting a separate runit fixture.
+No product change or new application build is needed for this checkpoint.
+
+595cf558 extends the existing --monitor-switch scenario from left/right/left to
+left/all/right/all/left. The original individual cases remain. Each combined
+case requires four advancing counters on each monitor, simultaneously visible
+in four root captures, within the existing 2.5-second deadline and one-second
+freshness limit. Each half's pixel-width interval must still describe a
+640-pixel display. Four native remote pointer targets per combined case must
+match the initial individual-view coordinates plus the exact monitor origin.
+The window, connection and resource checks remain; --monitor-burst is unchanged.
+
+The shared observer separates visible root capture from decoding, preserving
+mapping, clipping, geometry-before/after and capture-failure checks. Each half
+repeats existing samples for the same decoder without interpolating new pixels.
+Distinct 32-bit identities, blank/ambiguous halves and invalid side controls
+exercise that extraction. This follows Xlib's documented limitation that obscured
+window contents can be undefined; the observer continues reading visible root
+pixels, not a hidden window backing store:
+https://www.x.org/releases/X11R7.6/doc/libX11/specs/libX11/libX11.html.
+
+TUF component run 6TAfbZOtqc, session 48270, exits zero at 595cf558.
+The existing native geometry/occlusion/oversized-window and freshness cases,
+new half-image cases, byte-identical controller builds and joined cleanup pass.
+Capsule monitor-all-observer-595cf558.json is 16,954 bytes, SHA-256
+6466816fb59cf07867dcdda34400a076678b899fae2ca1afe9948470bb8f0049.
+Storage lasts 64.596 seconds, peak RAM scratch 3,796,152,320 bytes; three host
+endpoint deltas are zero. Exact QEMU absence and private/RAM retirement are
+independently verified under the shared lock.
+
+Full-app TUF run O43Up28FDb, session 43300, exits zero in 112 seconds at the
+same harness commit, reusing bd65c0c4 and engine ddb1541d. App manifest:
+275102c8113f9bc566fc543d626fc4faa6d7aa13a0efdff8feb5aa15c1cb26ce.
+All five views pass: 28 advancing counters and fourteen actual remote pointer
+targets, including both displays in each combined view. Individual maximum
+sampled ages are 334/92/197 ms; combined left/right ages are 121/119 and 107/332 ms.
+Both combined cases finish in 1412/1184 ms including pointer checks. Left targets
+are (273,263)/(393,287), right (913,263)/(1033,287), with the same coordinates
+in individual and combined views. The exact window/TCP connection persists;
+all resource samples have 45 descriptors and remain within existing bounds.
+
+Capsule monitor-all-595cf558.json is 8,966 bytes, SHA-256
+be333ea3a9cd420a23198fd95dbacdc1adfd74ff4907378b7dcf04dd0c92a7bb.
+Raw guest output is 26,606 bytes, SHA-256
+d2bbe3382ff13665ec3fc3d25f5fbb03b1f94cd05f8d858b7da83fc1b10dbbbd.
+The source/server/Xvfb join, listener closes and automatic monitor topology is
+restored. Four host endpoint deltas are zero. Storage lasts 119.260 seconds,
+peak RAM scratch 3,019,382,784 bytes; exact QEMU/private/RAM retirement passes.
+All nineteen bounded evidence files (225,289 bytes) match CTE/TUF. No owned run
+remains. This accepts the combined-view transitions for the exact full Linux
+application on synthetic equal-size X11 monitors. Physical/mixed-DPI displays,
+changing topology, other platforms and installed/release acceptance remain OPEN.
+Replace the earlier individual-only ledger row in place and freshly count it;
+the goal remains active.

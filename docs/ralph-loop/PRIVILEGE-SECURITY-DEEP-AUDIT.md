@@ -110472,20 +110472,6 @@ durable-run peak 249,856 bytes. QEMU 222169 joins exit 0; its PID, RAM
 `run.zv39mfrc` and active owned roots are absent. All endpoint deltas are zero.
 This audit-only receipt leaves the counted ledger unchanged.
 
-At 305.419 capture seconds, TUF `As53eP1Smj` is still live with the exact
-wrapper PID/start ticks 135096/4633201. All three native drivers compiled twice
-with identical bytes. Baseline minute p95/p99/max age is 294/312/330 ms;
-the first complete post-recovery minute is 297/315/325 ms. The first three
-20-second congestion cycles pass the existing recovery checks; the independent
-fresh witness after the round is 343 ms. All 348 observed TCP snapshots retain
-the same pair, with healthy sampling reduced to the declared interval. The two
-restricted intervals deliver 76,171/75,634 bytes in 20.025/20.059 seconds with
-throttling counters advancing. Three initial endpoint deltas decode to zero.
-HEAD and local origin/master on TUF remain `d48f838d`, with a clean checkout.
-The bounded CTE checkpoint `congestion-soak-first-round-d48f838d.json` records
-this live observation and its partial-log hash. This is **not** full-duration
-acceptance. Continue the same session 6835/run; require all 241 windows, twelve
-cycles, final resource receipts and exact retirement before closing this condition.
 
 ## 2026-10-28 — retire unused legacy-ID main IPC
 
@@ -139422,89 +139408,6 @@ mutation. `current-linux-ledger-dd21a276.json` is 7,749 bytes, SHA-256
 234e47aed38b737b40cebc9015f3983829d59be1bcbfa815f938eacf00b9b617.
 This audit-only receipt leaves the counted ledger unchanged. No owned run remains.
 
-### 2026-11-05 — R-F5 congestion during a four-hour display session
-
-The previous engineering slice made progress: six mixed-degradation input
-scenarios passed with exact retirement. The intervening user clarification
-confirmed existing instructions; it added no product evidence. Continue R-F5's
-impaired multi-hour freshness requirement, ahead of another short scenario,
-because healthy four-hour controls and short impaired recovery already pass.
-
-Add `--congestion-soak` to the existing complete-peer replay, reusing app
-`2ae08e80` and engine `ddb1541d`. Keep the 241 one-minute pixel windows and fixed
-first-window quantiles. Before windows 1, 61, 121 and 181, run the existing three
-20-second profiles: 80 +/- 30 ms jitter, aggregate 32 kbit/s and both. Each
-restoration still requires four fresh states within 2,500 ms, three seconds of
-healthy follow-up, the same connection/window and bounded resources. Acquire
-a fresh pixel witness before starting the next healthy window. Never reset the
-original p95/p99 baseline or flush queued packets to satisfy recovery.
-
-Every healthy window retains its 1,000-ms age/gap ceiling, 95% valid samples,
-at least 1,000 samples and 60 distinct states, and 250-ms p95/p99 drift bound.
-Require four rounds/twelve cycles and at least 14,700 seconds, including 14,460
-seconds of healthy observation. Controller/VM ceilings are 15,120/15,360 seconds;
-server observation retains its original resource and per-minute CPU limits.
-Existing source history and log bounds cover that duration without expansion.
-
-Keep transport observations at 200 ms during impairments and five seconds after
-restoration, then 30 seconds during healthy intervals. Reset the sampling deadline
-on each profile transition. Bound snapshots to 2,304 and 6 MiB within the existing
-8-MiB workload output ceiling. Admit the unchanged 10-GiB guest/7-GiB RAM scratch
-profile with monitoring and joined cleanup; freeze TUF's checkout during execution.
-
-Rechecked primary iproute2 v6.1.0 documentation:
-[TBF](https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-tbf.8)
-describes token throttling and the child queue's effective limit;
-[netem](https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-netem.8)
-describes delay variation and queue limits. Retain calibrated parameter readback,
-actual packet/byte counters and in-place restoration; do not infer conditions from
-requested settings alone. Kernel jitter sequences remain uncontrolled.
-
-Adapt the existing exact-loop accounting fixture to the additional arguments;
-its healthy cases must abort if they accidentally enter an impairment branch.
-Native accounting regression and real-duration execution are pending. No product
-change or full R-F5 acceptance is claimed. Other impairment classes, workloads,
-roles/platforms, physical scanout and release acceptance remain OPEN.
-
-Focused CTE run `GCpX8W79ke` at `23f60985` stops at controller compilation:
-the guest source closure omits `flutter-peer-wakelock.h`; inspection also finds
-the included `flutter-peer-recent-search.h` absent. Add both to the existing
-authenticated input inventory and guest payload. No accounting result or
-four-hour run is claimed. Exact processes and RAM retire, all three endpoint
-deltas are zero, and 141,899 bytes of inventoried private diagnostics retire
-under the shared lock. Failure capsule `congestion-soak-accounting-failed-23f60985.json`
-is 8,387 bytes, SHA-256
-21a8be3a757c5bd3dcd1ad344c2446fc181aef0a3b2e03be2cbf3dead7ca55f9.
-
-CTE retry `nBL6r8WOhl` at `d48f838d` passes in 84.089 capture seconds.
-All ten candidate accounting cases pass; the unchanged historical loop reproduces
-seven discrepancies and passes three controls. The current full controller compiles;
-neighboring frame/oracle cases pass. These accounting cases use synthetic clocks
-and observation/process/resource adapters, not four hours of real pixels.
-Exact processes/private/RAM retire; peak scratch is 3,732,877,312 bytes and all
-three decoded host endpoint deltas are zero. Capsule
-`congestion-soak-accounting-d48f838d.json`: 11,377 bytes, SHA-256
-1c77085d905621fadee87c288d3f5977a91587c1d34386dcc7e013293363944c.
-
-Start real-duration TUF run `As53eP1Smj` on the same committed harness after
-read-only admission: 49,473,556 KiB MemAvailable, empty owned run inventory and
-33,322,782,720 available tmpfs bytes. Capture control is
-`.harness-state/congestion-soak-d48f838d-control`; launch PID 135096 and its recorded
-start ticks identify the wrapper. The retained tool session is 6835. Current
-inspection proves that exact wrapper live and three initial endpoint deltas zero.
-Keep TUF's checkout at `d48f838d` through final acceptance; CTE evidence/status
-commits may advance independently. Do not restart on an observation timeout.
-Full-duration result and exact cleanup remain pending. The ledger now names this
-running job; a fresh isolated token count is required for that edit.
-
-Fresh CTE count `hFeEGhl8v7` at `d0011c8d` passes seven controls and the
-whole-input round trip: **397,750 tokens / 1,815,231 bytes**, SHA-256
-cf4a521c20c759d7113b97c89ef823bfd8bd76aed8f9f6240ff057934340ce2a.
-Capture takes 30.929 seconds. Exact processes/private/RAM retire, peak scratch
-is 402,964,480 bytes and all three decoded endpoint deltas are zero. Capsule
-`congestion-soak-ledger-d0011c8d.json`: 7,594 bytes, SHA-256
-48baa44866a88cfd37c7d7c09ddc3b22de9d8bedb1776db7cbf96fe9fe06487e.
-This audit-only receipt leaves the counted ledger unchanged.
 
 ## 2026-11-05 — packet-loss transport and displayed-frame correlation
 
@@ -139911,3 +139814,102 @@ Exact processes/private/RAM retire, peak scratch is 402,829,312 bytes and all
 three endpoint deltas are zero. `mixed-input-ledger-79715726.json` is 7,813 bytes,
 SHA-256 383eaa7b2056be7c5ddf525292e02e83b126cae593eadec85640bb5652a1e0ce.
 This audit-only receipt leaves the counted ledger unchanged. No owned run remains.
+
+## 2026-11-05 — R-F5 congestion during a four-hour display session
+
+The previous engineering slice made progress: six mixed-degradation input
+scenarios passed with exact retirement. The intervening user clarification
+confirmed existing instructions; it added no product evidence. Continue R-F5's
+impaired multi-hour freshness requirement, ahead of another short scenario,
+because healthy four-hour controls and short impaired recovery already pass.
+
+Add `--congestion-soak` to the existing complete-peer replay, reusing app
+`2ae08e80` and engine `ddb1541d`. Keep the 241 one-minute pixel windows and fixed
+first-window quantiles. Before windows 1, 61, 121 and 181, run the existing three
+20-second profiles: 80 +/- 30 ms jitter, aggregate 32 kbit/s and both. Each
+restoration still requires four fresh states within 2,500 ms, three seconds of
+healthy follow-up, the same connection/window and bounded resources. Acquire
+a fresh pixel witness before starting the next healthy window. Never reset the
+original p95/p99 baseline or flush queued packets to satisfy recovery.
+
+Every healthy window retains its 1,000-ms age/gap ceiling, 95% valid samples,
+at least 1,000 samples and 60 distinct states, and 250-ms p95/p99 drift bound.
+Require four rounds/twelve cycles and at least 14,700 seconds, including 14,460
+seconds of healthy observation. Controller/VM ceilings are 15,120/15,360 seconds;
+server observation retains its original resource and per-minute CPU limits.
+Existing source history and log bounds cover that duration without expansion.
+
+Keep transport observations at 200 ms during impairments and five seconds after
+restoration, then 30 seconds during healthy intervals. Reset the sampling deadline
+on each profile transition. Bound snapshots to 2,304 and 6 MiB within the existing
+8-MiB workload output ceiling. Admit the unchanged 10-GiB guest/7-GiB RAM scratch
+profile with monitoring and joined cleanup; freeze TUF's checkout during execution.
+
+Rechecked primary iproute2 v6.1.0 documentation:
+[TBF](https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-tbf.8)
+describes token throttling and the child queue's effective limit;
+[netem](https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-netem.8)
+describes delay variation and queue limits. Retain calibrated parameter readback,
+actual packet/byte counters and in-place restoration; do not infer conditions from
+requested settings alone. Kernel jitter sequences remain uncontrolled.
+
+Adapt the existing exact-loop accounting fixture to the additional arguments;
+its healthy cases must abort if they accidentally enter an impairment branch.
+Native accounting regression and real-duration execution are pending. No product
+change or full R-F5 acceptance is claimed. Other impairment classes, workloads,
+roles/platforms, physical scanout and release acceptance remain OPEN.
+
+Focused CTE run `GCpX8W79ke` at `23f60985` stops at controller compilation:
+the guest source closure omits `flutter-peer-wakelock.h`; inspection also finds
+the included `flutter-peer-recent-search.h` absent. Add both to the existing
+authenticated input inventory and guest payload. No accounting result or
+four-hour run is claimed. Exact processes and RAM retire, all three endpoint
+deltas are zero, and 141,899 bytes of inventoried private diagnostics retire
+under the shared lock. Failure capsule `congestion-soak-accounting-failed-23f60985.json`
+is 8,387 bytes, SHA-256
+21a8be3a757c5bd3dcd1ad344c2446fc181aef0a3b2e03be2cbf3dead7ca55f9.
+
+CTE retry `nBL6r8WOhl` at `d48f838d` passes in 84.089 capture seconds.
+All ten candidate accounting cases pass; the unchanged historical loop reproduces
+seven discrepancies and passes three controls. The current full controller compiles;
+neighboring frame/oracle cases pass. These accounting cases use synthetic clocks
+and observation/process/resource adapters, not four hours of real pixels.
+Exact processes/private/RAM retire; peak scratch is 3,732,877,312 bytes and all
+three decoded host endpoint deltas are zero. Capsule
+`congestion-soak-accounting-d48f838d.json`: 11,377 bytes, SHA-256
+1c77085d905621fadee87c288d3f5977a91587c1d34386dcc7e013293363944c.
+
+Start real-duration TUF run `As53eP1Smj` on the same committed harness after
+read-only admission: 49,473,556 KiB MemAvailable, empty owned run inventory and
+33,322,782,720 available tmpfs bytes. Capture control is
+`.harness-state/congestion-soak-d48f838d-control`; launch PID 135096 and its recorded
+start ticks identify the wrapper. The retained tool session is 6835. Current
+inspection proves that exact wrapper live and three initial endpoint deltas zero.
+Keep TUF's checkout at `d48f838d` through final acceptance; CTE evidence/status
+commits may advance independently. Do not restart on an observation timeout.
+Full-duration result and exact cleanup remain pending. The ledger now names this
+running job; a fresh isolated token count is required for that edit.
+
+Fresh CTE count `hFeEGhl8v7` at `d0011c8d` passes seven controls and the
+whole-input round trip: **397,750 tokens / 1,815,231 bytes**, SHA-256
+cf4a521c20c759d7113b97c89ef823bfd8bd76aed8f9f6240ff057934340ce2a.
+Capture takes 30.929 seconds. Exact processes/private/RAM retire, peak scratch
+is 402,964,480 bytes and all three decoded endpoint deltas are zero. Capsule
+`congestion-soak-ledger-d0011c8d.json`: 7,594 bytes, SHA-256
+48baa44866a88cfd37c7d7c09ddc3b22de9d8bedb1776db7cbf96fe9fe06487e.
+This audit-only receipt leaves the counted ledger unchanged.
+
+At 305.419 capture seconds, TUF `As53eP1Smj` is still live with the exact
+wrapper PID/start ticks 135096/4633201. All three native drivers compiled twice
+with identical bytes. Baseline minute p95/p99/max age is 294/312/330 ms;
+the first complete post-recovery minute is 297/315/325 ms. The first three
+20-second congestion cycles pass the existing recovery checks; the independent
+fresh witness after the round is 343 ms. All 348 observed TCP snapshots retain
+the same pair, with healthy sampling reduced to the declared interval. The two
+restricted intervals deliver 76,171/75,634 bytes in 20.025/20.059 seconds with
+throttling counters advancing. Three initial endpoint deltas decode to zero.
+HEAD and local origin/master on TUF remain `d48f838d`, with a clean checkout.
+The bounded CTE checkpoint `congestion-soak-first-round-d48f838d.json` records
+this live observation and its partial-log hash. This is **not** full-duration
+acceptance. Continue the same session 6835/run; require all 241 windows, twelve
+cycles, final resource receipts and exact retirement before closing this condition.

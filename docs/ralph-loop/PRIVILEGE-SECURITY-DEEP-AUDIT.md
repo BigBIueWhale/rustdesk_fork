@@ -141547,3 +141547,80 @@ view-style-ledger-bfab0518.json is 4,774 bytes, SHA-256
 1a70b1e988bd95f38ddbfb51a2c8d6b1fc4d5477b562ce0fa69113b58c5a0f7a.
 All 61 bounded evidence files (1,385,596 bytes) match CTE/TUF. This audit-only
 receipt leaves the counted ledger unchanged; no owned run remains.
+
+## 2026-11-05 — full-application scaling acceptance
+
+Continue the demonstrated R-S0 scaling correction through a complete Linux
+application build and the existing six-case pixel scenario. This directly
+tests the required preference effect and takes priority over expanding issue
+searches or adding unrelated fixtures. Both source trees and refs stay frozen
+at 63f58b5c14944da16ed7e7c2208b8dc73c68e380 throughout execution.
+
+The first build, TUF HjGwiyAMvg/session 17545, exits 1 at the four-generation
+artifact-cache admission cap before QEMU or bulk scratch allocation. Storage
+records qemu_io null, zero peak scratch and 2.615 seconds. Under the shared
+run lock, verify and retire its exact private tree (66306:89031430).
+Verify the obsolete 2ae08e80 app on both hosts: 73 payloads / 70,332,436 bytes,
+manifest 52395f154d6a6a877ce121fcf722610cadb5dcf1353ebc1df66338b35b3114a1.
+Retire only the TUF duplicate under identity 66306:86286877; CTE retains the
+verified identical copy. The pending 0ccb2a7e, designated 7e6f6459 and current
+bd65c0c4 comparison generations remain unchanged. No cache limit is raised.
+Capsule view-style-build-admission-63f58b5c.json is 29,069 bytes, SHA-256
+ad7c7458d01875d08ba6db7ca01dad50da81ae15f616e5ccfe2f3b2d04b1716d;
+its retirement receipt is 2,159 bytes, SHA-256
+972fb384bccfa1885c5b711111a2b1efb05ce7a2e8c2c5920468d2cf9000000e.
+All four bounded admission/retirement evidence files (33,656 bytes) match
+CTE and TUF. The subsequently admitted full build is cMBwpLc2T9/session 60484.
+
+The admitted build exits zero in 1,040 outer seconds; storage measures
+1,046.415 seconds and peak bounded scratch 11,898,908,672 bytes. Flutter 3.47.5,
+fresh bridges, all thirteen view-mode widget cases and both native command
+tests pass. Engine ddb1541d remains unchanged. The 73-payload application is
+70,336,532 bytes; manifest SHA-256
+117ece1e1d21fe853d1bcfb1cfcc7d490db4cbcd8f71cc53a9c049b093971e65.
+Verify its complete inventory and every payload hash. Relative to baseline
+bd65c0c4, only bundle/lib/libapp.so differs: 12,567,432 bytes on both sides,
+ac4aa299bf2cf41cc0e13bef2815d51610fea7bdea542e10ff19a8098bb23c75 becomes
+fbc468b570f9a17e1dd1fcb4d7929e9cd9cc54c5e3bf5ef8fb9fb6d6a068f417.
+Capsule view-style-build-63f58b5c.json is 13,382 bytes, SHA-256
+edd163c1b11c68954c873595f316fc14631f2704ac9fb7506e4419184bed3708.
+Raw output: 223,189 bytes,
+d4666c8f39e1da68f8c9b5e11b96c71f846749e68581f8a274cb4802c6b9a861.
+All four endpoint deltas are zero; exact QEMU/private/RAM retirement passes.
+
+The unchanged --view-scaling replay, TUF ePaRNbcMWh/session 37979, exits 1.
+Original at 1100x650 passes four fresh advancing frames in 515 ms with width
+627..660 and maximum sampled age 344 ms. Adaptive now persists and reopens
+checked (Original unchecked), unlike the old app's current 8aTUVYBEvI baseline.
+The durable observation is {"style": "adaptive", "bytes": 999}. This verifies
+the selection/persistence correction in the full application. Geometry is
+still wrong: sequence two has zero accepted geometry frames, width 627..660
+rather than about 813 through the unchanged 2.5-second deadline, maximum
+sampled age 173 ms. Do not label the entire scaling workflow fixed.
+
+Capsule view-scaling-candidate-63f58b5c.json is 34,174 bytes, SHA-256
+b564da3e1c07af34a271682768ae28684917dd408e4085a91c1f1e5a8686f4f1.
+Raw output: 216,467 bytes,
+50916f3feff74de0fc674a03cdb5d888e172b6d8d8202a286f6b14f1ab2b1eaa.
+The terminal tool's displayed tail was truncated; the complete raw evidence
+and bounded viewer log are retained. All twelve duplicate diagnostic bundle
+payloads match the new canonical app; retain only viewer.log, identity and
+SHA256SUMS, then retire the exact private tree. Server/source/Xvfb join,
+QEMU pidfd lookup proves absence, all four listener deltas are zero, and RAM
+retires. Storage measures 114.042 seconds, peak 3,020,881,920 bytes. The build
+and replay's 24 bounded files (730,099 bytes) match CTE/TUF; neither host has
+an owned private run left.
+
+Readback follows sessionGetViewStyle -> Session::get_view_style -> the same
+LoginConfigHandler.config updated after durable save. CanvasModel rereads it
+and publishes ViewStyle/scale before notifyListeners; ImagePaint subscribes
+through Provider and computes texture dimensions from that scale. Source
+review does not identify which stage caused the remaining native failure.
+Flutter's notification contract and Provider's existing-notifier contract:
+https://api.flutter.dev/flutter/foundation/ChangeNotifier/notifyListeners.html
+and https://pub.dev/documentation/provider/latest/provider/ChangeNotifierProvider/ChangeNotifierProvider.value.html.
+These explain the intended update path, not native success. The next decisive
+step is bounded observation of effective canvas style, viewport/display size,
+scale and the rendered texture geometry during the same failed transition.
+No extra product patch or relaxed assertion is justified by this run alone.
+Custom, restart, other-platform and release acceptance remain open.

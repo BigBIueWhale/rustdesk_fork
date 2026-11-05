@@ -141804,3 +141804,14 @@ Scope is full-app Linux X11/Xvfb at unit DPI, Original and adaptive enlargement.
 Custom/downscaling, non-unit DPI, saved-canvas restart, physical scanout,
 other platforms, input-to-visible latency and full release acceptance remain
 OPEN. Replace the existing ledger entry and count it in isolation.
+
+CTE Se8NKNg3In/session 28412 at 72ea5ee3 exits zero: 399,931 tokens,
+1,825,748 bytes, SHA-256
+625d3228b93cf6f6e2724b4442d10b5eee7109119477af94ce8d49b98e99586f.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and full
+round trip pass. Three endpoint deltas are zero; QEMU/private/RAM retire.
+Storage takes 30.355 seconds, peak 402,849,792 bytes. Capsule
+view-scaling-input-ledger-72ea5ee3.json is 4,783 bytes, SHA-256
+1d107122ab45f83b3fab79b81bf6d71d95c8870589e84c2d80df2d0b65797bae.
+All eighteen evidence files (249,307 bytes) match CTE/TUF. No owned run
+remains. This receipt leaves the counted ledger unchanged.

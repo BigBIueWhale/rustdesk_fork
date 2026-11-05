@@ -139477,3 +139477,11 @@ defers to the current receive-authority evidence. The earlier isolated count
 `JX5mF7jyCT` binds bcb46efa before these additional deletions (395,957 tokens).
 Its exact processes/private/RAM retire with three zero endpoint deltas; the final
 ledger revision requires a fresh count.
+
+Final isolated count `6qpwmzViLR` at `c185e021` passes all seven controls and the
+whole-input round trip: 395,928 tokens / 1,808,103 bytes, SHA-256
+ad46dcfa9eafc0be4da0d8bc49dd97aac819802b9d815be86dc14ef914b6e2b7.
+The 28-second workload retires exact processes/private/RAM with three zero endpoint
+deltas; peak scratch is 402,948,096 bytes. `pivot-final-ledger-c185e021.json` is
+7,693 bytes, SHA-256 da7b41766a264ef7bb2c4eabbfb2124351330da2af6c2008b67cb25e3885b3d7.
+This audit-only receipt preserves the counted ledger. No owned run remains.

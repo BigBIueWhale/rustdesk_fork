@@ -141294,3 +141294,16 @@ concurrent windows/writers, other failures/input forms, physical devices, other
 platforms and installed/release acceptance remain OPEN. The unpublished older
 0ccb2a7e artifact is untouched; the current app supplies this native evidence.
 The goal remains active.
+
+Fresh CTE count hS4czGiOJc at a9d08ea8 passes: 399,733 tokens /
+1,824,908 bytes, SHA-256
+64d54fa94bab20e9b8bba348aa7c547a6c5c362be2822d6758fb70e26fc5fc75.
+Session 79196 exits zero with seven controls and the whole-input round trip.
+Before/during endpoint deltas are zero; the final snapshot retains four additions
+and three removals as unattributed external changes. The sealed owned process
+tree is kernel-denied IP sockets; no pre-existing service is inspected or changed.
+Exact QEMU/private/RAM retirement passes. Storage lasts 30.544 seconds, peak
+402,849,792 bytes. Capsule view-mode-ledger-a9d08ea8.json is 4,774 bytes,
+SHA-256 49fc87ebdfc98d8009576862809d8a6769cfe19bb546e97753f18c86a77b9041.
+All eighteen bounded evidence files (241,845 bytes) match CTE/TUF. This audit-only
+receipt leaves the counted ledger unchanged; no owned run remains.

@@ -2199,6 +2199,8 @@ PY
       done
       grep -Fxq 'FLUTTER_PEER_VIEW_SCALING_OK cases=9 styles=original,adaptive geometry=pixel-witness input_points=45 tolerance_px=1 pixels=fresh stable_connection=true resources=bounded' \
         <<<"$controller_output" || fail 'native view scaling result is absent'
+      [ "$(grep -Ec '^FLUTTER_PEER_VIEW_SCALE_INPUT_POINT_OK sequence=7 point=1 .* entry_click=1$' <<<"$controller_output")" -eq 1 ] \
+        || fail 'first click after entering the smaller viewer is absent or duplicated'
       viewer_result='viewer=joined xvfb=joined view_scaling=9 input_points=45 pixels=fresh stable_connection=true resources=bounded'
     elif [ "$PEER_SCENARIO" = screenshot-save-unavailable ]; then
       grep -Fxq 'FLUTTER_PEER_SCREENSHOT_SAVE_UNAVAILABLE_OK screenshot_received=true save=unavailable error=visible stable_connection=true' \

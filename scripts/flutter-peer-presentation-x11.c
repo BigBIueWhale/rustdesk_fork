@@ -5898,17 +5898,25 @@ static int exercise_scaled_mouse(Display *source, Display *display,
             !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U) ||
             !XTestFakeMotionEvent(display, DefaultScreen(display), target_x, target_y, CurrentTime))
             goto out;
+        int entering = local_x < origin_x || local_y < origin_y ||
+            local_x >= origin_x + (int)viewer->width || local_y >= origin_y + (int)viewer->height;
         XSync(display, False);
-        do {
-            if (mouse_snapshot(source, &x, &y, &mask) != 0 || mask != 0U) goto out;
-            if (abs(x - points[point][0]) <= 1 && abs(y - points[point][1]) <= 1) break;
-            if (sleep_millis(10U) != 0) goto out;
-        } while (monotonic_millis() - start < RECOVERY_LIMIT_MS);
-        if (abs(x - points[point][0]) > 1 || abs(y - points[point][1]) > 1) {
-            fprintf(stderr, "FLUTTER_PEER_VIEW_SCALE_INPUT_POSITION sequence=%u point=%u "
-                    "expected=%d,%d actual=%d,%d viewer=%d,%d\n", sequence, point + 1U,
-                    points[point][0], points[point][1], x, y, target_x, target_y);
-            goto out;
+        /* Native entry may produce only PointerAdded, not PointerHover.
+         * Exercise the first click without requiring an earlier remote move;
+         * its delivered press/release must still have the exact target below.
+         * Movement wholly inside the viewer retains the hover check. */
+        if (!entering) {
+            do {
+                if (mouse_snapshot(source, &x, &y, &mask) != 0 || mask != 0U) goto out;
+                if (abs(x - points[point][0]) <= 1 && abs(y - points[point][1]) <= 1) break;
+                if (sleep_millis(10U) != 0) goto out;
+            } while (monotonic_millis() - start < RECOVERY_LIMIT_MS);
+            if (abs(x - points[point][0]) > 1 || abs(y - points[point][1]) > 1) {
+                fprintf(stderr, "FLUTTER_PEER_VIEW_SCALE_INPUT_POSITION sequence=%u point=%u "
+                        "expected=%d,%d actual=%d,%d viewer=%d,%d\n", sequence, point + 1U,
+                        points[point][0], points[point][1], x, y, target_x, target_y);
+                goto out;
+            }
         }
         if (!XTestFakeButtonEvent(display, 1U, True, CurrentTime)) goto out;
         held = 1;
@@ -5943,9 +5951,9 @@ static int exercise_scaled_mouse(Display *source, Display *display,
             local_x != target_x || local_y != target_y ||
             !mouse_buttons_match(source, 0U) || !mouse_buttons_match(display, 0U)) goto out;
         printf("FLUTTER_PEER_VIEW_SCALE_INPUT_POINT_OK sequence=%u point=%u expected=%d,%d "
-               "actual=%d,%d viewer=%d,%d elapsed_ms=%llu released=both\n", sequence, point + 1U,
+               "actual=%d,%d viewer=%d,%d elapsed_ms=%llu released=both entry_click=%d\n", sequence, point + 1U,
                points[point][0], points[point][1], x, y, target_x, target_y,
-               (unsigned long long)(complete - start));
+               (unsigned long long)(complete - start), entering);
     }
     printf("FLUTTER_PEER_VIEW_SCALE_INPUT_CASE_OK sequence=%u points=5 events=10 tolerance_px=1 "
            "released=both\n", sequence);

@@ -141888,3 +141888,91 @@ view-downscale-ledger-015dd92e.json is 4,779 bytes, SHA-256
 ee3f46504983da1a38b1cd36d712a2fa4cc1f02d05e256ca52cc9a3b0ca8fcce.
 All 46 evidence files match CTE/TUF; no owned run remains. This receipt
 leaves the counted ledger unchanged.
+
+## 2026-11-05 — mouse release after controlled-side handoff
+
+Follow the user's correctness direction with R-S0/R-F1 remote mouse behavior.
+The reproduced defect is specific: after an accepted viewer button-down,
+controlled-side pointer movement makes CursorModel yield control; InputModel
+clears its local button state but discards the physical release at
+processEventToPeer's control-protection check. The source remains held.
+108e9fb2 permits releases through that arbitration without changing pointer
+ownership or coordinates. Movement/new presses still respect local control;
+InputKeyOwnership::dispatch_mouse still rejects unowned native releases.
+
+Primary references consulted: Flutter's PointerUpEvent contract
+(https://api.flutter.dev/flutter/gestures/PointerUpEvent-class.html) and XTEST's
+separate button/motion injection operations
+(https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XTestFakeKeyEvent.3.html).
+The fixture injects controlled-side motion only; it never supplies the accepted
+source button release. UI activation of Show remote cursor, an initial source
+position notification and expiry of its two-second startup grace establish the
+handoff. Before releasing, it observes both buttons held and viewer movement
+suppressed for 100ms. Existing native event identity/order/state, connection,
+resource and five-second case deadline checks remain intact.
+
+With old full app 63f58b5c14944da16ed7e7c2208b8dc73c68e380, TUF
+gGYPdueYQJ/session 70600 at 519aae19 exits 1. The original 31 cases, three
+chords and six bursts pass. Case 32 receives only the press, with one held
+movement; at 5007ms the source mask is 256 and viewer mask zero. The timer
+starts before deliberate pre-release waits, so this is not a release-latency
+measurement. Capsule mouse-takeover-reproduced-519aae19.json: 72,168 bytes,
+SHA-256 5f2f32e89ffa5aca5bcd07be245bac05e7330e3d7ba5e819a9903e2601962c48.
+
+Five component cases use actual InputModel/CursorModel and a controlled clock:
+up, cancel, partial release, hover reconciliation and timeout expiry. They
+require exactly the owned releases, zero position, no renewed pointer control
+and continued suppression of a stationary press. TUF JeUyVvFaqO/session 90189
+at a81e16c8 passes 126 tests in five suites plus three parser controls through
+`--flutter-model-tests --modifier-release`. Flutter is pinned at 3.24.5;
+outer/storage time is 241/245.544 seconds, peak scratch 6,531,280,896 bytes.
+mouse-takeover-model-accepted-a81e16c8.json: 64,345 bytes, SHA-256
+d6c6415d6d1157b428b449e23391671fbf186f3aef82ddf8fb103910174cc613.
+
+The isolated full Flutter 3.47.5 build at
+a81e16c8cea74db48213a783d5dfcd3b8b2c5414 passes in TUF 8jvEEnhPWU/session
+20285, including 13 view-mode widget and two native-command controls. All 73
+payloads (70,336,532 bytes) match the manifest; only bundle/lib/libapp.so differs
+from old app 63f58b5c. Manifest SHA-256 is
+ceb752cdccd809e5fc4e054c4fdb2dc103dbebef1ca23b68d1562cfd91e6d5c7.
+Engine ddb1541d and its authenticated inputs are unchanged. Capsule
+mouse-takeover-build-a81e16c8.json: 13,354 bytes, SHA-256
+0e1813af23b81795bc9fb946d8269ea452c6a8477082977a85f8cf9f8f88f676.
+Outer/storage time is 1037/1043.389 seconds, peak RAM scratch 11,897,614,336
+bytes; temporary workspace is retired. The retained manifest binds every file.
+
+TUF Pck2xNSx1l/session 8685 replays that build through --mouse-input and exits
+zero. The C driver, stage and outer scenario checks are byte-identical to the
+519aae19 reproduction. Case 32 yields control at (380,266), then produces the
+exact release there and finishes in 782ms including its deliberate waits.
+Both X servers are released; the connection/window remain stable. All 32
+cases/64 button events, three chords/20 events and six bursts/160 events pass.
+This is native event delivery, not input-to-visible latency. Outer/storage time
+is 118/124.626 seconds; peak scratch 3,022,536,704 bytes.
+mouse-takeover-accepted-a81e16c8.json: 43,846 bytes, SHA-256
+e8b9d1eda62ec67a53084acb44f32f4862f62c634cf81705f7de9adf5ec67519.
+
+Earlier bounded attempts retain their actual outcomes, not accepted fix evidence:
+
+| Run / checkpoint | Outcome and capsule stem |
+| --- | --- |
+| zAV6PfzL87 / 77e9fa97 | Unchanged scaling control passes nine cases/45 points; mouse-reproduction-control-77e9fa97. Earlier intermittent click-check failure remains unresolved. |
+| KNRkNFejWo / 36b7a43c | Handoff precondition fails without cursor notifications; mouse-takeover-admission-36b7a43c. |
+| azwYfdKsLP / 9a03199f; f0LlRkFTRC / b1bd074a | Reordered early burst fails before handoff, with cursor option enabled and then disabled. No established cause; mouse-takeover-cursor-control-9a03199f and mouse-takeover-order-control-b1bd074a. Restore the original controls/order. |
+| YOy13vmsEE / b592a11c | Handoff precondition fails before release; explicit first position notification was missing; mouse-takeover-initialization-b592a11c. |
+| XvGwhuJnmd / 108e9fb2 | Existing 121 cases pass; five new cases reject hardcoded topology revision zero before release. 0d7cb569 uses the actual current revision; mouse-takeover-model-fixture-108e9fb2. |
+| xjyauWWpQL / 0d7cb569 | Stale parser self-test total 121 rejects the new 126-case profile; a81e16c8 updates focused/aggregate totals. No accepted receipt; mouse-takeover-parser-count-0d7cb569. |
+
+Every run used admitted bounded RAM storage, zero-NIC VM isolation and frozen
+source/refs on both hosts. Every TUF run has four zero endpoint deltas and joined
+QEMU/private/RAM retirement. Failed duplicate bundles were matched to the app
+manifest and native-input library before exact identity-checked deletion.
+All 126 bounded evidence files (3,729,601 bytes) match CTE/TUF. No owned VM
+remains. Capsules retain exact commands, source/toolchain identities, raw logs,
+storage and cleanup. Keep the new authenticated app for focused reuse.
+
+The earlier scaling click failure and reordered burst failures remain OPEN;
+this handoff correction is not established as their cause. Evidence covers
+ordinary-user Linux X11/Xvfb, not physical input, installed privilege boundaries,
+other platforms, long-session reliability or full release acceptance. Replace
+the existing mouse ledger entry and obtain a fresh isolated token count.

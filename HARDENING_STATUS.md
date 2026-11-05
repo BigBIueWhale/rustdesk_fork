@@ -2809,41 +2809,38 @@ cold R-B2/R-B10, independent-reproduction, or external-review obligations.
 
 **R-S19 — `AuthConnType` capability confinement (CWE-863).**
 
-**Linux remote mouse — twenty-one full-app positive cases passed.**
-Harness `f8bf9f41`, run `pgkRbf8KPn`, reuses the complete `cf437894` app through
-`--mouse-input`. After real password authentication, native viewer input produces
-the expected controlled-side left/middle/right clicks, a left-button drag and all
-four wheel directions. It additionally presses each of left/middle/right/back/forward inside
-the image, observes the viewer pointer beyond the complete window with the button
-held, releases there and returns for another click. The native controlled-side
-release and reentry succeed for all five buttons. Back/Forward additionally travel
-through the native GTK/platform-channel path, become held on both X servers,
-then release; a subsequent ordinary left click succeeds. All 42 button events have exact
-identity, order and pre-event state. Two separately observed drag movements retain
-the held button; XInput2 queries prove both displays finish each case with no held
-buttons, including those beyond core X11's five-button state mask. Quiet
-intervals reject extra pairs; window and authenticated TCP identity remain stable.
-Back/Forward outside-release cases take 73/25 ms, including initial press and
-movement; their reentry cases take 73/21 ms. These are native event observations, not
-input-to-visible-response or application navigation/drop/scroll outcomes.
-Viewer RSS grows at most 2,256 KiB, threads one
-and descriptors zero in this short run.
+**Linux remote mouse — local-handoff release corrected and verified.**
+`108e9fb2` lets button releases retire ownership while controlled-side movement
+temporarily suppresses viewer input. Previously `InputModel._getMouseButtonEvents`
+cleared local button state before `processEventToPeer` discarded the release.
+The release now bypasses only pointer-control arbitration: it carries no position,
+does not reacquire control, and retains receiver-side connection ownership checks.
+Five regression cases cover up, cancel, partial release, hover and expired timeout;
+all 126 focused component tests and three parser controls pass at `a81e16c8`.
 
-The app is unmodified; the native window, InputModel and receiver source files
-are byte-identical to that artifact. Later product edits concern connection-page
-restoration, file-job logging/rates and idle-timeout bounds. Small drivers compile
-twice identically. The 112.796-second supervisor lifetime joins the exact QEMU,
-retires 3,010,609,152 peak RAM bytes and leaves all four host listener deltas zero;
-the inner workload joins viewer/server/Xvfb/containers. The audit entry
-“2026-11-01 — native side-button release outside the viewer” retains the exact
-command, artifact identities and cleanup; eight raw evidence files total 102,543
-bytes, hash-verified on CTE/TUF. Earlier receipts `mouse-outside-7ecdc2f0.json` and
-`mouse-input-dcae70c7.json` remain historical evidence.
-No product defect or correction is claimed. Physical devices,
-relative mode, other boundaries/scales/layouts, focus/cancel/reconnect ownership,
-application-specific outcomes, non-Remote refusal, installed privilege boundaries,
-current release artifacts, other platforms and sustained-use acceptance remain
-OPEN under R-F1/R-S0/R-S19.
+The unchanged native scenario fails with full app `63f58b5c` and passes with
+corrected app `a81e16c8`. After an authenticated remote press, controlled-side
+movement holds the pointer locally and suppresses viewer movement. The old app
+leaves the source button held after the viewer releases it; the corrected app
+produces the exact release at the local pointer position, with both displays
+released and the same window/connection. Case completion is 782ms including
+deliberate pre-release waits, not measured release or input-to-visible latency.
+All 32 cases/64 button events, three chords/20 events and six bursts/160 events
+pass, including clicks, drag, wheels, side buttons, outside releases and focus
+return. Native identities/order/state, XInput2 final state, quiet intervals and
+short-run resource bounds pass. Four host endpoint deltas are zero; exact
+QEMU/process/private/RAM retirement is verified.
+
+The audit entry “2026-11-05 — mouse release after controlled-side handoff” and
+`mouse-takeover-{reproduced-519aae19,model-accepted-a81e16c8,build-a81e16c8,accepted-a81e16c8}.json`
+retain source/artifact identities, commands and cleanup. Only `bundle/lib/libapp.so`
+differs between the 73-file builds. Earlier native receipts remain historical.
+The intermittent scaling click-check failure and two reordered burst failures
+remain OPEN; this correction is not established as their cause. Physical devices,
+relative mode, other boundaries/scales/layouts, broader cancellation/reconnect,
+application outcomes, non-Remote refusal, installed privilege boundaries, current
+release artifacts, other platforms and sustained-use acceptance remain OPEN
+under R-F1/R-S0/R-S19.
 
 **Abrupt viewer exit — native owned-button release passed.** Harness `ac6c8a9d`,
 TUF `uhkIf2KOdA`, exercises `--mouse-retirement` on the same complete `cf437894`

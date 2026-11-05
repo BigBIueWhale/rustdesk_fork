@@ -374,13 +374,15 @@ void main() {
       final owner = _CoordinateOwner(kPeerPlatformLinux, mouseControlClock: clock);
       final model = _CoordinateInput(owner);
       try {
+        final revision = owner.ffiModel.currentDisplayTopologyRevision(owner.sessionId);
+        expect(revision, isNotNull);
         expect(owner.cursorModel.updateCursorPosition(
-            12, 24, 'mouse-handoff', owner.sessionId, 0), isTrue);
+            12, 24, 'mouse-handoff', owner.sessionId, revision!), isTrue);
         model.move(3);
         expect(model.peerButtons, [('down', 'left'), ('down', 'right')]);
         clock.elapsedMilliseconds = 2000;
         expect(owner.cursorModel.updateCursorPosition(
-            32, 44, 'mouse-handoff', owner.sessionId, 0), isTrue);
+            32, 44, 'mouse-handoff', owner.sessionId, revision), isTrue);
         expect(owner.cursorModel.isPeerControlProtected, isTrue);
         expect(owner.cursorModel.gotMouseControl, isFalse);
         model.messages.clear();

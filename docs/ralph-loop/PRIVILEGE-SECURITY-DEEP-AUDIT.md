@@ -140288,3 +140288,13 @@ This proves the named Linux production-handler and connection-loop cases with a
 test UI and prepared peer context. Complete UI/CM, installed/non-Linux and release
 acceptance remain OPEN. Update the current ledger and count it once; no unchanged
 product test needs repetition.
+
+Fresh CTE ledger count 6UTAAAUZxp at 77402007: 398,701 tokens / 1,819,336 bytes,
+SHA-256 89032750b939d9d292478e4ebca8d81b7758791fe8dfdbb9313583913f61c434.
+The pinned tiktoken-0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and the complete byte round trip. All three endpoint deltas are zero; exact QEMU,
+private state and RAM retirement pass. Storage duration 30.961 seconds, peak scratch
+402,837,504 bytes. viewer-job-admission-ledger-77402007.json is 4,502 bytes,
+SHA-256 0adbd336f2ad870c54a7b9bf86bc25622181d2c89b2decee1cabe46e1a2b2b3f.
+This audit-only receipt preserves the counted ledger. No owned run remains on
+either host; the selected admission checkpoint is verified and the full goal stays active.

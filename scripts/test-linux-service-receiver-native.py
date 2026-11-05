@@ -146,7 +146,12 @@ def prepare_openrc():
             raise RuntimeError("OpenRC runtime copy differs")
     if not {"/etc/rc.conf", "/etc/insserv.conf", "/sbin/openrc", "/sbin/openrc-run", "/sbin/rc-service"} <= files.keys():
         raise RuntimeError("OpenRC runtime entrypoints are absent")
-    (target / "manifest.json").write_text(json.dumps({"versions": expected, "files": files}, sort_keys=True))
+    directory = Path("/etc/insserv.conf.d")
+    if (str(directory) not in listing or directory.is_symlink() or not directory.is_dir()
+            or list(directory.iterdir())):
+        raise RuntimeError("pinned insserv configuration directory differs")
+    (target / "manifest.json").write_text(json.dumps(
+        {"versions": expected, "files": files, "directories": [str(directory)]}, sort_keys=True))
     print(f"LINUX_OPENRC_PREPARE=pass version=0.45.2-2+deb12u1 files={len(files)} bytes={total}", flush=True)
 
 
@@ -159,6 +164,8 @@ def install_openrc():
     description = json.loads(manifest.read_text())
     if description["versions"] != OPENRC_PACKAGES:
         raise RuntimeError("OpenRC runtime version receipt differs")
+    if description["directories"] != ["/etc/insserv.conf.d"] or os.path.lexists("/etc/insserv.conf.d"):
+        raise RuntimeError("OpenRC configuration directory inventory differs")
     files = description["files"]
     if not 4 <= len(files) <= 256:
         raise RuntimeError("OpenRC runtime inventory differs")
@@ -173,6 +180,7 @@ def install_openrc():
             raise RuntimeError("OpenRC staged runtime identity differs")
         if os.path.lexists(name):
             raise RuntimeError("OpenRC fixture would replace an existing runtime file")
+    Path("/etc/insserv.conf.d").mkdir(mode=0o755)
     for name, spec in files.items():
         destination = Path(name)
         destination.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
@@ -3439,6 +3447,31 @@ def service_openrc(commit, binary_sha, probe_sha):
                 or Path(f"/proc/{owned['record']['pid']}").exists()):
             raise RuntimeError("OpenRC shutdown left its service child")
 
+    def observe_children(owned, phase):
+        observations = []
+        for parent in (os.getpid(), owned["pid"], owned["record"]["pid"]):
+            children = set()
+            for task in Path(f"/proc/{parent}/task").iterdir():
+                try:
+                    children.update((task / "children").read_text().split())
+                except FileNotFoundError:
+                    continue
+            if len(children) > 64:
+                raise RuntimeError("OpenRC descendant observation exceeds its bound")
+            for pid in sorted(children, key=int):
+                proc = Path("/proc") / pid
+                try:
+                    fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                    status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
+                    observations.append({"parent": parent, "pid": int(pid), "state": fields[0].decode(),
+                                         "start": int(fields[19]), "raw_exit": int(fields[49]),
+                                         "uid": status["Uid"].split(),
+                                         "comm": (proc / "comm").read_text().strip(),
+                                         "argv": (proc / "cmdline").read_bytes()[:512].decode(errors="replace")})
+                except FileNotFoundError:
+                    observations.append({"parent": parent, "pid": int(pid), "state": "absent"})
+        print("LINUX_OPENRC_CHILDREN=" + json.dumps({"phase": phase, "children": observations}, sort_keys=True), flush=True)
+
     try:
         shutil.copyfile(source, script)
         script.chmod(0o755)
@@ -3453,6 +3486,7 @@ def service_openrc(commit, binary_sha, probe_sha):
         for generation in (1, 2):
             active = capture()
             record = ready(active)
+            observe_children(active, f"ready-{generation}")
             if generation == 1:
                 change(0, value, True)
                 durable = credential()
@@ -3476,6 +3510,7 @@ def service_openrc(commit, binary_sha, probe_sha):
             print(f"LINUX_OPENRC_LOGIN=pass generation={generation} uid=4002 cpace=mutual "
                   f"remote=peer-info probe_sha256={probe_sha}", flush=True)
             manager("status")
+            observe_children(active, f"before-stop-{generation}")
             began = time.monotonic()
             manager("restart" if generation == 1 else "stop")
             retired(active)

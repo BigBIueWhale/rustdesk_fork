@@ -141987,3 +141987,95 @@ mouse-takeover-ledger-f0ae1eb0.json: 4,779 bytes, SHA-256
 d659bd1ccb3573350d68736efb23dc06a8fce4ad2d1e1d8c89caad1cdffc64b6.
 All 134 bounded evidence files (3,846,332 bytes) match CTE/TUF; no owned run
 remains. This receipt leaves the counted ledger unchanged.
+
+## 2026-11-06 — ordered mouse admission across the Flutter bridge
+
+Continue the user's functional-correctness direction under R-F1/R-S0: preserve
+the order of real mouse transitions. This resolves a demonstrated input failure,
+using the existing full-app workload and authenticated builds. It does not start
+a new security audit. The prior handoff correction remains valid and distinct.
+
+Source review follows InputModel.handleMouse through session_send_mouse,
+Session::send_mouse and the bounded ViewerCommandSender. The pinned bridge is
+flutter_rust_bridge 1.80.1. Its default normal-call handler submits work to a
+thread pool; SyncReturn executes inline. Separate unawaited Flutter mouse calls
+therefore had no ordered admission before the existing ordered viewer queue.
+Primary source and design implication:
+https://raw.githubusercontent.com/fzyzcjy/flutter_rust_bridge/v1.80.1/frb_rust/src/handler.rs
+Use synchronous admission for this short conversion/enqueue operation; keep
+network transmission in its existing task. No new queue, retry, capacity increase,
+protocol change or receiver-authority relaxation is needed.
+
+04833687 moves the existing paced chords and bursts before ordinary mouse
+movement. Both apps pass all six short batches/160 events: TUF bckUwfYhti/session
+61452 on a81e16c8 also passes all 32 cases; f0b9zOZ3Ac/session 24118 on 63f58b5c
+then fails the known local-handoff release at 5003ms. Thus the earlier short-batch
+ordering failures are intermittent, not explained by the handoff predicate.
+Capsules mouse-early-corrected-04833687.json and mouse-early-old-04833687.json
+retain these outcomes. The old run's tool tail was truncated; raw serial and
+the retained viewer log are authoritative.
+
+2266b820 repeats each two/three/five-button sequence 32 times, retaining zero
+and five-ms requested XTEST spacing, no remote acknowledgement pacing, exact
+button/direction/pre-event state, both final button sets, quiet intervals and
+the five-second deadline. The total X-event bound scales with the bounded batch
+to admit expected motion; no additional button transitions are accepted.
+TUF wau1MPEZXA/session 88306 reuses app a81e16c8 and fails the first 128-event
+batch: events 37/38 press Left/Right, then event 39 releases Right with state
+1280 where Left-up is required. All three paced chords pass first. Capsule
+mouse-burst-order-2266b820.json is 42,303 bytes, SHA-256
+9130ef972795860b88933d2268c833d8047681a641a4a74ffdaea5aa29cd63dc.
+Its raw serial/viewer logs preserve the failure despite tool-tail truncation.
+
+b23b04ad8864a7ddae7b6c53181058beac426995 changes session_send_mouse to
+SyncReturn<()> and updates InputModel, RelativeMouseModel and the web adapter
+to invoke that synchronous API. Higher-level asynchronous helper contracts
+remain available to their callers. Existing marker validation, session lookup,
+modifier conversion, bounded queue behavior and receiver ownership remain.
+This establishes call-order admission for this bridge API; it does not order
+separate keyboard/touch APIs or prove all concurrent settings interactions.
+
+TUF Qfd5bMiML0/session 77506 regenerates bindings and passes all 126 component
+tests in five suites plus three parser controls with Flutter 3.24.5. Capsule
+mouse-order-model-b23b04ad.json: 64,130 bytes, SHA-256
+15fa98930e64a2bcb5d656815178b26b203c33f12b863814acc68ca331468af7.
+Storage lifetime is 248.858 seconds; peak RAM scratch is 6,492,028,928 bytes.
+The full Flutter 3.47.5/Linux build, TUF cIkS7AyRrc/session 82294, also passes
+fresh bridges, thirteen view-mode widget and two native command controls.
+All 73 payloads/70,336,532 bytes are independently hash-verified. Only libapp.so
+and librustdesk.so differ from a81e16c8. The manifest SHA-256 is
+852e0bae4126fe3993376500c4bb80ea073e812926f686a0c417ee005740c1e5;
+engine ddb1541d and authenticated inputs are unchanged. Capsule
+mouse-order-build-b23b04ad.json: 13,313 bytes, SHA-256
+299c0863b497608899c704fc47ad67c1019ca12639737e81ca0453a2abbefeea.
+Outer/storage lifetime is 1043/1049.055 seconds; peak RAM scratch is
+11,898,228,736 bytes. The full manifest is retained separately.
+
+TUF s3miiSskad/session 89676 replays that exact build and exits zero. Driver,
+stage and wrapper are byte-identical to the failing 2266b820 scenario. All six
+early batches/1,280 native events, 32 ordinary cases/64 events and three paced
+chords/20 events pass. Every rapid transition has the exact identity, direction
+and pre-event state; both displays finish released through the 100-ms quiet
+interval. Batch lifetimes are 118, 125, 134, 778, 1121 and 1772ms, including
+injection and quiet time, not input-to-visible latency. Local-handoff release
+still passes at the controlled-side position, in 777ms including deliberate
+pre-release waits. Window/TCP identity and short-run resource bounds hold.
+Capsule mouse-order-native-b23b04ad.json: 152,365 bytes, SHA-256
+90c7018bd318f2db27e7ab5b003b4245e413cafbd1e45912d9644691d0f45d19.
+Outer/storage lifetime is 121/127.885 seconds; peak scratch is 3,020,464,128 bytes.
+
+Each TUF run has four zero endpoint deltas, exact QEMU join/pidfd absence and
+private/RAM retirement under the shared lock. Source and refs stayed frozen
+on both hosts during execution. Failed duplicate bundles were matched to their
+manifest and native input provider before identity-checked deletion. Before the
+new build, the obsolete 63f58b5c generation was retired after verifying all 73
+payloads: 70,336,532 payload bytes plus its 12,783-byte manifest. Its bounded
+manifest and retirement receipt remain in mouse-order-retired-63f58b5c files;
+a81e16c8, the designated 7e6f6459 artifact and pending 0ccb2a7e were preserved.
+All 69 bounded evidence files/2,168,860 bytes match CTE/TUF; no owned VM remains.
+
+This is ordinary-user Linux X11/Xvfb evidence. Physical devices, relative mode,
+other platforms/input APIs, settings/lock contention, sustained use and installed
+or final-release acceptance remain OPEN. In particular, the separate intermittent
+scaling click-check failure has no established cause from these observations.
+The ledger replaces stale rapid-input status; a fresh isolated count follows.

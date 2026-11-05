@@ -129,9 +129,9 @@ OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
 below retains the required authorized behavior.
 
-**Current Linux build verified (2026-11-05).** Build `cMBwpLc2T9` at `63f58b5c`
+**Current Linux build verified (2026-11-06).** Build `cIkS7AyRrc` at `b23b04ad`
 passes fresh bridges, the complete Rust/Flutter build, thirteen widget/two native
-command controls and all 73 payload hashes. `view-style-build-63f58b5c.json`
+command controls and all 73 payload hashes. `mouse-order-build-b23b04ad.json`
 binds exact cleanup and four zero listener deltas. The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
 Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-release
@@ -2835,8 +2835,8 @@ The audit entry “2026-11-05 — mouse release after controlled-side handoff”
 `mouse-takeover-{reproduced-519aae19,model-accepted-a81e16c8,build-a81e16c8,accepted-a81e16c8}.json`
 retain source/artifact identities, commands and cleanup. Only `bundle/lib/libapp.so`
 differs between the 73-file builds. Earlier native receipts remain historical.
-The intermittent scaling click-check failure and two reordered burst failures
-remain OPEN; this correction is not established as their cause. Physical devices,
+Rapid mouse ordering is corrected below; the intermittent scaling click-check
+failure remains OPEN without an established cause. Physical devices,
 relative mode, other boundaries/scales/layouts, broader cancellation/reconnect,
 application outcomes, non-Remote refusal, installed privilege boundaries, current
 release artifacts, other platforms and sustained-use acceptance remain OPEN
@@ -2876,20 +2876,22 @@ is needed for these schedules. This is paced Linux native input on the named
 artifact, not physical-device, rapid overlapping delivery, relative-mode,
 cross-window/owner, application action, other-platform or release acceptance.
 
-**Rapid button batches — six native schedules passed.** `2a181cd3` extends
-the same workload on app `9f78434c` / engine `ddb1541d`. Each two/three/five-button
-sequence repeats four times per batch, with zero and five-ms requested XTEST
-spacing and one local synchronization after the complete batch. All 160 native
-transitions preserve exact order, button/direction and pre-event state; no remote
-acknowledgement gates injection. All six final empty button sets persist on both
-displays through 100-ms quiet intervals. Batch lifetimes are 117–320 ms including
-those intervals, not input-to-visible latency. Existing 21 ordinary and three
-paced chord cases pass; window/TCP and resource bounds hold. Three driver pairs
-are identical, the app is unbuilt, all four listener deltas are zero, and the
-112-second outer run retires VM/private state and 3,021,451,264 peak RAM bytes.
-`mouse-burst-2a181cd3.json` binds native `2zosh5y2lj`; thirteen evidence files
-match on CTE/TUF. No product change is needed. This does not close physical-device,
-focus/cancel/owner changes, sustained/broader schedules or other-platform/release acceptance.
+**Rapid mouse events — bridge ordering corrected and verified.** `b23b04ad`
+admits mouse events synchronously to the existing bounded viewer queue, removing
+bridge-worker reordering. Network delivery stays asynchronous. App `a81e16c8`
+releases Right instead of Left at event 39 of a 128-event native batch. The
+corrected full app passes the unchanged scenario: six early batches/1,280 events,
+32 ordinary cases/64 events and three paced chords/20 events. Two/three/five-button
+sequences repeat 32 times with zero/five-ms XTEST spacing, no remote pacing,
+exact native order/state and final released buttons on both displays. Batch
+lifetimes of 118–1,772ms include injection and 100-ms quiet intervals; they do
+not measure input-to-visible latency. Window/TCP identity and resource bounds hold.
+Fresh bridges, 126 component tests, three parser controls and the complete build
+pass. Four endpoint deltas are zero; VM/private/RAM retirement is verified.
+`mouse-burst-order-2266b820.json` and `mouse-order-{model,build,native}-b23b04ad.json`
+bind failure, correction and cleanup; evidence matches CTE/TUF. Physical devices,
+other input APIs/platforms, relative mode, concurrent settings/lock contention,
+broader schedules, sustained use and release acceptance remain OPEN.
 
 **Linux remote keyboard — Ctrl+A corrected; eleven full-app cases passed.**
 `cf437894` routes Linux Legacy character shortcuts through the existing native

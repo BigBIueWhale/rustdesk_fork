@@ -140686,3 +140686,15 @@ artifact set remains only on TUF; no build/cache generation was added. Update th
 current transfer ledger entry and count once. Named installed download paths now
 have evidence; full GUI/platform/final-package and remaining receive namespace,
 concurrency/crash/resource acceptance stay OPEN. The full goal remains active.
+
+Fresh CTE count wpXlHPQB0S at 10f696a9 is 399,652 tokens / 1,824,053 bytes,
+SHA-256 d62505eeb13527a50eb83d00b3f8dc64da3364e50c5720f8f0db0ad3e47a6197.
+Pinned tiktoken-0.12.0/cl100k_base/encode_ordinary passes seven controls and whole
+byte round trip. Session98306 exits zero; storage30.864s, peak402,841,600 bytes,
+three zero endpoint deltas and exact QEMU/private/RAM retirement. Capsule
+installed-download-ledger-10f696a9.json is 4,500 bytes, SHA-256
+4d8fcf1769f0094be7d0a70f85482a0406626e0027d04f0b807c78fa2801558a.
+All eight ledger evidence files match CTE and TUF; this audit-only receipt leaves
+the counted ledger unchanged. No owned run remains. Named installed read/write
+checks are now a meaningful checkpoint; reassess the unresolved receive namespace
+and installed concurrency/crash boundaries for the next release-directed action.

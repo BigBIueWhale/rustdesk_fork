@@ -141534,3 +141534,16 @@ and Flutter 3.24.5 execution is not Flutter 3.47.5 app acceptance. Preserve
 Custom, exact subpixel geometry, saved-canvas restart, other-platform/device and
 release gaps. The selected blocker remains active at a component-validation
 checkpoint. Update the existing ledger entry and count it in isolation.
+
+Fresh CTE count F8OvUd97Ft/session 9516 at bfab0518 exits zero: 399,894 tokens /
+1,825,498 bytes, SHA-256
+ea5f0bcd19f0450dcc6972e82761b3fb2ec580a929a26438a5fc39ad9f7a23f8.
+Seven controls and the complete input round trip pass. Before/during endpoint
+deltas are zero; the final snapshot has four additions and no removals, retained
+as unattributed external state. The sealed owned tree is kernel-denied IP
+sockets; no pre-existing service is inspected or changed. Exact QEMU/private/RAM
+retirement passes; storage 30.378 seconds, peak 402,849,792 bytes. Capsule
+view-style-ledger-bfab0518.json is 4,774 bytes, SHA-256
+1a70b1e988bd95f38ddbfb51a2c8d6b1fc4d5477b562ce0fa69113b58c5a0f7a.
+All 61 bounded evidence files (1,385,596 bytes) match CTE/TUF. This audit-only
+receipt leaves the counted ledger unchanged; no owned run remains.

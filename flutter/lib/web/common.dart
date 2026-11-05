@@ -3,6 +3,8 @@ import 'dart:html' as html;
 // cycle imports, maybe we can improve this
 import 'package:flutter_hbb/consts.dart';
 
+const presentationTraceEnabled_ = false;
+
 final isAndroid_ = false;
 final isIOS_ = false;
 final isWindows_ = false;

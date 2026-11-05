@@ -139407,37 +139407,6 @@ mutation. `current-linux-ledger-dd21a276.json` is 7,749 bytes, SHA-256
 234e47aed38b737b40cebc9015f3983829d59be1bcbfa815f938eacf00b9b617.
 This audit-only receipt leaves the counted ledger unchanged. No owned run remains.
 
-## 2026-11-05 — R-F5 bandwidth and jitter recovery
-
-Continue the calibrated network-recovery work: bandwidth collapse and delay
-variation remain missing acceptance on the current Linux app. This directly
-advances R-F5 beyond the accepted loss/outage cases; another settings component
-check would not reduce that uncertainty. Input-to-visible recovery remains a
-separate next step because its event-driven source replaces the animated source.
-
-The new `--network-congestion` replay applies 20 seconds each of uniform
-80 +/- 30 ms ingress delay, 32 kbit/s aggregate bandwidth, and their combination.
-The healthy path is 10 Mbit/s without added delay. Root TBF changes rate in place
-above a retained 64-packet netem child. Linux 6.1's
-[TBF implementation](https://github.com/torvalds/linux/blob/v6.1/net/sched/sch_tbf.c)
-uses the current rate at dequeue and preserves its non-FIFO child on change;
-netem rate scheduling instead assigns departure times at enqueue. Restoration
-must preserve queued traffic. The [TBF manual](https://man7.org/linux/man-pages/man8/tc-tbf.8.html)
-also explains that the child replaces the TBF FIFO's byte-limit behavior; the
-child limit and root's at-most-one peeked packet are checked explicitly.
-
-Before application traffic, bounded UDP controls must demonstrate restricted
-delivery, an actual backlog, delivery of every queued datagram after restoration,
-and variable delay. Real-peer readback and sampling retain queue parameters,
-depth, byte and overlimit counters alongside TCP/pixel observations. The bandwidth
-cases require actual throttling and a delivered-byte ceiling. Existing MTU/GSO
-calibration, retained connection/window, 2,500-ms four-fresh-state recovery,
-1,000-ms freshness, three-second follow-up, resource bounds and exact retirement
-remain. No product or app artifact changes. Shell/Python/embedded parsing and
-whitespace checks pass; native compilation/calibration/recovery await execution.
-Random timing remains kernel-controlled; this is a named synthetic profile, not
-an exhaustive real-network, input-response, long-session or cross-platform claim.
-
 ## 2026-11-05 — packet-loss transport and displayed-frame correlation
 
 Previous turn is progress: current Linux compilation, bundle integrity and the
@@ -139592,3 +139561,77 @@ Exact processes/private/RAM retire; peak scratch is 402,821,120 bytes and all th
 endpoint deltas are zero. `packet-size-ledger-a51d45c1.json` is 7,929 bytes,
 SHA-256 8bdc1f62016930c97f0d0df954316062f5c0279f78757328b670dc5fc963f34d.
 This audit-only receipt leaves the counted ledger unchanged. No owned run remains.
+
+## 2026-11-05 — R-F5 bandwidth and jitter recovery
+
+Continue the calibrated network-recovery work: bandwidth collapse and delay
+variation remain missing acceptance on the current Linux app. This directly
+advances R-F5 beyond the accepted loss/outage cases; another settings component
+check would not reduce that uncertainty. Input-to-visible recovery remains a
+separate next step because its event-driven source replaces the animated source.
+
+The new `--network-congestion` replay applies 20 seconds each of uniform
+80 +/- 30 ms ingress delay, 32 kbit/s aggregate bandwidth, and their combination.
+The healthy path is 10 Mbit/s without added delay. Root TBF changes rate in place
+above a retained 64-packet netem child. Linux 6.1's
+[TBF implementation](https://github.com/torvalds/linux/blob/v6.1/net/sched/sch_tbf.c)
+uses the current rate at dequeue and preserves its non-FIFO child on change;
+netem rate scheduling instead assigns departure times at enqueue. Restoration
+must preserve queued traffic. The [TBF manual](https://man7.org/linux/man-pages/man8/tc-tbf.8.html)
+also explains that the child replaces the TBF FIFO's byte-limit behavior; the
+child limit and root's at-most-one peeked packet are checked explicitly.
+
+Before application traffic, bounded UDP controls must demonstrate restricted
+delivery, an actual backlog, delivery of every queued datagram after restoration,
+and variable delay. Real-peer readback and sampling retain queue parameters,
+depth, byte and overlimit counters alongside TCP/pixel observations. The bandwidth
+cases require actual throttling and a delivered-byte ceiling. Existing MTU/GSO
+calibration, retained connection/window, 2,500-ms four-fresh-state recovery,
+1,000-ms freshness, three-second follow-up, resource bounds and exact retirement
+remain. No product or app artifact changes. Shell/Python/embedded parsing and
+whitespace checks pass; native compilation/calibration/recovery await execution.
+Random timing remains kernel-controlled; this is a named synthetic profile, not
+an exhaustive real-network, input-response, long-session or cross-platform claim.
+
+Initial `VA4BzqwV4l` stops before app/driver execution at the foreign-principal
+preflight. Git synchronization with umask 077 left four changed executable
+scripts at 0700. Compare their bytes and tracked 100755 modes, then restore only
+those files to 0755. Use **umask 022 for source synchronization**; evidence/scratch
+creation retains private modes. Preserve the failed receipt and exact inventory,
+then retire 3,369,732 bytes of private files under retained directory descriptors
+after pidfd absence and RAM retirement. Four endpoint deltas are zero; fourteen
+bounded files match CTE/TUF. `congestion-preflight-06180e24.json` binds this repair;
+no confinement check, product source or accepted artifact changes.
+
+The unchanged retry `mACzVFqBQ5` passes in 190.855 capture seconds. Calibration
+delivers four of eight queued datagrams in 642.135 ms at 32 kbit/s, observes four
+remaining packets, then delivers all four in 256.983 ms after restoring speed.
+Sixteen jitter samples span 56.439–106.921 ms. Three real-peer profiles recover
+four fresh states in 557/466/1,670 ms; healthy follow-up maximum ages are
+322/358/368 ms against baseline 325 ms. During impairment maxima are
+441/2,858/2,565 ms. Restricted intervals deliver 79,200 bytes in 20.014 seconds
+and 78,107 in 20.055; overlimit counters advance by 395/300. No queue is deleted
+to restore freshness. All 252 pixel ages are known; 342 transport/queue samples
+retain the connection. Maximum observed root queue is nine packets/6,152 bytes.
+The app adds 236 full-sized packets and no oversized ones. Viewer RSS grows at
+most 4,568 KiB, descriptors remain 45 and threads decrease from 58 to 48.
+
+Exact wrapper/QEMU and captured children are absent by pidfd; private/RAM state
+retires under the shared lock. Peak scratch is 3,023,007,744 bytes. Three endpoint
+deltas are zero; the final snapshot has three unattributed additions, preserved
+without inspecting or mutating foreign processes. The launcher retains kernel
+denial of owned IP sockets. Sixteen records / 1,012,278 bytes match CTE/TUF.
+`congestion-accepted-06180e24.json` is 29,605 bytes, SHA-256
+5e42e9dd92da8b2c88e72956e8d0b15c00b121ff8f0ede6b9c14aba34fe4b89c.
+
+Receipt review catches a copied summary-field typo: the app-manifest digest
+omitted one `f` in this and the three preceding network capsules. Their launch
+commands and authenticated runtime receipts contain the correct 64-character
+digest, independently matched to the retained app-manifest bytes. Original
+records remain unchanged; `network-app-manifest-correction-06180e24.json`
+(2,252 bytes, SHA-256
+16214e5345a18d80f2b69299dabd6e92a85eaa2fee49419c116bafa2650aa567)
+binds each original capsule and the authoritative correction. The accepted
+congestion capsule contains the corrected field and provenance. No rerun is
+needed for this metadata correction. R-F5 input-visible recovery, long-session,
+other workloads/roles/platforms and reproducible timing/tail coverage remain OPEN.

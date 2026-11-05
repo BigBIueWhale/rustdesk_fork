@@ -4100,11 +4100,32 @@ recovery-deadline margin is 152 ms. Connection/window and resource bounds pass.
 Both VMs join and retire RAM scratch (peak at most 3,022,069,760 bytes), with eight
 zero listener deltas. Capsules `packet-size-b7f6275e.json` and
 `packet-size-outages-b7f6275e.json` retain exact source/artifact/observation and
-cleanup evidence on CTE/TUF. Next: calibrated bandwidth/jitter and input-visible
-recovery, followed by long-session evidence. Reproducible loss-sequence/tail
-coverage, other MTUs/offload configurations, bandwidth/jitter, input-visible timing,
-multi-hour sessions and other
-roles/platforms remain OPEN.
+cleanup evidence on CTE/TUF. Reproducible loss-sequence/tail coverage, other
+MTUs/offload configurations and roles/platforms remain OPEN.
+
+**Bandwidth/jitter (`06180e24`) — named Linux recovery scenarios pass.**
+TUF `mACzVFqBQ5` reuses app `2ae08e80`: 20 seconds each of uniform 80 +/- 30 ms
+ingress delay, 32 kbit/s aggregate bandwidth and both together. Healthy conditions
+are 10 Mbit/s with no added delay. Native controls prove actual delay variation,
+throttling and delivery of queued datagrams after restoration; queues persist
+through rate changes. All three cycles retain the same connection/window and
+recover four fresh displayed states in **557/466/1,670 ms**. Healthy follow-up
+maxima are **322/358/368 ms** against a 325-ms baseline, within the unchanged
+2,500-ms recovery and 1,000-ms freshness limits. During-impairment maxima are
+441/2,858/2,565 ms. Actual restricted delivery is 79,200/78,107 bytes over about
+20 seconds; 342 TCP/queue and 252 known-age pixel observations retain bounded
+resources, at most nine queued packets/6,152 bytes and zero oversized app packets.
+The VM retires exact processes/private/RAM state; peak scratch is 3,023,007,744
+bytes. Three endpoint deltas are zero; three unattributed final additions are
+retained without foreign-process inspection or mutation. Owned IP sockets remain
+kernel-denied. Evidence: `congestion-accepted-06180e24.json` on CTE/TUF.
+
+`network-app-manifest-correction-06180e24.json` corrects a one-character omission
+in the summary digest field of the three preceding network capsules; their
+retained launch commands, authenticated runtime receipts and executed artifact
+identity were correct. Next: actual input-to-visible recovery, then multi-hour
+sessions. These synthetic Linux profiles do not close R-F5 or other-platform,
+workload, bandwidth/asymmetry and reproducible timing/tail coverage.
 
 **Current app build and replay prerequisites — accepted Linux artifact.**
 `6b703f35` reconciles the candidate lock with the repository-owned xterm path;

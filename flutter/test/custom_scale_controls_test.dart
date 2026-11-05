@@ -6,7 +6,9 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart' show SessionID;
 import 'package:flutter_hbb/common/widgets/custom_scale_base.dart';
+import 'package:flutter_hbb/common/widgets/toolbar.dart';
 import 'package:flutter_hbb/consts.dart';
+import 'package:flutter_hbb/desktop/widgets/remote_toolbar.dart' show RdoMenuButton;
 import 'package:flutter_hbb/models/input_model.dart';
 import 'package:flutter_hbb/models/model.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -183,7 +185,105 @@ List<Object> _canvasState(_Session session) => [session.canvasModel.x, session.c
   session.canvasModel.scale, session.canvasModel.size, session.canvasModel.viewStyle,
   session.canvasModel.scrollX, session.canvasModel.scrollY, session.inputModel.refreshes];
 
+class _ViewStyleMenu extends StatefulWidget {
+  const _ViewStyleMenu(this.session, this.save, this.failure);
+  final _Session session;
+  final Future<String> Function(SessionID, String) save;
+  final VoidCallback failure;
+
+  @override
+  State<_ViewStyleMenu> createState() => _ViewStyleMenuState();
+}
+
+class _ViewStyleMenuState extends State<_ViewStyleMenu> {
+  late final menu = toolbarViewStyle(context, 'peer', widget.session,
+      loadStyle: widget.session.preferences.viewStyle, saveStyle: widget.save,
+      translateText: (text) => text, showFailure: widget.failure);
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<List<TRadioMenu<String>>>(
+      future: menu,
+      builder: (context, snapshot) => MenuBar(children: [SubmenuButton(
+        child: const Text('Display settings'),
+        menuChildren: [for (final item in snapshot.data ?? <TRadioMenu<String>>[])
+          RdoMenuButton<String>(value: item.value, groupValue: item.groupValue,
+              child: item.child, onChanged: item.onChanged)],
+      )]));
+}
+
+Future<void> _openViewStyle(WidgetTester tester) async {
+  await tester.tap(find.text('Display settings'));
+  await tester.pumpAndSettle();
+  expect(find.text('Scale adaptive'), findsOneWidget);
+}
+
 void main() {
+  for (final transition in ['before selection', 'during save', 'menu removal',
+      'retired before selection', 'retired during save', 'failed save retry']) {
+    testWidgets('view style menu $transition preserves session-owned selection', (tester) async {
+      final session = _Session()..preferences.style = kRemoteViewStyleOriginal;
+      final pending = Completer<String>();
+      final writes = <String>[];
+      var failures = 0;
+      Future<String> save(SessionID id, String value) async {
+        expect(id, session.sessionId);
+        writes.add(value);
+        if (transition == 'failed save retry' && writes.length == 1) {
+          throw StateError('store unavailable');
+        }
+        final effective = await pending.future;
+        session.preferences.style = effective;
+        return effective;
+      }
+      try {
+        await tester.pumpWidget(MaterialApp(home: Scaffold(body:
+            _ViewStyleMenu(session, save, () => failures++))));
+        await tester.pumpAndSettle();
+        await _openViewStyle(tester);
+        final before = _canvasState(session);
+        if (transition == 'before selection') session.imageModel.retirePresentation();
+        if (transition == 'retired before selection') session.current = false;
+        await tester.tap(find.text('Scale adaptive'));
+        await tester.pumpAndSettle();
+        if (transition == 'retired before selection') {
+          expect(writes, isEmpty);
+          expect(_canvasState(session), before);
+          expect(failures, 0);
+          return;
+        }
+        expect(writes, [kRemoteViewStyleAdaptive]);
+        expect(_canvasState(session), before);
+        if (transition == 'during save') session.imageModel.retirePresentation();
+        if (transition == 'retired during save') session.current = false;
+        if (transition == 'menu removal') {
+          await tester.pumpWidget(const SizedBox());
+        }
+        if (transition == 'failed save retry') {
+          expect(failures, 1);
+          expect(session.preferences.style, kRemoteViewStyleOriginal);
+          await _openViewStyle(tester);
+          await tester.tap(find.text('Scale adaptive'));
+          await tester.pumpAndSettle();
+          expect(writes, [kRemoteViewStyleAdaptive, kRemoteViewStyleAdaptive]);
+        }
+        pending.complete(kRemoteViewStyleAdaptive);
+        await tester.pumpAndSettle();
+        if (transition == 'retired during save') {
+          expect(_canvasState(session), before);
+        } else {
+          expect(session.canvasModel.viewStyle, kRemoteViewStyleAdaptive);
+          expect(session.canvasModel.scale, greaterThan(1));
+          expect(session.inputModel.refreshes, 1);
+        }
+        expect(failures, transition == 'failed save retry' ? 1 : 0);
+        expect(tester.takeException(), isNull);
+      } finally {
+        if (!pending.isCompleted) pending.complete(kRemoteViewStyleAdaptive);
+        await _finish(tester, [session]);
+      }
+    });
+  }
+
   for (final (language, failure, retry, direction, textScale) in [
     ('English', 'Failed', 'Retry', TextDirection.ltr, 2.0),
     ('German', 'Fehlgeschlagen', 'Erneut versuchen', TextDirection.ltr, 1.5),

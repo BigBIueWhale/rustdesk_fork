@@ -9366,7 +9366,7 @@ else
             'focused Flutter image-quality receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=13 tests=341 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined" \
+            "FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=13 tests=347 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined" \
             'focused Flutter auto-disconnect timeout receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
         require_exact_fixed_receipt \
@@ -9419,7 +9419,7 @@ else
             'focused Flutter restart dialog receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = custom-scale ]; then
         require_exact_fixed_receipt \
-            "FLUTTER_CUSTOM_SCALE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=42 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-custom-scale-tests cleanup=joined" \
+            "FLUTTER_CUSTOM_SCALE_TESTS_VM=pass commit=$FLUTTER_SOURCE_COMMIT tree=$FLUTTER_SOURCE_TREE suites=1 tests=48 flutter=$FLUTTER_VERSION frb=$SHA256_FLUTTER_PEER_FRB_CODEGEN cargo_vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 pub_cache=$SHA256_PUB_CACHE_CLOSURE_V1 builder_index=$DEB_BUILDER_IMAGE_ID builder_runtime=$DEB_BUILDER_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-custom-scale-tests cleanup=joined" \
             'focused Flutter custom scale receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = trackpad-speed ]; then
         require_exact_fixed_receipt \

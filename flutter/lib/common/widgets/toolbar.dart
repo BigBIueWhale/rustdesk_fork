@@ -339,43 +339,55 @@ Future<bool> selectSessionScrollStyle(String? value, {
 }
 
 Future<List<TRadioMenu<String>>> toolbarViewStyle(
-    BuildContext context, String id, FFI ffi) async {
+    BuildContext context, String id, FFI ffi, {
+    Future<String?> Function(SessionID)? loadStyle,
+    Future<String> Function(SessionID, String)? saveStyle,
+    String Function(String) translateText = translate,
+    VoidCallback? showFailure,
+}) async {
   final canvas = ffi.canvasModel;
   final owner = canvas.captureUpdateOwner();
   bool current() => context.mounted && owner != null && owner.isCurrent;
   if (!current()) return [];
   late final String groupValue;
   try {
-    final loaded = await bind.sessionGetViewStyle(sessionId: owner!.sessionId);
+    final loaded = await (loadStyle?.call(owner!.sessionId) ??
+        bind.sessionGetViewStyle(sessionId: owner!.sessionId));
     if (!current()) return [];
     if (loaded == null) throw StateError('Session is unavailable');
     groupValue = loaded;
   } catch (error) {
     debugPrint('Failed to load view style: $error');
-    if (current()) showToast(translate('Failed'));
+    if (current()) {
+      if (showFailure != null) {
+        showFailure();
+      } else {
+        showToast(translate('Failed'));
+      }
+    }
     return [];
   }
   onChanged(String? value) async {
     await selectSessionViewStyle(value,
-      saveStyle: (value) => bind.sessionSetViewStyle(
-          sessionId: owner!.sessionId, value: value),
+      saveStyle: (value) => saveStyle?.call(owner!.sessionId, value) ??
+          bind.sessionSetViewStyle(sessionId: owner!.sessionId, value: value),
       updateCanvas: () => canvas.updateViewStyle(owner: owner),
-      isCurrent: current);
+      isCurrent: current, showFailure: showFailure);
   }
 
   return [
     TRadioMenu<String>(
-        child: Text(translate('Scale original')),
+        child: Text(translateText('Scale original')),
         value: kRemoteViewStyleOriginal,
         groupValue: groupValue,
         onChanged: onChanged),
     TRadioMenu<String>(
-        child: Text(translate('Scale adaptive')),
+        child: Text(translateText('Scale adaptive')),
         value: kRemoteViewStyleAdaptive,
         groupValue: groupValue,
         onChanged: onChanged),
     TRadioMenu<String>(
-        child: Text(translate('Scale custom')),
+        child: Text(translateText('Scale custom')),
         value: kRemoteViewStyleCustom,
         groupValue: groupValue,
         onChanged: onChanged)

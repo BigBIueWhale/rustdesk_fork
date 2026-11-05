@@ -500,6 +500,12 @@ RESTART_DIALOG_TESTS = {
 }
 
 CUSTOM_SCALE_TESTS = {
+    "view style menu before selection preserves session-owned selection",
+    "view style menu during save preserves session-owned selection",
+    "view style menu menu removal preserves session-owned selection",
+    "view style menu retired before selection preserves session-owned selection",
+    "view style menu retired during save preserves session-owned selection",
+    "view style menu failed save retry preserves session-owned selection",
     "custom scale English failure fits and remains retryable",
     "custom scale German failure fits and remains retryable",
     "custom scale Hebrew failure fits and remains retryable",

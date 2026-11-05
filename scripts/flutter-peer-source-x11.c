@@ -114,7 +114,8 @@ static int state_code_bar_is_white(uint32_t state, unsigned int row, unsigned in
 
 static int root_state_code_matches(Display *display, Window root, const Visual *visual,
                                    uint32_t state, unsigned int width,
-                                   unsigned int code_height, unsigned int origin_x) {
+                                   unsigned int code_height, unsigned int origin_x,
+                                   unsigned int code_top) {
     unsigned int row, bar;
     for (row = 0U; row < STATE_CODE_ROWS; ++row) {
         for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
@@ -123,7 +124,7 @@ static int root_state_code_matches(Display *display, Window root, const Visual *
             const uint8_t *color =
                 state_code_bar_is_white(state, row, bar) != 0 ? code_white : code_black;
             if (!root_pixel_matches(display, root, (int)(origin_x + x),
-                                    (int)((row * 2U + 1U) * code_height /
+                                    (int)(code_top + (row * 2U + 1U) * code_height /
                                           (STATE_CODE_ROWS * 2U)),
                                     rgb_pixel(visual, color))) {
                 return 0;
@@ -254,7 +255,7 @@ int main(int argc, char **argv) {
     ResponseInput response = {0};
     int input_response = 0, interactive = 0, response_ready = 0;
     const char *response_directory = NULL;
-    unsigned int code_height;
+    unsigned int code_height, code_top = 0U;
     unsigned int texture_top;
     const char *trace_value = getenv("RUSTDESK_PRESENTATION_TRACE");
     int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
@@ -266,11 +267,15 @@ int main(int argc, char **argv) {
         frame_interval_ms = 33U;
     } else if (argc == 2 && strcmp(argv[1], "--two-monitors") == 0) {
         monitors = 2U;
+    } else if (argc == 2 && strcmp(argv[1], "--inset-counter") == 0) {
+        /* Keep the counter below the viewer's collapsed toolbar handle when
+         * Adaptive removes the top letterbox. Midpoint palette probes stay clear. */
+        code_top = SOURCE_HEIGHT / 10U;
     } else if (argc == 3 && strcmp(argv[1], "--input-response") == 0) {
         input_response = 1;
         response_directory = argv[2];
     } else if (argc != 1) {
-        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd|--two-monitors|--input-response DIRECTORY]\n", stderr);
+        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd|--two-monitors|--inset-counter|--input-response DIRECTORY]\n", stderr);
         return 1;
     }
     if (getrlimit(RLIMIT_FSIZE, &output_limit) != 0) {
@@ -431,7 +436,7 @@ int main(int argc, char **argv) {
                     state_code_bar_is_white(frame, row, bar) != 0 ? code_white : code_black;
                 XSetForeground(display, graphics, rgb_pixel(visual, color));
                 XFillRectangle(display, back_buffer, graphics, (int)start,
-                               (int)(row * code_height / STATE_CODE_ROWS),
+                               (int)(code_top + row * code_height / STATE_CODE_ROWS),
                                end - start, code_height / STATE_CODE_ROWS);
             }
         }
@@ -456,7 +461,8 @@ int main(int argc, char **argv) {
             !root_pixel_matches(display, root, (int)(origin_x + source_width * 3U / 4U),
                                 (int)(source_height / 2U),
                                 rgb_pixel(visual, palette[high])) ||
-            !root_state_code_matches(display, root, visual, frame, source_width, code_height, origin_x)) {
+            !root_state_code_matches(display, root, visual, frame, source_width, code_height,
+                                     origin_x, code_top)) {
             fprintf(stderr, "FLUTTER_PEER_SOURCE_FAIL source window occluded frame=%u\n", frame);
             exit_status = 1;
             break;

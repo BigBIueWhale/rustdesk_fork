@@ -1196,6 +1196,7 @@ PY
       /out/test-x11-monitor-topology prepare
     fi
     source_args=()
+    [ "$PEER_SCENARIO" != view-scaling ] || source_args+=(--inset-counter)
     [ "$TWO_MONITORS" -eq 0 ] || source_args+=(--two-monitors)
     [ "$INPUT_RESPONSE" -eq 0 ] || source_args+=(--input-response "$COORD")
     set -o noclobber

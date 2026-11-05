@@ -3034,11 +3034,6 @@ static int exercise_mouse_input(Display *source, Display *display,
     for (unsigned int i = 0U; i < 9U; ++i) if (mapping[i] != i + 1U) return -1;
     if (XGetPointerMapping(display, mapping, sizeof(mapping)) < 9) return -1;
     for (unsigned int i = 0U; i < 9U; ++i) if (mapping[i] != i + 1U) return -1;
-    /* Cursor-position notifications drive the viewer's local-user handoff. */
-    if (quality_toolbar((unsigned int)viewer->pid) != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Display settings") != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Show remote cursor") != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Hide toolbar") != 0) return -1;
     if (return_focus_with_pointer(display, viewer) != 0 || sleep_millis(250U) != 0 ||
         !XTranslateCoordinates(display, viewer->window,
             RootWindow(display, DefaultScreen(display)),
@@ -3063,6 +3058,21 @@ static int exercise_mouse_input(Display *source, Display *display,
         ViewerWindow current = {0};
         Window focus;
         int revert;
+        if (cases[i].action == MOUSE_TAKEOVER) {
+            /* Keep prior controls unchanged. Enable position notifications for this
+               handoff and let the cursor subscription's initialization grace expire. */
+            XSelectInput(source, root, NoEventMask);
+            XSync(source, False);
+            if (quality_toolbar((unsigned int)viewer->pid) != 0 ||
+                activate_named_control((unsigned int)viewer->pid, "Display settings") != 0 ||
+                activate_named_control((unsigned int)viewer->pid, "Show remote cursor") != 0 ||
+                activate_named_control((unsigned int)viewer->pid, "Hide toolbar") != 0 ||
+                return_focus_with_pointer(display, viewer) != 0 || sleep_millis(2300U) != 0)
+                goto finished;
+            XSelectInput(source, root, ButtonPressMask | ButtonReleaseMask | PointerMotionMask);
+            XSync(source, False);
+            start = monotonic_millis();
+        }
         if (focus_sink != None) {
             if (cases[i].action != MOUSE_REENTER) goto finished;
             XRaiseWindow(display, viewer->window);
@@ -3130,7 +3140,7 @@ static int exercise_mouse_input(Display *source, Display *display,
             XSync(display, False);
             uint64_t protected_start = monotonic_millis();
             do {
-                int observed_x, observed_y;
+                int observed_x = -1, observed_y = -1;
                 if (mouse_snapshot(source, &observed_x, &observed_y, &mask) != 0 ||
                     observed_x != end_x || observed_y != end_y || mask != bit ||
                     !mouse_buttons_match(source, button) ||

@@ -141976,3 +141976,14 @@ this handoff correction is not established as their cause. Evidence covers
 ordinary-user Linux X11/Xvfb, not physical input, installed privilege boundaries,
 other platforms, long-session reliability or full release acceptance. Replace
 the existing mouse ledger entry and obtain a fresh isolated token count.
+
+CTE WaVKX7dh5m/session 95043 at f0ae1eb0 exits zero: 399,860 tokens,
+1,825,478 bytes, SHA-256
+15387189b8fc9a9a26543e3c8361dd60e1e27d9ab107acf02c2094749142120d.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and round trip
+pass. Three endpoint deltas are zero; QEMU/private/RAM retire. Storage takes
+30.463 seconds, peak 402,849,792 bytes. Capsule
+mouse-takeover-ledger-f0ae1eb0.json: 4,779 bytes, SHA-256
+d659bd1ccb3573350d68736efb23dc06a8fce4ad2d1e1d8c89caad1cdffc64b6.
+All 134 bounded evidence files (3,846,332 bytes) match CTE/TUF; no owned run
+remains. This receipt leaves the counted ledger unchanged.

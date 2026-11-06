@@ -142641,3 +142641,13 @@ Five endpoint deltas are zero. QEMU 1386443, private state and RAM workspace
 `run.2vommog4` are absent under the shared-lock reconciliation. Storage lifetime
 is 1,346.241 seconds; peak RAM scratch is 4,507,656,192 bytes. All eleven bounded
 evidence files match CTE/TUF (259,219 bytes). Fresh ledger counting follows.
+
+Final count at `774d8d62`, CTE `6APx9s4IwT`: 399,936 tokens / 1,825,933
+bytes, input SHA-256 5b865425d504ad2b7ef53e1ffabca3a4bdf81f5b63a06a03944ecfce3487e8e1.
+The pinned tokenizer, seven controls and whole-input byte round trip pass.
+Capsule `android-audio-fixture-ledger-774d8d62.json`, SHA-256
+d532cd647307053059bfd2054debe57fa312dd81a239ee06df59dd1067b09d00.
+The 31.251-second count retires QEMU/private/RAM with three zero endpoint deltas
+and 402,874,368-byte peak scratch. All eight count evidence files match CTE/TUF
+(116,878 bytes). This audit-only receipt preserves the counted ledger. The
+intervening status-answer turn supplied no new implementation or runtime evidence.

@@ -143703,3 +143703,18 @@ the actual publication block for all six extension modes and the actual outer
 checker, preserving input records and refusing absent, duplicate and wrong-hash
 receipts. Its isolated execution and complete wrapper replay follow; no app or
 peer rebuild is needed. Full release acceptance remains open.
+
+At `89acab37`, TUF `Ju4bNckxzH` passes all six publication modes and three
+outer-checker refusals, preserving every selected input record. The existing
+source-workload and native X11/frame/input controls also pass; outer elapsed time
+is 79 seconds. `android-input-receipts-native-89acab37.json` binds 83.105 seconds,
+3,786,633,216-byte peak RAM scratch, three zero endpoint deltas and exact retirement.
+
+CTE `7mo57Ch1SA` counts the updated ledger at **401,542 tokens** / 1,832,814
+bytes, SHA-256 `28d3c08cd92750eb98dc677563213a4724d3127fbc45d56cd25ed75da26e0a02`.
+The pinned method, seven controls and whole-input round trip pass.
+`android-input-receipts-ledger-89acab37.json` binds 30.344 seconds, 402,993,152-byte
+peak scratch, three zero endpoint deltas and exact retirement. Seventeen files /
+236,383 bytes match both hosts. This audit-only receipt preserves the counted
+ledger. Complete same-APK wrapper acceptance is the next check; the guest recovery
+observations above remain valid within their recorded scope.

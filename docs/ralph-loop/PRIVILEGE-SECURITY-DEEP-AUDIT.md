@@ -144253,3 +144253,13 @@ Retain the accepted password baseline `d1bf0877`, reference `7e6f6459` and unfin
 `0ccb2a7e`. The four-generation limit and canonical offline inputs are unchanged.
 Native build/installed acceptance and the repaired focused wrapper's outer pass
 remain OPEN.
+
+Full build `YXvStzmA3O` at `d365011d` fails in `hbb_common`: the new derivation
+error branch uses an unimported `bail!`, followed by a cascading type error.
+Use the file's existing `return Err(anyhow!(...))` form. This preserves the intended
+distinction between derivation failure and policy refusal. No artifact is published.
+`password-outcome-build-d365011d.json` retains 405.704 seconds, 9,505,812,480-byte
+peak RAM scratch, four zero endpoint deltas and exact QEMU/private/RAM retirement.
+Its scope initially misdiagnosed a local macro; the bound `.correction.json` records
+the actual missing-import diagnostic. Ten files / 143,647 bytes match CTE/TUF.
+The failure precedes full native acceptance; rebuild the corrected application.

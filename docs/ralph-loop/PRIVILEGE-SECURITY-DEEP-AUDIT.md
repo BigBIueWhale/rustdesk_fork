@@ -144098,3 +144098,12 @@ and persistence/restart, cancellation during authorization, and preserving disti
 denied/failed/uncertain outcomes through the native/Flutter API. Existing CLI/native
 passes remain valid at their own artifacts; they do not substitute for those GUI
 conditions. Full R-S0, platform/package and release acceptance remain OPEN.
+
+At `48b1774d`, CTE `k5u4IzbqOG` verifies the updated whole ledger at **402,122
+tokens** / 1,835,448 bytes, SHA-256
+`f815fc3269dfbf3ea938aa1add971fecbf995efdeaa26edbc32f5b7664830fce`.
+The fixed tokenizer, seven controls and whole-input round trip pass.
+`installed-settings-ledger-48b1774d.json` binds 30.652 seconds, 403,005,440-byte
+peak RAM scratch, three zero endpoint deltas and exact QEMU/private/RAM retirement.
+Eight files / 115,146 bytes match both hosts. This audit-only receipt leaves the
+counted ledger unchanged; whole-document classification/compression remains OPEN.

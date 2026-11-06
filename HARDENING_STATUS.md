@@ -4035,6 +4035,22 @@ Capsule: `android-input-latency-74da2653.json`; fixture controls and failed atte
 remain in the audit. Impaired-input recovery, multi-hour/physical/other-role
 acceptance, application handle bounds and full R-F5 remain OPEN.
 
+**Flutter keyboard ordering — component correction accepted; Android replay OPEN.**
+The later `092364cd` recovery run fails before any outage: requests 0–86 pass,
+then request 87 receives `f` where its second `a` is required. This is a sequence
+discrepancy; its complete end-to-end cause remains unproved. `e32ca442` changes
+the three keyboard exports and modifier cleanup to synchronous bridge admission,
+preserving native ownership/epoch checks and the bounded asynchronous transport.
+Fresh bindings pass all 126 Flutter input cases. At `279c9020`, all twelve native
+keyboard-owner tests pass, including four CPace-keyed wire events, and the actual
+Dart/native bridge preserves twelve ownership/refusal controls: nine synchronous
+errors and three asynchronous round errors. The two option tests and ninety
+bridge cases also pass. Capsules: `android-input-sequence-092364cd.json`,
+`keyboard-order-model-e32ca442.json`, `keyboard-order-native-279c9020.json`.
+The first native attempt stopped on stale test-client return types; its corrected
+retry passes. The rebuilt Android application must still pass the unchanged
+sequence and outage scenario; multi-hour/device/other-platform R-F5 stays OPEN.
+
 `bedd34b9` integrates the receiver-ingress impairment with the exact retained
 `5d8cf83a` app and existing pixel observer. The guest-only supervisor retains
 the server pidfd/network-namespace descriptor; peers remain unprivileged.

@@ -143557,3 +143557,43 @@ binds all diagnostics, 221.245 seconds, 6,304,833,536-byte peak scratch, four ze
 endpoint deltas and joined QEMU/private/RAM retirement. Retry only the failed
 native lane after this test-client correction; the passing Flutter suite needs
 no repeat. Android replay and full release acceptance remain open.
+
+### 2026-11-06 — native keyboard bridge acceptance and Android build preparation
+
+The preceding turn made progress: the product correction, passing Flutter suite,
+test-client correction and native retry were completed or started. This turn
+continues that exact live job, without a duplicate launch. TUF `6IJ5c7E0uo`
+at `279c9020` exits zero in 458 outer seconds. The fresh generated Dart client
+compiles; all twelve native keyboard tests and two option tests pass. Four
+keyboard events traverse actual CPace-keyed TCP with joined writers. All ninety
+generated-Dart/native-library cases pass, including the twelve keyboard refusal
+controls and valid owner cleanup. Nine errors return synchronously with the
+expected `EXECUTE_SYNC`/`RESULT_ERROR` envelope; the three round queries retain
+their asynchronous errors. This does not exercise connected Android input.
+
+Native test artifact SHA-256 is
+`402972df512999eaa52a4ba3f21859d04388554481d98a1d326f0107fcb98f3e`;
+the actual bridge library is
+`c16868aa15a342eb8eb90245b6909384de27bf9b7eaf26619473a05cbedb445e`.
+`keyboard-order-native-279c9020.json` (10,167 bytes, SHA-256
+`6ca9be1f5fce1048cf704cd47ccf076626dc5e95fe584ffea82ce1f95aff19d9`)
+binds the complete native output, 462.805-second storage lifetime,
+6,310,928,384-byte peak RAM scratch, four zero endpoint deltas and exact
+QEMU/private/RAM retirement. Product and source refs were frozen through finality.
+
+The superseded `f372aacf` app/instrumentation APKs and sidecars match their original
+build hashes and exact retained file identities. Both copies are retired through
+the existing descriptor-based private-tree remover: 48,402,037 bytes per host.
+The first CTE preflight refused before mutation because the current `9b22f10f`
+baseline is retained only on TUF; both TUF APK hashes were then reverified.
+That baseline, newer comparison artifacts, canonical build inputs and historical
+evidence remain. `keyboard-apk-retired-f372aacf-{cte,tuf}` inventories/receipts
+record the exact deletions. Fourteen native/retirement evidence files totaling
+111,972 bytes match both hosts. TUF now has space within its four-generation cap
+for the corrected application.
+
+The ledger records the sequence failure and limited component acceptance; its
+fresh isolated count follows. Then build one current test-only Android APK using
+`--android-emulator-app` and replay the unchanged `--input-recovery` scenario
+against retained peer `4c29a59f`. No source fixture, input sequence, timing limit
+or network-recovery requirement is weakened. Full R-F5 and release remain open.

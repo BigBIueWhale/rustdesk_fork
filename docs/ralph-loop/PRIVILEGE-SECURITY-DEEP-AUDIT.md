@@ -142723,3 +142723,33 @@ The pinned tokenizer, seven controls and whole-input round trip pass. Capsule
 The 31.313-second count joins QEMU/private/RAM retirement, with three zero
 endpoint deltas and 402,874,368-byte peak scratch. Its eight evidence files match
 CTE/TUF. This audit-only receipt preserves the counted ledger.
+
+## 2026-11-06 — corrected VPX peer replay; initial prompt prerequisite
+
+The preceding status-only turn is no progress. This continuation selects the pending
+R-F5 application replay over a new unrelated correction, reusing the retained
+`794a8d73` Linux peer and `9b22f10f` Android APK. Required instructions, authority
+sections, R-S0/R-F1/R-F5, current ledger and affected source paths were reviewed.
+TUF `JasQk6scF9` exits 1 before viewer authentication: the hierarchy contains the
+exact missing-credential reason and focused password field but no visible title.
+The initial prompt waits 240,840 ms; all connection-attempt deltas remain zero.
+Android controlled-side correct/wrong credentials and directory reply pass.
+No encoder or viewer-lifecycle acceptance follows from this failed preparation.
+
+The driver's one keyboard-reveal attempt previously required an already visible
+title. It now also permits that one Back action when the exact reason and unique
+focused password field are present; subsequent title/reason and network checks
+remain mandatory. Android documents Back as an ordinary keyboard-dismissal action:
+https://developer.android.com/develop/ui/views/touch-and-input/keyboard-input/visibility.
+This is a harness correction, with shell syntax and whitespace checks passed;
+actual disclosure of the title and the peer replay remain pending.
+
+The 568.365-second VM joins, its 4,506,910,720-byte peak RAM scratch retires,
+and all five endpoint deltas are zero. Under the shared lock, QEMU absence and
+private/RAM identities are reconciled; bounded diagnostics are retained before
+exact private-tree removal. All twelve evidence files match CTE/TUF (230,928 bytes).
+`vpx-peer-prompt-64c093c9.json`, SHA-256
+6ed0670e5923548c3994c574ec2916d3471c3454b2278834e2d1a57365de5375,
+binds the failure and cleanup. Its complete logs supersede truncated tool output.
+No live instruction file changed. Final-static-frame delivery after dropping,
+release codec/device execution and full R-F5 remain open.

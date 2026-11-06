@@ -3506,13 +3506,17 @@ wait_peer_initial_credential_prompt() {
                     "$PEER_MISSING_CREDENTIAL_REASON"; then
                 break
             fi
-            if [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
-               && [ "$reveal_attempted" -eq 0 ]; then
+            if [ "$reveal_attempted" -eq 0 ] \
+               && { [[ "$title" =~ ^[0-9]+\ [0-9]+$ ]] \
+                    || { ui_has_credential_reason_semantics \
+                             "$PEER_MISSING_CREDENTIAL_REASON" \
+                         && ui_center focused-password-field >/dev/null 2>&1; }; }; then
                 reveal_attempted=1
                 timeout --signal=TERM --kill-after=2s 10s \
                     "$ADB" -s "$SERIAL" shell input keyevent \
                     KEYCODE_BACK >/dev/null \
                     || return 1
+                printf 'ANDROID_PEER_INITIAL_CREDENTIAL_REVEAL=attempted action=back title_required_after=true\n'
                 sleep 0.5
             fi
         fi

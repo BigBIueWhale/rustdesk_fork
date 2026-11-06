@@ -144032,3 +144032,17 @@ separates the configuration, font directories and match rules. Before GUI startu
 the ordinary desktop runs the same pinned `fc-match` binary and must select a
 readable installed DejaVu font. This is a runtime projection correction, not an
 application font or UI change; the actual workflow is still to be observed.
+
+`gYn75k6yOU` selects the pinned DejaVu Sans font, restores text and passes real
+Settings/Security navigation and password-dialog opening. The root controller
+independently observes unchanged credential bytes and service child. Filling stops
+before typing: the generic named-control lookup finds the background Password
+heading, while the dialog's empty password fields report VISIBLE and zero SHOWING.
+The screenshot proves those fields are on screen. Select exactly one editable,
+enabled, sensitive, focusable password-role node inside the Alert scope, retain
+PID/tree/deadline bounds, request native accessibility focus and observe FOCUSED
+before actual XTest keystrokes. Existing ordinary named-control queries retain
+their SHOWING requirement. Masked character counts remain the entry oracle.
+`installed-settings-fonts-f00fba8c.json` binds 66.099 seconds, 3,818,848,256-byte
+peak RAM scratch, four zero endpoint deltas and exact retirement. Ten files /
+264,772 bytes match both hosts. Full workflow acceptance remains OPEN.

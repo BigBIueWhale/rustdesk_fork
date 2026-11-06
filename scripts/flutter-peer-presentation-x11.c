@@ -132,6 +132,7 @@ typedef struct {
     const AtspiRect *bounds;
     int focused_text;
     int name_fragment;
+    int password_text;
 } NamedControlScan;
 
 static int sleep_millis(unsigned int millis) {
@@ -560,7 +561,7 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
         return named_control_refusal(scan, "states-unavailable", depth, NULL);
     }
     if (atspi_state_set_contains(states, ATSPI_STATE_VISIBLE) &&
-        atspi_state_set_contains(states, ATSPI_STATE_SHOWING)) {
+        (atspi_state_set_contains(states, ATSPI_STATE_SHOWING) || scan->password_text)) {
         name = atspi_accessible_get_name(accessible, &error);
         if (error != NULL) {
             g_object_unref(states);
@@ -574,6 +575,19 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
             int matches = scan->focused_text == 0 &&
                 (scan->name_fragment ? strstr(name, scan->name) != NULL
                                      : strcmp(name, scan->name) == 0);
+            if (matches && scan->password_text) {
+                AtspiRole role = atspi_accessible_get_role(accessible, &error);
+                if (error != NULL) {
+                    g_free(name);
+                    g_object_unref(states);
+                    return named_control_refusal(scan, "password-role-query", depth, error);
+                }
+                matches = role == ATSPI_ROLE_PASSWORD_TEXT &&
+                    atspi_state_set_contains(states, ATSPI_STATE_EDITABLE) &&
+                    atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
+                    atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
+                    atspi_state_set_contains(states, ATSPI_STATE_FOCUSABLE);
+            }
             if (scan->focused_text && atspi_state_set_contains(states, ATSPI_STATE_FOCUSED) &&
                 atspi_state_set_contains(states, ATSPI_STATE_EDITABLE)) {
                 AtspiRole role = atspi_accessible_get_role(accessible, &error);
@@ -651,10 +665,11 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
 
 static int query_accessible_once(unsigned int expected_pid, const char *name, uint64_t deadline,
                               AtspiAccessible **match, int dialog_caption, int text_content,
-                              const AtspiRect *bounds, int focused_text, int name_fragment) {
+                              const AtspiRect *bounds, int focused_text, int name_fragment,
+                              int password_text) {
     NamedControlScan scan = {.name = name, .deadline = deadline, .dialog_caption = dialog_caption,
                             .text_content = text_content, .bounds = bounds, .focused_text = focused_text,
-                            .name_fragment = name_fragment};
+                            .name_fragment = name_fragment, .password_text = password_text};
     AtspiAccessible *desktop;
     GError *error = NULL;
     gint children;
@@ -715,7 +730,7 @@ static int query_accessible_with_focus(unsigned int expected_pid, const char *na
                               const AtspiRect *bounds, int focused_text, int name_fragment) {
     while (monotonic_millis() < deadline) {
         int status = query_accessible_once(expected_pid, name, deadline, match,
-            dialog_caption, text_content, bounds, focused_text, name_fragment);
+            dialog_caption, text_content, bounds, focused_text, name_fragment, 0);
         if (status != 1) return status;
         fprintf(stderr, "FLUTTER_PEER_CONTROL_TREE_CHANGED control=\"%s\" incomplete=discarded\n", name);
         if (sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) return -1;

@@ -84,19 +84,37 @@ static int settings_visible(unsigned int pid, const char *name, int present) {
     return -1;
 }
 
-static int settings_password(Display *display, Window main, unsigned int pid, const char *name) {
+static int settings_password(Display *display, unsigned int pid, const char *name) {
     static const char password[] = "InstalledGui2026";
     AtspiAccessible *field = NULL;
     AtspiText *text = NULL;
     GError *error = NULL;
     int result = -1;
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-    if (query_named_accessible(pid, name, deadline, &field, 0) != 0 || field == NULL ||
+    int found;
+    do {
+        found = query_accessible_once(pid, name, deadline, &field, 1, 0, NULL, 0, 0, 1);
+        if (found == 1 && sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
+    } while (found == 1 && monotonic_millis() < deadline);
+    if (found != 0 || field == NULL ||
         atspi_accessible_get_role(field, &error) != ATSPI_ROLE_PASSWORD_TEXT || error != NULL)
         goto out;
     text = atspi_accessible_get_text_iface(field);
-    if (text == NULL || click_main_control(display, main, pid, name) != 0)
-        goto out;
+    if (text == NULL) goto out;
+    AtspiComponent *component = atspi_accessible_get_component_iface(field);
+    if (component == NULL) goto out;
+    gboolean focused = atspi_component_grab_focus(component, &error);
+    g_object_unref(component);
+    if (!focused || error != NULL) goto out;
+    for (;;) {
+        atspi_accessible_clear_cache(field);
+        AtspiStateSet *states = atspi_accessible_get_state_set(field);
+        if (states == NULL) goto out;
+        focused = atspi_state_set_contains(states, ATSPI_STATE_FOCUSED);
+        g_object_unref(states);
+        if (focused) break;
+        if (monotonic_millis() >= deadline || sleep_millis(50U) != 0) goto out;
+    }
     KeyCode control = XKeysymToKeycode(display, XK_Control_L);
     KeyCode shift = XKeysymToKeycode(display, XK_Shift_L);
     if (control == 0U || shift == 0U ||
@@ -190,8 +208,8 @@ int main(int argc, char **argv) {
         if (activate_named_control(pid, "Set permanent password") != 0 ||
             settings_visible(pid, "Set password", 1) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "submit") == 0 || strcmp(argv[2], "fill") == 0) {
-        if (settings_password(display, main, pid, "Password") != 0 ||
-            settings_password(display, main, pid, "Confirmation") != 0) goto atspi_out;
+        if (settings_password(display, pid, "Password") != 0 ||
+            settings_password(display, pid, "Confirmation") != 0) goto atspi_out;
         if (strcmp(argv[2], "submit") == 0 && activate_named_control(pid, "OK") != 0)
             goto atspi_out;
     } else if (strcmp(argv[2], "denied") == 0) {

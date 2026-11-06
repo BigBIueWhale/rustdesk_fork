@@ -143374,3 +143374,17 @@ and explicitly armed pauses, instead of four, so the former accumulated-copy
 queue exceeds that same limit. Its warm-up has a fifteen-second bound; all later
 response, quiet, resume and cleanup limits remain. Native acceptance and the
 retained-artifact Android measurement are pending. Product code is unchanged.
+
+CTE `ApnjLaHnjC` at `663c8425` passes the strengthened complete native lane
+in 142 outer seconds. Full-HD input begins after at least 256 ordinary frames;
+unarmed input, 256 exact responses, held/partial/quiet controls, request 257 on
+reentry, incomplete-resume refusal and the original small-source/frame-oracle
+checks pass. Source/oracle copies build identically. Capsule
+`input-copy-fixture-663c8425.json`, SHA-256
+`118471557b55ccc8fb7cba21cc2669e3bb1bbd77f0c9fc870f5a9752070e2169`,
+binds the 146.490-second storage lifetime, 3,849,441,280-byte peak scratch,
+three zero endpoint deltas and independent QEMU/private/RAM absence.
+All eight files / 109,575 bytes match CTE/TUF. The ledger now records the current
+fixture acceptance and the still-unmeasured Android input result; a fresh isolated
+count is pending. Next retry the same APK `9b22f10f` / peer `4c29a59f` with
+`--input-latency`. No application rebuild is needed. The full goal remains active.

@@ -4019,14 +4019,16 @@ also pass. VM/private/RAM retirement and all five listener deltas pass. Capsule:
 Android emulator connection. Repeated/multi-hour impairment, direct mobile/radio,
 input-to-visible response, physical/other-role targets and full R-F5 remain OPEN.
 
-**Android input-latency prerequisite (`d4f42bc5`) — Full-HD native fixture accepted.**
-CTE `KYQ8XOpJN5` observes 256 numbered keyboard responses in actual X11 pixels,
-stable no-input/held/partial controls, resumed animation and request 257 after
-reentry. An incomplete request refuses resumption. Existing small-source duplicate
-refusal and frame-oracle controls pass; exact processes/RAM retire with three zero
-listener deltas. Capsule: `fullhd-input-fixture-d4f42bc5.json`. This enables the
-retained Android workload's input measurement; no Android/product execution or
-input-latency acceptance is claimed. Full R-F5 remains OPEN.
+**Android input latency — fixture corrected; measurement OPEN.**
+The retained-app attempts pass eight static cases but stop before input: ordinary
+pauses initially enable responses, then unused per-copy X11 notifications exhaust
+the 128-event budget. Explicit arming and disabled copy notifications correct the
+fixture. CTE `ApnjLaHnjC` at `663c8425` passes at least 256 animated warm-up frames,
+unarmed-input stability, 256 actual-pixel responses, held/partial controls, resumed
+animation, request 257 on reentry and incomplete-resume refusal. Existing small-source
+and frame-oracle checks pass. Exact processes/RAM retire with three zero listener
+deltas. Capsule: `input-copy-fixture-663c8425.json`; the audit retains failed Android
+runs and prior fixture evidence. Android input-to-visible and full R-F5 remain OPEN.
 
 `bedd34b9` integrates the receiver-ingress impairment with the exact retained
 `5d8cf83a` app and existing pixel observer. The guest-only supervisor retains

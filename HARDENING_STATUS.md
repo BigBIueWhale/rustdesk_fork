@@ -7383,12 +7383,10 @@ maximum content age across lifecycle phases is 1,158 ms. Thirteen lifecycle reso
 samples have no RSS growth from their 269,548-KiB baseline and thread growth six
 from 56. These are separate from the soak's baseline/samples; handles are unobserved.
 
-The corrected 128-MiB file allowance admits the 22,257,210-byte server
-log through shutdown, with no file-size errors or saturation and one shutdown
-record. Its retained diagnostic summary reports **177,635 no-valid-frame encoder
-messages and 6,714 audio-capture terminations**. Their cause and functional impact
-remain OPEN; display success does not establish healthy audio/encoder behavior.
-Only the bounded summary/tail and log digest are retained, not the complete log.
+The unsaturated 22,257,210-byte server log reaches graceful shutdown under the
+128-MiB allowance. Its bounded summary/tail and digest retain **177,635 no-valid-frame
+messages and 6,714 audio terminations**; the complete log is not retained. Later
+diagnostics follow below. Full-soak attribution and functional impact remain OPEN.
 
 QEMU/private/RAM retirement is reconciled. Four endpoint snapshots have zero
 delta; the final inventory has one unattributed addition and three removals, so
@@ -7401,22 +7399,25 @@ and the audit; app/peer/observer provenance is in
 **OPEN:** audio/encoder follow-up, handles, input-to-visible response, impairment,
 physical devices, other supported roles and full R-F5 acceptance.
 
-**Android replay audio fixture — native capture accepted (`702d6a82`).**
-TUF `QfprnQBBzK` reuses the same `9b22f10f` app/peer with the pinned private
-PulseAudio daemon. The nonzero native monitor control and thirteen active,
-unmuted production-CM recording streams pass across initial connection, six
-reconnects and six task replacements. No recording remains before/after the peer;
-daemon/socket/VM/RAM retirement and five zero endpoint deltas pass. All 22 pixel
-phases pass: maximum content/observer age 1,045/102 ms, with recovery maxima
-550/1,300/540 ms for background/reconnect/task. RSS stays below its baseline;
-threads grow six. `android-audio-fixture-702d6a82.json` retains the evidence.
+**Android audio capture accepted; VPX empty output corrected.** `702d6a82`
+supplies the pinned private daemon to the same `9b22f10f` app/peer. The native
+monitor control, thirteen active CM recordings and all 22 pixel phases pass across
+six reconnects and six task replacements. Pre/post recordings are absent;
+daemon/socket/VM/RAM retirement and five zero endpoint deltas pass. Capsule:
+`android-audio-fixture-702d6a82.json`. The earlier missing-daemon diagnosis remains
+in `android-audio-diagnostic-b5411bdb.json`; the new replay has no Access-denied ending.
 
-The earlier missing-daemon/ENOENT diagnosis remains in
-`android-audio-diagnostic-b5411bdb.json`. The new log has no `Access denied` ending:
-twelve capture-authority refusals and one owner EOF replace the repeated setup
-failures. Its 9,187 no-valid-frame encoder messages still need native classification.
-Decoded/audible audio, input-to-visible response, impairment, physical devices,
-shared native-test/playback revalidation and full R-F5 remain OPEN.
+`794a8d73` returns successful `None` for VPX empty output; the service skips
+publication and clears its failure counter. Native libvpx 1.12.0 tests reproduce
+normal drops reported as errors before correction, then pass all 28 checks:
+twelve codec/format/drop/path combinations, twelve invalid-input refusals and
+96 decoded pixel controls after explicitly disabling dropping. Existing allocation
+refusal/keyframe recovery passes. This does not prove automatic recovery.
+The complete matching Linux peer builds; runtime replay remains OPEN. Evidence:
+`vpx-drop-classification-14e6741d.json`, `vpx-drop-fixed-794a8d73.json`,
+`vpx-peer-build-794a8d73.json`. Attribution of every historical encoder event,
+audible audio, final-state/input latency, impairment, physical devices, release
+codec execution, shared PA-test revalidation and full R-F5 remain OPEN.
 
 Historical `f372aacf` app/task results remain in `android-current-f372aacf.json`,
 `android-presentation-1c429348.json` and Git `9b22f10f`, including its unattributed

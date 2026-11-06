@@ -142651,3 +142651,66 @@ The 31.251-second count retires QEMU/private/RAM with three zero endpoint deltas
 and 402,874,368-byte peak scratch. All eight count evidence files match CTE/TUF
 (116,878 bytes). This audit-only receipt preserves the counted ledger. The
 intervening status-answer turn supplied no new implementation or runtime evidence.
+
+## 2026-11-06 — VPX frame-drop classification and result correction
+
+This continuation advances R-F5's encoder prerequisite: distinguish normal empty
+output from failure before another impaired-peer or long-soak acceptance run.
+The preceding status-only turn supplied no new implementation/runtime evidence.
+The audio fixture's pending ledger count is closed above. AGENTS, the full prompt,
+required authority sections, R-S0/R-F1/R-F5, current ledger and exact touched paths
+were reread; no live instruction file changed.
+
+Native libvpx reports v1.12.0 in the existing pinned development image. Its
+[encoder contract](https://raw.githubusercontent.com/webmproject/libvpx/v1.12.0/vpx/vpx_encoder.h)
+defines intentional frame dropping; the
+[VP8 implementation](https://raw.githubusercontent.com/webmproject/libvpx/v1.12.0/vp8/encoder/onyx_if.c)
+retains rate-control state across configuration changes. At `64f14188`, the first
+fixture incorrectly requires immediate output after raising bitrate. TUF
+`GLbhIAmcx5` exits 1 at that raw VP8 assertion, with 27 other checks passing.
+`vpx-drop-immediate-64f14188.json` preserves this incomplete classification;
+its complete workload log is authoritative over truncated outer tool output.
+
+`14e6741d` explicitly disables dropping for eight same-context pixel controls.
+TUF `iCHwMndrCy` passes all 28 checks in 124.753 VM seconds. The twelve paths
+cover VP8/I420, VP9/I420 and VP9/I444, raw/message calls and thresholds 25/0.
+Each enabled path drops 119 of 120 deterministic noisy inputs with native success;
+the wrapper reports those same ordinals as `no valid frame`. Disabled controls
+produce every frame. All twelve short-input refusals, 96 resumed pixel frames
+and zero pending flush packets pass. Simulated timestamps and forced resumption
+are codec controls, not wall-clock or automatic-recovery acceptance.
+
+`794a8d73` changes the encoder result to `Result<Option<VideoFrame>>`. VPX empty
+output is `Ok(None)`; real native/input/allocation errors still propagate. The
+service's None branch publishes nothing and clears its error counter. Existing
+excluded hardware implementations receive only the signature/Some adaptation;
+their error behavior is unchanged and no hardware execution is claimed.
+TUF `4G1ODfFgdh` passes all 28 checks in 128.115 seconds, including the same
+drop ordinals now accepted as None, ordinary current pixels and all nine allocation
+refusals with keyframe recovery. Capsule `vpx-drop-fixed-794a8d73.json`, SHA-256
+698a62217f331fd867e1bb6e12eaa08e097c0110ad309b8c7bdbd83aaec8e033.
+Baseline capsule `vpx-drop-classification-14e6741d.json`, SHA-256
+2ac01deca4af925dd08819ff2b6be4bdf4aecb928e298880d0db0268f0a37e29.
+
+TUF `g8QPtMR3VJ` builds the complete matching Linux peer plus six fixture tools
+in 257.058 VM seconds. Manifest SHA-256
+777aeb274949c89ef298a68a7dd5a4c21f0375663d9cdec3107ac4abbdad8897;
+the 87,574,592-byte RustDesk binary hashes to
+719c20bd879830559a8544aa0b3799d32bf711ee95d8c9a02d5b2d1b9b8cb89f.
+All seven payloads are independently rehashed; `vpx-peer-build-794a8d73.json`
+binds the build and cleanup. Runtime replay is the next checkpoint, including
+final displayed state after an initially dropped change. Source shows VPX is
+latency-free and the capture WouldBlock retry is limited to non-latency-free
+encoders; this identifies an unproved delivery case, not a reproduced peer defect.
+Every historical encoder event, release libvpx 1.15.2, other native platforms,
+automatic recovery, real input/display latency and full R-F5 remain OPEN.
+
+All four VMs and RAM workspaces retire under shared-lock reconciliation; all
+four endpoint snapshots per run have zero deltas. Peak scratch is below 3.83 GB
+for codec checks and 5,856,100,352 bytes for the complete peer build. Before that
+build, the superseded TUF `b30f4811` generation is verified against its manifest
+and identical retained CTE copy, then retired with the identity-checked helper:
+115,724,288 allocated bytes unlinked. The current `9b22f10f` replay baseline and
+other generations remain; publication retains the four-generation bound.
+All bounded test/build/retirement evidence matches CTE/TUF. Fresh ledger counting
+follows; no product execution or listener change occurs on either host.

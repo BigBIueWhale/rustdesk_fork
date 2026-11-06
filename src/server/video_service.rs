@@ -1186,6 +1186,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     let mut mid_data = Vec::new();
     let mut repeat_encode_counter = 0;
     let repeat_encode_max = 10;
+    let mut frame_pending = false;
     let mut encode_fail_counter = 0;
     let mut first_frame = true;
     let capture_width = c.width;
@@ -1374,7 +1375,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                     if let Some(trace) = presentation_trace.as_ref() {
                         trace.trace_yuv(display_idx, ms, &yuv_format, &frame);
                     }
-                    handle_one_frame(
+                    frame_pending = !handle_one_frame(
                         display_idx,
                         &sp,
                         &frame_controller,
@@ -1430,26 +1431,31 @@ fn run(vs: VideoService) -> ResultType<()> {
                         }
                     }
                 }
-                if !encoder.latency_free() && yuv.len() > 0 {
-                    // yun.len() > 0 means the frame is not texture.
+                if !yuv.is_empty()
+                    && (frame_pending
+                        || (!encoder.latency_free() && repeat_encode_counter < repeat_encode_max))
+                {
+                    // Capture equality does not imply delivery: an encoder may
+                    // have dropped the last changed frame. Retry the retained
+                    // latest pixels at the normal cadence until output exists.
                     if repeat_encode_counter < repeat_encode_max {
                         repeat_encode_counter += 1;
-                        handle_one_frame(
-                            display_idx,
-                            &sp,
-                            &frame_controller,
-                            EncodeInput::YUV(&yuv),
-                            ms,
-                            &mut encoder,
-                            recorder.clone(),
-                            &mut encode_fail_counter,
-                            &mut first_frame,
-                            capture_width,
-                            capture_height,
-                            &mut presentation_trace,
-                        )?;
-                        activity.on_frame();
                     }
+                    frame_pending = !handle_one_frame(
+                        display_idx,
+                        &sp,
+                        &frame_controller,
+                        EncodeInput::YUV(&yuv),
+                        ms,
+                        &mut encoder,
+                        recorder.clone(),
+                        &mut encode_fail_counter,
+                        &mut first_frame,
+                        capture_width,
+                        capture_height,
+                        &mut presentation_trace,
+                    )?;
+                    activity.on_frame();
                 }
             }
             Err(err) => {
@@ -1764,6 +1770,7 @@ fn check_privacy_mode_changed(
     Ok(())
 }
 
+/// Returns whether an encoded frame was handed to the current subscribers.
 #[inline]
 fn handle_one_frame(
     display: usize,
@@ -1778,7 +1785,7 @@ fn handle_one_frame(
     width: usize,
     height: usize,
     presentation_trace: &mut Option<PresentationVideoTrace>,
-) -> ResultType<()> {
+) -> ResultType<bool> {
     sp.snapshot(|sps| {
         // so that new sub and old sub share the same encoder after switch
         if sps.has_subscribes() {
@@ -1810,6 +1817,7 @@ fn handle_one_frame(
                 frame_controller.key.display_idx,
                 |connection_ids, generation| frame_controller.prepare(connection_ids, generation),
             )?;
+            return Ok(true);
         }
         Ok(None) => *encode_fail_counter = 0,
         Err(e) => {
@@ -1843,7 +1851,7 @@ fn handle_one_frame(
             }
         }
     }
-    Ok(())
+    Ok(false)
 }
 
 #[cfg(windows)]

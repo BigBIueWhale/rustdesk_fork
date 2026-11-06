@@ -142828,3 +142828,29 @@ not rejected simply for aging while unchanged. One failed raw framebuffer and
 its publication history are retained. This workload does not itself certify that
 the native encoder dropped a selected frame. Compilation/runtime and peer result
 are pending; shell syntax and whitespace checks pass. Production is unchanged.
+
+TUF `NagIDMGbhJ` at `0d61d33e` reproduces all eight final-state failures on
+unchanged APK `9b22f10f` and peer `794a8d73`. Across 254 independent samples,
+each five-second pause displays one older identity, 14–18 publications behind
+the final source. Drawing resumes between trials and displayed identities advance.
+Initial connection/pixel recovery passes in 260/520 ms with maximum age 455 ms;
+the unsaturated 32,218-byte server log contains zero encoder errors. This proves
+the stated peer delivery failure; exact native packet omission was not instrumented.
+Capsule `android-static-baseline-0d61d33e.json`, SHA-256
+1ab8765163f1b9cf1715fdf44d3a96835975c17c90e0137408f7abe8c389ddc8,
+retains all case outcomes, one raw framebuffer/history, source/artifact bindings
+and the complete bounded failure log. Twelve files / 418,935 bytes match CTE/TUF.
+The 594.451-second VM joins; 4,509,581,312-byte peak RAM scratch and exact private
+diagnostics retire under lock. The first four endpoint snapshots have zero deltas;
+the final snapshot has three unattributed additions, left uninspected/unchanged.
+Kernel host-IP-socket denial and owned cleanup hold; no zero-host-drift claim follows.
+
+The candidate service correction retains one pending latest YUV frame until an
+encoded message is handed to the current subscribers. Equal captures retry that
+buffer at the ordinary QoS cadence; a newer capture replaces it, and publication
+clears pending state. Nonfatal encode errors likewise cannot count as delivery.
+The existing delayed-encoder drain allowance remains, with its counter capped;
+pending output is not abandoned merely after ten attempts. No capture clone,
+extra frame queue, forced reconnect, keyframe loop or disabled rate control is
+introduced. Full application compilation and the unchanged real-peer regression
+are the next checks; no corrected-runtime claim is made yet.

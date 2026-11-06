@@ -144072,3 +144072,29 @@ log instead of accepting the visible generic Failed label alone. Capsule
 `installed-settings-ui-34fa19ad.json` binds 71.896 seconds, 3,818,127,360-byte peak
 RAM scratch, four zero endpoint deltas and exact retirement. Ten files / 122,418
 bytes match CTE/TUF. The complete three-case acceptance remains unclaimed.
+
+**Installed GUI checkpoint accepted.** `MYaJse08Vz` at `da9ddebc` exits zero;
+all nine GUI stages and root protected-state observations pass. Root supervisor
+9058's retained log independently records two exact no-agent refusals for GUI
+9121/start5523/UID4001, each pkcheck exit2. This matches the
+[documented no-agent outcome](https://polkit.pages.freedesktop.org/polkit/pkcheck.1.html).
+The GUI displays Failed after each submission and permits cancellation; entered
+text followed by pre-submit cancellation also leaves the credential unchanged.
+The three-case native receipt, guest receipt and outer receipt all pass. The first
+data-only reconciliation expected the wrong guest receipt label; inspecting the
+raw output corrected that expectation to the actual existing VM label, without
+changing or rerunning the workload or its acceptance conditions.
+
+`installed-settings-accepted-da9ddebc.json` is 6,121 bytes, SHA-256
+`9ad21deab09bea316574e6420e765350c73327ccc4f6ea23134fbbd2dd1aa1a6`.
+Nine files / 95,383 bytes match CTE/TUF. Storage records 76.717 seconds and
+3,731,963,904-byte peak RAM scratch. Four zero endpoint deltas, exact QEMU join,
+absent private/RAM state and GUI/service/desktop cleanup are verified. This
+reuses app `d1bf0877`/manifest `c290cab0…f96cf`; no app source changes or rebuilds
+occurred in the fixture corrections. Update the ledger with this specific result.
+
+The next installed-workflow work remains administrator-authorized GUI success
+and persistence/restart, cancellation during authorization, and preserving distinct
+denied/failed/uncertain outcomes through the native/Flutter API. Existing CLI/native
+passes remain valid at their own artifacts; they do not substitute for those GUI
+conditions. Full R-S0, platform/package and release acceptance remain OPEN.

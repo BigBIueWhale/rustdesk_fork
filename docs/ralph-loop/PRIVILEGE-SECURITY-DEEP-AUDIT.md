@@ -143874,3 +143874,48 @@ The pinned tokenizer method, seven controls and whole-input byte round trip pass
 403,062,784-byte peak scratch, three zero endpoint deltas and exact retirement.
 Eight evidence files / 116,944 bytes match both hosts. This audit-only receipt
 preserves the counted ledger; whole-document classification/compression is open.
+
+### 2026-11-06 — current full application for installed password settings
+
+Continue R-S0/R-S11b/R-S11ie through the actual Flutter settings workflow. The
+accepted installed receiver fixture uses a debug/headless executable; component
+dialog tests substitute the writer. Neither establishes visible GUI outcomes
+with the privileged service. The retained `b23b04ad` bundle also predates the
+recent keyboard/video corrections. A current complete bundle is the selected
+prerequisite, with no product or requirement change in this slice.
+
+[Flutter's Linux distribution contract](https://docs.flutter.dev/platform-integration/linux/building)
+requires the executable, libraries and data together, plus their system library
+dependencies. The repository runner loads `$ORIGIN/lib/librustdesk.so` before
+deciding whether to start the UI. The installed fixture therefore needs the
+whole authenticated bundle and its runtime closure, preserving the specified
+0755 primary/0711 identical service-child layout. Its existing single-ELF
+staging is not yet that integration. Actual polkit/PAM/logind and independently
+observed protected state must remain; a substituted writer cannot close it.
+
+After all 73 payload hashes match the retained manifest/build evidence, retire
+superseded `a81e16c8` on TUF under the shared lock, freeing 70,557,696 allocated
+bytes. Preserve the accepted `b23b04ad`, designated `7e6f6459`, pending `0ccb2a7e`
+and all bounded historical evidence. The two retirement records total 44,981
+bytes and match both hosts; the four-generation cache cap is unchanged.
+
+TUF `xLuFhVIKA8` / session74574 builds `d1bf0877` successfully in 1,043 outer
+seconds. Fresh bridges, thirteen widget cases and two native command cases pass;
+all 73 bundle payloads / 70,332,436 bytes independently match manifest
+`c290cab0c0a3ad63c8ab7aab67af6c4e40712f88b39e19933005f014d27f96cf`.
+Compared with `b23b04ad`, only `libapp.so`, `librustdesk.so` and `smoke-readiness`
+differ. Engine `ddb1541d` and the authenticated inputs are retained. Capsule
+`installed-gui-build-d1bf0877.json` is 11,252 bytes, SHA-256
+`bb19d472af94cb23a4957d06c787f19ff469554588bfdd08f6994d12673e632f`.
+The 1,049.587-second storage observation peaks at 11,898,839,040 bytes within the
+admitted RAM workspace. All four endpoint deltas are zero; exact QEMU/private/RAM
+retirement passes. Eleven build evidence files / 325,597 bytes match CTE/TUF.
+
+Installed GUI cancellation, authorization denial, successful change and restart
+remain unexecuted. Source inspection also retains a specific result boundary:
+`ui_interface::set_permanent_password_with_result` maps every error to false,
+including an unknown outcome after bounded recovery; the dialog displays Failed.
+This does not establish the distinct denied/failed/uncertain behavior R-S0 requires.
+Next compose the actual GUI/bundle with the existing installed-service fixture
+and observe both the UI and protected credential outcome. No GUI, final-package,
+complete R-S0 or release acceptance is claimed by this build.

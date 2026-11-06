@@ -129,10 +129,12 @@ OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
 below retains the required authorized behavior.
 
-**Current Linux build verified (2026-11-06).** Build `cIkS7AyRrc` at `b23b04ad`
+**Current Linux build verified (2026-11-06).** Build `xLuFhVIKA8` at `d1bf0877`
 passes fresh bridges, the complete Rust/Flutter build, thirteen widget/two native
-command controls and all 73 payload hashes. `mouse-order-build-b23b04ad.json`
-binds exact cleanup and four zero listener deltas. The separate 225-export ABI
+command controls and all 73 payload hashes. `installed-gui-build-d1bf0877.json`
+binds exact cleanup and four zero listener deltas. This supplies the current full
+bundle for installed password-settings validation; that GUI/service scenario has
+not run. The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
 Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-release
 and dependency/native-asset inventory acceptance remain OPEN; the current monitor

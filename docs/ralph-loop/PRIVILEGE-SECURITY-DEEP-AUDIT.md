@@ -144175,3 +144175,13 @@ Cancellation during authorization, typed denied/failed/uncertain reporting,
 concurrency, other platforms and final-package acceptance remain OPEN. The next
 decisive correction is preserving those distinct outcomes through native/Flutter
 calls; do not repeat this accepted workflow without a relevant change or concern.
+
+At `28ce00d6`, CTE `EXQgS4Es4g` verifies the updated whole ledger at **402,203
+tokens** / 1,835,790 bytes, SHA-256
+`6f8d8b803ee5a0a133182e6bdc8ec95977368cf9ac8b4cc691e37d9ef232389d`.
+Seven controls and the whole-input round trip pass. Capsule
+`installed-settings-authorized-ledger-28ce00d6.json` binds 30.550 seconds,
+402,939,904-byte peak RAM, three zero host endpoint deltas and exact retirement.
+Eight files / 114,669 bytes match both hosts; the raw logs retain their original
+private 0600 mode and the new capsule is 0400. This audit-only receipt leaves the
+counted ledger unchanged. Whole-document role classification/compression is OPEN.

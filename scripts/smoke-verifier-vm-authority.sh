@@ -9604,6 +9604,9 @@ else
             'focused Flutter connect password receipt'
     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         require_exact_fixed_receipt \
+            'verify-linux-service-password-ipc: source checks passed' \
+            'supplementary password IPC source checks'
+        require_exact_fixed_receipt \
             'FLUTTER_PEER_METADATA_BRIDGE=pass retired_loader=absent dart=fresh rust=fresh' \
             'fresh peer-metadata bridge absence receipt'
         require_exact_fixed_receipt \

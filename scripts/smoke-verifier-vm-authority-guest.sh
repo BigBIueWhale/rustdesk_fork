@@ -12766,6 +12766,14 @@ run_flutter_model_tests() {
     chown -R 1000:1000 "$source_root" "$work_root"
     chmod 0700 "$work_root"
 
+    if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
+        setpriv --reuid=1000 --regid=1000 --clear-groups --no-new-privs \
+            env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
+            /usr/bin/python3 -B -I -S \
+                "$source_root/scripts/verify-linux-service-password-ipc.py" --repo "$source_root" \
+            || fail 'supplementary password IPC source checks failed'
+    fi
+
     mkdir "$inputs"
     mount -t virtiofs -o ro,nodev,nosuid,noexec rustdesk-sealed-inputs "$inputs" \
         || fail 'cannot mount the sealed focused-test input authority'
@@ -13598,9 +13606,6 @@ run_flutter_model_tests() {
                 parser_args=()
                 if [[ "$FLUTTER_TEST_PROFILE" = connect-password || "$FLUTTER_TEST_PROFILE" = credential-dialog ]]; then
                     parser_args=("--$FLUTTER_TEST_PROFILE")
-                fi
-                if [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
-                    python3 -B -I -S /source/scripts/verify-linux-service-password-ipc.py --repo /source
                 fi
                 if [ "$FLUTTER_TEST_PROFILE" = cm-duration ]; then
                     cat /work/test.json

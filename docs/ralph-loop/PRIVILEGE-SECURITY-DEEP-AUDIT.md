@@ -144185,3 +144185,50 @@ Seven controls and the whole-input round trip pass. Capsule
 Eight files / 114,669 bytes match both hosts; the raw logs retain their original
 private 0600 mode and the new capsule is 0400. This audit-only receipt leaves the
 counted ledger unchanged. Whole-document role classification/compression is OPEN.
+
+## 2026-11-06 — password outcome preservation and validation continuation
+
+The preceding status turn also collected the terminal result of TUF
+`CblwNQI6Ok`, reconciled exact QEMU/private/RAM retirement and copied nine
+hash-matching evidence files to CTE: progress through new evidence and cleanup.
+Continue R-S0's actual applied/denied/failed/uncertain settings result requirement.
+This completes the selected installed-password workflow before expanding unrelated
+component coverage. Both hosts are clean at `07572a9c`, the password-authenticated
+SSH master works, and TUF reports 48,376 MiB available with no retained private run.
+
+Preparation `c51fafa1` reproduces the misleading generic failure after loss of the
+mutation result in rendered run `UxbgTZe6qG`; fail-fast leaves later cases unrun.
+`d9fc6405` introduces `PasswordMutationOutcome` through the native setter and fresh
+Flutter bridge, preserves recovery expiry as Uncertain, distinguishes explicit
+refusal from failure, and retains explicit retry/dialog ownership. CLI success
+requires Applied. Mobile derivation failure is an error rather than policy refusal.
+The [FRB v1 enum contract](https://cjycode.com/flutter_rust_bridge/v1/feature/lang_simple.html)
+and [same-crate import support](https://cjycode.com/flutter_rust_bridge/v1/feature/lang_external.html)
+support exposing the existing Rust outcome type without a duplicate native enum.
+The UI shows that an unconfirmed change may already have applied; it never retries
+automatically. New translations are empty entries with the established English
+fallback. Native macOS authorization classification, recovery across receiver loss,
+full builds and installed/final-package acceptance remain OPEN.
+
+Candidate `RNq5NZ5QLZ` passes all 120 rendered cases, including seven password
+dialog cases, but fails the subsequent parser control's unrelated models profile.
+`07572a9c` selects the credential profile and updates the typed source predicates.
+`CblwNQI6Ok` again completes the rendered cases but fails the added source checker
+on `ModuleNotFoundError: dataclasses`; overall exit is 1. The checker was placed
+in the older Ubuntu 18.04 application builder. Python's
+[dataclasses contract](https://docs.python.org/3/library/dataclasses.html) identifies
+its introduction in 3.7; the checker also uses newer type annotations. Run it with
+the disposable guest's existing Python as UID1000 with no-new-privileges and an
+empty environment, before the unchanged pinned builder workload. Require its exact
+success receipt at outer acceptance; do not add a package or relax a check.
+
+The three retained capsules are `password-outcome-before-c51fafa1.json`,
+`password-outcome-dialog-d9fc6405.json` and `password-outcome-profile-07572a9c.json`
+under `.harness-state/verifier-vm/`. All bind four zero endpoint deltas, joined QEMU,
+absent RAM/private state and matching evidence on both hosts. The last is 8,656
+bytes, SHA-256 `106a1f5785639c5931716bf2e9743c4210d5b1abdc10c4110e95767b7ebc8c7b`;
+nine files total 166,010 bytes, elapsed 232.982 seconds and peak RAM scratch
+5,111,095,296 bytes. No overall pass or native product compilation is claimed.
+After focused acceptance, build the full application and repeat the installed GUI
+grant/refusal/persistence workflow on that exact bundle. The ledger's Boolean API
+gap remains open until the new implementation has the required native evidence.

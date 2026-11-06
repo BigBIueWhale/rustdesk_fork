@@ -952,6 +952,126 @@ mod tests {
         println!("VIDEO_VPX_REALTIME_NATIVE=pass combinations=6 inputs=48 current=48 tail=0 pixels=checked quality_changes=12");
     }
 
+    #[test]
+    fn realtime_rate_control_drops_are_distinct_from_failed_encoding() {
+        let version = unsafe { std::ffi::CStr::from_ptr(vpx_codec_version_str()) };
+        println!("VIDEO_VPX_RATE_CONTROL_VERSION={}", version.to_str().unwrap());
+        let mut combinations = 0;
+        for (codec, i444) in [(VpxVideoCodecId::VP8, false),
+                              (VpxVideoCodecId::VP9, false),
+                              (VpxVideoCodecId::VP9, true)] {
+            for threshold in [25, 0] {
+                let mut outcomes = Vec::new();
+                for message_path in [false, true] {
+                    let mut encoder = VpxEncoder::new(
+                        crate::codec::EncoderCfg::VPX(VpxEncoderConfig {
+                            width: 160, height: 96, quality: 0.05, codec,
+                            #[cfg(target_os = "android")]
+                            android_scale: 1,
+                            keyframe_interval: None,
+                        }), i444,
+                    ).unwrap();
+                    let mut config = unsafe { *encoder.ctx.config.enc };
+                    assert_eq!((config.g_lag_in_frames, config.rc_dropframe_thresh), (0, 25));
+                    assert_eq!(config.rc_end_usage, vpx_rc_mode::VPX_CBR);
+                    // The sole changed native setting is the documented drop control.
+                    config.rc_dropframe_thresh = threshold;
+                    assert_eq!(unsafe {
+                        vpx_codec_enc_config_set(&mut encoder.ctx, &config)
+                    }, VPX_CODEC_OK);
+                    let format = encoder.yuvfmt();
+                    let mut data = vec![128; format.buffer_len];
+                    let mut decoder = VpxDecoder::new(VpxDecoderConfig { codec }).unwrap();
+                    let mut random = 0x13579bdfu32;
+                    let mut empty = Vec::new();
+                    let mut decoded = 0;
+                    let mut recovered = 0;
+                    // A genuine rejected input must remain an error on both paths.
+                    if message_path {
+                        let error = encoder.encode_to_message(EncodeInput::YUV(&data[..1]), 0)
+                            .unwrap_err();
+                        assert!(format!("{error:#}").contains("VPX input buffer too short"));
+                    } else {
+                        assert!(encoder.encode(0, &data[..1], STRIDE_ALIGN).is_err());
+                    }
+                    for ordinal in 0..128 {
+                        let recovery = ordinal >= 120;
+                        let pts = if recovery { 30_000 + (ordinal - 120) * 1000 }
+                            else { ordinal * 33 };
+                        if ordinal == 120 { encoder.set_quality(1.0).unwrap(); }
+                        if recovery {
+                            data[..format.u].fill(if ordinal % 2 == 0 { 16 } else { 235 });
+                        } else {
+                            for sample in &mut data[..format.u] {
+                                random ^= random << 13;
+                                random ^= random >> 17;
+                                random ^= random << 5;
+                                *sample = 16 + (random % 220) as u8;
+                            }
+                        }
+                        let packets: Vec<_> = if message_path {
+                            match encoder.encode_to_message(EncodeInput::YUV(&data), pts) {
+                                Ok(message) => {
+                                    use hbb_common::message_proto::video_frame::Union;
+                                    let frames = match (codec, message.union.unwrap()) {
+                                        (VpxVideoCodecId::VP8, Union::Vp8s(frames))
+                                        | (VpxVideoCodecId::VP9, Union::Vp9s(frames)) => frames,
+                                        _ => panic!("unexpected encoded message codec"),
+                                    };
+                                    frames.frames.into_iter()
+                                        .map(|frame| (frame.pts, frame.data.to_vec())).collect()
+                                }
+                                Err(error) => {
+                                    assert_eq!(error.to_string(), "no valid frame");
+                                    Vec::new()
+                                }
+                            }
+                        } else {
+                            // Success with no packet is observed at the native boundary.
+                            encoder.encode(pts, &data, STRIDE_ALIGN).unwrap()
+                                .map(|frame| (frame.pts, frame.data.to_vec())).collect()
+                        };
+                        assert_eq!(encoder.ctx.err, VPX_CODEC_OK);
+                        assert!(!encoder.needs_keyframe);
+                        if packets.is_empty() { empty.push(ordinal); }
+                        else { assert_eq!(packets.len(), 1); }
+                        if recovery { assert_eq!(packets.len(), 1); }
+                        for (packet_pts, packet) in packets {
+                            assert_eq!(packet_pts, pts);
+                            let image = decoder.decode(&packet).unwrap().unwrap();
+                            assert_eq!((image.width(), image.height()), (160, 96));
+                            assert_eq!(image.chroma(), if i444 { Chroma::I444 } else { Chroma::I420 });
+                            decoded += 1;
+                            if recovery {
+                                let mut rgb = crate::ImageRgb::new(crate::ImageFormat::ARGB, 0);
+                                image.to(&mut rgb).unwrap();
+                                assert_eq!(rgb.raw.len(), 160 * 96 * 4);
+                                let expected = if ordinal % 2 == 0 { 0i32 } else { 255 };
+                                for pixel in rgb.raw.chunks_exact(4) {
+                                    assert_eq!(pixel[3], 255);
+                                    assert!(pixel[..3].iter().all(|value|
+                                        (i32::from(*value) - expected).abs() <= 8));
+                                }
+                                recovered += 1;
+                            }
+                        }
+                    }
+                    assert_eq!(decoded + empty.len(), 128);
+                    assert_eq!(recovered, 8);
+                    assert_eq!(encoder.flush().unwrap().count(), 0);
+                    if threshold == 0 { assert!(empty.is_empty()); }
+                    else { assert!(!empty.is_empty()); }
+                    println!("VIDEO_VPX_RATE_CONTROL_CASE=pass codec={codec:?} i444={i444} threshold={threshold} message_path={message_path} inputs=128 empty={} decoded={decoded} recovered={recovered} invalid_input=refused tail=0", empty.len());
+                    outcomes.push(empty);
+                }
+                assert_eq!(outcomes[0], outcomes[1]);
+                combinations += 1;
+            }
+        }
+        assert_eq!(combinations, 6);
+        println!("VIDEO_VPX_RATE_CONTROL_NATIVE=pass combinations=6 paths=12 drop_control=checked empty_ordinals=equal invalid_inputs=12 recovery_pixels=96 tail=0");
+    }
+
     fn native_format_packet(format: vpx_img_fmt_t) -> Vec<u8> {
         let mut encoder = encoder(VpxVideoCodecId::VP9, true, 32, 32);
         let mut source = vec![128; 64 * 32 * 3 * 2];

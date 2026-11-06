@@ -8363,7 +8363,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = vide
         'VIDEO_VPX_REALTIME_NATIVE=pass combinations=6 inputs=48 current=48 tail=0 pixels=checked quality_changes=12' \
         'native VPX current pixels without end-of-stream flushing'
     require_exact_fixed_receipt \
-        'VIDEO_VPX_RATE_CONTROL_NATIVE=pass combinations=6 paths=12 drop_control=checked empty_ordinals=equal invalid_inputs=12 recovery_pixels=96 tail=0' \
+        'VIDEO_VPX_RATE_CONTROL_NATIVE=pass combinations=6 paths=12 drop_control=checked empty_ordinals=equal invalid_inputs=12 forced_resume_pixels=96 tail=0' \
         'native VPX frame dropping, refusal and current-pixel recovery'
     require_exact_fixed_receipt \
         "SCREENSHOT_X11_NATIVE=complete cases=2 passed=2 artifact_sha256=$vpx_artifact_sha children=joined" \

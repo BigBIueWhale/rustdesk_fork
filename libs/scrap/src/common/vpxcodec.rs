@@ -998,7 +998,16 @@ mod tests {
                         let recovery = ordinal >= 120;
                         let pts = if recovery { 30_000 + (ordinal - 120) * 1000 }
                             else { ordinal * 33 };
-                        if ordinal == 120 { encoder.set_quality(1.0).unwrap(); }
+                        if ordinal == 120 {
+                            encoder.set_quality(1.0).unwrap();
+                            // Explicitly disable dropping for the same-context pixel
+                            // controls; bitrate changes alone can retain rate-control debt.
+                            let mut resumed = unsafe { *encoder.ctx.config.enc };
+                            resumed.rc_dropframe_thresh = 0;
+                            assert_eq!(unsafe {
+                                vpx_codec_enc_config_set(&mut encoder.ctx, &resumed)
+                            }, VPX_CODEC_OK);
+                        }
                         if recovery {
                             data[..format.u].fill(if ordinal % 2 == 0 { 16 } else { 235 });
                         } else {
@@ -1061,7 +1070,7 @@ mod tests {
                     assert_eq!(encoder.flush().unwrap().count(), 0);
                     if threshold == 0 { assert!(empty.is_empty()); }
                     else { assert!(!empty.is_empty()); }
-                    println!("VIDEO_VPX_RATE_CONTROL_CASE=pass codec={codec:?} i444={i444} threshold={threshold} message_path={message_path} inputs=128 empty={} decoded={decoded} recovered={recovered} invalid_input=refused tail=0", empty.len());
+                    println!("VIDEO_VPX_RATE_CONTROL_CASE=pass codec={codec:?} i444={i444} threshold={threshold} message_path={message_path} inputs=128 empty={} decoded={decoded} recovered={recovered} resume_drop_threshold=0 invalid_input=refused tail=0", empty.len());
                     outcomes.push(empty);
                 }
                 assert_eq!(outcomes[0], outcomes[1]);
@@ -1069,7 +1078,7 @@ mod tests {
             }
         }
         assert_eq!(combinations, 6);
-        println!("VIDEO_VPX_RATE_CONTROL_NATIVE=pass combinations=6 paths=12 drop_control=checked empty_ordinals=equal invalid_inputs=12 recovery_pixels=96 tail=0");
+        println!("VIDEO_VPX_RATE_CONTROL_NATIVE=pass combinations=6 paths=12 drop_control=checked empty_ordinals=equal invalid_inputs=12 forced_resume_pixels=96 tail=0");
     }
 
     fn native_format_packet(format: vpx_img_fmt_t) -> Vec<u8> {

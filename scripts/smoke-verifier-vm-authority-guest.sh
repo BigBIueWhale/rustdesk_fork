@@ -8560,7 +8560,7 @@ PY
             || fail 'VPX decoded image format admission differs'
         [ "$(grep -Fxc 'VIDEO_VPX_REALTIME_NATIVE=pass combinations=6 inputs=48 current=48 tail=0 pixels=checked quality_changes=12' "$output")" -eq 1 ] \
             || fail 'VPX current-frame delivery differs'
-        [ "$(grep -Fxc 'VIDEO_VPX_RATE_CONTROL_NATIVE=pass combinations=6 paths=12 drop_control=checked empty_ordinals=equal invalid_inputs=12 recovery_pixels=96 tail=0' "$output")" -eq 1 ] \
+        [ "$(grep -Fxc 'VIDEO_VPX_RATE_CONTROL_NATIVE=pass combinations=6 paths=12 drop_control=checked empty_ordinals=equal invalid_inputs=12 forced_resume_pixels=96 tail=0' "$output")" -eq 1 ] \
             || fail 'VPX rate-control classification differs'
         [ "$(grep -Fxc 'SCREENSHOT_X11_ORACLE=pass controls=7 pixels=all alpha=checked crc=checked stream=bounded' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^SCREENSHOT_X11_NATIVE=complete cases=2 passed=2 artifact_sha256=[0-9a-f]{64} children=joined$' "$output")" -eq 1 ] \

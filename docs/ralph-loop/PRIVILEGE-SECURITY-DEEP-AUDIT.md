@@ -142714,3 +142714,12 @@ and identical retained CTE copy, then retired with the identity-checked helper:
 other generations remain; publication retains the four-generation bound.
 All bounded test/build/retirement evidence matches CTE/TUF. Fresh ledger counting
 follows; no product execution or listener change occurs on either host.
+
+Final count at `224c797b`, CTE `lcc1QxCRAi`: 399,959 tokens / 1,826,051
+bytes, input SHA-256 eba7785bbd7fef914c648e4528181c738f4b894c4b9d1d31fd07013d2cbeb099.
+The pinned tokenizer, seven controls and whole-input round trip pass. Capsule
+`vpx-drop-ledger-224c797b.json`, SHA-256
+0f8f77c9fc198b79e449cc930bf784e9124f8be61b75052eb2fc70bd0f3f0184.
+The 31.313-second count joins QEMU/private/RAM retirement, with three zero
+endpoint deltas and 402,874,368-byte peak scratch. Its eight evidence files match
+CTE/TUF. This audit-only receipt preserves the counted ledger.

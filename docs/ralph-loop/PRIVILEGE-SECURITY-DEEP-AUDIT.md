@@ -142587,3 +142587,12 @@ network-recovery validation. Accurate product connection-error reporting is also
 open. Do not replay the two-hour soak merely to obtain the same setup failure.
 The ledger replaces redundant historical app/task narration with this current
 finding and retains the earlier evidence references. Fresh counting follows.
+
+Final count at `1afcd359`, CTE `7TgbSHY6XI`: 399,871 tokens / 1,825,744
+bytes, input SHA-256 60a4bda6a458ecfdc449422b48e5ccf52606567a8922866aaf60987edef6e77e.
+The pinned tokenizer, seven controls and whole-input byte round trip pass.
+Capsule `android-audio-ledger-1afcd359.json`, SHA-256
+f63ddf108e7d5b8395892cf8b1201359470310c5b6d136c8479c682dca3d32e9.
+The 30.860-second count retires QEMU/private/RAM with three zero endpoint deltas
+and 402,935,808-byte peak scratch. All nineteen replay/count evidence files match
+CTE/TUF (357,032 bytes). This audit-only receipt preserves the counted ledger.

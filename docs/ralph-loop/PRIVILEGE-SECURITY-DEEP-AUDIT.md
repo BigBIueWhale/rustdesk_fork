@@ -142471,3 +142471,12 @@ encoder errors is claimed. Next: rerun the full two-hour integrated scenario wit
 the corrected file allowance and export, inspecting those diagnostics alongside
 the original latency/resource criteria. Short replay success does not establish
 post-soak lifecycle, input-to-visible, impairment, device or complete R-F5 acceptance.
+
+Final count at `9908ca54`, CTE `7xcsjs7mYM`: 399,937 tokens / 1,825,774
+bytes, input SHA-256 e60b7b35ff069fb50cb7b2d8b1fd2d6af4d148cfdbe07589792400d8dd3ecd30.
+The pinned tokenizer, seven controls and whole-input byte round trip pass.
+Capsule `android-lifecycle-ledger-9908ca54.json`, SHA-256
+c0efa8dbaab8bde73b1adb0f2660ea4e5d76e2fa64e066c8271a4f08a5705fc3.
+The 30.582-second count retires QEMU/private/RAM with three zero endpoint deltas
+and 402,870,272-byte peak scratch. All nineteen replay/count evidence files match
+on CTE/TUF (321,289 bytes). This audit-only receipt preserves the counted ledger.

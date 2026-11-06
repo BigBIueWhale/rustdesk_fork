@@ -409,7 +409,9 @@ int main(int argc, char **argv) {
         XCloseDisplay(display);
         return 1;
     }
-    graphics = XCreateGC(display, window, 0, NULL);
+    /* Full pixmap copies are verified through root pixels; no completion events are consumed. */
+    XGCValues graphics_values = {.graphics_exposures = False};
+    graphics = XCreateGC(display, window, GCGraphicsExposures, &graphics_values);
     if (graphics == NULL) {
         fputs("FLUTTER_PEER_SOURCE_FAIL graphics context\n", stderr);
         XDestroyWindow(display, window);

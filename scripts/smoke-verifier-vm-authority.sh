@@ -6734,7 +6734,7 @@ elif [ "$MODE" = android-frame-tests ]; then
         'X11_INPUT_RESPONSE_REENTRY=pass request=257 counter=preserved no_input=stable partial_request=stable pixels=actual' \
         'Full-HD input request identity survives animation resumption'
     require_exact_fixed_receipt \
-        'X11_INPUT_RESPONSE_FULL_HD_JOINED=pass animation=resumed reentry=accepted incomplete_resume=refused source=joined xvfb=joined socket=absent' \
+        'X11_INPUT_RESPONSE_FULL_HD_JOINED=pass animation=resumed reentry=accepted incomplete_resume=refused warmup_min_frames=256 source=joined xvfb=joined socket=absent' \
         'Full-HD input-driven source resumption and cleanup'
     mapfile -t frame_source_build < <(/usr/bin/grep -Eo \
         'X11_FRAME_SOURCE_BUILD=pass source_sha256=[0-9a-f]{64} sha256=[0-9a-f]{64} bytes=[1-9][0-9]* copies=2 equality=byte-identical network=none output=private' \

@@ -143354,3 +143354,23 @@ twelve files / 285,532 bytes match both hosts. Source failure diagnostics now
 identify event-budget, request-state and key-order refusal without changing
 admission behavior. Retry the retained artifacts to determine the actual cause;
 the fixture-only native acceptance does not close Android input latency.
+
+Diagnostic replay `8OFQFV6WkG` at `46cf571a` again passes the eight static
+cases and fails before request zero: `reason=event-budget request=0 pending=1103`.
+The source has consumed its 128-event limit before any driver input. Capsule
+`android-input-budget-46cf571a.json` binds the 600.698-second failed transaction,
+4,509,290,496-byte peak RAM scratch, five zero endpoint deltas and independent
+QEMU/private/RAM retirement. All twelve files / 283,410 bytes match CTE/TUF.
+
+Source review identifies one unconsumed NoExpose notification per full-frame
+XCopyArea: XCreateGC previously selected the default graphics-exposures=True.
+X.Org documents that default and the corresponding successful-copy notification:
+https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XCopyArea.3.html .
+The owned pixmap's complete copies already undergo actual root-pixel verification;
+the fixture now requests no graphics-exposure notifications when creating its GC.
+The 128-event admission limit and every key-order/identity check remain unchanged.
+The native Full-HD test now animates for at least 256 frames before its unarmed
+and explicitly armed pauses, instead of four, so the former accumulated-copy
+queue exceeds that same limit. Its warm-up has a fifteen-second bound; all later
+response, quiet, resume and cleanup limits remain. Native acceptance and the
+retained-artifact Android measurement are pending. Product code is unchanged.

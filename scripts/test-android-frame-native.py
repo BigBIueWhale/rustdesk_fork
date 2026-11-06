@@ -910,10 +910,10 @@ def test_input_response(fixture, oracle, environment, *, full_hd=False):
         require(pause_path.stat().st_size <= 8192, 'input-response pause log exceeds bound')
         return pause_path.read_text().splitlines()
 
-    def wait_source(predicate, message):
+    def wait_source(predicate, message, timeout=2):
         began = time.monotonic()
         while not predicate():
-            require(all(child.poll() is None for child in children) and time.monotonic() - began < 2,
+            require(all(child.poll() is None for child in children) and time.monotonic() - began < timeout,
                     message)
             time.sleep(0.01)
 
@@ -939,7 +939,7 @@ def test_input_response(fixture, oracle, environment, *, full_hd=False):
                 str(fixture / 'frame-source'), *arguments,
             ], env=source_environment, stdout=log, stderr=subprocess.STDOUT))
         if full_hd:
-            wait_source(lambda: len(publications()) >= 4, 'Full-HD source did not animate')
+            wait_source(lambda: len(publications()) >= 256, 'Full-HD source did not finish its warm-up', 15)
             children[-1].send_signal(signal.SIGUSR1)
             wait_source(lambda: len(acknowledgements()) == 1, 'Full-HD source did not pause')
             require(re.fullmatch(r'paused state=' + str(publications()[-1]) + r' monotonic_us=\d+',
@@ -995,7 +995,7 @@ def test_input_response(fixture, oracle, environment, *, full_hd=False):
     require(not Path('/tmp/.X11-unix/X98').exists(), 'input-response X11 socket remained')
     if full_hd:
         print('X11_INPUT_RESPONSE_FULL_HD_JOINED=pass animation=resumed reentry=accepted incomplete_resume=refused '
-              'source=joined xvfb=joined socket=absent', flush=True)
+              'warmup_min_frames=256 source=joined xvfb=joined socket=absent', flush=True)
     else:
         print('X11_INPUT_RESPONSE_JOINED=pass duplicate_request=refused source=joined xvfb=joined socket=absent', flush=True)
 

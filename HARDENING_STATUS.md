@@ -3990,6 +3990,18 @@ scratch, joins QEMU and leaves zero listener deltas. This proves the impairment
 mechanism. Its command, observations and cleanup remain in
 `network-impairment-39dbed34.json`.
 
+**Peer/control separation (`1474740d`) — native prerequisite accepted.**
+The shared ingress classifier now selects IPv4 TCP source/destination port 21118.
+The unchanged baseline delays TCP 8554/5037 controls about 250 ms and UDP 21118
+about 125 ms, failing their 100-ms bound. Corrected CTE `FGVqtkQNlq` observes
+250.28–250.42-ms selected exchanges while all 33 control measurements remain
+below 0.13 ms. Two directional outages record five/three kernel drops and
+same-socket recovery in 1,179/879 ms; subsequent exchanges are below 0.062 ms.
+Original native controls, socket/interface retirement and all three endpoint
+deltas pass. Capsules: `peer-scope-baseline-61019f83.json`,
+`peer-scope-corrected-1474740d.json`. Android integration, actual displayed-pixel
+recovery and complete R-F5 remain OPEN; this check executes no product.
+
 `bedd34b9` integrates the receiver-ingress impairment with the exact retained
 `5d8cf83a` app and existing pixel observer. The guest-only supervisor retains
 the server pidfd/network-namespace descriptor; peers remain unprivileged.

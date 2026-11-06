@@ -142949,3 +142949,24 @@ three zero endpoint deltas and exact QEMU/private/RAM retirement. The run lasts
 adds no progress; continuation now replaces only the shared classifier with
 explicit IPv4 TCP source/destination-port 21118 flower matches. The native
 regression and its limits are unchanged; corrected execution is pending.
+
+Corrected CTE `FGVqtkQNlq` at `1474740d` passes that unchanged regression.
+Selected exchanges take 250.278–250.424 ms; all 33 TCP/UDP control measurements
+stay below 0.129 ms. The two directional outages last 1,005/1,004 ms and record
+five/three kernel drops. Pending bytes arrive on the retained socket objects in
+1,179/879 ms; five subsequent exchanges stay below 0.062 ms. The original broad
+native case and joined namespace/socket/interface retirement also pass.
+`peer-scope-corrected-1474740d.json`, SHA-256
+17b531580575307803a41825718969e5f14f1fd8b26c312ca37a53579f8abb8c,
+binds raw observations, unchanged test identity, three zero endpoint deltas and
+independent QEMU/private/RAM absence. Storage lifetime is 28.075 seconds with
+400,850,944-byte peak RAM scratch. A preceding invocation refused the unpushed
+commit before VM creation; it supplies no behavioral evidence.
+
+This closes the traffic-selection prerequisite. Next, wire it into the retained
+Android peer runtime with explicit guest-KVM container admission, attachment
+before calibration can overlap control traffic, and observation retirement before
+intentional lifecycle reconnects. The existing pixel observer must decide healthy,
+impaired and recovered display age on the same product connection. No Android
+network-recovery, radio, product-security or release acceptance follows from this
+native classifier check. No live instruction file changed.

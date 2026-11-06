@@ -144232,3 +144232,24 @@ nine files total 166,010 bytes, elapsed 232.982 seconds and peak RAM scratch
 After focused acceptance, build the full application and repeat the installed GUI
 grant/refusal/persistence workflow on that exact bundle. The ledger's Boolean API
 gap remains open until the new implementation has the required native evidence.
+
+`N3k6NPjyoC` at `750883af` passes the supplementary source check, all 120 rendered
+cases and all three selected parser controls. Its intermediate guest comparison
+still expects 117, so the overall transaction exits 1. Correct that remaining
+literal and the broad parser fixture's credential total to 120; preserve the
+complete per-case inventory and failure behavior. Do not call this an outer pass
+or spend another application-test run solely to rediscover the same passing UI
+cases before native compilation. `password-outcome-inventory-750883af.json` binds
+247.854 seconds, 5,054,603,264-byte peak RAM scratch, four zero endpoint deltas and
+exact retirement. Nine files / 146,947 bytes match CTE/TUF.
+
+For the necessary fresh native build, retire only superseded TUF app generation
+`b23b04ad` under the shared run lock after proving no retained verifier/acquisition
+run. Its manifest `852e0bae…c1e5`, all 73 payload hashes, closed inventory,
+ownership/modes/link counts and exact root identity pass before descriptor-owned
+removal. The 70,557,696 allocated file bytes are removed; small manifest/intent/
+completion records match both hosts in `password-outcome-retired-b23b04ad*`.
+Retain the accepted password baseline `d1bf0877`, reference `7e6f6459` and unfinished
+`0ccb2a7e`. The four-generation limit and canonical offline inputs are unchanged.
+Native build/installed acceptance and the repaired focused wrapper's outer pass
+remain OPEN.

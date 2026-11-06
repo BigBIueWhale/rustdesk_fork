@@ -12604,7 +12604,7 @@ run_flutter_model_tests() {
             memory=2g
             memory_bytes=2147483648
             result_prefix=FLUTTER_CREDENTIAL_DIALOG_TEST_JSON
-            expected_result='suites=10 tests=117'
+            expected_result='suites=10 tests=120'
         else
             result_prefix=FLUTTER_DIRECT_ADDRESS_TEST_JSON
             expected_result='suites=2 tests=45'

@@ -144131,3 +144131,24 @@ refusals corroborated by the exact child-held optimized log. Both shipped app an
 policy remain unchanged. Acceptance is pending actual isolated execution; this
 preparation does not close the Boolean outcome API, cancellation while authorizing,
 other platforms or final packages.
+
+TUF `kONnISL3mZ` at `b0eb6b91` passes all six native cases, eighteen actual GUI
+stages, five mutual CPace confirmations and both exact child-log-confirmed old
+credential refusals. Actual UID4003 PAM approval changes the root credential;
+after service restart a new child uses that same value, and a fresh GUI opens and
+cancels its password dialog. A further no-agent submission after approval still
+refuses. The guest's final complete network-inventory comparison fails, so overall
+acceptance remains pending. Its pre/post difference was not printed; do not infer
+an exact socket state from that failure alone.
+
+`installed-settings-admin-b0eb6b91.json` retains this rejected outer result.
+Nine files / 103,715 bytes match both hosts; 81.294 seconds, 3,631,337,472-byte peak
+RAM, four zero host endpoint deltas and exact QEMU/private/RAM retirement pass.
+The network snapshot includes TCP states, not just listeners. Add a bounded native
+snapshot/drain after service cleanup: only inode-zero, timer03, state06 loopback
+records involving the probe's exact port may wait, and acceptance still requires
+complete baseline equality. Any other difference refuses. The
+[kernel proc TCP contract](https://www.kernel.org/doc/html/latest/networking/proc_net_tcp.html)
+identifies the endpoints, state, timer and inode fields. The next run must expose
+the actual difference and satisfy the unchanged outer comparison; no host network
+or product change is authorized or needed for this observation.

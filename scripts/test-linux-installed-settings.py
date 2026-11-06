@@ -488,6 +488,47 @@ def credential_network(receiver, record, probe_sha, phase):
          'log': str(path), 'log_sha256': hashlib.sha256(after).hexdigest(), 'refusal': failures[0]}, sort_keys=True), flush=True)
 
 
+def network_state():
+    rows = set()
+    for protocol in ('tcp', 'tcp6', 'udp', 'udp6'):
+        with Path('/proc/net', protocol).open() as stream:
+            data = stream.read(65537)
+        if len(data) > 65536:
+            raise RuntimeError('guest socket inventory exceeds its bound')
+        for line in data.splitlines()[1:]:
+            fields = line.split()
+            if len(fields) < 10:
+                raise RuntimeError('guest socket inventory is incomplete')
+            rows.add((protocol, fields[1], fields[2], fields[3], fields[5].split(':')[0], fields[7], fields[9]))
+    return rows
+
+
+def wait_network_retirement(baseline):
+    began = time.monotonic()
+    reported = False
+    while True:
+        current = network_state()
+        if current == baseline:
+            print('LINUX_INSTALLED_SETTINGS_NETWORK=pass inventory=baseline '
+                  f'wait_seconds={time.monotonic() - began:.3f}', flush=True)
+            return
+        residual = current - baseline
+        if not reported:
+            print('LINUX_INSTALLED_SETTINGS_NETWORK_PENDING=' + json.dumps(
+                {'removed': sorted(baseline - current), 'added': sorted(residual)}), flush=True)
+            reported = True
+        # Only kernel TIME_WAIT records from the completed loopback probe may drain.
+        # The outer inventory still requires exact equality; no socket is exempted.
+        if (baseline - current or not residual or any(
+                protocol != 'tcp' or state != '06' or timer != '03' or inode != '0'
+                or not local.startswith('0100007F:') or not remote.startswith('0100007F:')
+                or '0100007F:527E' not in (local, remote)
+                for protocol, local, remote, state, timer, uid, inode in residual)
+                or time.monotonic() - began >= 75):
+            raise RuntimeError(f'guest network did not retire: {sorted(residual)}')
+        time.sleep(0.1)
+
+
 def scenario(receiver, probe_sha):
     unit = Path('/etc/systemd/system/rustdesk.service')
     if unit.exists():
@@ -496,6 +537,7 @@ def scenario(receiver, probe_sha):
     run(['/usr/bin/systemctl', 'daemon-reload'])
     process = None
     authorization = ExitStack()
+    network_before = network_state()
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
         record = receiver.ready()
@@ -590,6 +632,7 @@ def scenario(receiver, probe_sha):
                 run(['/usr/bin/systemctl', 'stop', 'rustdesk.service'], timeout=40)
                 if Path('/sys/fs/cgroup/system.slice/rustdesk.service').exists():
                     raise RuntimeError('installed service cgroup remains after stop')
+                wait_network_retirement(network_before)
 
 
 def main(arguments):

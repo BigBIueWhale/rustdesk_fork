@@ -141,6 +141,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('lost mutation result does not claim that the password stayed unchanged',
+      (tester) async {
+    final completion = Completer<bool>();
+    var writes = 0;
+    var closes = 0;
+    await tester.pumpWidget(_harness(
+      writePassword: (_) {
+        writes += 1;
+        return completion.future;
+      },
+      mutationCoordinator: PermanentPasswordMutationCoordinator(),
+      close: () => closes += 1,
+    ));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'Runtime1x');
+    await tester.enterText(fields.at(1), 'Runtime1x');
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+
+    completion.completeError(StateError('result channel closed'));
+    await tester.pump();
+
+    expect(writes, 1);
+    expect(closes, 0);
+    expect(find.textContaining('The password change could not be confirmed. It may have been applied.'),
+        findsOneWidget);
+    expect(find.text('Prompt: Failed'), findsNothing);
+    expect(find.byKey(const ValueKey('permanent-password-progress')), findsNothing);
+    expect(tester.widget<ButtonStyleButton>(_button('Cancel')).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('replacement dialog takes over the same pending mutation',
       (tester) async {
     final completion = Completer<bool>();

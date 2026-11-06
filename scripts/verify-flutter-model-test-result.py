@@ -1450,6 +1450,7 @@ CREDENTIAL_DIALOG_TESTS = {
     "permanent_password_dialog_lifecycle_test.dart": {
         "one submit owns every action until durable completion",
         "failed mutation reopens the same dialog owner",
+        "lost mutation result does not claim that the password stayed unchanged",
         "retired dialog ignores its outstanding completion",
         "replacement dialog takes over the same pending mutation",
     },

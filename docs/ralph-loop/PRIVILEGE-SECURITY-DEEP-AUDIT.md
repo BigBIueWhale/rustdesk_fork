@@ -143988,3 +143988,11 @@ before submission. No product behavior is yet accepted. Capsule
 `installed-settings-startup-8c56cd9c.json` binds 69.680 seconds, 3,791,437,824-byte
 peak scratch, four zero endpoint deltas and exact retirement; ten files /
 120,697 bytes match both hosts.
+
+The bounded tree from `Gl5JVf0JIB` shows a live home page with exact Connect and
+Direct address nodes; Your Desktop is not a standalone accessible node. Use the
+observed Connect control as the startup condition. This is a corrected fixture
+expectation, not a UI defect or accepted password scenario. Capsule
+`installed-settings-semantics-9ea83bae.json` retains the tree, 69.623 seconds,
+3,792,027,648-byte peak scratch, four zero endpoint deltas and exact retirement.
+Ten files / 137,256 bytes match CTE/TUF.

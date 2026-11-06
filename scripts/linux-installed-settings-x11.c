@@ -113,7 +113,7 @@ int main(int argc, char **argv) {
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
     if (strcmp(argv[2], "open") == 0) {
-        if (settings_visible(pid, "Your Desktop", 1) != 0 ||
+        if (settings_visible(pid, "Connect", 1) != 0 ||
             activate_header_control(display, main, pid, "Settings") != 0 ||
             activate_named_control(pid, "Security") != 0 ||
             settings_open_password(display, main, pid) != 0 ||

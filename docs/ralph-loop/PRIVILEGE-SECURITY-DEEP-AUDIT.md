@@ -143597,3 +143597,14 @@ fresh isolated count follows. Then build one current test-only Android APK using
 `--android-emulator-app` and replay the unchanged `--input-recovery` scenario
 against retained peer `4c29a59f`. No source fixture, input sequence, timing limit
 or network-recovery requirement is weakened. Full R-F5 and release remain open.
+
+Fresh ledger count at `a710b564`, CTE `ZxGZO9rHUQ`: **401,193 tokens** /
+1,831,346 bytes, SHA-256
+`1557cb7cd9491961faf8faf00ed18947a8ff97dfb01f05d7ee98b48163686ba2`.
+The pinned method, seven controls and whole-input round trip pass. Capsule
+`keyboard-order-ledger-a710b564.json` (4,781 bytes, SHA-256
+`3b4b2b9ae762ab84cb3093a74ccd293655b809c9a5d801ca6698a9a174f9aabb`)
+binds 30.319 seconds, 402,993,152-byte peak RAM scratch, three zero endpoint
+deltas and verified QEMU/private/RAM absence. The eight evidence files match
+CTE/TUF. This audit-only receipt leaves the counted ledger unchanged; document
+classification/compression and complete release acceptance remain open.

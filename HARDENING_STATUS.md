@@ -7368,22 +7368,27 @@ histograms. TUF `RWJfstLFJO` passes the synthetic two-hour schedule, eleven refu
 cases and real atomic frame-replacement reads. Actual X11 observation spans
 3,130 ms/four samples, with 163-ms maximum age. This is observer evidence.
 
-**Matching-source two-hour attempt — observer refusal; OPEN (2026-11-06).**
-APK and seven-file production Linux peer both bind `9b22f10f`; their accepted
-builds are `f7pzPr8zQ3` and `PFngJrHdtz`. TUF `OTYO8m3QRl` runs `peer-lifecycle
---soak`: controlled authentication/directory reply, missing/wrong/correct viewer
-credentials, 2/6/120-second background recovery and six connected warm-hold
-samples pass. Sustained observation then refuses before its first minute report:
-displayed content age is **912 ms** against 2,000 ms, but observation age is
-**574 ms** against 500 ms. No full soak or subsequent lifecycle checks pass.
-The saved record proves the observation-budget failure, not permanent video lag.
-The screenshot stream emits on display changes; fixed-cadence observation needs
-an independently timed capture. Investigate that replacement without relaxing
-freshness, drift, gap or resource bounds. Capsules: `android-soak-app-9b22f10f.json`,
-`android-soak-peer-9b22f10f.json`, `android-soak-observer-9b22f10f.json`. The complete
-445,403-byte failure log and exact frame record are retained on CTE/TUF; all three
-VMs/private/RAM workspaces retire with zero endpoint deltas. Research, exact
-artifacts, commands and scope are in the audit's current sustained-viewing entry.
+**Two-hour pixels observed; integrated replay OPEN (2026-11-06).**
+TUF `DeoOXfX07D`, harness `a70a4bd6`, reuses matching `9b22f10f` APK/peer.
+Timed unary capture passes ten executable observer cases and all 120 minute
+windows/7,201 observations over 7,200.116 seconds. Maximum content/observer/gap
+ages are **1,132/108/1,027 ms**; first-minute p95 is 998 ms, maximum upward
+drift 61 ms. Application RSS grows at most 28,120 KiB from 255,316 KiB;
+58 threads and app/service/task/peer identities remain stable. Original limits
+are unchanged. Authentication, background recovery and warm-hold controls pass.
+
+The first subsequent reconnect presents changing pixels in 540 ms, but timing
+collection refuses **server=0/native=1/Dart=1** new records. Server shutdown also
+lacks its terminal record. Its retained log ends about 77 minutes before reconnect,
+mid-line amid encoder messages and PulseAudio `ftruncate: File too large` errors.
+The harness applies an 8-MiB process-wide file limit; log saturation and ancillary
+allocation interference need focused reproduction/correction. These observations
+do not establish complete healthy-session functionality or lifecycle acceptance.
+Remaining reconnect/task phases, handles, input-to-visible response, impairment,
+physical devices and R-F5 remain OPEN. Outer QEMU/private/RAM retire with five zero
+endpoint deltas. `android-soak-timed-a70a4bd6.json` and its complete runtime log
+are retained on CTE/TUF. Earlier observer refusal and matching builds remain in
+`android-soak-{observer,app,peer}-9b22f10f.json`; the audit binds their provenance.
 
 **Earlier partial control (`24a8ad3e`).** With app `f372aacf`/peer `b30f4811`,
 `mDJFQwJwGj` passes five minute windows/301 observations before cancellation:

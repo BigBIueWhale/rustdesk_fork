@@ -142284,3 +142284,65 @@ format/length/empty/row-order tests remain; all four receipt consumers now
 expect the unary transport and ten cases. Shell syntax and git diff checks
 pass. Java compilation, executable cases and emulator acceptance have not yet
 run at this checkpoint. No product or acceptance-limit change is included.
+
+## 2026-11-06 — two-hour Android pixel observation; post-soak logging refusal
+
+`a70a4bd6641816b0bbe90427148412659875e03e` is published and synchronized on
+CTE/TUF. Ordinary Git pushes repeatedly failed at remote `commit_refs`; the
+standard GitHub Git API published the exact six blobs, tree and original commit,
+then fast-forwarded master with `force=false`. Returned object identities and
+both fetched refs match. No history was rewritten. The bounded tree request is
+`android-observer-tree-a70a4bd6.json` on CTE.
+
+TUF `DeoOXfX07D` / tool session 90507 runs the retained matching APK/test APK and
+seven-file Linux peer from `9b22f10f`, using the preceding recorded
+`--android-emulator-runtime ... --scenario peer-lifecycle ... --soak` command.
+Provider contract: three Git blobs equal the peer source. Both trees/refs stayed
+fixed. Ten observer cases execute successfully; native unary acquisition
+publishes 77,251 captures and joins. No freshness/resource threshold changes.
+
+The complete runtime log confirms 120 consecutive minute windows and 7,201
+scheduled observations over 7,200.116 seconds. Overall p50/p95/max content age:
+657/1,007/1,132 ms; maximum observer age/gap: 108/1,027 ms. The original
+first-minute p95 is 998 ms; maximum upward minute drift is 61 ms. All 121 resource
+samples pass: RSS baseline/max 255,316/283,436 KiB, threads 58/58, with stable
+application/service/task and peer/source/connection identities. Handles and
+input-to-visible response remain unobserved. Authentication, 2/6/120-second
+background recovery and the six-sample warm hold also pass.
+
+The integrated replay exits 1 after the first warm reconnect. Its remembered
+connection is observed in 10 ms and fresh changing pixels in 540 ms, with sampled
+content ages 861/373 ms. The actual refusal is
+`ANDROID_PEER_PRESENTATION_STAGE_SNAPSHOT=fail ... server=0 native=1 dart=1`,
+not a demonstrated pixel-recovery failure. The generic caller error incorrectly
+says fresh pixels were not established. Native/Dart records identify the new
+session, preserving client owner. Server shutdown then reports its required
+terminal log record absent. No remaining warm/task lifecycle acceptance follows.
+
+The retained server tail stops at 00:23:43Z, mid-debug-record; reconnect is at
+01:40:46Z. It contains repeated `encode fail: no valid frame` and PulseAudio
+`ftruncate() failed: File too large` / capture-reset messages. The launcher sets
+an 8-MiB process-wide RLIMIT_FSIZE, which warrants focused log-capacity/ancillary
+allocation reproduction. Original server-log size and complete bytes were not
+exported, so saturation is an inference, not a measured size. Do not treat this
+run as complete healthy-session functionality, silence those errors, relax the
+acceptance limits, or repeat two hours before the prerequisite is corrected.
+
+Outer cleanup is independently reconciled: QEMU 1030161 joined with return 0;
+pidfd lookup finds no process; RAM workspace `run.7c4knwuj` and private diagnostics
+retire under the shared lock after evidence retention. All five decoded endpoint
+deltas are zero. Storage lifetime: 8,030.310 seconds; peak RAM scratch:
+4,639,473,664 bytes. Inner server terminal evidence remains failed despite this
+outer resource retirement. Twelve bounded evidence files / 541,980 bytes match
+CTE/TUF. Capsule `android-soak-timed-a70a4bd6.json`: 121,107 bytes, SHA-256
+81ccf69fcd922555f77f60e84e312b14edef2a641abbb6f6d946f0572990846f.
+Its complete `.runtime.log`: 171,638 bytes, SHA-256
+e44da4900cbedbfe8449ab666c67cf492c81fb5837e3fd07c3d6fb6144159726.
+The capsule binds full retained serial/console files, the captured outer output
+(whose terminal tool chunk was truncated), window aggregates and exact retirement.
+
+Next: reproduce the process-wide file-limit/logging interaction in a short
+isolated scenario, preserve bounded storage while permitting legitimate runtime
+allocations, and validate complete log/lifecycle observation. The full goal and
+integrated Android acceptance remain OPEN. The successful pixel measurements
+are retained; no product correction is claimed for this evidence checkpoint.

@@ -143181,3 +143181,17 @@ complete R-F5/release acceptance remain open.
 The ledger adds this result and condenses the corresponding native prerequisite
 narration, retaining its evidence identities and limitations. Fresh isolated
 ledger counting is pending.
+
+Final ledger count at `fa9c5ed0`, CTE `ydMi6T6DcP`: **400,673 tokens** /
+1,828,956 bytes, SHA-256
+`35f9eccfdc75f6b9333cdd99cc19372923c92f02c3492f52eec4d4fbbfe4a533`.
+The pinned method, seven controls and full byte round trip pass. The result is
+40 tokens above the preceding ledger; whole-document classification remains open.
+Capsule `android-congestion-ledger-fa9c5ed0.json`, 4,783 bytes, SHA-256
+`64537e3283f40c5feb3819b9e2cfae39a94a4ee9df0321050b48c91beb730466`,
+binds the 34.754-second isolated run, 402,698,240-byte peak RAM scratch, three
+zero listener deltas and independently verified QEMU/private/RAM absence.
+All eight files / 117,043 bytes match CTE/TUF. This audit-only receipt preserves
+the counted ledger. The selected congestion checkpoint is complete; Android
+input-to-visible recovery remains the next missing R-F5 observation. The full
+goal stays active with the existing security, platform and release obligations.

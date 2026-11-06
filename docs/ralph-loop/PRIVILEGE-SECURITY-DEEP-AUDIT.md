@@ -143443,3 +143443,15 @@ All ten files / 437,588 bytes match CTE/TUF. The ledger now records this result;
 its required fresh isolated count is pending. Next extend the same real input
 measurement across impairment and recovery without redefining the healthy
 baseline or reconnecting the surviving transport. The full goal remains active.
+
+Fresh ledger count at `6f40999e`, CTE `kgWAO7ptSG`: **400,936 tokens** /
+1,830,144 bytes, SHA-256
+`18ba0032b7321b3cc35750d60c3cafc74d1f07927d41bb5c4632e504ed007684`.
+The pinned method, seven controls and whole-file round trip pass. Capsule
+`android-input-ledger-6f40999e.json`, SHA-256
+`27310738f6ee6a2006c8aff47e017d893824b67b63e0241c8f9407cbf0c75760`,
+binds the 30.484-second storage lifetime, 402,976,768-byte peak scratch, three
+zero endpoint deltas and verified exact QEMU/private/RAM absence. All eight
+files / 116,841 bytes match CTE/TUF. This audit-only receipt leaves the counted
+ledger unchanged. Document-role classification and complete release acceptance
+remain open; the accepted Android healthy-input baseline is now recorded.

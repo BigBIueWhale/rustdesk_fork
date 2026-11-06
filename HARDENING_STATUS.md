@@ -4035,7 +4035,7 @@ Capsule: `android-input-latency-74da2653.json`; fixture controls and failed atte
 remain in the audit. Impaired-input recovery, multi-hour/physical/other-role
 acceptance, application handle bounds and full R-F5 remain OPEN.
 
-**Flutter keyboard ordering — guest recovery passes; outer receipt correction pending.**
+**Flutter keyboard admission and Android input recovery — named cases accepted.**
 The later `092364cd` recovery run fails before any outage: requests 0–86 pass,
 then request 87 receives `f` where its second `a` is required. This is a sequence
 discrepancy; its complete end-to-end cause remains unproved. `e32ca442` changes
@@ -4048,27 +4048,30 @@ errors and three asynchronous round errors. The two option tests and ninety
 bridge cases also pass. Capsules: `android-input-sequence-092364cd.json`,
 `keyboard-order-model-e32ca442.json`, `keyboard-order-native-279c9020.json`.
 The corrected APK `07845d15` passes compilation, installation, rendering and
-instrumentation (`keyboard-order-app-07845d15.json`). Its initial 203-request
-replay fails final workload accounting because deliberate pauses enter the
-animation mean (`keyboard-order-recovery-07845d15.json`). `a7c105c2` validates
-every pause against the complete publication history and measures uninterrupted
-animation separately; the existing 33–50 ms limit remains.
-TUF `vIkI9QRYXb` at `a4c6227e` reuses that APK and passes the guest scenario:
-all 203 requests are ordered, healthy p95/p99/worst are 489/499/500 ms, and
-pending inputs recover in 1,632/1,627 ms after two-/six-second outages.
-Following forty-request windows have p95/worst 478/490 and 476/510 ms, within
-the original baseline plus 250 ms. Reconciliation binds 1,081 pixel samples,
-eleven input-resource samples, 13/15 actual additional drops and 332 unchanged
-TCP-pair observations. All 17,806 animation intervals average 40,895 us;
-203 input publications and nine pause/resume cycles account for the remainder.
-Eight static cases, 22 moving phases, six reconnects/task relaunches and guest
-cleanup pass. The outer command exits 1 because the guest emits the identical
-verified input-provider receipt twice: explicitly, then through its input filter.
-The output correction selects one emission path; focused validation and complete
-wrapper acceptance remain OPEN. `android-input-recovery-a4c6227e.json` preserves
-that distinction, full raw output and exact VM/private/RAM retirement. All five
-endpoint deltas are zero. No application rebuild or latency-limit change is needed.
-Multi-hour/device/other-platform R-F5 and release acceptance remain OPEN.
+instrumentation (`keyboard-order-app-07845d15.json`). TUF `IJXwa8Iv7M` at
+`1b1d40c4` reuses it with peer `4c29a59f` and completes the entire recovery and
+lifecycle command with exit zero. All 203 requests are ordered. Healthy
+p95/p99/worst are **487/497/501 ms**; pending inputs recover in **1,983/2,134 ms**
+after two-/six-second outages. Following forty-request windows have p95/p99/worst
+479/482/482 and 480/488/488 ms, within the original baseline plus 250 ms and
+two-second ceiling. Each request is four numbered letters plus Return through
+Android's framework; timing includes ADB dispatch and actual pixel observation.
+Reconciliation binds 1,079 pixel samples, eleven input-resource samples, 21/13
+additional kernel drops and 335 observations of the unchanged TCP pair.
+All 17,814 uninterrupted animation intervals average 40,809 us; 203 input
+publications and nine pause/resume cycles account for the remaining publications.
+Eight static cases, 22 moving phases, six reconnects, six task relaunches and
+the 120.4-second absent-task hold pass. VM/private/RAM retirement and all five
+zero endpoint deltas reconcile. `android-input-recovery-1b1d40c4.json` and its
+complete raw output have matching copies on CTE/TUF.
+The prior workload-accounting and duplicate-receipt failures remain in the audit
+and `keyboard-order-recovery-07845d15.json` / `android-input-recovery-a4c6227e.json`.
+Their corrections preserve the animation and input limits; six publication modes
+and three absent/duplicate/wrong-provider refusals pass at `89acab37`.
+This covers two outages of the Linux TCP leg of an ADB-reversed emulator session.
+Random/burst-loss and congestion input recovery, current-peer multi-hour runs,
+direct mobile/radio and physical/other-platform acceptance, application handles
+and complete R-F5/release acceptance remain OPEN.
 
 `bedd34b9` integrates the receiver-ingress impairment with the exact retained
 `5d8cf83a` app and existing pixel observer. The guest-only supervisor retains

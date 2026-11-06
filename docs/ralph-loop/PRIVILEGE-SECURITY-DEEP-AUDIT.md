@@ -143718,3 +143718,39 @@ peak scratch, three zero endpoint deltas and exact retirement. Seventeen files /
 236,383 bytes match both hosts. This audit-only receipt preserves the counted
 ledger. Complete same-APK wrapper acceptance is the next check; the guest recovery
 observations above remain valid within their recorded scope.
+
+### 2026-11-06 — complete Android outage/input recovery accepted
+
+TUF `IJXwa8Iv7M`, harness `1b1d40c4`, completes the retained `07845d15` APK /
+`4c29a59f` peer recovery scenario with outer exit zero in 1,560 seconds. No app
+rebuild or latency-limit change was made. The source stayed fixed through terminal
+execution and independent evidence reconciliation on both hosts.
+
+All 203 requests are ordered. The 120-request healthy p95/p99/worst are
+487/497/501 ms. Pending inputs recover in 1,983/2,134 ms after two-/six-second
+outages; subsequent forty-request windows are 479/482/482 and 480/488/488 ms.
+Reconciliation checks all request/quiet/publication/observation timestamps,
+1,079 pixel samples, eleven input-resource samples, 21/13 additional kernel
+drops and 335 unchanged TCP-pair observations. Four fresh states prove animation
+resumption. The provider receipt appears exactly once with its admitted digest.
+The source accounts for 18,027 publications: 17,814 animation intervals,
+203 input publications, nine resume boundaries and the first publication.
+Animation mean/max are 40,809/60,001 us; overall mean is 51,670 us. All eight
+static cases, 22 moving phases, six reconnects, six task relaunches, the
+120.4-second absent-task hold, Force Stop baseline and guest cleanup pass.
+
+`android-input-recovery-1b1d40c4.json` is 123,922 bytes, SHA-256
+`01c033eba7f65b3ccc3aa1dd5b5a15e9d5274a2680d34e995b69acdedfa3b488`.
+The full runtime output is 1,024,512 bytes, SHA-256
+`1579275ab78997f47f077f69e51d633412ff04b67364736d6910792240bc8778`.
+Storage observation spans 1,565.602 seconds with 4,509,474,816-byte peak RAM
+scratch. All five endpoint deltas are zero; exact QEMU, private state and RAM
+workspace are absent. Both retained APKs and checksum sidecars are reverified.
+Ten bounded evidence files / 1,243,558 bytes match CTE/TUF; no owned VM remains.
+
+This accepts the named emulator TCP-leg input-recovery and lifecycle scenario.
+The earlier outer failures remain failures. Direct mobile/radio, random/burst
+loss and congestion input recovery, current-peer multi-hour execution, physical
+and other-platform targets, application handles and full R-F5/release acceptance
+remain open. At this checkpoint, the reproduced receive-namespace creation and
+shared-parent lifecycle defects have priority over repeating this passed scenario.

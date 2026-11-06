@@ -823,6 +823,28 @@ peer_server_keyed_session_count() {
     grep -Fc ' Connection opened from ' "$PEER_SERVER_LOG" || true
 }
 
+print_peer_server_log_diagnostic() {
+    python3 -B -I -S - "$SCRIPT_DIR/android-peer-soak.py" \
+        "$PEER_SERVER_LOG" "$PEER_SERVER_FILE_LIMIT" <<'PY'
+import hashlib, json, runpy, sys
+limit = int(sys.argv[3])
+data = runpy.run_path(sys.argv[1])["read_file"](sys.argv[2], limit)
+markers = {
+    "encoder_errors": b"encode fail:",
+    "no_frame_errors": b"encode fail: no valid frame",
+    "audio_ends": b"PulseAudio capture ended:",
+    "file_size_errors": b"ftruncate() failed: File too large",
+    "shutdown_records": b"R-T9: graceful shutdown complete",
+}
+summary = {name: data.count(marker) for name, marker in markers.items()}
+summary.update(bytes=len(data), limit_bytes=limit, saturated=len(data) == limit,
+               sha256=hashlib.sha256(data).hexdigest())
+print("ANDROID_PEER_SERVER_LOG_DIAGNOSTIC=" + json.dumps(summary, sort_keys=True))
+for line in data[-16384:].splitlines()[-24:]:
+    print("ANDROID_PEER_SERVER_LOG_TAIL " + line.decode("utf-8", errors="replace"))
+PY
+}
+
 android_native_presentation_stages() {
     local log_dir=/storage/emulated/0/RustDesk/Logs
     local listing= filename= latest=
@@ -1408,6 +1430,9 @@ cleanup() {
     stop_frame_observer || cleanup_status=1
     stop_emulator || cleanup_status=1
     stop_peer_infrastructure || cleanup_status=1
+    if [ -n "${PEER_SERVER_LOG:-}" ] && [ -f "$PEER_SERVER_LOG" ]; then
+        print_peer_server_log_diagnostic || cleanup_status=1
+    fi
     if [ "$status" -ne 0 ]; then
         tail -n 160 "$EMULATOR_LOG" >&2 2>/dev/null || true
         tail -n 80 "$ADB_LOG" >&2 2>/dev/null || true

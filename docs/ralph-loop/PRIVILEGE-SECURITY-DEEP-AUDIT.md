@@ -142432,3 +142432,14 @@ The 30.384-second count retires QEMU/private/RAM state with three zero endpoint
 deltas and 402,804,736-byte peak scratch. All 26 evidence files from this
 prerequisite, including the count, match CTE/TUF (819,457 bytes). This audit-only
 receipt preserves the counted ledger.
+
+## 2026-11-06 — real Android lifecycle after file-allowance correction
+
+The preceding turn made verified progress on allocation/logging prerequisites.
+Continue with the retained matching `9b22f10f` APK/peer and the ordinary
+peer-lifecycle replay on TUF. Reconnect stage records and graceful shutdown
+must pass with the corrected finite allowance before another two-hour run.
+Cleanup now emits the actual server-log byte count/hash, saturation and selected
+error counts, plus at most 24 lines/16 KiB of its tail. This preserves diagnostics
+on successful replay too; the counts are observations, not audio/video acceptance.
+Shell syntax and diff checks pass. Runtime execution follows with both trees fixed.

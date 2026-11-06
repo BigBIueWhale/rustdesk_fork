@@ -142529,3 +142529,12 @@ replaces the incomplete-soak entry and removes the superseded five-minute partia
 control; its provenance remains in Git/audit history. Fresh ledger counting
 follows. This is test-only Android 14 x86_64/production-peer evidence, not
 physical-device, impairment, input-response, full audio/encoder or R-F5 acceptance.
+
+Final count at `88e1e519`, CTE `QNo0Rc7UJY`: 399,871 tokens / 1,825,623
+bytes, input SHA-256 dc32278221c04e5055b64f369e4cd245d388463512d196a545d1d5be0fad1563.
+The pinned tokenizer, seven controls and whole-input byte round trip pass.
+Capsule `android-soak-ledger-88e1e519.json`, SHA-256
+183092f8f65b47f3edec60501ed45b76ce54c8b23e906605fdd0dbbc4537a5ea.
+The 30.576-second count retires QEMU/private/RAM with three zero endpoint deltas
+and 402,804,736-byte peak scratch. All nineteen soak/count evidence files match
+CTE/TUF (411,603 bytes). This audit-only receipt preserves the counted ledger.

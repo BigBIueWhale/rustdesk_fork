@@ -4019,6 +4019,15 @@ also pass. VM/private/RAM retirement and all five listener deltas pass. Capsule:
 Android emulator connection. Repeated/multi-hour impairment, direct mobile/radio,
 input-to-visible response, physical/other-role targets and full R-F5 remain OPEN.
 
+**Android input-latency prerequisite (`d4f42bc5`) — Full-HD native fixture accepted.**
+CTE `KYQ8XOpJN5` observes 256 numbered keyboard responses in actual X11 pixels,
+stable no-input/held/partial controls, resumed animation and request 257 after
+reentry. An incomplete request refuses resumption. Existing small-source duplicate
+refusal and frame-oracle controls pass; exact processes/RAM retire with three zero
+listener deltas. Capsule: `fullhd-input-fixture-d4f42bc5.json`. This enables the
+retained Android workload's input measurement; no Android/product execution or
+input-latency acceptance is claimed. Full R-F5 remains OPEN.
+
 `bedd34b9` integrates the receiver-ingress impairment with the exact retained
 `5d8cf83a` app and existing pixel observer. The guest-only supervisor retains
 the server pidfd/network-namespace descriptor; peers remain unprivileged.

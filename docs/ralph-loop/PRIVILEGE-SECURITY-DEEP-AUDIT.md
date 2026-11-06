@@ -143230,3 +143230,26 @@ Python AST, Bash syntax and whitespace checks pass. Native execution is pending
 in the existing zero-NIC `--android-frame-tests` lane. Source/refs will remain
 fixed through terminal status and evidence/cleanup reconciliation. This is a
 measurement-fixture change, not Android input-latency or release acceptance.
+
+CTE `KYQ8XOpJN5`, exact source `d4f42bc5`, exits zero. The Full-HD fixture
+passes all four no-input/held/partial controls, 256 numbered requests across
+both hexadecimal carries, ordinary animation resumption, counter-preserving
+request 257 after reentry and incomplete-resume refusal. Matching publication
+history accompanies actual root-pixel decoding before the next request is sent.
+The existing 640x480 duplicate-refusal, frame-decoder, geometry, stale-age,
+texture and controller-accounting checks also pass. Source and oracle each
+build twice with byte-identical outputs. This executes no RustDesk/Android app.
+
+The outer lane reports 103 seconds; storage lifetime is 108.850 seconds and
+peak RAM scratch 3,733,553,152 bytes within the existing 9-GiB limit/4-GiB guest
+profile. Exact QEMU PID 501556, private run and RAM `run.i8rusaes` are absent;
+all three listener deltas are zero. Full workload serial is 19,815 bytes,
+SHA-256 `87045f2988ef4ff740c184385b68766efd9c8f5c112c2519b0dabf2beba3604b`.
+Capsule `fullhd-input-fixture-d4f42bc5.json`, 13,291 bytes, SHA-256
+`91cc26852f66e5c105bb1f9b4fae9d5575866c0a39c470ed36c6d61b49844db0`,
+binds source/build/receipt identity, complete raw evidence and independently
+reconciled cleanup. All eight files / 110,348 bytes match CTE and TUF.
+The ledger records this prerequisite; its fresh isolated count is pending.
+Next drive unique requests through the retained APK's real Android input path
+and observe corresponding displayed frames. Android input latency and full
+R-F5/release acceptance remain open.

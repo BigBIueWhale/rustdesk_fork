@@ -142970,3 +142970,13 @@ intentional lifecycle reconnects. The existing pixel observer must decide health
 impaired and recovered display age on the same product connection. No Android
 network-recovery, radio, product-security or release acceptance follows from this
 native classifier check. No live instruction file changed.
+
+Final ledger count at `004c8b21`, CTE `fxHx99S7mJ`: **400,303 tokens** /
+1,827,543 bytes, input SHA-256
+749c4bb09f2bbbb3567fccd3bcb102005b1cffba912527f1d67958469536d796.
+The pinned method, seven controls and whole-input round trip pass.
+`peer-scope-ledger-004c8b21.json` binds the 33.483-second run, 402,952,192-byte
+peak RAM scratch, three zero endpoint deltas and independent process/private/RAM
+retirement. The eighteen native comparison files (187,660 bytes) and eight
+count files (116,515 bytes) match on CTE/TUF. This audit-only receipt preserves
+the counted ledger; document classification remains open.

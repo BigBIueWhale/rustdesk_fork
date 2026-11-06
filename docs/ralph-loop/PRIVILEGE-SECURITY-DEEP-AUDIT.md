@@ -143648,3 +143648,22 @@ controls distinguish deliberate pauses from genuinely slow animation, incomplete
 source history and invalid acknowledgements. Native execution and a same-APK
 replay follow; the scenario and input/latency limits remain unchanged. Full R-F5
 and release acceptance remain open.
+
+At `a7c105c2`, TUF `xvA5rosrhi` passes the focused frame/native suite in
+81 outer seconds. The known 593 animation intervals remain exactly 33,000 us
+with four input publications and two acknowledged pauses; the old aggregate is
+59,381 us. Both 33,000/50,000-us boundaries and thirteen refusal cases pass.
+The real unpaused X11 source preserves its original pacing result, alongside
+the existing native geometry, freshness and input-source controls. This does
+not yet execute the corrected accounting in Android. Capsule
+`keyboard-workload-native-a7c105c2.json` binds 85.889 seconds, 3,853,135,872-byte
+peak RAM scratch, three zero endpoint deltas and exact retirement.
+
+CTE `0zAFDWaQKk` counts the updated ledger at **401,388 tokens** / 1,832,126
+bytes, SHA-256 `0ae2731985be28317369e0e8bfce90a86b551298c7f4e33e57385fb71a99cc29`.
+The pinned method, seven controls and complete byte round trip pass;
+`keyboard-workload-ledger-a7c105c2.json` binds 30.348 seconds, 402,862,080-byte
+peak scratch, three zero endpoint deltas and retired QEMU/private/RAM state.
+All seventeen files / 236,168 bytes match both hosts. This audit-only receipt
+preserves the counted ledger. Replay the retained `07845d15` APK with corrected
+workload accounting; no application rebuild is needed.

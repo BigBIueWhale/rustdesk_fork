@@ -2078,7 +2078,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("service_owned_runtime_prs_replica", "(", '"Linux"', ")"), "root PRS extraction after persistence"),
             (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on post-persistence PRS failure"),
             (("complete_main_password_mutation", "(", "operation_id", ",", "MainPasswordMutationRequest", "::", "ServiceOwnedRuntimePrs", "(", "&", "replica", ")", ",", "ms_timeout", OPTIONAL_COMMA, ")"), "typed same-operation PRS child convergence"),
-            (("Ok", "(", "IpcMutationResult", "::", "Applied", ")", "=>", "Ok", "(", "IpcMutationResult", "::", "Applied", ")"), "exact applied convergence"),
+            (("Ok", "(", "PasswordMutationOutcome", "::", "Applied", ")", "=>", "Ok", "(", "IpcMutationResult", "::", "Applied", ")"), "exact applied convergence"),
             (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on non-applied child result"),
             (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on child transport/finality failure"),
         )
@@ -2172,7 +2172,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
         (
             "async", "fn", "complete_main_password_mutation", "(", "operation_id", ":", "String", ",",
             "mutation", ":", "MainPasswordMutationRequest", "<", "'", "_", ">", ",", "ms_timeout", ":", "u64",
-            OPTIONAL_COMMA, ")", "->", "ResultType", "<", "IpcMutationResult", ">",
+            OPTIONAL_COMMA, ")", "->", "ResultType", "<", "PasswordMutationOutcome", ">",
         ),
         "typed main-password completion signature",
         unique=True,

@@ -142789,3 +142789,14 @@ X11 suppresses equal captures and the service's WouldBlock retry currently exclu
 latency-free VPX. This is source-identified missing evidence, not a reproduced
 peer failure. The moving-display replay does not close it, release libvpx 1.15.2,
 physical-device/other-platform, input/impairment or full R-F5 acceptance.
+
+Final count at `de8e5cf8`, CTE `vqurBNCSQ7`: 399,959 tokens / 1,826,118
+bytes, input SHA-256 ea4bcd43cf8a11e86500d5f307881e02f76377d1645e650c4633af7570332c04.
+The pinned tokenizer, seven controls and whole-input round trip pass. Capsule
+`vpx-runtime-ledger-de8e5cf8.json`, SHA-256
+ad331840f6c76fd457fc9f68aec40631de98b026ac2a1d255ade6d448006a3ba,
+binds the 30.832-second run, joined QEMU/private/RAM retirement, three zero
+endpoint deltas and 402,743,296-byte peak scratch. All eight evidence files match
+CTE/TUF. This audit-only receipt preserves the counted ledger. The intervening
+status-only answer is no progress; the continuation reconciles this completed
+checkpoint before selecting the pending final-static-frame delivery case.

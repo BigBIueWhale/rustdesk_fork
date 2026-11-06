@@ -7401,18 +7401,22 @@ and the audit; app/peer/observer provenance is in
 **OPEN:** audio/encoder follow-up, handles, input-to-visible response, impairment,
 physical devices, other supported roles and full R-F5 acceptance.
 
-**Audio fixture diagnosis (`b5411bdb`).** TUF `uPoqs5zB7r` reuses the same app/peer
-with bounded error reasons and native PulseAudio diagnostics. All 22 pixel phases,
-six reconnects, six task replacements and thirteen timing/resource records pass.
-All 363 capture terminations report `Access denied`; the first native failure shows
-both default Unix sockets returning ENOENT. This fixture starts no PulseAudio daemon.
-The pinned binding formats the generic connection return `-1` as that message;
-the actual context error is separate. This explains the captured setup failure,
-not every event in the earlier unretained soak log. The unsaturated 1,396,540-byte
-log also records 9,016 no-valid-frame errors and graceful shutdown. Exact VM/RAM
-retirement and five zero endpoint deltas pass. `android-audio-diagnostic-b5411bdb.json`
-retains evidence. Supply the private audio fixture and verify capture next;
-healthy audio, encoder behavior and full R-F5 remain OPEN.
+**Android replay audio fixture — native capture accepted (`702d6a82`).**
+TUF `QfprnQBBzK` reuses the same `9b22f10f` app/peer with the pinned private
+PulseAudio daemon. The nonzero native monitor control and thirteen active,
+unmuted production-CM recording streams pass across initial connection, six
+reconnects and six task replacements. No recording remains before/after the peer;
+daemon/socket/VM/RAM retirement and five zero endpoint deltas pass. All 22 pixel
+phases pass: maximum content/observer age 1,045/102 ms, with recovery maxima
+550/1,300/540 ms for background/reconnect/task. RSS stays below its baseline;
+threads grow six. `android-audio-fixture-702d6a82.json` retains the evidence.
+
+The earlier missing-daemon/ENOENT diagnosis remains in
+`android-audio-diagnostic-b5411bdb.json`. The new log has no `Access denied` ending:
+twelve capture-authority refusals and one owner EOF replace the repeated setup
+failures. Its 9,187 no-valid-frame encoder messages still need native classification.
+Decoded/audible audio, input-to-visible response, impairment, physical devices,
+shared native-test/playback revalidation and full R-F5 remain OPEN.
 
 Historical `f372aacf` app/task results remain in `android-current-f372aacf.json`,
 `android-presentation-1c429348.json` and Git `9b22f10f`, including its unattributed

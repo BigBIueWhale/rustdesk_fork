@@ -142596,3 +142596,48 @@ f63ddf108e7d5b8395892cf8b1201359470310c5b6d136c8479c682dca3d32e9.
 The 30.860-second count retires QEMU/private/RAM with three zero endpoint deltas
 and 402,935,808-byte peak scratch. All nineteen replay/count evidence files match
 CTE/TUF (357,032 bytes). This audit-only receipt preserves the counted ledger.
+
+## 2026-11-06 — Android replay private audio fixture accepted
+
+The preceding user-status turn supplied no new implementation or behavioral
+evidence. This continuation completes the selected audio prerequisite rather than
+repeating the earlier setup failure or the two-hour soak. `702d6a82` extracts the
+existing pinned package/daemon/monitor fixture for reuse and supplies it through
+the replay's read-only input projection. It retains the existing RAM/container
+bounds and uses the existing PID/start/pidfd stop path plus the exact child join.
+Private client/server cookie paths avoid dependence on the callers' HOME values.
+The original native-test compiler and playback cases remain; those entry points
+were not re-executed by this replay.
+
+Primary API review: PulseAudio 16.1's
+[native Unix module](https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/modules/module-protocol-stub.c),
+[client configuration](https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/pulse/client-conf.c),
+and [pactl JSON output](https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/utils/pactl.c).
+The observer checks actual native source/output/client inventories, binds each
+recording PID to the production CM image/argv and owned server parent generation,
+and requires three stable uncorked/unmuted observations. This is fixture observation,
+not an authorization mechanism or proof of decoded/audible audio.
+
+TUF `QfprnQBBzK`, session 50441, exits zero with unchanged `9b22f10f` app/peer.
+The nonzero pacat monitor control, thirteen distinct recording streams, empty
+pre/post inventories and daemon/socket retirement pass. All 22 pixel phases,
+six reconnects, six task replacements and thirteen timing/resource records pass.
+Content/observer maxima are 1,045/102 ms; background/reconnect/task recovery maxima
+are 550/1,300/540 ms. RSS baseline/max/final is 271,948/271,948/258,948 KiB;
+threads are 56/62/62. Handles and input-to-visible response remain unobserved.
+
+The 1,190,649-byte server log has no saturation/file-size error and one graceful
+shutdown. Its thirteen capture endings comprise twelve authority refusals and
+one owner EOF, with no `Access denied` prefix. The first retained ending follows
+connection 339 closing. The 9,187 no-valid-frame messages remain unclassified;
+source review finds VPX rate-control dropping enabled and empty successful native
+output converted to that error. A native classification is the next decisive step;
+this source observation alone does not establish the cause of every logged event.
+Impairment, end-to-end audio, physical devices and full R-F5 remain OPEN.
+
+Capsule `android-audio-fixture-702d6a82.json`: 93,819 bytes, SHA-256
+e449e24c59fd0732acef9119d3408c78269e60286be5474ad64a06fdd26f6d48.
+Five endpoint deltas are zero. QEMU 1386443, private state and RAM workspace
+`run.2vommog4` are absent under the shared-lock reconciliation. Storage lifetime
+is 1,346.241 seconds; peak RAM scratch is 4,507,656,192 bytes. All eleven bounded
+evidence files match CTE/TUF (259,219 bytes). Fresh ledger counting follows.

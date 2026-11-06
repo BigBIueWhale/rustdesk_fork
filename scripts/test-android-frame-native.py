@@ -760,6 +760,92 @@ print("ANDROID_SOURCE_HISTORY=pass publications=500000 reader_as_bytes=67108864 
         source.unlink()
 
 
+def test_source_workload(decoder):
+    with tempfile.TemporaryDirectory(prefix="source-workload-", dir="/tmp") as directory:
+        source = Path(directory) / 'publications'
+        pause = Path(directory) / 'pauses'
+
+        def fixture(interval_us=33000):
+            timestamps = [1000000]
+            for identity in range(1, 600):
+                delta = (10000000 if identity == 200 else
+                         1000000 if 400 <= identity <= 403 else
+                         2000000 if identity == 404 else interval_us)
+                timestamps.append(timestamps[-1] + delta)
+            content = ('FLUTTER_PEER_SOURCE_READY display=:98 dimensions=1920x1080 interval_ms=33 '
+                       'identity=counter32 rows=4 bars=24 wrap=refused\n')
+            content += ''.join('RUSTDESK_PRESENTATION_TRACE stage=source-publish '
+                               f'monotonic_us={stamp} state={identity} '
+                               f'low={identity & 15} high={(identity >> 4) & 15}\n'
+                               for identity, stamp in enumerate(timestamps))
+            content += 'FLUTTER_PEER_SOURCE_COMPLETE frames=600\n'
+            records = [(199, timestamps[199] + 1000, 199, timestamps[200] - 1000),
+                       (399, timestamps[399] + 1000, 403, timestamps[404] - 1000)]
+            return timestamps, content, records
+
+        def run(content, records, cycles=2):
+            source.write_text(content)
+            source.chmod(0o600)
+            pause.write_text(''.join(f'paused state={start} monotonic_us={began}\n'
+                                     f'resumed state={end} monotonic_us={finished}\n'
+                                     for start, began, end, finished in records))
+            pause.chmod(0o600)
+            return decoder.source_workload_summary(source, pause, cycles, 10**12)
+
+        timestamps, content, records = fixture()
+        result = run(content, records)
+        raw = decoder.source_summary(source, 10**12)
+        require(raw['mean_interval_us'] > 50000,
+                'old whole-session pacing check did not reject the deliberate pauses')
+        require(result == dict(publications=600, moving_intervals=593,
+                               mean_interval_us=33000, max_interval_us=33000,
+                               overall_mean_interval_us=raw['mean_interval_us'],
+                               pause_cycles=2, input_publications=4),
+                'pause-aware workload lost animation or input publications')
+        _, upper_content, upper_records = fixture(50000)
+        require(run(upper_content, upper_records)['mean_interval_us'] == 50000,
+                'exact animation pacing ceiling was refused')
+
+        refusals = [
+            ('missing-resume', content, records[:1], 2),
+            ('unexpected-pause', content, records, 1),
+            ('pause-before-publication', content,
+             [(199, timestamps[199] - 1, 199, timestamps[200] - 1000), records[1]], 2),
+            ('publication-before-resume', content,
+             [(199, timestamps[199] + 1000, 199, timestamps[200] + 1), records[1]], 2),
+            ('input-before-pause', content,
+             [records[0], (399, timestamps[400] + 1, 403, timestamps[404] - 1000)], 2),
+            ('input-after-resume', content,
+             [records[0], (399, timestamps[399] + 1000, 403, timestamps[403] - 1)], 2),
+            ('overlap', content, [records[0], records[0]], 2),
+            ('unresumed-source', content,
+             [records[0], (399, timestamps[399] + 1000, 599, timestamps[599] + 1000)], 2),
+            ('too-few-animation-intervals', content,
+             [(0, timestamps[0] + 1000, 345, timestamps[346] - 1000), records[1]], 2),
+            ('missing-source-completion', content.rsplit('FLUTTER_PEER_SOURCE_COMPLETE', 1)[0], records, 2),
+        ]
+        for interval in (32999, 50001):
+            _, invalid_content, invalid_records = fixture(interval)
+            refusals.append((f'animation-interval-{interval}', invalid_content, invalid_records, 2))
+        for label, invalid_content, invalid_records, cycles in refusals:
+            try:
+                run(invalid_content, invalid_records, cycles)
+            except decoder.InvalidFrame:
+                continue
+            raise AssertionError(f'source workload accepted {label}')
+        run(content, records)
+        pause.write_bytes(pause.read_bytes()[:-1])
+        try:
+            decoder.source_workload_summary(source, pause, 2, 10**12)
+        except decoder.InvalidFrame:
+            pass
+        else:
+            raise AssertionError('source workload accepted an unfinished pause record')
+    print('ANDROID_SOURCE_WORKLOAD=pass clock=synthetic moving_intervals=593 input_publications=4 '
+          f'old_mean_us={raw["mean_interval_us"]} moving_mean_us=33000 boundaries=33000,50000 '
+          f'refusals={len(refusals) + 1}', flush=True)
+
+
 def test_soak_atomic_read():
     spec = importlib.util.spec_from_file_location("peer_soak", "/work/scripts/android-peer-soak.py")
     soak = importlib.util.module_from_spec(spec)
@@ -1010,6 +1096,7 @@ def main():
     test_soak_atomic_read()
     test_observation_schedule(decoder)
     test_source_history()
+    test_source_workload(decoder)
     inspect_retained_android_frame(decoder)
     fixture = Path("/build/fixture")
     fixture.mkdir(mode=0o700)
@@ -1306,6 +1393,13 @@ def main():
             "C frame oracle changed during native execution")
     summary = decoder.source_summary(source_path)
     require(summary['publications'] > fresh['state'], "source finality lost observed publications")
+    pause_path = fixture / 'unpaused-source.log'
+    pause_path.write_bytes(b'')
+    pause_path.chmod(0o600)
+    workload = decoder.source_workload_summary(source_path, pause_path, 0)
+    require(workload['publications'] == summary['publications']
+            and workload['mean_interval_us'] == summary['mean_interval_us'],
+            'unpaused native source workload changed its pacing evidence')
     for name in ("tcp", "tcp6"):
         require(not any(row.split()[3] == "0A" for row in Path("/proc/net", name).read_text().splitlines()[1:]),
                 "native test opened a TCP listener")

@@ -269,6 +269,84 @@ def source_summary(path: Path, now_monotonic_ns: int | None = None) -> dict[str,
                 mean_interval_us=mean_us, max_interval_us=maximum_us)
 
 
+def source_workload_summary(path: Path, pause_path: Path, expected_cycles: int,
+                            now_monotonic_ns: int | None = None) -> dict[str, int]:
+    """Check animation pacing separately from acknowledged static/input phases."""
+    if not 0 <= expected_cycles <= 64:
+        raise InvalidFrame("source pause count is outside its bound")
+    if now_monotonic_ns is None:
+        now_monotonic_ns = time.monotonic_ns()
+    descriptor = os.open(pause_path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+    with os.fdopen(descriptor, "rb") as stream:
+        metadata = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+                or (metadata.st_uid, metadata.st_gid) != (os.getuid(), os.getgid())
+                or stat.S_IMODE(metadata.st_mode) != 0o600 or metadata.st_size > 8192):
+            raise InvalidFrame("source pause file authority differs")
+        content = stream.read(8193)
+        if len(content) != metadata.st_size:
+            raise InvalidFrame("source pause file changed or exceeded its bound")
+    lines = content.splitlines(keepends=True)
+    if len(lines) != expected_cycles * 2:
+        raise InvalidFrame("source pause/resume count differs")
+    pauses = []
+    starts = {}
+    previous_state = -1
+    previous_us = 0
+    for index in range(0, len(lines), 2):
+        paused = re.fullmatch(rb"paused state=([0-9]+) monotonic_us=([0-9]+)\n", lines[index])
+        resumed = re.fullmatch(rb"resumed state=([0-9]+) monotonic_us=([0-9]+)\n", lines[index + 1])
+        if paused is None or resumed is None:
+            raise InvalidFrame("source pause/resume record differs")
+        start, began = map(int, paused.groups())
+        end, finished = map(int, resumed.groups())
+        if (not previous_state < start <= end < 0xFFFFFFFF
+                or not previous_us < began < finished <= now_monotonic_ns // 1000):
+            raise InvalidFrame("source pause identity or clock is incoherent")
+        pauses.append((start, end, began, finished))
+        starts[start] = began
+        previous_state, previous_us = end, finished
+
+    count = first_us = last_us = moving_count = moving_us = moving_max_us = 0
+    pause_index = 0
+    for identity, publication_us in source_publications(path, True, now_monotonic_ns):
+        if identity in starts and publication_us > starts[identity]:
+            raise InvalidFrame("source pause preceded its acknowledged publication")
+        while pause_index < len(pauses) and identity > pauses[pause_index][1] + 1:
+            pause_index += 1
+        excluded = False
+        if pause_index < len(pauses):
+            start, end, began, finished = pauses[pause_index]
+            if start < identity <= end and not began <= publication_us <= finished:
+                raise InvalidFrame("input publication is outside its acknowledged pause")
+            if identity == end + 1 and publication_us < finished:
+                raise InvalidFrame("animation publication preceded source resumption")
+            # Include every uninterrupted animation interval. The first frame
+            # after resumption spans the deliberate pause and is a boundary.
+            excluded = start < identity <= end + 1
+        if count and not excluded:
+            interval_us = publication_us - last_us
+            moving_count += 1
+            moving_us += interval_us
+            moving_max_us = max(moving_max_us, interval_us)
+        if not count:
+            first_us = publication_us
+        last_us = publication_us
+        count += 1
+    if pauses and count - 1 <= pauses[-1][1]:
+        raise InvalidFrame("source did not publish after its final resumption")
+    if moving_count < 256:
+        raise InvalidFrame("full-HD source has too few animation intervals")
+    mean_us = (moving_us + moving_count - 1) // moving_count
+    if not 33000 <= mean_us <= 50000:
+        raise InvalidFrame(f"full-HD animation mean publication interval differs: {mean_us}")
+    return dict(publications=count, moving_intervals=moving_count,
+                mean_interval_us=mean_us, max_interval_us=moving_max_us,
+                overall_mean_interval_us=(last_us - first_us + count - 2) // (count - 1),
+                pause_cycles=len(pauses),
+                input_publications=sum(end - start for start, end, _, _ in pauses))
+
+
 def analyze(record: dict[str, object], history: dict[int, int],
             now_monotonic_ns: int | None = None) -> dict[str, object]:
     width = int(record["width"])

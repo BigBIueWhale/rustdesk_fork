@@ -5116,7 +5116,8 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
         && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \
         && [ ! -s "$PEER_XVFB_LOG" ] \
         || fail 'the controlled Android peer logs differ from their finite bounds'
-    python3 -B -I -S - "$FRAME_DECODER" "$PEER_SOURCE_LOG" <<'PY' \
+    python3 -B -I -S - "$FRAME_DECODER" "$PEER_SOURCE_LOG" \
+        "$WORK_ROOT/peer-source-pause.log" "$PEER_EXTENSION" <<'PY' \
         || fail 'the full-HD Android source did not deliver its admitted publication workload'
 import importlib.util
 from pathlib import Path
@@ -5125,15 +5126,15 @@ import sys
 spec = importlib.util.spec_from_file_location("frame_decoder", sys.argv[1])
 decoder = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(decoder)
-summary = decoder.source_summary(Path(sys.argv[2]))
-if summary['publications'] < 257:
-    raise SystemExit("full-HD source has too few actual publications")
+cycles = 9 if sys.argv[4] in ('--input-latency', '--input-recovery') else 8
+summary = decoder.source_workload_summary(Path(sys.argv[2]), Path(sys.argv[3]), cycles)
 mean_us = summary['mean_interval_us']
-if not 33000 <= mean_us <= 50000:
-    raise SystemExit(f"full-HD actual mean publication interval differs: {mean_us}")
 max_us = summary['max_interval_us']
 print("ANDROID_PEER_INFRASTRUCTURE=workload dimensions=1920x1080 nominal_interval_ms=33 "
       f"publications={summary['publications']} mean_interval_us={mean_us} max_interval_us={max_us} "
+      f"moving_intervals={summary['moving_intervals']} pause_cycles={summary['pause_cycles']} "
+      f"input_publications={summary['input_publications']} "
+      f"overall_mean_interval_us={summary['overall_mean_interval_us']} interval_scope=unpaused-animation "
       "identity=counter32 source=monotonic-publication cleanup=joined")
 PY
     [ "$(awk 'FNR > 1 && $2 == "0100007F:527E" { count++ }

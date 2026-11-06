@@ -143608,3 +143608,43 @@ binds 30.319 seconds, 402,993,152-byte peak RAM scratch, three zero endpoint
 deltas and verified QEMU/private/RAM absence. The eight evidence files match
 CTE/TUF. This audit-only receipt leaves the counted ledger unchanged; document
 classification/compression and complete release acceptance remain open.
+
+### 2026-11-06 — Android keyboard recovery observed; source-workload accounting correction
+
+The preceding goal turn completed APK build `K9xo79t77Q` at `07845d15` and
+started its exact-artifact replay. Build/install/render/instrumentation pass;
+both published APKs match their receipts. `keyboard-order-app-07845d15.json`
+binds 994.507 seconds, 7,339,716,608-byte peak RAM scratch, four zero endpoint
+deltas and exact retirement. Ten evidence files / 90,344 bytes match CTE/TUF.
+
+TUF `py56YYxwnx` completes all 203 numbered input requests, including both
+pending outage requests. Independent reconciliation validates 1,072 pixel samples,
+causal timestamps, original baseline and recovered percentiles, eleven resource
+samples, 13/22 additional kernel drops and 335 unchanged TCP-pair observations.
+Healthy p95/p99/worst are 486/495/496 ms. Two-/six-second outages recover in
+1,637/1,642 ms; subsequent forty-request p95/worst are 485/491 and 485/638 ms.
+Eight static cases, 22 moving-display phases and six reconnect/task cycles are
+observed. This is the emulator's Linux TCP leg, not physical-radio or multi-hour
+acceptance. The original request-87 sequence discrepancy does not recur.
+
+Overall exit remains 1: the final source-workload check reports 51,511 us against
+its 50,000-us mean ceiling. `source_summary` averages every publication interval,
+including the deliberate static holds and input-driven pauses. Those intervals
+cannot establish animation pacing. The source history was not separately retained,
+so this run cannot be retrospectively accepted as a corrected animation-rate test.
+`keyboard-order-recovery-07845d15.json` (144,521 bytes, SHA-256
+`a8e0f65c84e1313a2fbfe3ea99fb489881dec8b42474921de464e43fca2a01c9`)
+binds the limited observations and complete 438,625-byte runtime log. The
+1,435.157-second transaction peaks at 4,509,478,912 RAM-scratch bytes; all five
+endpoint deltas are zero, and QEMU/private/RAM retirement reconciles. Twelve
+files / 1,394,604 bytes match both hosts. No owned VM remains.
+
+The measurement correction validates the source's bounded, complete pause/resume
+log against every publication identity and timestamp. It measures all uninterrupted
+animation intervals, separately counts input publications and records the overall
+mean. Missing/incoherent phases or insufficient animation refuse; the 33–50 ms
+mean requirement remains, with at least 256 actual animation intervals. Focused
+controls distinguish deliberate pauses from genuinely slow animation, incomplete
+source history and invalid acknowledgements. Native execution and a same-APK
+replay follow; the scenario and input/latency limits remain unchanged. Full R-F5
+and release acceptance remain open.

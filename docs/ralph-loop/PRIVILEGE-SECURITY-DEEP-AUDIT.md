@@ -143953,3 +143953,15 @@ is confined to the disposable VM, and the GUI runs as UID4001 without capabiliti
 Shell/Python parsing and diff whitespace pass before execution. This preparation
 does not accept the GUI workflow. Administrator success, restart, cancellation during
 authorization, explicit uncertain results, final packages and full R-S0 remain OPEN.
+
+The first run `9a7qlIuJUI` compiles the driver twice identically, prepares 428 runtime
+files and installs the signed authorization packages. It stops before application
+execution: the fixture's restrictive umask leaves its new library directory mode0700,
+so ordinary-user Xvfb cannot load libunwind. Explicit mode0755 and an ordinary-user
+loader preflight correct that fixture setup. The settings driver also scrolls the real
+Security page to reach its password card below the pinned policy rows. These are
+fixture changes, not a product correction or GUI acceptance. Capsule
+`installed-settings-runtime-6b1f9492.json` binds 69.188 seconds, 3,789,074,432-byte
+peak RAM scratch, four zero endpoint deltas and exact QEMU/private/RAM retirement.
+Ten retained files / 102,427 bytes match CTE/TUF; complete guest output is retained
+even though the tool's terminal console tail was truncated.

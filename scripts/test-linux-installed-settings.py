@@ -192,6 +192,7 @@ def prepare_runtime(source, execution, image, client, sock, config):
 def install_runtime(prepared):
     runtime = Path('/usr/local/lib/rustdesk-settings-fixture')
     runtime.mkdir(mode=0o755)
+    runtime.chmod(0o755)
     for library in (prepared / 'libraries').iterdir():
         if re.match(r'^(ld-linux|lib(c|m|pthread|dl|rt|util|anl|resolv)\.so\.)', library.name):
             continue  # The signed OS packages own libc and its matching interpreter.
@@ -215,6 +216,9 @@ def install_runtime(prepared):
         f'<fontconfig><dir>{WORK}/fonts</dir><cachedir>/tmp/rustdesk-font-cache</cachedir></fontconfig>')
     (WORK / 'fonts.conf').chmod(0o644)
     run(['/usr/sbin/ldconfig'])
+    listing = run([*ordinary(4001), '/usr/bin/ldd', str(WORK / 'Xvfb')])
+    if 'not found' in listing:
+        raise RuntimeError(f'ordinary desktop cannot load its installed runtime: {listing}')
 
 
 def retire_children():

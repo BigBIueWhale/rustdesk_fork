@@ -55,6 +55,35 @@ out:
     return result;
 }
 
+static int settings_open_password(Display *display, Window main, unsigned int pid) {
+    /* The password card follows the pinned policy rows in a real scroll view. */
+    for (unsigned int attempt = 0U; attempt < 9U; ++attempt) {
+        AtspiAccessible *control = NULL;
+        uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        if (query_named_accessible(pid, "Set permanent password", deadline, &control, 0) != 0)
+            return -1;
+        if (control != NULL) {
+            g_object_unref(control);
+            return activate_named_control(pid, "Set permanent password");
+        }
+        XWindowAttributes attributes;
+        Window child;
+        int x, y;
+        if (XGetWindowAttributes(display, main, &attributes) == 0 ||
+            XTranslateCoordinates(display, main, DefaultRootWindow(display),
+                attributes.width * 3 / 4, attributes.height / 2, &x, &y, &child) == 0 ||
+            XTestFakeMotionEvent(display, DefaultScreen(display), x, y, CurrentTime) == 0)
+            return -1;
+        for (unsigned int step = 0U; step < 3U; ++step) {
+            if (XTestFakeButtonEvent(display, 5U, True, CurrentTime) == 0 ||
+                XTestFakeButtonEvent(display, 5U, False, CurrentTime) == 0) return -1;
+        }
+        XSync(display, False);
+        if (sleep_millis(150U) != 0) return -1;
+    }
+    return -1;
+}
+
 int main(int argc, char **argv) {
     unsigned long parsed;
     char *end = NULL;
@@ -77,7 +106,7 @@ int main(int argc, char **argv) {
     if (strcmp(argv[2], "open") == 0) {
         if (activate_header_control(display, main, pid, "Settings") != 0 ||
             activate_named_control(pid, "Security") != 0 ||
-            activate_named_control(pid, "Set permanent password") != 0 ||
+            settings_open_password(display, main, pid) != 0 ||
             settings_visible(pid, "Set Password", 1) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "cancel") == 0) {
         if (activate_named_control(pid, "Cancel") != 0 ||

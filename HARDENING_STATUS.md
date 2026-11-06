@@ -7396,29 +7396,37 @@ short replay and app/peer/observer provenance.
 **OPEN:** audio/encoder follow-up, handles, input-to-visible response, impairment,
 physical devices, other supported roles and full R-F5 acceptance.
 
-**Android audio fixture and corrected VPX peer — named runtime acceptance.**
-`702d6a82` supplies a pinned private audio daemon. Native monitor controls and
-thirteen CM recordings pass with `9b22f10f`; pre/post recordings are absent,
-five endpoint deltas are zero and cleanup joins. `android-audio-fixture-702d6a82.json`
-retains the baseline; the audit retains the earlier missing-daemon diagnosis.
+**Android software peer — encoder and final-screen runtime acceptance.**
+`android-audio-fixture-702d6a82.json` retains native monitor controls and thirteen
+CM recordings with `9b22f10f`, absent pre/post recordings, joined cleanup and five
+zero endpoint deltas. The audit retains the missing-daemon diagnosis.
 
 `794a8d73` returns `None` for successful VPX empty output; the service skips
 publication and clears its error counter. All 28 native libvpx 1.12.0 checks pass:
 twelve codec/format/drop/path combinations, twelve invalid-input refusals,
 96 pixel controls after explicitly disabling dropping, and allocation/keyframe
-recovery. The audit retains classification, correction and complete-peer build evidence.
+recovery. `vpx-peer-replay-5e875a68.json` retains the earlier 22-phase runtime
+pass and zero encoder errors against 9,187 in its comparable predecessor;
+its timings/resources, build provenance and prompt-driver failure remain in the audit.
 
-TUF `M71LghSQ5j` at harness `5e875a68` reuses that peer and the `9b22f10f` APK.
-All 22 pixel phases, six reconnects, six task replacements and thirteen audio
-captures pass. Maximum sampled age is 1,046 ms; background/reconnect/task recovery
-maxima are 1,280/550/550 ms. The server logs zero encoder errors against 9,187 in
-the preceding comparable replay. Thirteen samples show no RSS growth and at most
-three additional threads; handles remain unobserved. Graceful shutdown and exact
-VM/private/RAM retirement pass with five zero endpoint deltas. Capsule:
-`vpx-peer-replay-5e875a68.json`. The audit retains the initial prompt-driver failure.
-Automatic recovery of a dropped final static change, every historical encoder
-event, audible audio, input latency, impairment, physical devices, release codec
-execution, shared PA-test revalidation and full R-F5 remain OPEN.
+`4c29a59f` retains the latest pending YUV frame across omitted output and retries
+unchanged pixels at ordinary QoS cadence until publication. New captures replace
+that buffer. TUF baseline `NagIDMGbhJ` leaves the final screen 14–18 publications
+behind in all eight five-second pauses. With the same APK, scripts and limits,
+corrected run `dVjFFpWZuP` passes all eight: final-state delivery **313–1,101 ms**
+against 2,500 ms, 256 independent pixel observations and seven matching samples
+in each final second. Exact native drop events were not individually instrumented.
+
+The corrected peer also passes 22 moving-display phases, six reconnects, six task
+replacements and thirteen native audio captures. Maximum image age is 1,073 ms;
+background/reconnect/task recovery maxima are 550/550/730 ms. Thirteen resource
+samples show RSS growth at most 8,384 KiB and thread growth five; handles remain
+unobserved. Encoder errors are zero; graceful shutdown, VM/private/RAM retirement
+and five zero endpoint deltas pass. Capsules: `android-static-baseline-0d61d33e.json`,
+`android-static-corrected-4c29a59f.json`. The audit retains builds and cache retirement.
+**OPEN:** original intermittent failure attribution, historical encoder events,
+audible audio, input latency, impairment, physical/other targets, release codecs,
+new-peer multi-hour execution, shared PA-test revalidation and full R-F5.
 
 Historical `f372aacf` app/task results remain in `android-current-f372aacf.json`,
 `android-presentation-1c429348.json` and Git `9b22f10f`, including its unattributed

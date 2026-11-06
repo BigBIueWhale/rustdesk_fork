@@ -142854,3 +142854,50 @@ pending output is not abandoned merely after ten attempts. No capture clone,
 extra frame queue, forced reconnect, keyframe loop or disabled rate control is
 introduced. Full application compilation and the unchanged real-peer regression
 are the next checks; no corrected-runtime claim is made yet.
+
+The status-answer turn observes build `2jpDyRtJfV` terminal zero; that compile
+evidence changes the next action. On continuation, profile comparison finds the
+general debug build retained symbols unlike the bounded baseline. Its seven
+payload hashes and joined cleanup pass, but it supplies no runtime acceptance.
+`static-peer-debug-build-4c29a59f.json` retains compilation; exact cache retirement
+frees 715,788,288 allocated bytes. Earlier superseded `9b22f10f` Linux-peer retirement
+freed 117,452,800 bytes while preserving the separate APK and failing `794a8d73` peer.
+Both retirement intents/receipts retain manifests and exact tree identities.
+
+Matching-profile build `QRunGFB5Ea`, `--linux-service-artifact-build`, passes all
+seven payloads (117,428,392 bytes) with `CARGO_PROFILE_DEV_DEBUG=0`. Manifest
+a7293ff6253b8124ed8a59d069ae17247b02194e1f012f317f5680874c50b7b3
+binds source `4c29a59f`. Capsule `static-peer-build-4c29a59f.json`, SHA-256
+55b62e712978e4e94d9e91ddd93552f1d40a5c9c9303694dd327f542427b54ea,
+binds the 253.798-second run, 5,856,018,432-byte peak RAM scratch, four zero
+endpoint deltas and independently reconciled QEMU/private/RAM absence.
+
+TUF `dVjFFpWZuP` passes the unchanged regression with that peer and APK `9b22f10f`.
+All eight final identities arrive in 332/792/464/947/634/1,101/796/313 ms against
+the original 2,500-ms deadline. Each five-second hold has 32 independent samples
+and seven final-second matches, without regression or reconnect. The eight failing
+baseline cases and this controlled comparison establish the corrected peer behavior;
+individual native drop events were not instrumented. Only `video_service.rs` differs
+in product source from `794a8d73`; scripts are unchanged from baseline `0d61d33e`.
+
+All 22 moving pixel phases, six reconnects, six task replacements and thirteen
+native audio captures pass. Maximum image age is 1,073 ms; background/reconnect/task
+recovery maxima are 550/550/730 ms. Thirteen wire-generation records match; warm
+reconnects retain one viewer owner and task replacements create six fresh owners.
+The task-absent hold lasts 120,370 ms. Thirteen resource samples have maximum RSS
+growth 8,384 KiB from 264,824 KiB and thread growth five from 57; handles are unobserved.
+The unsaturated 269,117-byte server log has zero encoder errors, thirteen audio
+endings (twelve authority refusals, one owner EOF) and one graceful-shutdown record.
+Its summary/context/tail and digest remain; the complete ephemeral server log does not.
+
+Capsule `android-static-corrected-4c29a59f.json`, SHA-256
+cc3f08b75b4899a3af4a2d6bfdbc82a05fc7e462fb7d42db691c2d17c2fbfec8,
+binds both artifacts, all eight cases, comparison, lifecycle and cleanup. The outer
+command exits zero; under the shared lock, QEMU absence and private/RAM retirement
+are independently reconciled. All five endpoint deltas are zero. Storage lifetime
+is 1,400.4 seconds with 4,508,794,880-byte peak RAM scratch. Ten evidence files /
+194,010 bytes match CTE/TUF; both build/retirement bundles also match (20 files /
+457,381 bytes). The final-static-screen defect is corrected for this named Android
+emulator/Linux software-peer combination. Hardware/release codecs, physical and
+other targets, input latency, network impairment, new-peer multi-hour execution,
+audible audio and full R-F5 remain open. No live instruction file changed.

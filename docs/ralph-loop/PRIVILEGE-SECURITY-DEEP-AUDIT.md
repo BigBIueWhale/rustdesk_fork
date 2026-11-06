@@ -142901,3 +142901,14 @@ is 1,400.4 seconds with 4,508,794,880-byte peak RAM scratch. Ten evidence files 
 emulator/Linux software-peer combination. Hardware/release codecs, physical and
 other targets, input latency, network impairment, new-peer multi-hour execution,
 audible audio and full R-F5 remain open. No live instruction file changed.
+
+Final ledger count at `448f313b`, CTE `x9SsF1FoAt`: **400,091 tokens** /
+1,826,704 bytes, input SHA-256
+13df3e7418468e0c04d9b33a921df5e9ca5e91fb4b0e0382a390befff43bdb3b.
+The pinned tokenizer, seven controls and whole-input round trip pass. Capsule
+`static-screen-ledger-448f313b.json`, SHA-256
+12dd623360be093f5741408c661cf43bace34b24e04e47cf87fc92ed6ab3a632,
+binds the 34.723-second run, 402,685,952-byte peak RAM scratch, three zero
+endpoint deltas and independently reconciled QEMU/private/RAM absence.
+All eight evidence files match CTE/TUF (116,756 bytes). This audit-only receipt
+preserves the counted ledger; whole-document classification remains open.

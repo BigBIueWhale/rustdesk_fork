@@ -7381,9 +7381,11 @@ The first subsequent reconnect presents changing pixels in 540 ms, but timing
 collection refuses **server=0/native=1/Dart=1** new records. Server shutdown also
 lacks its terminal record. Its retained log ends about 77 minutes before reconnect,
 mid-line amid encoder messages and PulseAudio `ftruncate: File too large` errors.
-The harness applies an 8-MiB process-wide file limit; log saturation and ancillary
-allocation interference need focused reproduction/correction. These observations
-do not establish complete healthy-session functionality or lifecycle acceptance.
+That run used an 8-MiB process-wide file limit. Native controls reproduce shared-memory
+EFBIG and lost late records. `fcd7051c` admits a finite 128-MiB allowance and rejects
+insufficient inherited capacity or saturated logs; five focused cases pass in
+`android-peer-file-limit-fcd7051c.json`. Actual peer replay remains required.
+These observations do not establish complete healthy-session or lifecycle acceptance.
 Remaining reconnect/task phases, handles, input-to-visible response, impairment,
 physical devices and R-F5 remain OPEN. Outer QEMU/private/RAM retire with five zero
 endpoint deltas. `android-soak-timed-a70a4bd6.json` and its complete runtime log

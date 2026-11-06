@@ -110518,6 +110518,24 @@ drift and application RSS/thread criteria are unchanged. Product binaries,
 PulseAudio execution and full Android lifecycle acceptance are still untested
 for this harness correction; focused execution follows.
 
+CTE `QczSiW5IzU` at `fcd7051c` passes all five focused cases and the existing
+runtime-log suite. Both shared-memory allocations now map/read/write successfully,
+and the 8,388,634-byte control retains its late record and one session count.
+At the 134,217,728-byte ceiling, the kernel refuses further output and the actual
+soak reader rejects the saturated file. The lower inherited limit refuses before
+the fixture child executes; the old 2/8-MiB controls still reproduce both failures.
+This verifies the launcher/reader correction, not actual PulseAudio or app behavior.
+
+Exact QEMU/private/RAM retirement is reconciled under the shared lock, with four
+zero endpoint deltas. Storage lifetime is 39.678 seconds, peak RAM scratch
+414,429,184 bytes. Capsule `android-peer-file-limit-fcd7051c.json`, SHA-256
+f38b152f11be1bbf33c9e1870f6154cad14eadcceb5795e5ab0fd645ab660af4.
+The two runs' eighteen bounded evidence files match CTE/TUF (702,934 bytes).
+Next: reuse the retained `9b22f10f` app/peer in a non-soak lifecycle replay,
+observe real server startup, reconnect records and shutdown with this allowance,
+and inspect any remaining audio/encoder diagnostics before another two-hour run.
+No original-log size, full healthy-session, R-F5 or release acceptance is claimed.
+
 ## 2026-10-28 — retire unused legacy-ID main IPC
 
 The previous locale-selection turn made verified progress. This continuation

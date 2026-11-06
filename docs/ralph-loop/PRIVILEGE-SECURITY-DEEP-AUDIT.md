@@ -110472,70 +110472,6 @@ durable-run peak 249,856 bytes. QEMU 222169 joins exit 0; its PID, RAM
 `run.zv39mfrc` and active owned roots are absent. All endpoint deltas are zero.
 This audit-only receipt leaves the counted ledger unchanged.
 
-## 2026-11-06 — short Android peer file-limit reproduction
-
-Selected prerequisite: distinguish the server's process-wide file-limit effects
-from Android presentation behavior before another soak. Linux getrlimit(2)
-documents EFBIG/SIGXFSZ when a process extends a file past RLIMIT_FSIZE
-(https://www.man7.org/linux/man-pages/man2/getrlimit.2.html). PulseAudio v16.1
-allocates 1,024 64-KiB slots by default and sizes memfd/POSIX shared files with
-ftruncate; POSIX storage adds a 40-byte marker. Primary source:
-https://github.com/pulseaudio/pulseaudio/blob/v16.1/src/pulsecore/memblock.c
-and https://github.com/pulseaudio/pulseaudio/blob/v16.1/src/pulsecore/shm.c.
-These sources explain the hypothesis; they do not identify the exact loaded
-PulseAudio build or prove that the original server log reached its ceiling.
-
-The existing isolated runtime-log lane now executes the exact Python limit/exec
-fragment from the Android peer launcher at its normal/soak limits. Native
-memfd and /dev/shm allocation, mapped first/last-byte controls and a late log
-record distinguish those cases from a finite 128-MiB inherited-limit control.
-Children join and temporary files retire before reporting. This is a bounded
-kernel-mechanism reproduction, with no product or emulator execution and no
-runtime-limit correction. Syntax/diff checks pass; isolated execution follows.
-
-CTE `hH0F1qHS6o` at `d657375a` reproduces all three cases in the existing
-runtime-log lane. Both old limits produce EFBIG for both shared-file forms and
-for the late record; logs stop at exactly 2,097,152 / 8,388,608 bytes. The finite
-128-MiB control maps both allocations and retains the late record at 8,388,634
-bytes. Existing Docker log ownership, stage/UI, export and transport cases also
-pass. The 39.768-second transaction peaks at 414,347,264 bytes of RAM scratch;
-all four endpoint deltas are zero. Exact QEMU/private/RAM absence is reconciled
-under the shared lock. Capsule `android-peer-file-limit-d657375a.json`, SHA-256
-ebb2969765a47e9a4d01d62def56119e261ec03e7306a29efd108950040603eb.
-
-Correction: one 128-MiB process file ceiling admits the 64-MiB pool plus its
-marker, preserves a finite diagnostic bound and refuses insufficient inherited
-allowance before exec. This raises the individual file allowance, not the
-already-admitted container/VM/RAM capacity: the runtime retains its 12-GiB memory,
-10-GiB private tmpfs and 1-GiB shared-memory bounds and outer storage monitor.
-No disk scratch is introduced. The same ceiling reaches the soak reader;
-reaching it now refuses at the next resource sample and at final log acceptance.
-Previously a full 8-MiB log could repeatedly pass the retained-log check.
-The five-case focused check retains both old-limit controls, exercises actual
-mapping and late-record success, kernel-ceiling/reader refusal, and inherited
-limit refusal before exec. A saturated fixture is sparse. Display age, recovery,
-drift and application RSS/thread criteria are unchanged. Product binaries,
-PulseAudio execution and full Android lifecycle acceptance are still untested
-for this harness correction; focused execution follows.
-
-CTE `QczSiW5IzU` at `fcd7051c` passes all five focused cases and the existing
-runtime-log suite. Both shared-memory allocations now map/read/write successfully,
-and the 8,388,634-byte control retains its late record and one session count.
-At the 134,217,728-byte ceiling, the kernel refuses further output and the actual
-soak reader rejects the saturated file. The lower inherited limit refuses before
-the fixture child executes; the old 2/8-MiB controls still reproduce both failures.
-This verifies the launcher/reader correction, not actual PulseAudio or app behavior.
-
-Exact QEMU/private/RAM retirement is reconciled under the shared lock, with four
-zero endpoint deltas. Storage lifetime is 39.678 seconds, peak RAM scratch
-414,429,184 bytes. Capsule `android-peer-file-limit-fcd7051c.json`, SHA-256
-f38b152f11be1bbf33c9e1870f6154cad14eadcceb5795e5ab0fd645ab660af4.
-The two runs' eighteen bounded evidence files match CTE/TUF (702,934 bytes).
-Next: reuse the retained `9b22f10f` app/peer in a non-soak lifecycle replay,
-observe real server startup, reconnect records and shutdown with this allowance,
-and inspect any remaining audio/encoder diagnostics before another two-hour run.
-No original-log size, full healthy-session, R-F5 or release acceptance is claimed.
-
 ## 2026-10-28 — retire unused legacy-ID main IPC
 
 The previous locale-selection turn made verified progress. This continuation
@@ -142422,3 +142358,77 @@ deltas are zero, and exact QEMU/private/RAM retirement is reconciled. Capsule:
 All 74 retained files from this Android work, including the count and publication
 request, match on both hosts (2,196,872 bytes); neither has a private run directory.
 This audit-only receipt leaves the counted ledger unchanged.
+
+## 2026-11-06 — short Android peer file-limit reproduction
+
+Selected prerequisite: distinguish the server's process-wide file-limit effects
+from Android presentation behavior before another soak. Linux getrlimit(2)
+documents EFBIG/SIGXFSZ when a process extends a file past RLIMIT_FSIZE
+(https://www.man7.org/linux/man-pages/man2/getrlimit.2.html). PulseAudio v16.1
+allocates 1,024 64-KiB slots by default and sizes memfd/POSIX shared files with
+ftruncate; POSIX storage adds a 40-byte marker. Primary source:
+https://github.com/pulseaudio/pulseaudio/blob/v16.1/src/pulsecore/memblock.c
+and https://github.com/pulseaudio/pulseaudio/blob/v16.1/src/pulsecore/shm.c.
+These sources explain the hypothesis; they do not identify the exact loaded
+PulseAudio build or prove that the original server log reached its ceiling.
+
+The existing isolated runtime-log lane now executes the exact Python limit/exec
+fragment from the Android peer launcher at its normal/soak limits. Native
+memfd and /dev/shm allocation, mapped first/last-byte controls and a late log
+record distinguish those cases from a finite 128-MiB inherited-limit control.
+Children join and temporary files retire before reporting. This is a bounded
+kernel-mechanism reproduction, with no product or emulator execution and no
+runtime-limit correction. Syntax/diff checks pass; isolated execution follows.
+
+CTE `hH0F1qHS6o` at `d657375a` reproduces all three cases in the existing
+runtime-log lane. Both old limits produce EFBIG for both shared-file forms and
+for the late record; logs stop at exactly 2,097,152 / 8,388,608 bytes. The finite
+128-MiB control maps both allocations and retains the late record at 8,388,634
+bytes. Existing Docker log ownership, stage/UI, export and transport cases also
+pass. The 39.768-second transaction peaks at 414,347,264 bytes of RAM scratch;
+all four endpoint deltas are zero. Exact QEMU/private/RAM absence is reconciled
+under the shared lock. Capsule `android-peer-file-limit-d657375a.json`, SHA-256
+ebb2969765a47e9a4d01d62def56119e261ec03e7306a29efd108950040603eb.
+
+Correction: one 128-MiB process file ceiling admits the 64-MiB pool plus its
+marker, preserves a finite diagnostic bound and refuses insufficient inherited
+allowance before exec. This raises the individual file allowance, not the
+already-admitted container/VM/RAM capacity: the runtime retains its 12-GiB memory,
+10-GiB private tmpfs and 1-GiB shared-memory bounds and outer storage monitor.
+No disk scratch is introduced. The same ceiling reaches the soak reader;
+reaching it now refuses at the next resource sample and at final log acceptance.
+Previously a full 8-MiB log could repeatedly pass the retained-log check.
+The five-case focused check retains both old-limit controls, exercises actual
+mapping and late-record success, kernel-ceiling/reader refusal, and inherited
+limit refusal before exec. A saturated fixture is sparse. Display age, recovery,
+drift and application RSS/thread criteria are unchanged. Product binaries,
+PulseAudio execution and full Android lifecycle acceptance are still untested
+for this harness correction; focused execution follows.
+
+CTE `QczSiW5IzU` at `fcd7051c` passes all five focused cases and the existing
+runtime-log suite. Both shared-memory allocations now map/read/write successfully,
+and the 8,388,634-byte control retains its late record and one session count.
+At the 134,217,728-byte ceiling, the kernel refuses further output and the actual
+soak reader rejects the saturated file. The lower inherited limit refuses before
+the fixture child executes; the old 2/8-MiB controls still reproduce both failures.
+This verifies the launcher/reader correction, not actual PulseAudio or app behavior.
+
+Exact QEMU/private/RAM retirement is reconciled under the shared lock, with four
+zero endpoint deltas. Storage lifetime is 39.678 seconds, peak RAM scratch
+414,429,184 bytes. Capsule `android-peer-file-limit-fcd7051c.json`, SHA-256
+f38b152f11be1bbf33c9e1870f6154cad14eadcceb5795e5ab0fd645ab660af4.
+The two runs' eighteen bounded evidence files match CTE/TUF (702,934 bytes).
+Next: reuse the retained `9b22f10f` app/peer in a non-soak lifecycle replay,
+observe real server startup, reconnect records and shutdown with this allowance,
+and inspect any remaining audio/encoder diagnostics before another two-hour run.
+No original-log size, full healthy-session, R-F5 or release acceptance is claimed.
+
+Final count at `d40b52a9`, CTE `hMHfI1F51G`: 399,871 tokens / 1,825,637
+bytes, input SHA-256 4b6af189346892fdd3476e0a4938f09cb129ec97638b95e54ae5d0dceffb2a5f.
+The fixed tokenizer, seven controls and byte round trip pass. Capsule:
+`android-file-limit-ledger-d40b52a9.json`, SHA-256
+9c51334d129aeca5127e59c94a1b7fa803768152fd2942a806263eaa1bce569f.
+The 30.384-second count retires QEMU/private/RAM state with three zero endpoint
+deltas and 402,804,736-byte peak scratch. All 26 evidence files from this
+prerequisite, including the count, match CTE/TUF (819,457 bytes). This audit-only
+receipt preserves the counted ledger.

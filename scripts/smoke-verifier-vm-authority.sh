@@ -2311,6 +2311,15 @@ android_emulator_runtime_input_inventory() {
         "$ANDROID_EMULATOR_ADB" "$DEV_CHECK_IMAGE_ARCHIVE" \
         "$ANDROID_BUILDER_ARCHIVE" "$CARGO_VENDOR_CONFIG" "$VIRTIOFSD_PACKAGE"
     android_emulator_observer_dependency_inventory
+    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
+        [ -f "$PA_RUNTIME_CANDIDATE" ] && [ ! -L "$PA_RUNTIME_CANDIDATE" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$PA_RUNTIME_CANDIDATE")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
+            || fail 'Android peer PulseAudio candidate metadata differs'
+        verify_sha256 "$PA_RUNTIME_CANDIDATE" "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+        /usr/bin/stat -c '%d:%i:%u:%g:%a:%h:%s' -- "$PA_RUNTIME_CANDIDATE"
+        /usr/bin/sha256sum -- "$PA_RUNTIME_CANDIDATE"
+    fi
 }
 
 android_emulator_observer_dependency_inventory() {
@@ -8782,6 +8791,14 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         require_exact_fixed_receipt \
             "ANDROID_PEER_INPUT_PROVIDER_OBSERVED=pass sha256=$android_provider_sha unchanged=before-after mapping=owned-server cleanup=joined" \
             'Android peer protected input-provider execution'
+        require_exact_fixed_receipt \
+            'ANDROID_PEER_AUDIO=pass daemon=16.1 signal=sine440 monitor=pacat-native captures=13 scope=native-stream cleanup=joined' \
+            'Android peer native recording and private audio fixture retirement'
+        for audio_phase in before-peer after-peer; do
+            require_exact_fixed_receipt \
+                "ANDROID_PEER_AUDIO_EMPTY=pass phase=$audio_phase recordings=0" \
+                'Android peer audio lifetime boundary'
+        done
         printf '%s\n' "${android_provider_receipts[0]}"
         android_frame_source_sha="$(git_closed -C "$REPO_ROOT" cat-file blob \
             "$ANDROID_EMULATOR_SOURCE_COMMIT:scripts/flutter-peer-source-x11.c" \

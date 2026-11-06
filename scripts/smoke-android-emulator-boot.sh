@@ -63,6 +63,9 @@ readonly -a EMULATOR_GRPC_ARGS
 readonly SCRIPT_DIR="$(cd "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=scripts/pins.env
 source "$SCRIPT_DIR/pins.env"
+if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+    source "$SCRIPT_DIR/pa-runtime-fixture.sh"
+fi
 
 readonly RUN_UID="$(id -u)"
 readonly RUN_GID="$(id -g)"
@@ -1445,6 +1448,12 @@ cleanup() {
     stop_frame_observer || cleanup_status=1
     stop_emulator || cleanup_status=1
     stop_peer_infrastructure || cleanup_status=1
+    if [ "$WORKLOAD" = app-peer-lifecycle ]; then
+        pa_fixture_stop || cleanup_status=1
+        if [ "$status" -ne 0 ] && [ -f "$PA_FIXTURE_WORK/pulseaudio.log" ]; then
+            tail -n 80 "$PA_FIXTURE_WORK/pulseaudio.log" >&2
+        fi
+    fi
     if [ -n "${PEER_SERVER_LOG:-}" ] && [ -f "$PEER_SERVER_LOG" ]; then
         print_peer_server_log_diagnostic || cleanup_status=1
     fi
@@ -1626,6 +1635,9 @@ PY
     [ -S /tmp/.X11-unix/X99 ] && [ ! -L /tmp/.X11-unix/X99 ] \
         || fail 'Android peer Xvfb Unix socket did not become ready'
     install -d -m 0700 -- /tmp/android-peer-server-home
+    pa_fixture_prepare /inputs/pa-runtime.tar.gz
+    HOME=/tmp/android-peer-server-home pa_fixture_start sine
+    env "${PA_FIXTURE_ENV[@]}" python3 -I -S "$SCRIPT_DIR/android-peer-audio.py" before-peer
     HOME=/tmp/android-peer-server-home \
         "$PEER_TARGET/debug/examples/seed_password" "$PEER_PASSWORD" \
         >"$PEER_SEED_LOG" 2>&1 \
@@ -1634,7 +1646,7 @@ PY
         "$PEER_SEED_LOG" || true)" -eq 1 ] \
         && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \
         || { tail -n 40 "$PEER_SEED_LOG" >&2; fail 'the Android peer password seed receipt differs'; }
-    HOME=/tmp/android-peer-server-home DISPLAY=:99 RUST_LOG=debug PULSE_LOG=4 \
+    env "${PA_FIXTURE_ENV[@]}" HOME=/tmp/android-peer-server-home DISPLAY=:99 RUST_LOG=debug PULSE_LOG=4 \
         LD_PRELOAD="$PEER_TARGET/smoke-bind-loopback.so" \
         python3 -B -I -S -c '
 import os, resource, sys
@@ -3929,6 +3941,8 @@ PY
             print_peer_presentation_stage_diagnostic "$generation" || true
             return 1
         }
+    env "${PA_FIXTURE_ENV[@]}" python3 -I -S "$SCRIPT_DIR/android-peer-audio.py" \
+        "$generation" "$SERVER_PID" "$SERVER_START" || return 1
     wait_peer_server_connections 1 exact
 }
 
@@ -4878,6 +4892,10 @@ stop_emulator || fail 'Android emulator or adb did not stop within the bounded t
 if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     stop_peer_infrastructure \
         || fail 'the controlled Android peer infrastructure did not join'
+    env "${PA_FIXTURE_ENV[@]}" python3 -I -S "$SCRIPT_DIR/android-peer-audio.py" after-peer
+    pa_fixture_stop || fail 'the private PulseAudio daemon did not join'
+    printf 'ANDROID_PEER_AUDIO=pass daemon=16.1 signal=sine440 monitor=pacat-native captures=%s scope=native-stream cleanup=joined\n' \
+        "${#PEER_PRESENTATION_PHASES[@]}"
     [ "$(stat -c '%s' -- "$PEER_SOURCE_LOG")" -le 67108864 ] \
         && [ "$(stat -c '%s' -- "$PEER_SERVER_LOG")" -lt "$PEER_SERVER_FILE_LIMIT" ] \
         && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \

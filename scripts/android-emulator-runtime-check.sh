@@ -121,6 +121,7 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 fi
 readonly INPUT_PROVIDER_BINDING INPUT_PROVIDER_SHA256
 readonly CANDIDATE_ROOT=$REPO_ROOT/online/candidates/android-emulator
+readonly PA_RUNTIME_ARCHIVE=$REPO_ROOT/online/candidates/pa-runtime/pa-runtime-candidate.tar.gz
 readonly EMULATOR_ZIP=$CANDIDATE_ROOT/emulator-linux_x64-${ANDROID_EMULATOR_ARCHIVE_BUILD}.zip
 readonly SYSTEM_IMAGE_ZIP=$CANDIDATE_ROOT/x86_64-${ANDROID_EMULATOR_SYSTEM_IMAGE_API}_r${ANDROID_EMULATOR_SYSTEM_IMAGE_ARCHIVE_REVISION}.zip
 readonly ADB=$ONLINE_DIR/android-sdk/platform-tools/adb
@@ -199,6 +200,7 @@ events = {
     b"ANDROID_PEER_FRESHNESS", b"ANDROID_PEER_RESOURCE_SAMPLE",
     b"ANDROID_PEER_WARM_HOLD", b"ANDROID_PEER_TASK_PARK_SAMPLE",
     b"ANDROID_PEER_SOAK_WINDOW", b"ANDROID_PEER_SOAK_SUMMARY", b"ANDROID_PEER_SOAK_LOG",
+    b"ANDROID_PEER_AUDIO_CAPTURE", b"ANDROID_PEER_AUDIO_EMPTY", b"ANDROID_PEER_AUDIO",
 }
 
 def forward(line):
@@ -813,6 +815,7 @@ fi
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     runtime_mounts+=(
         --mount "type=bind,source=$INPUT_PROVIDER,target=/usr/lib/rustdesk-fork,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$PA_RUNTIME_ARCHIVE,target=/inputs/pa-runtime.tar.gz,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$FRAME_SOURCE,target=/inputs/frame-source,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled"
@@ -918,6 +921,12 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
     [ "$runtime_observer_mounts" = \
       "bind	$OBSERVER_ROOT	/observer	true" ] \
         || die 'Android runtime frame-observer exchange mount authority differs'
+    runtime_pa_mounts="$(vm_docker inspect --format \
+        '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}' \
+        "$RUNTIME_CONTAINER" | awk -F '\t' '$3 == "/inputs/pa-runtime.tar.gz" { print }')"
+    [ "$runtime_pa_mounts" = \
+      "bind	$PA_RUNTIME_ARCHIVE	/inputs/pa-runtime.tar.gz	false" ] \
+        || die 'Android peer audio fixture mount authority differs'
 fi
 
 vm_docker start "$RUNTIME_CONTAINER" >/dev/null \
@@ -1345,6 +1354,8 @@ for phase_ordinal in 'initial 1' 'warm-reconnect-1 2' 'warm-reconnect-2 3' \
     'task-relaunch-3 10' 'task-relaunch-4 11' 'task-relaunch-5 12' \
     'task-relaunch-6 13'; do
     read -r phase ordinal <<<"$phase_ordinal"
+    [ "$(grep -Ec "^ANDROID_PEER_AUDIO_CAPTURE=pass phase=$phase cm_pid=[1-9][0-9]* cm_start=[1-9][0-9]* recording=[0-9]+ source=[0-9]+ monitor=rd_pa_test.monitor corked=false mute=false observations=3 scope=native-stream$" "$RUNTIME_LOG")" -eq 1 ] \
+        || die "Android peer native audio recording differs for $phase"
     [ "$(printf '%s\n' "${peer_presentation_stage_receipts[@]}" \
         | grep -Ec "^ANDROID_PEER_PRESENTATION_STAGE=pass phase=$phase ordinal=$ordinal ")" -eq 1 ] \
         || die "Android peer presentation-stage binding differs for $phase"
@@ -1666,6 +1677,12 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         "${lifecycle_receipts[0]}" "${initial_credential_receipts[0]}" \
         "${peer_receipts[0]}"
     grep -E '^ANDROID_PEER_SERVER_LOG_(DIAGNOSTIC=|TAIL )' "$RUNTIME_LOG"
+    [ "$(grep -c '^ANDROID_PEER_AUDIO_CAPTURE=' "$RUNTIME_LOG")" -eq 13 ] \
+        && [ "$(grep -Fxc 'ANDROID_PEER_AUDIO_EMPTY=pass phase=before-peer recordings=0' "$RUNTIME_LOG")" -eq 1 ] \
+        && [ "$(grep -Fxc 'ANDROID_PEER_AUDIO_EMPTY=pass phase=after-peer recordings=0' "$RUNTIME_LOG")" -eq 1 ] \
+        && [ "$(grep -Fxc 'ANDROID_PEER_AUDIO=pass daemon=16.1 signal=sine440 monitor=pacat-native captures=13 scope=native-stream cleanup=joined' "$RUNTIME_LOG")" -eq 1 ] \
+        || die 'Android peer audio fixture completion differs'
+    grep -E '^ANDROID_PEER_AUDIO(_CAPTURE|_EMPTY)?=' "$RUNTIME_LOG"
     runtime_peer=production-loopback-cpace-changing-display
     if [ -n "$SOAK" ]; then
         grep '^ANDROID_PEER_SOAK_SUMMARY=pass ' "$RUNTIME_LOG"

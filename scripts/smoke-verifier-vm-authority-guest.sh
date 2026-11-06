@@ -4571,6 +4571,8 @@ run_focused_rust_tests() {
         source_fingerprints=(
             Cargo.lock
             scripts/run-pa-runtime-tests.sh
+            scripts/pa-runtime-fixture.sh
+            scripts/smoke-ready.sh
             scripts/linux-parent-test-build.sh
             scripts/verify-pa-runtime-candidate.py
             src/ipc.rs
@@ -11495,6 +11497,7 @@ run_android_emulator_runtime() {
         android-storage-reload.sh android-storage-snapshot.py \
         build-x11-frame-source.py \
         android-peer-soak.py \
+        android-peer-audio.py pa-runtime-fixture.sh verify-pa-runtime-candidate.py \
         android-peer-artifact.py \
         online-gradle-output.py \
         AndroidRecentsDismiss.java \
@@ -11528,6 +11531,9 @@ run_android_emulator_runtime() {
         "$source_root/scripts/android-emulator-frame-observer.sh" \
         "$source_root/scripts/android-emulator-frame.py" \
         "$source_root/scripts/android-peer-soak.py" \
+        "$source_root/scripts/android-peer-audio.py" \
+        "$source_root/scripts/pa-runtime-fixture.sh" \
+        "$source_root/scripts/verify-pa-runtime-candidate.py" \
         "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
         "$source_root/scripts/android-emulator-frame-observer-dependencies.tsv" \
         "$source_root/scripts/smoke-android-emulator-boot.sh" \
@@ -12194,6 +12200,9 @@ run_android_emulator_runtime() {
           "$source_root/scripts/android-emulator-frame-observer.sh" \
           "$source_root/scripts/android-emulator-frame.py" \
           "$source_root/scripts/android-peer-soak.py" \
+          "$source_root/scripts/android-peer-audio.py" \
+          "$source_root/scripts/pa-runtime-fixture.sh" \
+          "$source_root/scripts/verify-pa-runtime-candidate.py" \
           "$source_root/scripts/AndroidEmulatorFrameObserver.java" \
           "$source_root/scripts/android-emulator-frame-observer-dependencies.tsv" \
           "$source_root/scripts/smoke-android-emulator-boot.sh" \
@@ -12282,6 +12291,7 @@ run_android_emulator_runtime() {
             "${resource_samples[@]}" "$resource_bound_receipt" \
             "$peer_receipt"
         grep -E '^ANDROID_PEER_SERVER_LOG_(DIAGNOSTIC=|TAIL )' "$output"
+        grep -E '^ANDROID_PEER_AUDIO(_CAPTURE|_EMPTY)?=' "$output"
         [ -z "$ANDROID_RUNTIME_SOAK" ] || printf '%s\n' "$soak_receipt"
     elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         printf '%s\n' "$controlled_cm_receipt" "$controlled_stop_receipt" \

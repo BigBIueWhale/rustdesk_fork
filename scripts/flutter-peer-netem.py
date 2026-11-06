@@ -35,8 +35,11 @@ def install_peer_ingress(run):
 
 
 class Impairment:
-    def __init__(self, image, congestion=False, long_soak=False):
+    def __init__(self, image, congestion=False, long_soak=False, android=False):
         self.image = image
+        self.android = android
+        self.finished = False
+        self.last_transport_complete = False
         self.congestion = congestion
         self.long_soak = long_soak
         self.transport_fast_until = self.transport_bytes = 0
@@ -69,14 +72,29 @@ class Impairment:
         require(record['Id'] == cid and record['Image'] == self.image
                 and record['Config']['User'] == '1000:1000' and record['State']['Running']
                 and host['NetworkMode'] == 'none' and host['ReadonlyRootfs']
-                and not host['Privileged'] and not host['PidMode'] and not host['Devices']
-                and not host['PortBindings'] and host['CapDrop'] == ['ALL']
-                and host['SecurityOpt'] in (['no-new-privileges'], ['no-new-privileges:true']),
+                and not host['Privileged'] and not host['PidMode']
+                and not host['PortBindings'] and host['CapDrop'] == ['ALL'],
                 'server container contract differs')
+        if self.android:
+            require(host['Devices'] == [dict(PathOnHost='/dev/kvm', PathInContainer='/dev/kvm',
+                                             CgroupPermissions='rw')]
+                    and host['SecurityOpt'] == ['no-new-privileges', 'apparmor=docker-default']
+                    and host['IpcMode'] == host['CgroupnsMode'] == 'private'
+                    and record['Config']['Cmd'] == [
+                        '/bin/bash', '--noprofile', '--norc',
+                        '/source/scripts/smoke-android-emulator-boot.sh',
+                        '/inputs/emulator.zip', '/inputs/system-image.zip', '/inputs/adb',
+                        '/tmp/android-emulator-app', '/inputs/app.apk', 'peer-lifecycle',
+                        '/inputs/recents-dismiss.jar', '--network-impairment'],
+                    'Android peer container contract differs')
+        else:
+            require(not host['Devices'] and host['SecurityOpt'] in (
+                ['no-new-privileges'], ['no-new-privileges:true']),
+                'desktop peer container authority differs')
         return record['State']['Pid']
 
     def attach(self, cid):
-        require(self.namespace is None and re.fullmatch('[0-9a-f]{64}', cid),
+        require(not self.finished and self.namespace is None and re.fullmatch('[0-9a-f]{64}', cid),
                 'invalid or duplicate attachment')
         pid = self.inspect(cid)
         self.process = os.pidfd_open(pid)
@@ -91,6 +109,14 @@ class Impairment:
         self.run('ip', 'link', 'add', 'rd-netem', 'type', 'ifb')
         self.interface = True
         self.run('ip', 'link', 'set', 'rd-netem', 'up')
+        if self.android:
+            links = json.loads(self.run('ip', '-d', '-j', 'link', 'show'))
+            addresses = json.loads(self.run('ip', '-j', 'addr', 'show', 'dev', 'rd-netem'))
+            require(sorted(link['ifname'] for link in links) == ['lo', 'rd-netem']
+                    and next(link for link in links if link['ifname'] == 'rd-netem')
+                    ['linkinfo']['info_kind'] == 'ifb'
+                    and len(addresses) == 1 and not addresses[0]['addr_info'],
+                    'Android impairment interface has external network authority')
         self.profile('healthy')
         self.run('tc', 'qdisc', 'add', 'dev', 'lo', 'handle', 'ffff:', 'ingress')
         self.ingress = True
@@ -217,6 +243,7 @@ print(json.dumps(samples))
         return counts
 
     def profile(self, name):
+        require(not self.finished, 'impairment observation has finished')
         require(self.process is not None and alive(self.process), 'server is no longer live')
         options = {'healthy': ['delay', '0ms'], 'delay': ['delay', '125ms'],
                    'loss': ['loss', '100%'],
@@ -296,6 +323,7 @@ print(json.dumps(samples))
             self.transport_identity = identity
         require(identity <= self.transport_identity, 'transport connection changed')
         complete = len(identity) == 2
+        self.last_transport_complete = complete
         require(complete or self.current_profile == 'healthy',
                 'transport closed during impairment')
         if complete and self.current_profile in self.transport_profiles:
@@ -365,12 +393,47 @@ print(json.dumps(samples))
                  queue=queue, packet_sizes=sizes, congestion=congestion), sort_keys=True), flush=True)
         return f'OK {now} {queue["drops"]} {queue["packets"]} {queue["qlen"]}'.encode()
 
+    def validate_observations(self):
+        sizes = self.packet_sizes()
+        require(sizes['oversized'] == self.packet_size_baseline['oversized']
+                and sizes['at_mtu'] > self.packet_size_baseline['at_mtu'],
+                'real-peer packet size coverage is missing or oversized')
+        require(self.transport_profiles
+                and all(count >= 2 for count in self.transport_profiles.values()),
+                'impairment transport observations are incomplete')
+        print('FLUTTER_PEER_TCP_OBSERVED=' + json.dumps(
+            dict(samples=self.transport_count, profiles=self.transport_profiles,
+                 interval_ms=200, clock='shared-monotonic', socket_pair='retained',
+                 source='ss-inet-diag', product_socket_changes=False,
+                 packet_sizes=sizes, packet_size_scope='namespace-ipv4',
+                 **(dict(healthy_interval_ms=30000, recovery_fast_ms=5000,
+                         snapshot_limit=2304, snapshot_bytes=self.transport_bytes)
+                    if self.long_soak else {})), sort_keys=True), flush=True)
+
+    def finish(self):
+        require(self.android and not self.finished and self.current_profile == 'healthy',
+                'invalid impairment completion')
+        self.transport_next = 0
+        self.observe_transport()
+        require(self.last_transport_complete, 'peer closed before observation completion')
+        reply = self.snapshot('finish')
+        self.validate_observations()
+        self.close()
+        self.transport_active = False
+        self.finished = True
+        return reply
+
     def close(self):
+        if self.namespace is None:
+            return
         try:
             if self.ingress:
                 self.run('tc', 'qdisc', 'del', 'dev', 'lo', 'ingress')
             if self.interface:
                 self.run('ip', 'link', 'del', 'rd-netem')
+            if self.android:
+                require([link['ifname'] for link in json.loads(self.run('ip', '-j', 'link', 'show'))]
+                        == ['lo'], 'Android impairment interface did not retire')
         finally:
             for fd in (self.namespace, self.process):
                 if fd is not None:
@@ -391,7 +454,7 @@ def attach_client(cid):
         print('FLUTTER_PEER_NETEM_ATTACHED=' + reply.decode())
 
 
-def supervise(image, argv):
+def supervise(image, argv, android=False):
     require(os.getuid() == 0 and os.getgid() == 0, 'requires disposable guest root')
     require('rustdesk.verifier_vm=1' in Path('/proc/cmdline').read_text().split()
             and Path('/proc/1/comm').read_text().strip() == 'systemd', 'verifier guest absent')
@@ -403,7 +466,7 @@ def supervise(image, argv):
     subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=ENV, check=True, timeout=3)
     long_soak = '--congestion-soak' in argv or '--input-congestion-soak' in argv
     owner = Impairment(image, long_soak or '--network-congestion' in argv or '--input-congestion' in argv,
-                       long_soak)
+                       long_soak, android)
     child = None
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
         listener.bind(ENDPOINT)
@@ -434,39 +497,36 @@ def supervise(image, argv):
                         require(not flags and data and len(data) < 128, 'invalid request frame')
                         request = data.decode('ascii')
                         requests += 1
-                        # Attachment, at most twelve (soak) or nine profile pairs, failure restore.
+                        # Desktop profile pairs; Android has six triples plus attach/finish.
                         require(requests <= (26 if long_soak else 20), 'request budget exceeded')
                         if request.startswith('attach '):
                             require(peer_namespace == os.stat('/proc/self/ns/net').st_ino,
                                     'attachment requires the guest orchestrator')
                             owner.attach(request[7:])
+                            reply = owner.snapshot(request)
                         else:
                             require(owner.namespace is not None
                                     and peer_namespace == os.fstat(owner.namespace).st_ino,
                                     'requester does not belong to the retained peer namespace')
-                            owner.profile(request)
+                            if request == 'finish':
+                                reply = owner.finish()
+                            elif request == 'snapshot':
+                                require(owner.android and not owner.finished,
+                                        'snapshot is outside Android observation')
+                                reply = owner.snapshot(request)
+                            else:
+                                owner.profile(request)
+                                reply = owner.snapshot(request)
                         require(alive(requester), 'requester exited before acknowledgement')
-                        channel.sendall(owner.snapshot(request))
+                        channel.sendall(reply)
                     finally:
                         os.close(requester)
             status = child.wait()
             if status == 0:
-                sizes = owner.packet_sizes()
-                require(sizes['oversized'] == owner.packet_size_baseline['oversized']
-                        and sizes['at_mtu'] > owner.packet_size_baseline['at_mtu'],
-                        'real-peer packet size coverage is missing or oversized')
-                require(owner.transport_profiles
-                        and all(count >= 2 for count in owner.transport_profiles.values()),
-                        'impairment transport observations are incomplete')
-                print('FLUTTER_PEER_TCP_OBSERVED=' + json.dumps(
-                    dict(samples=owner.transport_count, profiles=owner.transport_profiles,
-                         interval_ms=200, clock='shared-monotonic', socket_pair='retained',
-                         source='ss-inet-diag', product_socket_changes=False,
-                         packet_sizes=sizes,
-                         **(dict(healthy_interval_ms=30000, recovery_fast_ms=5000,
-                                 snapshot_limit=2304, snapshot_bytes=owner.transport_bytes)
-                            if long_soak else {})), sort_keys=True),
-                      flush=True)
+                if android:
+                    require(owner.finished, 'Android impairment observation did not finish')
+                else:
+                    owner.validate_observations()
         finally:
             if child is not None and child.poll() is None:
                 child.terminate()
@@ -491,5 +551,9 @@ if __name__ == '__main__':
     if len(sys.argv) == 3 and sys.argv[1] == '--attach':
         attach_client(sys.argv[2])
     else:
-        require(len(sys.argv) > 3 and sys.argv[2] == '--', 'invalid supervisor command')
-        raise SystemExit(supervise(sys.argv[1], sys.argv[3:]))
+        args = sys.argv[1:]
+        android = len(args) > 1 and args[1] == '--android'
+        if android:
+            del args[1]
+        require(len(args) > 2 and args[1] == '--', 'invalid supervisor command')
+        raise SystemExit(supervise(args[0], args[2:], android))

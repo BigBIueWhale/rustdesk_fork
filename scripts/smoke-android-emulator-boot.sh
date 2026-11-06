@@ -10,7 +10,7 @@ fail() {
 
 [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || [ "$#" -eq 6 ] \
     || [ "$#" -eq 7 ] || [ "$#" -eq 8 ] \
-    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|backup-transfer|recents|lifecycle|peer-lifecycle|controlled-cm|storage-reload [RECENTS_GESTURE_JAR [--soak]]]]'
+    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|backup-transfer|recents|lifecycle|peer-lifecycle|controlled-cm|storage-reload [RECENTS_GESTURE_JAR [--soak|--network-impairment]]]]'
 readonly EMULATOR_ZIP=$1
 readonly SYSTEM_IMAGE_ZIP=$2
 readonly INPUT_ADB=$3
@@ -18,10 +18,11 @@ readonly WORK_ROOT=$4
 readonly RUNTIME_TEST_APK=${5:-}
 readonly APP_SCENARIO=${6:-launch}
 readonly RECENTS_GESTURE_JAR=${7:-}
-readonly SOAK=${8:-}
+readonly PEER_EXTENSION=${8:-}
+NETWORK_IMPAIRMENT_ACTIVE=0
 if [ "$#" -eq 8 ]; then
-    [ "$SOAK" = --soak ] && [ "$APP_SCENARIO" = peer-lifecycle ] && [ -n "$RUNTIME_TEST_APK" ] \
-        || fail 'the two-hour soak requires a peer-lifecycle app workload'
+    { [ "$PEER_EXTENSION" = --soak ] || [ "$PEER_EXTENSION" = --network-impairment ]; } && [ "$APP_SCENARIO" = peer-lifecycle ] && [ -n "$RUNTIME_TEST_APK" ] \
+        || fail 'the peer extension requires a peer-lifecycle app workload'
 fi
 # RLIMIT_FSIZE also covers PulseAudio's 64-MiB shared-memory pool plus its
 # POSIX marker. Admit that allocation and bounded diagnostics in the same
@@ -71,6 +72,24 @@ readonly RUN_UID="$(id -u)"
 readonly RUN_GID="$(id -g)"
 [ "$RUN_UID:$RUN_GID" = 1000:1000 ] \
     || fail 'the emulator workload requires numeric uid/gid 1000:1000'
+if [ "$PEER_EXTENSION" = --network-impairment ]; then
+    python3 -I -S - <<'PY'
+import os, stat, time
+from pathlib import Path
+ready = Path('/observer/netem.ready')
+deadline = time.monotonic() + 30
+while not ready.exists() and time.monotonic() < deadline:
+    time.sleep(0.1)
+info = ready.lstat()
+if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
+        or (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != (1000, 1000, 0o600)
+        or ready.read_bytes() != b'peer-netem-ready\n'):
+    raise RuntimeError('Android network calibration gate differs')
+ready.unlink()
+print('ANDROID_PEER_NETWORK_READY=pass calibration=before-emulator')
+PY
+    NETWORK_IMPAIRMENT_ACTIVE=1
+fi
 timeout --signal=TERM --kill-after=2s 5s \
     python3 -I -S - "$VERIFIER_VM_KERNEL_RELEASE" <<'PY'
 import fcntl
@@ -493,10 +512,17 @@ is_exact_adb_process() {
         && [ "$(process_start_time "$ADB_PID" 2>/dev/null)" = "$ADB_START" ]
 }
 
-frame_observer_listener_is_exact() {
+runtime_interfaces_are_exact() {
     local -a interfaces=(/sys/class/net/*)
-    [ "${#interfaces[@]}" -eq 1 ] \
-        && [ "${interfaces[0]}" = /sys/class/net/lo ] \
+    if [ "$NETWORK_IMPAIRMENT_ACTIVE" -eq 1 ]; then
+        [ "${#interfaces[@]}" -eq 2 ] && [ "${interfaces[*]}" = '/sys/class/net/lo /sys/class/net/rd-netem' ]
+    else
+        [ "${#interfaces[@]}" -eq 1 ] && [ "${interfaces[0]}" = /sys/class/net/lo ]
+    fi
+}
+
+frame_observer_listener_is_exact() {
+    runtime_interfaces_are_exact \
         && [ "$(awk 'FNR > 1 && $4 == "0A" && substr($2, length($2) - 4) == ":216A" {
             count++
         }
@@ -1483,8 +1509,8 @@ if [ "$WORKLOAD" = app-peer-lifecycle ] \
    || [ "$WORKLOAD" = app-controlled-cm ] \
    || [ "$WORKLOAD" = app-storage-reload ]; then
     readonly PEER_TARGET=/smoke-target
-    [ "$(find /sys/class/net -mindepth 1 -maxdepth 1 -printf '%f\n' | sort)" = lo ] \
-        || fail 'the Android peer-probe runtime container has a non-loopback interface'
+    runtime_interfaces_are_exact \
+        || fail 'the Android peer runtime has an unexpected network interface'
     if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     readonly PEER_XVFB_ROOT=/xvfb-root
     readonly PEER_XVFB_MANIFEST=$SCRIPT_DIR/smoke-xvfb-files.tsv
@@ -1780,7 +1806,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     done
     [ "$grpc_ready" -eq 1 ] \
         || fail 'the emulator display observer is not one exact isolated [::]:8554 listener'
-    printf 'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-unary network=container-none\n'
+    printf 'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=isolated-no-external-link transport=grpc-unary network=container-none\n'
 fi
 
 boot_ready=0
@@ -4126,6 +4152,21 @@ exercise_peer_warm_hold() {
         "$PEER_WARM_HOLD_SAMPLES" "$PEER_WARM_HOLD_INTERVAL_SECONDS" "$elapsed_ms"
 }
 
+exercise_peer_network() {
+    local task
+    task="$(current_app_task_id)" || fail 'cannot bind the Android network observation task'
+    wait_frame_observer_ready || fail 'the network display observer is unavailable'
+    python3 -B -u -I -S "$SCRIPT_DIR/android-peer-network.py" \
+        "$FRAME_DECODER" "$FRAME_OBSERVER_FRAME" "$PEER_SOURCE_LOG" \
+        "$PEER_SERVER_LOG" "$FRAME_OBSERVER_FAILURE" "$ADB" "$SERIAL" \
+        "$APP_PID" "$task" "$SERVER_PID" "$SERVER_START" "$SOURCE_PID" "$SOURCE_START" \
+        "$PEER_SERVER_FILE_LIMIT" \
+        || fail 'Android displayed pixels failed the network recovery schedule'
+    NETWORK_IMPAIRMENT_ACTIVE=0
+    runtime_interfaces_are_exact || fail 'Android impairment interface remains after completion'
+    assert_main_service || fail 'network recovery lost the foreground service'
+}
+
 exercise_peer_soak() {
     local task lifecycle_log
     task="$(current_app_task_id)" || fail 'cannot bind the two-hour Android task'
@@ -4411,7 +4452,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
         grep -Eq "(^|,)$APP_PACKAGE(,|$)" <<<"$idle_state" \
             || fail 'the battery prerequisite is not granted'
     fi
-    if [ -n "$SOAK" ]; then
+    if [ "$PEER_EXTENSION" = --soak ]; then
         timeout --signal=TERM --kill-after=2s 10s \
             "$ADB" -s "$SERIAL" logcat -b main,system,crash -G 16M \
             || fail 'cannot admit bounded Android soak log buffers as the existing shell user'
@@ -4424,7 +4465,7 @@ if [ "$WORKLOAD" = app ] || [ "$WORKLOAD" = app-recents ] \
     fi
     "$ADB" -s "$SERIAL" logcat -c \
         || fail 'cannot clear the runtime-test log before launch'
-    if [ -n "$SOAK" ]; then
+    if [ "$PEER_EXTENSION" = --soak ]; then
         adb_shell_value log -t RustDeskSoak RUSTDESK_SOAK_LOG_START >/dev/null \
             || fail 'cannot record the Android soak log-retention marker'
     fi
@@ -4711,6 +4752,7 @@ PY
             PEER_INITIAL_RECOVERY_MS=$PEER_LAST_RECOVERY_MS
             exercise_peer_static_display \
                 || fail 'the final static screen did not reach the Android viewer'
+            [ "$PEER_EXTENSION" != --network-impairment ] || exercise_peer_network
             background_cycle=0
             for background_seconds in "${PEER_BACKGROUND_SECONDS[@]}"; do
                 background_cycle=$((background_cycle + 1))
@@ -4719,7 +4761,7 @@ PY
             done
             record_peer_process_resources baseline 0
             exercise_peer_warm_hold
-            [ -z "$SOAK" ] || exercise_peer_soak
+            [ "$PEER_EXTENSION" != --soak ] || exercise_peer_soak
             for warm_cycle in $(seq 1 "$PEER_WARM_RECONNECT_CYCLES"); do
                 exercise_peer_warm_reconnect "$warm_cycle"
             done

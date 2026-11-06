@@ -301,7 +301,7 @@ case "$#:${8:-}" in
     20:--android-emulator-runtime|21:--android-emulator-runtime)
         [ "${17}" = peer-lifecycle ] || [ "${17}" = controlled-cm ] || [ "${17}" = storage-reload ] || exit 2
         if [ "$#" -eq 21 ]; then
-            [ "${21}" = --soak ] && [ "${17}" = peer-lifecycle ] || exit 2
+            { [ "${21}" = --soak ] || [ "${21}" = --network-impairment ]; } && [ "${17}" = peer-lifecycle ] || exit 2
         fi
         MODE=android-emulator-runtime
         ;;
@@ -501,7 +501,7 @@ readonly ANDROID_RUNTIME_SCENARIO=${17:-}
 readonly ANDROID_RUNTIME_PEER_COMMIT=${18:-}
 readonly ANDROID_RUNTIME_PEER_TREE=${19:-}
 readonly ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${20:-}
-readonly ANDROID_RUNTIME_SOAK=${21:-}
+readonly ANDROID_RUNTIME_EXTENSION=${21:-}
 readonly APPLE_SOURCE_ARCHIVE=${9:-}
 readonly APPLE_SOURCE_COMMIT=${10:-}
 readonly APPLE_SOURCE_TREE=${11:-}
@@ -11500,6 +11500,7 @@ run_android_emulator_runtime() {
         android-storage-reload.sh android-storage-snapshot.py \
         build-x11-frame-source.py \
         android-peer-soak.py \
+        android-peer-network.py flutter-peer-netem.py \
         android-peer-audio.py pa-runtime-fixture.sh verify-pa-runtime-candidate.py \
         android-peer-artifact.py \
         online-gradle-output.py \
@@ -11534,6 +11535,8 @@ run_android_emulator_runtime() {
         "$source_root/scripts/android-emulator-frame-observer.sh" \
         "$source_root/scripts/android-emulator-frame.py" \
         "$source_root/scripts/android-peer-soak.py" \
+        "$source_root/scripts/android-peer-network.py" \
+        "$source_root/scripts/flutter-peer-netem.py" \
         "$source_root/scripts/android-peer-audio.py" \
         "$source_root/scripts/pa-runtime-fixture.sh" \
         "$source_root/scripts/verify-pa-runtime-candidate.py" \
@@ -11647,7 +11650,7 @@ run_android_emulator_runtime() {
         runtime_arguments+=("$peer_input" "$ANDROID_RUNTIME_PEER_COMMIT" \
             "$ANDROID_RUNTIME_PEER_TREE" "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256")
     fi
-    [ -z "$ANDROID_RUNTIME_SOAK" ] || runtime_arguments+=("$ANDROID_RUNTIME_SOAK")
+    [ -z "$ANDROID_RUNTIME_EXTENSION" ] || runtime_arguments+=("$ANDROID_RUNTIME_EXTENSION")
     [ ! -e "$staged_apk" ] && [ ! -L "$staged_apk" ] \
         || fail 'Android runtime execution-copy destination already exists'
     [ ! -e "$staged_test_apk" ] && [ ! -L "$staged_test_apk" ] \
@@ -11766,8 +11769,13 @@ run_android_emulator_runtime() {
         prepare_android_peer_input_provider "$source_root"
     fi
     mount_android_runtime_failure_output
+    local -a impairment_supervisor=()
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ]; then
+        impairment_supervisor=(/usr/bin/python3 -I -S "$source_root/scripts/flutter-peer-netem.py"
+            "$DEV_CHECK_IMAGE_CONFIG_ID" --android --)
+    fi
     set +e
-    setpriv --reuid=1000 --regid=1000 --clear-groups \
+    "${impairment_supervisor[@]}" setpriv --reuid=1000 --regid=1000 --clear-groups \
         env -i PATH=/usr/bin:/bin HOME=/nonexistent LC_ALL=C \
         /bin/bash "$source_root/scripts/android-emulator-runtime-check.sh" \
         "${runtime_arguments[@]}" \
@@ -11858,7 +11866,14 @@ run_android_emulator_runtime() {
     fi
     [ "$(stat -c '%s' -- "$output")" -le 2097152 ] \
         || fail 'Android emulator runtime replay output exceeds its bound'
-    if [ -n "$ANDROID_RUNTIME_SOAK" ]; then
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ]; then
+        [ "$(grep -Fxc 'ANDROID_PEER_NETWORK=pass cycles=6 pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 observer_limit_ms=500 transport=adb-reverse-linux-tcp-leg impairment=retired' "$output")" -eq 1 ] \
+            && [ "$(grep -c '^ANDROID_PEER_NETWORK_CASE=' "$output")" -eq 6 ] \
+            && [ "$(grep -Fxc 'FLUTTER_PEER_NETEM_JOINED status=0 namespace=retired socket=removed' "$output")" -eq 1 ] \
+            && [ "$(grep -c '^FLUTTER_PEER_TCP_OBSERVED=' "$output")" -eq 1 ] \
+            || fail 'Android network recovery or impairment retirement is incomplete'
+    fi
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --soak ]; then
         soak_receipt="$(grep -Fx 'ANDROID_PEER_SOAK=pass seconds=7200 observation=per-second age_limit_ms=2000 observer_limit_ms=500 gap_limit_ms=2000 drift_limit_ms=250 resources=rss-threads task=stable process=stable peer=stable logs=retained' "$output")" \
             || fail 'the requested uninterrupted Android soak did not complete'
         [ "$(grep -c '^ANDROID_PEER_SOAK=' "$output")" -eq 1 ] \
@@ -12024,7 +12039,7 @@ run_android_emulator_runtime() {
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     frame_endpoint_receipt="$(grep -Fx \
-        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-unary network=container-none' \
+        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=isolated-no-external-link transport=grpc-unary network=container-none' \
         "$output")" \
         || { tail -n 320 "$output" >&2; fail 'Android frame-endpoint receipt is absent'; }
     [ "$(grep -c '^ANDROID_EMULATOR_FRAME_ENDPOINT=' "$output")" -eq 1 ] \
@@ -12203,6 +12218,8 @@ run_android_emulator_runtime() {
           "$source_root/scripts/android-emulator-frame-observer.sh" \
           "$source_root/scripts/android-emulator-frame.py" \
           "$source_root/scripts/android-peer-soak.py" \
+          "$source_root/scripts/android-peer-network.py" \
+          "$source_root/scripts/flutter-peer-netem.py" \
           "$source_root/scripts/android-peer-audio.py" \
           "$source_root/scripts/pa-runtime-fixture.sh" \
           "$source_root/scripts/verify-pa-runtime-candidate.py" \
@@ -12296,7 +12313,10 @@ run_android_emulator_runtime() {
         grep -E '^ANDROID_PEER_SERVER_LOG_(DIAGNOSTIC=|TAIL )' "$output"
         grep -E '^ANDROID_PEER_AUDIO(_CAPTURE|_EMPTY)?=' "$output"
         grep -E '^ANDROID_PEER_STATIC_(CASE=|COMPLETE )' "$output"
-        [ -z "$ANDROID_RUNTIME_SOAK" ] || printf '%s\n' "$soak_receipt"
+        if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ]; then
+            grep -E '^(ANDROID_PEER_NETWORK(_[A-Z]+)?=|FLUTTER_PEER_(TCP_|NETEM|PACKET_CALIBRATION))' "$output"
+        fi
+        [ "$ANDROID_RUNTIME_EXTENSION" != --soak ] || printf '%s\n' "$soak_receipt"
     elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         printf '%s\n' "$controlled_cm_receipt" "$controlled_stop_receipt" \
             "$controlled_lifecycle_receipt"

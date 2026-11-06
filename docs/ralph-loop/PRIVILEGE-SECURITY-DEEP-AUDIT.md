@@ -142980,3 +142980,37 @@ peak RAM scratch, three zero endpoint deltas and independent process/private/RAM
 retirement. The eighteen native comparison files (187,660 bytes) and eight
 count files (116,515 bytes) match on CTE/TUF. This audit-only receipt preserves
 the counted ledger; document classification remains open.
+
+## 2026-11-06 — Android displayed recovery through peer impairment
+
+The preceding native classifier comparison is progress. Continue R-F5 by applying
+that mechanism to the retained `9b22f10f` APK and `4c29a59f` Linux peer, ahead of
+unrelated implementation work. AOSP's ADB manual defines `reverse REMOTE LOCAL`
+as a reversed device socket connection and identifies the independent 5037
+control socket. iproute2's mirred manual describes moving ingress packets into
+an IFB queue. Reviewed primary sources:
+https://android.googlesource.com/platform/packages/modules/adb/+/refs/heads/main/docs/user/adb.1.md
+and https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-mirred.8.
+The selected impairment covers the Linux TCP leg of the ADB-reversed stream;
+it does not simulate an Android radio or its direct network stack.
+
+The explicit `--network-impairment` extension retains the existing runtime and
+artifacts. Guest-root supervision admits only the pinned unprivileged Android
+container with its exact guest-KVM mapping and command. Calibration completes
+before emulator/ADB/observer startup; only loopback and the addressless IFB are
+admitted during observation. The client requests final observation and IFB
+retirement before the existing intentional reconnect/task-replacement cases.
+The healthy/default and two-hour-control schedules remain separate selections.
+
+Predeclared schedule: 125-ms one-way delay for six seconds; 3% and 8% random loss
+for eight seconds each; Gilbert-Elliott burst loss for ten seconds; two- and
+six-second complete outages. Each phase retains its actual peer TCP identity,
+kernel counters and pixel observations. A ten-second healthy baseline must stay
+within 2,000 ms. Four distinct current states must return within 8,000 ms of
+restoration; each following ten-second window must stay below the lesser of
+2,000 ms and original maximum plus 250 ms, with p95 no more than original p95
+plus 250 ms. Observer age/processing stay below 500 ms, with at least two
+independent pixel samples per second. RSS/thread growth limits remain 128 MiB/eight.
+Source/process/task/session identity, sixty-four-packet queue bounds and joined
+retirement are required. Input-to-visible latency, congestion, multi-hour and
+physical/other-role acceptance remain open. Runtime execution is pending.

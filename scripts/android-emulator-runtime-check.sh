@@ -9,7 +9,7 @@ die() {
 }
 
 [ "$#" -eq 6 ] || [ "$#" -eq 10 ] || [ "$#" -eq 11 ] \
-    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {recents|backup-transfer} | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm|storage-reload} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak]'
+    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {recents|backup-transfer} | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm|storage-reload} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak|--network-impairment]'
 readonly APK=$1
 readonly APK_SHA256=$2
 readonly TEST_APK=$3
@@ -20,10 +20,10 @@ readonly PEER_ROOT=${7:-}
 readonly PEER_COMMIT=${8:-}
 readonly PEER_TREE=${9:-}
 readonly PEER_MANIFEST_SHA256=${10:-}
-readonly SOAK=${11:-}
+readonly PEER_EXTENSION=${11:-}
 if [ "$#" -eq 11 ]; then
-    [ "$SOAK" = --soak ] && [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
-        || die 'the two-hour soak requires peer-lifecycle'
+    { [ "$PEER_EXTENSION" = --soak ] || [ "$PEER_EXTENSION" = --network-impairment ]; } && [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
+        || die 'the peer extension requires peer-lifecycle'
 fi
 case "$RUNTIME_SCENARIO" in
     recents|backup-transfer) [ "$#" -eq 6 ] || die 'this replay accepts no peer authority' ;;
@@ -201,6 +201,8 @@ events = {
     b"ANDROID_PEER_WARM_HOLD", b"ANDROID_PEER_TASK_PARK_SAMPLE",
     b"ANDROID_PEER_SOAK_WINDOW", b"ANDROID_PEER_SOAK_SUMMARY", b"ANDROID_PEER_SOAK_LOG",
     b"ANDROID_PEER_AUDIO_CAPTURE", b"ANDROID_PEER_AUDIO_EMPTY", b"ANDROID_PEER_AUDIO",
+    b"ANDROID_PEER_NETWORK_PLAN", b"ANDROID_PEER_NETWORK_BASELINE",
+    b"ANDROID_PEER_NETWORK_CASE", b"ANDROID_PEER_NETWORK",
 }
 
 def forward(line):
@@ -828,10 +830,13 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         --env "ANDROID_PEER_INPUT_PROVIDER_SHA256=$INPUT_PROVIDER_SHA256"
     )
 fi
+if [ "$PEER_EXTENSION" = --network-impairment ]; then
+    runtime_mounts+=(--mount 'type=bind,source=/run/rustdesk-verifier-vm/netem.sock,target=/netem.sock,readonly,bind-recursive=disabled')
+fi
 readonly -a runtime_mounts runtime_environment
-soak_arguments=()
-[ -z "$SOAK" ] || soak_arguments+=("$SOAK")
-readonly -a soak_arguments
+extension_arguments=()
+[ -z "$PEER_EXTENSION" ] || extension_arguments+=("$PEER_EXTENSION")
+readonly -a extension_arguments
 
 RUNTIME_CONTAINER="$(vm_docker create \
     --name rustdesk-android-emulator-runtime \
@@ -852,7 +857,7 @@ RUNTIME_CONTAINER="$(vm_docker create \
         /source/scripts/smoke-android-emulator-boot.sh \
         /inputs/emulator.zip /inputs/system-image.zip /inputs/adb \
         /tmp/android-emulator-app /inputs/app.apk "$RUNTIME_SCENARIO" \
-        "${gesture_arguments[@]}" "${soak_arguments[@]}")"
+        "${gesture_arguments[@]}" "${extension_arguments[@]}")"
 [[ "$RUNTIME_CONTAINER" =~ ^[0-9a-f]{64}$ ]] \
     || die 'Android runtime container ID is malformed'
 runtime_authority="$(vm_docker inspect --format \
@@ -932,6 +937,17 @@ fi
 vm_docker start "$RUNTIME_CONTAINER" >/dev/null \
     || die 'cannot start the Android runtime container'
 start_runtime_log
+if [ "$PEER_EXTENSION" = --network-impairment ]; then
+    python3 -I -S "$SCRIPT_DIR/flutter-peer-netem.py" --attach "$RUNTIME_CONTAINER"
+    (set -o noclobber; printf 'peer-netem-ready\n' > "$OBSERVER_ROOT/netem.ready") \
+        || die 'cannot release the calibrated Android network namespace'
+    for _ in $(seq 1 300); do
+        [ -e "$OBSERVER_ROOT/netem.ready" ] || break
+        sleep 0.1
+    done
+    [ ! -e "$OBSERVER_ROOT/netem.ready" ] && [ ! -L "$OBSERVER_ROOT/netem.ready" ] \
+        || die 'Android did not consume its network calibration gate'
+fi
 
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 OBSERVER_CONTAINER="$(vm_docker create \
@@ -1235,7 +1251,7 @@ fi
     || die 'Android emulator frame-observer output exceeds its bound'
 if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
 mapfile -t endpoint_receipts < <(grep -Fx \
-    'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-unary network=container-none' \
+    'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=isolated-no-external-link transport=grpc-unary network=container-none' \
     "$RUNTIME_LOG" || true)
 [ "${#endpoint_receipts[@]}" -eq 1 ] \
     || { tail -n 240 "$RUNTIME_LOG" >&2; die 'Android emulator frame-endpoint receipt is absent or duplicated'; }
@@ -1580,7 +1596,7 @@ fi
 [ "$(vm_docker inspect --format '{{.State.Status}}:{{.State.ExitCode}}' \
     "$RUNTIME_CONTAINER")" = exited:0 ] \
     || die 'Android runtime container did not exit cleanly'
-if [ -n "$SOAK" ]; then
+if [ "$PEER_EXTENSION" = --soak ]; then
     soak_receipt="$(grep -Fx 'ANDROID_PEER_SOAK=pass seconds=7200 observation=per-second age_limit_ms=2000 observer_limit_ms=500 gap_limit_ms=2000 drift_limit_ms=250 resources=rss-threads task=stable process=stable peer=stable logs=retained' "$RUNTIME_LOG")" \
         || die 'the uninterrupted two-hour Android receipt is absent'
     [ "$(grep -c '^ANDROID_PEER_SOAK=' "$RUNTIME_LOG")" -eq 1 ] \
@@ -1688,7 +1704,13 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         || die 'Android final static display evidence is incomplete'
     grep -E '^ANDROID_PEER_STATIC_(CASE=|COMPLETE )' "$RUNTIME_LOG"
     runtime_peer=production-loopback-cpace-changing-display
-    if [ -n "$SOAK" ]; then
+    if [ "$PEER_EXTENSION" = --network-impairment ]; then
+        [ "$(grep -Fxc 'ANDROID_PEER_NETWORK=pass cycles=6 pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 observer_limit_ms=500 transport=adb-reverse-linux-tcp-leg impairment=retired' "$RUNTIME_LOG")" -eq 1 ] \
+            && [ "$(grep -c '^ANDROID_PEER_NETWORK_CASE=' "$RUNTIME_LOG")" -eq 6 ] \
+            || die 'Android network recovery evidence is incomplete'
+        grep -E '^ANDROID_PEER_NETWORK(_[A-Z]+)?=' "$RUNTIME_LOG"
+    fi
+    if [ "$PEER_EXTENSION" = --soak ]; then
         grep '^ANDROID_PEER_SOAK_SUMMARY=pass ' "$RUNTIME_LOG"
         printf '%s\n' "$soak_receipt"
     fi

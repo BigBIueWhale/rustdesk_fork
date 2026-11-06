@@ -85,7 +85,7 @@ ANDROID_RUNTIME_ARTIFACT_COMMIT=
 ANDROID_RUNTIME_APK_SHA256=
 ANDROID_TEST_APK_SHA256=
 ANDROID_RUNTIME_SCENARIO=
-ANDROID_RUNTIME_SOAK=0
+ANDROID_RUNTIME_EXTENSION=
 ANDROID_STORAGE_TESTS=0
 ANDROID_RUNTIME_PEER_COMMIT=
 ANDROID_RUNTIME_PEER_MANIFEST_SHA256=
@@ -701,8 +701,8 @@ case "$#:${1:-}" in
         ANDROID_RUNTIME_PEER_COMMIT=${11}
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${13}
         if [ "$#" -eq 14 ]; then
-            [ "${14}" = --soak ] && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] || exit 2
-            ANDROID_RUNTIME_SOAK=1
+            { [ "${14}" = --soak ] || [ "${14}" = --network-impairment ]; } && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] || exit 2
+            ANDROID_RUNTIME_EXTENSION=${14}
         fi
         ;;
     1:--apple-conform)
@@ -1403,7 +1403,7 @@ elif [ "$MODE" = android-emulator-app ]; then
     readonly OVERLAY_SIZE=64G
     readonly VM_MEMORY=20480
 elif [ "$MODE" = android-emulator-runtime ]; then
-    if [ "$ANDROID_RUNTIME_SOAK" -eq 1 ]; then
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --soak ]; then
         readonly VM_TIMEOUT_SECONDS=10800
     else
         readonly VM_TIMEOUT_SECONDS=7200
@@ -5435,7 +5435,7 @@ elif [ "$MODE" = android-emulator-runtime ]; then
        || [ "$ANDROID_RUNTIME_SCENARIO" = storage-reload ]; then
         guest_invocation+=" $ANDROID_RUNTIME_PEER_COMMIT $ANDROID_RUNTIME_PEER_TREE $ANDROID_RUNTIME_PEER_MANIFEST_SHA256"
     fi
-    [ "$ANDROID_RUNTIME_SOAK" -eq 0 ] || guest_invocation+=' --soak'
+    [ -z "$ANDROID_RUNTIME_EXTENSION" ] || guest_invocation+=" $ANDROID_RUNTIME_EXTENSION"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
@@ -8963,12 +8963,20 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
     require_exact_fixed_receipt \
-        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=loopback-only transport=grpc-unary network=container-none' \
+        'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=isolated-no-external-link transport=grpc-unary network=container-none' \
         'Android emulator frame-endpoint receipt'
-    if [ "$ANDROID_RUNTIME_SOAK" -eq 1 ]; then
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --soak ]; then
         require_exact_fixed_receipt \
             'ANDROID_PEER_SOAK=pass seconds=7200 observation=per-second age_limit_ms=2000 observer_limit_ms=500 gap_limit_ms=2000 drift_limit_ms=250 resources=rss-threads task=stable process=stable peer=stable logs=retained' \
             'uninterrupted two-hour Android soak receipt'
+    fi
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ]; then
+        require_exact_fixed_receipt \
+            'ANDROID_PEER_NETWORK=pass cycles=6 pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 observer_limit_ms=500 transport=adb-reverse-linux-tcp-leg impairment=retired' \
+            'Android network recovery receipt'
+        require_exact_fixed_receipt \
+            'FLUTTER_PEER_NETEM_JOINED status=0 namespace=retired socket=removed' \
+            'Android impairment supervisor retirement'
     fi
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_PARSER_SELF_TEST=pass format=counter32 source=monotonic-publication alias=refused' \

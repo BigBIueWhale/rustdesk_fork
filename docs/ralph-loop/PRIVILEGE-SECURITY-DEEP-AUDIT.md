@@ -143919,3 +143919,12 @@ This does not establish the distinct denied/failed/uncertain behavior R-S0 requi
 Next compose the actual GUI/bundle with the existing installed-service fixture
 and observe both the UI and protected credential outcome. No GUI, final-package,
 complete R-S0 or release acceptance is claimed by this build.
+
+At `544a2597`, CTE `1nrloj60QS` verifies the updated ledger at **401,874 tokens** /
+1,834,326 bytes, SHA-256
+`13094f68dfcca293fb6a90b855c6dd72b43cddc7bac7bfcdde8ca180d89576f6`.
+The pinned method, seven controls and whole-input round trip pass.
+`installed-gui-ledger-544a2597.json` binds 30.657 seconds, 402,931,712-byte peak
+scratch, three zero endpoint deltas and exact retirement. Eight evidence files /
+116,788 bytes match both hosts. This audit-only receipt preserves the counted
+ledger; whole-document classification/compression remains open.

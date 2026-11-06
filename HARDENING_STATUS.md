@@ -4019,16 +4019,21 @@ also pass. VM/private/RAM retirement and all five listener deltas pass. Capsule:
 Android emulator connection. Repeated/multi-hour impairment, direct mobile/radio,
 input-to-visible response, physical/other-role targets and full R-F5 remain OPEN.
 
-**Android input latency — fixture corrected; measurement OPEN.**
-The retained-app attempts pass eight static cases but stop before input: ordinary
-pauses initially enable responses, then unused per-copy X11 notifications exhaust
-the 128-event budget. Explicit arming and disabled copy notifications correct the
-fixture. CTE `ApnjLaHnjC` at `663c8425` passes at least 256 animated warm-up frames,
-unarmed-input stability, 256 actual-pixel responses, held/partial controls, resumed
-animation, request 257 on reentry and incomplete-resume refusal. Existing small-source
-and frame-oracle checks pass. Exact processes/RAM retire with three zero listener
-deltas. Capsule: `input-copy-fixture-663c8425.json`; the audit retains failed Android
-runs and prior fixture evidence. Android input-to-visible and full R-F5 remain OPEN.
+**Android input to visible response (`74da2653`) — healthy emulator baseline passes.**
+TUF `msMZ6sclLO` reuses APK `9b22f10f` and peer `4c29a59f`. All 120 measured
+requests plus bootstrap reach their matching actual displayed state within the
+declared two seconds: p95/p99/worst are **482/488/491 ms**; bootstrap is 303 ms.
+Each request comprises four numbered letter keys and Return through Android's
+framework keyboard; timing includes ADB startup/dispatch and pixel observation,
+not individual physical-key latency. Before every request, at least 200 ms and
+two independent observations establish unchanged source/display state. All 612
+pixel records, causal timestamps, seven resource samples and percentiles reconcile.
+The connection remains unchanged; normal animation resumes. Eight static cases,
+22 moving phases, six reconnects and six task replacements also pass. Exact
+QEMU/private/RAM retirement and all five zero listener deltas are reconciled.
+Capsule: `android-input-latency-74da2653.json`; fixture controls and failed attempts
+remain in the audit. Impaired-input recovery, multi-hour/physical/other-role
+acceptance, application handle bounds and full R-F5 remain OPEN.
 
 `bedd34b9` integrates the receiver-ingress impairment with the exact retained
 `5d8cf83a` app and existing pixel observer. The guest-only supervisor retains

@@ -143398,3 +143398,48 @@ peak scratch, three zero endpoint deltas and independent QEMU/private/RAM absenc
 All eight files / 117,097 bytes match CTE/TUF. This audit-only receipt preserves
 the counted ledger; whole-document classification and full release acceptance
 remain open. The next decisive action remains the retained Android input retry.
+
+### 2026-11-06 — Android input baseline accepted on the retained application
+
+The preceding status-answer turn polled live session 38397: a verified wait,
+without a product change or new acceptance. This continuation joins that same
+TUF job `msMZ6sclLO`; no duplicate run or application rebuild occurs. Source
+`74da26538b6bee19b21cfb88cd9ee74b1f9ea473` and Git refs stay fixed through
+terminal status and independent evidence/cleanup reconciliation. Command:
+`bash scripts/smoke-verifier-vm-authority.sh --android-emulator-runtime`
+with the retained APK/test pair at `9b22f10f`, peer `4c29a59f`,
+`--scenario peer-lifecycle --input-latency`; the capsule retains all exact flags,
+artifact digests and limits.
+
+The complete run exits zero in 1,487 outer seconds. All 120 measured requests
+plus bootstrap match the corresponding actual Android pixels; p95/p99/worst
+are 482/488/491 ms and bootstrap is 303 ms, within the original two-second limit.
+These are numbered four-letter-plus-Return framework requests, including ADB
+startup and dispatch, not individual physical-key timings. Separate reconciliation of
+all 612 pixel records and 121 case records verifies monotonic observations,
+at least 200 ms/two independent quiet observations before each request, exact
+one-state advancement, publication after input, and matching displayed identity.
+Percentiles recompute from the 120 non-bootstrap cases. All seven input resource
+snapshots retain app start identity; peak RSS grows 10,880 KiB from 249,056 KiB,
+and threads never exceed the baseline 58. The TCP connection/keyed session stays
+unchanged, and four fresh moving states follow animation resumption.
+
+The existing eight static cases, 22 moving-pixel phases, six warm reconnects,
+six task replacements, persistent-service/task-absence checks, thirteen native
+audio-stream captures and Force Stop baseline also pass. Lifecycle resources
+remain within their declared RSS/thread limits; handles and audible audio are
+unobserved. This accepts a healthy emulator input baseline on the retained
+test-only x86_64 APK/software peer. Impaired-input recovery, multi-hour behavior,
+physical input/mobile networking, other roles/platforms and full R-F5 stay open.
+
+Storage lifetime is 1,493.346 seconds, peak bounded RAM scratch 4,508,110,848
+bytes. Exact QEMU 1572892, private root and RAM `run.o6lxtz7i` are absent;
+all five endpoint deltas are zero. Complete workload serial is 263,217 bytes,
+SHA-256 `2b12f40d6b1546cb576a6fc78e94e5c907f4dd7deb150e7b622fdac4e421a38e`.
+Capsule `android-input-latency-74da2653.json`, 80,645 bytes, SHA-256
+`47a287f542a5d3a1a4901bf3c948e8330c2e742dd6c04e02fbcf193c75fa077d`,
+binds exact inputs, all cases, limits, summary, raw logs and independent cleanup.
+All ten files / 437,588 bytes match CTE/TUF. The ledger now records this result;
+its required fresh isolated count is pending. Next extend the same real input
+measurement across impairment and recovery without redefining the healthy
+baseline or reconnecting the surviving transport. The full goal remains active.

@@ -143534,3 +143534,26 @@ keyboard-owner tests and a new source-bound APK through the unchanged recovery
 scenario. A successful model test alone cannot attribute or close the observed
 end-to-end failure. Current implementation is reviewed and whitespace-clean;
 runtime validation is pending. Full R-F5 and release acceptance remain open.
+
+At `e32ca442`, TUF `XtnFYiQ0zS` passes fresh generated bridges and all 126
+existing Flutter input cases in five suites. Runtime adapters remain doubles;
+this is component acceptance. `keyboard-order-model-e32ca442.json` (20,760
+bytes, SHA-256 `1045f053dd6628ee2ca270efb475da0f4b93a37b6aa0c6cadb14b487ca60bd98`)
+binds the 254.899-second transaction, 6,631,333,888-byte peak RAM scratch,
+four zero endpoint deltas and exact QEMU/private/RAM retirement. All ten files /
+176,662 bytes match CTE/TUF.
+
+The native lane `bmhugRb0kM` then stops before Rust compilation: the existing
+`test-option-errors.dart` client still expects the four exports to return futures.
+Fresh bindings correctly expose void calls. Its twelve ownership/error controls
+are preserved; nine synchronous calls now assert an immediate `EXECUTE_SYNC`
+exception carrying the Rust `RESULT_ERROR` prefix and expected refusal cause.
+The three asynchronous connection-round controls retain their original contract.
+The pinned Dart bridge explicitly uses this synchronous error envelope:
+https://raw.githubusercontent.com/fzyzcjy/flutter_rust_bridge/v1.80.1/frb_dart/lib/src/basic.dart
+The failure capsule `keyboard-order-adapter-e32ca442.json` (9,222 bytes,
+SHA-256 `6b12ee76a93b6b290feda142b98b680cfa2a3a3c82427f712de4d7e49941d71c`)
+binds all diagnostics, 221.245 seconds, 6,304,833,536-byte peak scratch, four zero
+endpoint deltas and joined QEMU/private/RAM retirement. Retry only the failed
+native lane after this test-client correction; the passing Flutter suite needs
+no repeat. Android replay and full release acceptance remain open.

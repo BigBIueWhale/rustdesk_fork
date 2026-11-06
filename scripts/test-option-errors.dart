@@ -1099,6 +1099,16 @@ Future<void> main(List<String> arguments) async {
           'keyboard ownership failure did not cross the generated bridge: $failure');
       modifierErrors++;
     }
+    void modifierSyncRefused(void Function() operation,
+        {String cause = 'Keyboard UI owner is unavailable'}) {
+      Object? failure;
+      try { operation(); } catch (error) { failure = error; }
+      check(failure is FfiException && (failure as FfiException).code == 'EXECUTE_SYNC' &&
+          (failure as FfiException).message.startsWith('RESULT_ERROR: ') &&
+          (failure as FfiException).message.contains(cause),
+          'keyboard ownership failure did not return synchronously: $failure');
+      modifierErrors++;
+    }
     final missingModifierSession = Uuid().v4obj();
     final wrongModifierOwner = Uuid().v4obj();
     final modifierRound = Uuid().v4();
@@ -1116,36 +1126,36 @@ Future<void> main(List<String> arguments) async {
     }, cause: 'connection is not ready');
     print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=round_owner');
     for (final target in wrongModifierTargets) {
-      await modifierRefused(() => api.sessionHandleFlutterKeyEvent(
+      modifierSyncRefused(() => api.sessionHandleFlutterKeyEvent(
           sessionId: target.$1, clientOwnerId: target.$2, inputEpoch: 1,
           inputRound: modifierRound, inputSequence: 1, modifierSlot: 0,
           character: '', usbHid: 0xe1, lockModes: 0, downOrUp: true));
     }
     print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=modern_owner');
     for (final target in wrongModifierTargets) {
-      await modifierRefused(() => api.sessionHandleFlutterRawKeyEvent(
+      modifierSyncRefused(() => api.sessionHandleFlutterRawKeyEvent(
           sessionId: target.$1, clientOwnerId: target.$2, inputEpoch: 1,
           inputRound: modifierRound, inputSequence: 1, modifierSlot: 0,
           name: '', platformCode: 0xffe1, positionCode: 50, lockModes: 0, downOrUp: true));
     }
     print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=raw_owner');
-    Future<void> modifierLegacy(UuidValue session, UuidValue owner) => api.sessionInputKey(
+    void modifierLegacy(UuidValue session, UuidValue owner) => api.sessionInputKey(
         sessionId: session, clientOwnerId: owner, inputEpoch: 1,
         inputRound: modifierRound, inputSequence: 1, modifierSlot: 0,
         name: 'VK_SHIFT', down: true, press: false,
         alt: false, ctrl: false, shift: false, command: false);
     for (final target in wrongModifierTargets) {
-      await modifierRefused(() => modifierLegacy(target.$1, target.$2));
+      modifierSyncRefused(() => modifierLegacy(target.$1, target.$2));
     }
-    await modifierRefused(() => modifierLegacy(trackpadSession, trackpadOwner),
+    modifierSyncRefused(() => modifierLegacy(trackpadSession, trackpadOwner),
         cause: 'connection is not ready');
     print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=legacy_owner');
     for (final target in wrongModifierTargets) {
-      await modifierRefused(() => api.sessionReleaseFlutterModifiers(
+      modifierSyncRefused(() => api.sessionReleaseFlutterModifiers(
           sessionId: target.$1, clientOwnerId: target.$2, inputEpoch: 1,
           inputSequence: 0, modifierSlot: null));
     }
-    await api.sessionReleaseFlutterModifiers(sessionId: trackpadSession,
+    api.sessionReleaseFlutterModifiers(sessionId: trackpadSession,
         clientOwnerId: trackpadOwner, inputEpoch: 1, inputSequence: 0, modifierSlot: null);
     unchanged(beforeModifiers);
     print('MODIFIER_INPUT_WIRE_DART_CASE=pass name=cleanup_owner');

@@ -143491,3 +143491,46 @@ Two Python AST checks, four Bash syntax checks, whitespace and full diff review
 pass. Real retained-application execution is pending; source/refs will stay fixed
 through terminal status and reconciliation. Random/burst-loss and congestion input
 recovery, multi-hour/physical/other-role acceptance and full R-F5 remain open.
+
+TUF `D36E8xQINc` at `092364cd` exits one before any impairment. Eight static
+cases and input requests 0–86 pass, with 433 pixel observations. At request 87,
+the source expects `a a f h Return` but observes `f` at position one, where the
+second `a` is required. The source refuses the sequence; later missing-process
+errors follow its exit. This establishes a sequence discrepancy, not its exact
+cause or an outage result. The previous complete healthy baseline remains
+separate evidence. `android-input-sequence-092364cd.json` (53,253 bytes,
+SHA-256 `1b2cdc319bd7fa99c9ee362108dbb4090548591b736c7628ad269b2d802d3127`)
+binds the observations and complete failure log. Storage lifetime is 666.547
+seconds, peak RAM scratch 4,509,720,576 bytes; exact QEMU/private/RAM retirement
+and five zero endpoint deltas reconcile. All twelve files / 687,547 bytes match
+CTE/TUF. No owned VM remains and the source/ref freeze is released.
+
+### 2026-11-06 — preserve Flutter keyboard admission order
+
+The preceding turn answered the user's completion-status question; it made no
+engineering progress. Continue the failed R-F5 input sequence before another
+workstream. Source review finds the same bridge scheduling gap already corrected
+for mouse input: all three keyboard representations and modifier cleanup use
+ordinary FRB exports, while Dart submits successive calls without awaiting them.
+The pinned 1.80.1 default handler dispatches each normal call to a thread pool;
+its synchronous handler executes inline. Ordinary-key sequence numbers do not
+reorder those jobs at native admission. Primary source:
+https://raw.githubusercontent.com/fzyzcjy/flutter_rust_bridge/v1.80.1/frb_rust/src/handler.rs
+
+The four exports now return `Result<SyncReturn<()>>`, preserving their errors,
+exact UI/session/round/epoch authority and existing bounded viewer queue. Network
+transmission remains asynchronous in that queue's owner. Dart backend calls enter
+the synchronous bridge immediately; their existing futures still report errors.
+There is no await before admission, consistent with Dart's execution semantics:
+https://dart.dev/libraries/async/async-await#execution-flow-with-async-and-await
+The web signatures match; the two native test adapters unwrap only the changed
+return wrapper. No queue, event delay, retry, capacity increase or timing-limit
+relaxation is added. Desktop preparation retains its existing keyboard-state
+reads and locks; target-native latency/lock-contention acceptance remains open.
+
+The existing failed Android sequence is the behavioral regression. First run
+the focused modifier/input suite with fresh generated bindings, then the native
+keyboard-owner tests and a new source-bound APK through the unchanged recovery
+scenario. A successful model test alone cannot attribute or close the observed
+end-to-end failure. Current implementation is reviewed and whitespace-clean;
+runtime validation is pending. Full R-F5 and release acceptance remain open.

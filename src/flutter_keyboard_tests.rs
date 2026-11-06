@@ -28,11 +28,11 @@ impl Fixture {
 
     fn legacy(&self, epoch: i64, sequence: i64, slot: i32, name: &str) -> hbb_common::ResultType<()> {
         api::session_input_key(self.id, self.client, epoch, self.round.clone(), sequence, Some(slot),
-            name.to_owned(), true, false, true, true, true, true)
+            name.to_owned(), true, false, true, true, true, true).map(|result| result.0)
     }
 
     fn release(&self, epoch: i64, sequence: i64, slot: Option<i32>) -> hbb_common::ResultType<()> {
-        api::session_release_flutter_modifiers(self.id, self.client, epoch, sequence, slot)
+        api::session_release_flutter_modifiers(self.id, self.client, epoch, sequence, slot).map(|result| result.0)
     }
 
     async fn batch(&mut self) -> Vec<KeyEvent> {

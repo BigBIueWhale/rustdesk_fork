@@ -739,7 +739,7 @@ class RustdeskImpl {
         ]));
   }
 
-  Future<void> sessionHandleFlutterKeyEvent(
+  void sessionHandleFlutterKeyEvent(
       {required UuidValue sessionId,
       required UuidValue clientOwnerId,
       required int inputEpoch,
@@ -750,7 +750,7 @@ class RustdeskImpl {
       required int usbHid,
       required int lockModes,
       required bool downOrUp,
-      dynamic hint}) async {
+      dynamic hint}) {
     _sendWebKeyboard(sessionId, clientOwnerId, inputRound, inputEpoch,
         modifierSlot, 'flutter_key_event', {
             'name': character,
@@ -760,7 +760,7 @@ class RustdeskImpl {
           });
   }
 
-  Future<void> sessionHandleFlutterRawKeyEvent(
+  void sessionHandleFlutterRawKeyEvent(
       {required UuidValue sessionId,
       required UuidValue clientOwnerId,
       required int inputEpoch,
@@ -781,7 +781,7 @@ class RustdeskImpl {
     js.context.callMethod('setByName', ['enter_or_leave', enter]);
   }
 
-  Future<void> sessionInputKey(
+  void sessionInputKey(
       {required UuidValue sessionId,
       required UuidValue clientOwnerId,
       required int inputEpoch,
@@ -795,7 +795,7 @@ class RustdeskImpl {
       required bool ctrl,
       required bool shift,
       required bool command,
-      dynamic hint}) async {
+      dynamic hint}) {
     _sendWebKeyboard(sessionId, clientOwnerId, inputRound, inputEpoch,
         modifierSlot, 'input_key', {
             'name': name,
@@ -816,9 +816,9 @@ class RustdeskImpl {
     return _keyboardRound;
   }
 
-  Future<void> sessionReleaseFlutterModifiers({required UuidValue sessionId,
+  void sessionReleaseFlutterModifiers({required UuidValue sessionId,
       required UuidValue clientOwnerId, required int inputEpoch,
-      required int inputSequence, int? modifierSlot, dynamic hint}) async {
+      required int inputSequence, int? modifierSlot, dynamic hint}) {
     if (_keyboardSession != sessionId || _keyboardClient != clientOwnerId ||
         inputEpoch < _keyboardEpoch) return;
     _releaseWebKeyboard(modifierSlot);

@@ -751,6 +751,8 @@ pub fn session_switch_display(
     sessions::session_switch_display(session_id, client_owner_id, value)
 }
 
+// Admit keyboard transitions in Flutter call order, before bridge workers can reorder them.
+// The existing bounded viewer queue owns network transmission.
 pub fn session_handle_flutter_key_event(
     session_id: SessionID,
     client_owner_id: SessionID,
@@ -762,13 +764,14 @@ pub fn session_handle_flutter_key_event(
     usb_hid: i32,
     lock_modes: i32,
     down_or_up: bool,
-) -> Result<()> {
+) -> Result<SyncReturn<()>> {
     let (session, owner) = sessions::get_keyboard_input_owner(&session_id, &client_owner_id)
         .ok_or_else(|| anyhow!("Keyboard UI owner is unavailable"))?;
     crate::flutter_keyboard::dispatch(&session, &owner, input_epoch, &input_round, input_sequence, modifier_slot,
         crate::flutter_keyboard::FlutterKeyboardRequest::Key {
             character: &character, usb_hid, lock_modes, down: down_or_up,
-        })
+        })?;
+    Ok(SyncReturn(()))
 }
 
 pub fn session_handle_flutter_raw_key_event(
@@ -783,13 +786,14 @@ pub fn session_handle_flutter_raw_key_event(
     position_code: i32,
     lock_modes: i32,
     down_or_up: bool,
-) -> Result<()> {
+) -> Result<SyncReturn<()>> {
     let (session, owner) = sessions::get_keyboard_input_owner(&session_id, &client_owner_id)
         .ok_or_else(|| anyhow!("Keyboard UI owner is unavailable"))?;
     crate::flutter_keyboard::dispatch(&session, &owner, input_epoch, &input_round, input_sequence, modifier_slot,
         crate::flutter_keyboard::FlutterKeyboardRequest::Raw {
             name: &name, platform_code, position_code, lock_modes, down: down_or_up,
-        })
+        })?;
+    Ok(SyncReturn(()))
 }
 
 pub fn session_release_flutter_modifiers(
@@ -798,10 +802,11 @@ pub fn session_release_flutter_modifiers(
     input_epoch: i64,
     input_sequence: i64,
     modifier_slot: Option<i32>,
-) -> Result<()> {
+) -> Result<SyncReturn<()>> {
     let (session, owner) = sessions::get_keyboard_input_owner(&session_id, &client_owner_id)
         .ok_or_else(|| anyhow!("Keyboard UI owner is unavailable"))?;
-    crate::flutter_keyboard::release(&session, &owner, input_epoch, modifier_slot, input_sequence)
+    crate::flutter_keyboard::release(&session, &owner, input_epoch, modifier_slot, input_sequence)?;
+    Ok(SyncReturn(()))
 }
 
 pub fn session_keyboard_input_round(
@@ -853,13 +858,14 @@ pub fn session_input_key(
     ctrl: bool,
     shift: bool,
     command: bool,
-) -> Result<()> {
+) -> Result<SyncReturn<()>> {
     let (session, owner) = sessions::get_keyboard_input_owner(&session_id, &client_owner_id)
         .ok_or_else(|| anyhow!("Keyboard UI owner is unavailable"))?;
     crate::flutter_keyboard::dispatch(&session, &owner, input_epoch, &input_round, input_sequence, modifier_slot,
         crate::flutter_keyboard::FlutterKeyboardRequest::Legacy {
             name: &name, down, press, alt, ctrl, shift, command,
-        })
+        })?;
+    Ok(SyncReturn(()))
 }
 
 pub fn session_input_string(session_id: SessionID, value: String) {

@@ -57,39 +57,43 @@ class NativeFlutterKeyboardInputBackend implements FlutterKeyboardInputBackend {
   Future<String> readRound(SessionID sessionId, SessionID clientOwnerId) =>
       bind.sessionKeyboardInputRound(sessionId: sessionId, clientOwnerId: clientOwnerId);
   @override
-  Future<void> send(FlutterKeyboardTarget target, int sequence, int? slot, FlutterKeyStroke stroke) {
+  Future<void> send(FlutterKeyboardTarget target, int sequence, int? slot, FlutterKeyStroke stroke) async {
     switch (stroke.kind) {
       case 'key':
-        return bind.sessionHandleFlutterKeyEvent(
+        bind.sessionHandleFlutterKeyEvent(
             sessionId: target.sessionId, clientOwnerId: target.clientOwnerId,
             inputEpoch: target.epoch, inputRound: target.round,
             inputSequence: sequence, modifierSlot: slot,
             character: stroke.name, usbHid: stroke.usbHid,
             lockModes: stroke.lockModes, downOrUp: stroke.down);
+        return;
       case 'raw':
-        return bind.sessionHandleFlutterRawKeyEvent(
+        bind.sessionHandleFlutterRawKeyEvent(
             sessionId: target.sessionId, clientOwnerId: target.clientOwnerId,
             inputEpoch: target.epoch, inputRound: target.round,
             inputSequence: sequence, modifierSlot: slot,
             name: stroke.name, platformCode: stroke.platformCode,
             positionCode: stroke.positionCode, lockModes: stroke.lockModes,
             downOrUp: stroke.down);
+        return;
       case 'legacy':
-        return bind.sessionInputKey(
+        bind.sessionInputKey(
             sessionId: target.sessionId, clientOwnerId: target.clientOwnerId,
             inputEpoch: target.epoch, inputRound: target.round,
             inputSequence: sequence, modifierSlot: slot,
             name: stroke.name, down: stroke.down, press: stroke.press,
             alt: stroke.alt, ctrl: stroke.ctrl, shift: stroke.shift, command: stroke.command);
+        return;
       default:
         throw StateError('Unknown Flutter key representation');
     }
   }
   @override
-  Future<void> release(FlutterKeyboardTarget target, int sequence, int? slot) =>
-      bind.sessionReleaseFlutterModifiers(
-          sessionId: target.sessionId, clientOwnerId: target.clientOwnerId,
-          inputEpoch: target.epoch, inputSequence: sequence, modifierSlot: slot);
+  Future<void> release(FlutterKeyboardTarget target, int sequence, int? slot) async {
+    bind.sessionReleaseFlutterModifiers(
+        sessionId: target.sessionId, clientOwnerId: target.clientOwnerId,
+        inputEpoch: target.epoch, inputSequence: sequence, modifierSlot: slot);
+  }
   @override
   void enterOrLeave(SessionID sessionId, bool enter) {
     if (!useFlutterInput) bind.sessionEnterOrLeave(sessionId: sessionId, enter: enter);

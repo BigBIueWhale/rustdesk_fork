@@ -98,7 +98,8 @@ def prepare():
               Path('/atspi-root/usr/libexec/at-spi-bus-launcher'),
               Path('/atspi-root/usr/libexec/at-spi2-registryd')]
     dynamic = [Path('/usr/lib/x86_64-linux-gnu') / name for name in
-               ('dri/swrast_dri.so', 'libEGL_mesa.so.0', 'libGLX_mesa.so.0')]
+               ('dri/swrast_dri.so', 'libEGL_mesa.so.0', 'libGLX_mesa.so.0',
+                'libEGL.so.1', 'libGLESv2.so.2', 'libGL.so.1', 'libGLX.so.0')]
     if not all(p.is_file() for p in dynamic):
         raise RuntimeError('pinned image lacks the software renderer closure')
     roots += dynamic
@@ -122,6 +123,11 @@ def prepare():
     for source, name in (('/usr/share/X11/xkb', 'xkb'),
                          ('/usr/share/fonts/truetype/dejavu', 'fonts')):
         shutil.copytree(source, '/out/' + name)
+    vendor = Path('/usr/share/glvnd/egl_vendor.d/50_mesa.json')
+    if json.loads(vendor.read_text()) != {'file_format_version': '1.0.0',
+                                         'ICD': {'library_path': 'libEGL_mesa.so.0'}}:
+        raise RuntimeError('pinned Mesa vendor discovery differs')
+    shutil.copyfile(vendor, '/out/50_mesa.json')
     records = {str(p.relative_to('/out')): {'sha256': digest(p), 'bytes': p.stat().st_size}
                for p in Path('/out').rglob('*') if p.is_file()}
     if sum(r['bytes'] for r in records.values()) > 268435456:
@@ -212,6 +218,7 @@ def install_runtime(prepared):
         for path in [WORK / name, *(WORK / name).rglob('*')]:
             path.chmod(0o755 if path.is_dir() else 0o644)
     install(prepared / 'driver-first', WORK / 'settings-driver', 0o755)
+    install(prepared / '50_mesa.json', '/usr/share/glvnd/egl_vendor.d/50_mesa.json')
     (WORK / 'fonts.conf').write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd">'
         f'<fontconfig><dir>{WORK}/fonts</dir><cachedir>/tmp/rustdesk-font-cache</cachedir></fontconfig>')
     (WORK / 'fonts.conf').chmod(0o644)
@@ -300,12 +307,16 @@ def scenario(receiver):
         record = receiver.ready()
         receiver.change(0, 'Installed-baseline-2026!', True)
         before = receiver.credential()
+        print('LINUX_INSTALLED_SETTINGS_BASELINE=pass service=actual credential=root-provisioned '
+              'child=supervised desktop=pam-logind-x11', flush=True)
         process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT), '--session'],
                                    env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         for stage in ('open', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied'):
             if not select.select([process.stdout], [], [], 45)[0]:
                 raise RuntimeError('installed GUI stage timed out')
             raw = process.stdout.readline(4096)
+            if not raw or not raw.endswith(b'\n'):
+                raise RuntimeError(f'installed GUI ended before stage {stage}')
             event = json.loads(raw)
             if event.get('stage') != stage or receiver.credential() != before or receiver.child_record() != record:
                 raise RuntimeError(f'installed GUI stage or protected credential differs: {event}')

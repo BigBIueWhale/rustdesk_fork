@@ -143965,3 +143965,14 @@ fixture changes, not a product correction or GUI acceptance. Capsule
 peak RAM scratch, four zero endpoint deltas and exact QEMU/private/RAM retirement.
 Ten retained files / 102,427 bytes match CTE/TUF; complete guest output is retained
 even though the tool's terminal console tail was truncated.
+
+Run `e7xGT1ftB5` reaches the actual installed service, baseline password provisioning
+and ordinary-user GUI launch. Window creation fails because the fixture omitted
+the dynamically loaded libEGL frontend. Add the pinned GLVND frontends and Mesa
+vendor descriptor to the runtime projection. The upstream
+[EGL discovery contract](https://github.com/NVIDIA/libglvnd/blob/master/src/EGL/icd_enumeration.md)
+requires the vendor JSON as well as its library; `ldd` alone cannot discover a
+library opened by name. Product source remains unchanged. Capsule
+`installed-settings-egl-454757e7.json` binds 69.430 seconds, 3,789,729,792-byte peak
+scratch, four zero endpoint deltas and exact retirement. Ten files / 120,958 bytes
+match both hosts. No GUI workflow acceptance follows from this failed setup.

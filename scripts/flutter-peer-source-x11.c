@@ -195,14 +195,22 @@ static int response_input(Display *display, Window root, ResponseInput *input) {
         XEvent event;
         KeySym symbol = NoSymbol;
         char text[8];
-        if (++events > 128U) return -1;
+        if (++events > 128U) {
+            fprintf(stderr, "FLUTTER_PEER_SOURCE_INPUT_REFUSED reason=event-budget request=%u pending=%d\n",
+                    input->request, XPending(display));
+            return -1;
+        }
         XNextEvent(display, &event);
         if (event.type == MappingNotify) {
             XRefreshKeyboardMapping(&event.xmapping);
             continue;
         }
         if (event.type != KeyPress && event.type != KeyRelease) continue;
-        if (input->request > 65535U || input->position > 4U) return -1;
+        if (input->request > 65535U || input->position > 4U) {
+            fprintf(stderr, "FLUTTER_PEER_SOURCE_INPUT_REFUSED reason=request-state request=%u position=%u\n",
+                    input->request, input->position);
+            return -1;
+        }
         unsigned int digit = input->position < 4U ?
             (input->request >> ((3U - input->position) * 4U)) & 15U : 0U;
         KeySym wanted = input->position == 4U ? XK_Return : XK_a + digit;
@@ -216,10 +224,18 @@ static int response_input(Display *display, Window root, ResponseInput *input) {
             return -1;
         }
         if (event.type == KeyPress) {
-            if (input->held != 0U || completed != 0U) return -1;
+            if (input->held != 0U || completed != 0U) {
+                fprintf(stderr, "FLUTTER_PEER_SOURCE_INPUT_REFUSED reason=press-order request=%u held=%u keycode=%u completed=%u\n",
+                        input->request, input->held, event.xkey.keycode, completed);
+                return -1;
+            }
             input->held = event.xkey.keycode;
         } else {
-            if (input->held == 0U || input->held != event.xkey.keycode || completed != 0U) return -1;
+            if (input->held == 0U || input->held != event.xkey.keycode || completed != 0U) {
+                fprintf(stderr, "FLUTTER_PEER_SOURCE_INPUT_REFUSED reason=release-order request=%u held=%u keycode=%u completed=%u\n",
+                        input->request, input->held, event.xkey.keycode, completed);
+                return -1;
+            }
             input->held = 0U;
             if (++input->position == 5U) {
                 input->position = 0U;

@@ -143331,3 +143331,26 @@ sig_atomic_t flags; X11 operations and acknowledgement I/O remain in the main lo
 The native frame lane must pass before the retained-app Android retry. No product
 source, live instruction, acceptance limit or previously passed impairment job is
 changed or rerun. Full R-F5 and release acceptance remain OPEN.
+
+CTE `MItKdqSxVM` at `c4f35e3e` passes the complete native frame lane in
+88 outer seconds, including unarmed native input, 256 responses, reentry and
+incomplete-resume refusal. Both binaries build twice identically. Capsule
+`input-arm-fixture-c4f35e3e.json` binds 93.216 seconds of storage lifetime,
+3,873,492,992-byte peak scratch, three zero listener deltas and independent
+QEMU/private/RAM absence. All eight files / 112,223 bytes match CTE/TUF.
+
+Android retry `Ac6GCZu1pI` at the same source passes all eight static-screen
+cases (339–1,111 ms), then the source exits when explicit input mode is armed.
+The driver prints its plan but sends no request and records no input sample.
+The existing diagnostic excludes the unexpected-symbol branch, but does not
+identify which other refusal occurred. Do not infer product input latency or
+attribute this to a queue/keyboard cause without the missing observation.
+The complete runtime log is 86,240 bytes, SHA-256
+`436a4a90ee8dbed11f34ea1439dd3af7d150878e5bccf85484c5d7eb384478ed`.
+`android-input-arm-c4f35e3e.json` binds the failed result, 597.454-second
+storage lifetime and 4,507,373,568-byte peak RAM scratch. QEMU 1568094 and
+private/RAM workspaces are absent, all five endpoint deltas are zero, and
+twelve files / 285,532 bytes match both hosts. Source failure diagnostics now
+identify event-budget, request-state and key-order refusal without changing
+admission behavior. Retry the retained artifacts to determine the actual cause;
+the fixture-only native acceptance does not close Android input latency.

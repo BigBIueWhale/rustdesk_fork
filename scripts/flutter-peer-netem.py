@@ -28,9 +28,10 @@ def alive(fd):
 
 
 def install_peer_ingress(run):
-    run('tc', 'filter', 'add', 'dev', 'lo', 'parent', 'ffff:', 'protocol', 'ip',
-        'pref', '3', 'matchall', 'action', 'mirred', 'egress', 'redirect',
-        'dev', 'rd-netem')
+    for preference, port in ((3, 'src_port'), (4, 'dst_port')):
+        run('tc', 'filter', 'add', 'dev', 'lo', 'parent', 'ffff:', 'protocol', 'ip',
+            'pref', str(preference), 'flower', 'ip_proto', 'tcp', port, '21118',
+            'action', 'mirred', 'egress', 'redirect', 'dev', 'rd-netem')
 
 
 class Impairment:

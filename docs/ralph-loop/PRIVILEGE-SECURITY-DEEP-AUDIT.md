@@ -142938,3 +142938,14 @@ The selected flow must show 125-ms-per-direction delay, two directional outages,
 same-socket recovery and healthy exchanges under 100 ms; control exchanges must
 stay under 100 ms throughout. Baseline execution is pending. No product, Android
 runtime, privilege-immunity or release-acceptance claim follows from preparation.
+
+CTE baseline `KnlJ109f5A` at `61019f83` passes the original native delay,
+bypass, complete-loss and same-TCP recovery controls, then rejects the broad
+classifier: TCP 8554/5037 control exchanges take 250.475/250.409 ms and UDP
+21118 takes 125.141 ms against the unchanged 100-ms control bound.
+`peer-scope-baseline-61019f83.json` binds the failure, complete bounded serial,
+three zero endpoint deltas and exact QEMU/private/RAM retirement. The run lasts
+21.242 seconds with 400,588,800-byte peak RAM scratch. The status-only answer
+adds no progress; continuation now replaces only the shared classifier with
+explicit IPv4 TCP source/destination-port 21118 flower matches. The native
+regression and its limits are unchanged; corrected execution is pending.

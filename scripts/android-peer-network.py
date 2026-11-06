@@ -147,13 +147,32 @@ def main():
         require(len({row['state'] for row in rows}) >= 4, 'healthy display did not advance')
         return dict(samples=len(rows), age_max_ms=max(ages), age_p95_ms=ages[(len(ages) * 95 + 99) // 100 - 1])
 
+    def wait_fresh(phase, limit, started):
+        states = set()
+        while time.monotonic_ns() - started <= RECOVERY_MS * 1_000_000:
+            row = sample(phase)
+            if row['independent'] and row['age_ms'] is not None and row['age_ms'] <= limit:
+                states.add(row['state'])
+            if len(states) >= 4:
+                break
+            time.sleep(0.1)
+        elapsed_ms = (time.monotonic_ns() - started + 999999) // 1000000
+        require(len(states) >= 4 and elapsed_ms <= RECOVERY_MS,
+                phase + ' did not reach four fresh states before the deadline')
+        return elapsed_ms
+
     print('ANDROID_PEER_NETWORK_PLAN=' + json.dumps(dict(
         profiles=PROFILES, baseline_seconds=10, recovered_seconds=10, healthy_age_limit_ms=2000,
+        baseline_settle_limit_ms=RECOVERY_MS,
         drift_limit_ms=DRIFT_MS, recovery_limit_ms=RECOVERY_MS, recovered_distinct_states=4,
         observer_limit_ms=500, sample_period_ms=250, queue_limit_packets=64,
         transport='adb-reverse-linux-tcp-leg', input_to_visible='unobserved')), flush=True)
     completed = []
     try:
+        # The preceding static-screen cases have only just resumed drawing.
+        settled_ms = wait_fresh('warmup', 2000, time.monotonic_ns())
+        print('ANDROID_PEER_NETWORK_WARMUP=' + json.dumps(dict(
+            elapsed_ms=settled_ms, distinct_states=4, deadline_ms=RECOVERY_MS)), flush=True)
         baseline = summarize(window('baseline', 10, 2000))
         age_limit = min(2000, baseline['age_max_ms'] + DRIFT_MS)
         print('ANDROID_PEER_NETWORK_BASELINE=' + json.dumps(baseline, sort_keys=True), flush=True)
@@ -169,17 +188,7 @@ def main():
                 require(after['packets'] > before['packets'], 'selected delay carried no peer packets')
             restored = time.monotonic_ns()
             request('healthy')
-            states = set()
-            while time.monotonic_ns() - restored <= RECOVERY_MS * 1_000_000:
-                row = sample(f'{ordinal}-recovery')
-                if row['independent'] and row['age_ms'] is not None and row['age_ms'] <= age_limit:
-                    states.add(row['state'])
-                if len(states) >= 4:
-                    break
-                time.sleep(0.1)
-            recovery_ms = (time.monotonic_ns() - restored + 999999) // 1000000
-            require(len(states) >= 4 and recovery_ms <= RECOVERY_MS,
-                    'display did not recover its healthy envelope before the deadline')
+            recovery_ms = wait_fresh(f'{ordinal}-recovery', age_limit, restored)
             recovered = summarize(window(f'{ordinal}-healthy', 10, age_limit))
             require(recovered['age_p95_ms'] <= baseline['age_p95_ms'] + DRIFT_MS,
                     'recovered p95 display age drifted beyond the original baseline')

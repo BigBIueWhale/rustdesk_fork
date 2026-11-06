@@ -143035,3 +143035,24 @@ executes the shared corrected activation in its peer/control case. This will
 observe whether default autoconfiguration explains the refusal while preserving
 all delay/loss/recovery/control bounds. Syntax and diff checks pass; native proof
 and Android replay remain pending. No application code or acceptance bound changes.
+
+Native CTE `lDsgF9nblB` at `d6f41092` observes a default IPv6 link-local IFB
+address and an empty address list with the shared corrected activation. All
+prior native delay/bypass/loss/recovery and peer/control cases pass unchanged;
+control exchanges remain below 0.116 ms. `ifb-addressless-d6f41092.json`
+(SHA-256 add712a872850c1c2debe5b3038154d78c0d4419121e735bf7cc726378a03a6d)
+binds the 24.537-second run, three zero endpoint deltas and joined retirement.
+Its eight files and the first Android setup's eleven files match CTE/TUF.
+
+TUF replay `UI91LYm68B` passes setup, authentication and all eight final-static
+cases (468–1,093 ms). The first network baseline sample then rejects the last
+static identity, still 5,379 ms old immediately after drawing resumes. No
+impairment is applied. `android-network-baseline-d6f41092.json`, SHA-256
+02842866d5fb96add971c2c8200f9b2bcf115b842e38ea96ef144e6d677bbdae,
+retains that sample, all eight cases, the complete bounded runtime failure log,
+five zero endpoint deltas and exact QEMU/private/RAM retirement after 600.931 s.
+This is a missing baseline precondition, not demonstrated network-recovery failure.
+The driver now waits for four distinct fresh moving states within eight seconds
+before measuring the unchanged ten-second/2,000-ms healthy baseline. It reuses
+the same bounded fresh-state wait after restoration; no post-impairment baseline,
+recovery deadline, drift allowance or resource bound changes. Replay is pending.

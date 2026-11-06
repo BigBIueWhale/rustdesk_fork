@@ -701,7 +701,7 @@ case "$#:${1:-}" in
         ANDROID_RUNTIME_PEER_COMMIT=${11}
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${13}
         if [ "$#" -eq 14 ]; then
-            { [ "${14}" = --soak ] || [ "${14}" = --network-impairment ] || [ "${14}" = --network-congestion ]; } && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] || exit 2
+            { [ "${14}" = --soak ] || [ "${14}" = --network-impairment ] || [ "${14}" = --network-congestion ] || [ "${14}" = --input-latency ]; } && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] || exit 2
             ANDROID_RUNTIME_EXTENSION=${14}
         fi
         ;;
@@ -5187,6 +5187,7 @@ vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFI
     "repo/scripts/android-rust-check.sh=$ANDROID_RUST_SOURCE" \
     "repo/scripts/smoke-android-emulator-boot.sh=$ANDROID_EMULATOR_BOOT_SOURCE" \
     "repo/scripts/android-peer-soak.py=$SCRIPT_DIR/android-peer-soak.py" \
+    "repo/scripts/android-peer-input.py=$SCRIPT_DIR/android-peer-input.py" \
     "repo/scripts/android-emulator-app-check.sh=$ANDROID_EMULATOR_APP_SOURCE" \
     "repo/scripts/android-emulator-runtime-check.sh=$ANDROID_EMULATOR_RUNTIME_SOURCE" \
     "repo/scripts/AndroidRecentsDismiss.java=$ANDROID_RECENTS_DRIVER_SOURCE" \
@@ -8974,6 +8975,11 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=isolated-no-external-link transport=grpc-unary network=container-none' \
         'Android emulator frame-endpoint receipt'
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --input-latency ]; then
+        require_exact_fixed_receipt \
+            'ANDROID_PEER_INPUT=pass trials=120 bootstrap=1 pixels=actual input=android-framework-keyboard response_limit_ms=2000 quiet_min_ms=200 observer_limit_ms=500 connection=retained source=resumed' \
+            'Android framework input-to-visible response'
+    fi
     if [ "$ANDROID_RUNTIME_EXTENSION" = --soak ]; then
         require_exact_fixed_receipt \
             'ANDROID_PEER_SOAK=pass seconds=7200 observation=per-second age_limit_ms=2000 observer_limit_ms=500 gap_limit_ms=2000 drift_limit_ms=250 resources=rss-threads task=stable process=stable peer=stable logs=retained' \

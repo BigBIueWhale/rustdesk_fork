@@ -143264,3 +143264,39 @@ binds the 36.601-second run, 402,960,384-byte peak scratch, three zero listener
 deltas and independently verified exact QEMU/private/RAM retirement. All eight
 files / 118,830 bytes match CTE/TUF. This audit-only receipt leaves the counted
 ledger unchanged; whole-document role classification and the full goal stay open.
+
+### 2026-11-06 — Android framework input to visible response
+
+The preceding Full-HD fixture turn made concrete progress: its native controls
+passed and evidence/cleanup were accepted. Continue R-F5 on the retained APK
+`9b22f10f` and peer `4c29a59f`. The new explicit `--input-latency` extension
+keeps the existing full peer-lifecycle workload and adds one bootstrap plus
+120 unique four-letter/Return requests through Android's framework keyboard
+input command. This uses the accepted Full-HD paused-response fixture and
+actual independent framebuffer records, without rebuilding either app.
+
+Primary source remains Android 14 InputShellCommand, linked in the prerequisite
+entry: its ordered down/up dispatch does not prove remote delivery. The reviewed
+mobile RemotePage requests physical focus and enables RawKeyFocusScope only
+after peer information arrives; acceptance will exercise that real path.
+Declare before execution: two-second input-to-visible deadline including ADB
+startup/injection, at least 200 ms of unchanged source/display before each input,
+two independent quiet observations, 500-ms observer allowance, and the existing
+128-MiB RSS/eight-thread growth limits. Source/server/driver time namespaces must
+match. Each response requires exactly the next source identity, publication
+after timed input and matching actual Android pixels. Resource observations
+retain the original process/task, TCP socket and keyed-session count. A 2,500-ms
+initial paused-state settle precedes bootstrap; normal animation must resume
+with four fresh states within eight seconds before the existing lifecycle runs.
+
+The driver retains individual input, publication, observation and completion
+times and quiet controls, reports p95/p99/worst response, and preserves its last
+frame on failure. Only the exact retained source pidfd receives pause/resume.
+All four wrapper levels require the new completion receipt; the inner wrappers
+also require all 121 case records. Existing limits, artifact admission, host
+isolation and cleanup stay unchanged. This is healthy-path validation; impaired
+input recovery, long-session/physical/other-role acceptance and full R-F5 remain
+open. Python AST, four Bash syntax checks and full diff/whitespace review pass.
+TUF has about 50 GiB available RAM, no private run and the existing SSH master.
+Isolated Android execution is pending; source/refs will remain fixed through
+terminal status and evidence/cleanup reconciliation.

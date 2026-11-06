@@ -301,7 +301,7 @@ case "$#:${8:-}" in
     20:--android-emulator-runtime|21:--android-emulator-runtime)
         [ "${17}" = peer-lifecycle ] || [ "${17}" = controlled-cm ] || [ "${17}" = storage-reload ] || exit 2
         if [ "$#" -eq 21 ]; then
-            { [ "${21}" = --soak ] || [ "${21}" = --network-impairment ] || [ "${21}" = --network-congestion ]; } && [ "${17}" = peer-lifecycle ] || exit 2
+            { [ "${21}" = --soak ] || [ "${21}" = --network-impairment ] || [ "${21}" = --network-congestion ] || [ "${21}" = --input-latency ]; } && [ "${17}" = peer-lifecycle ] || exit 2
         fi
         MODE=android-emulator-runtime
         ;;
@@ -11500,7 +11500,7 @@ run_android_emulator_runtime() {
         android-storage-reload.sh android-storage-snapshot.py \
         build-x11-frame-source.py \
         android-peer-soak.py \
-        android-peer-network.py flutter-peer-netem.py \
+        android-peer-network.py android-peer-input.py flutter-peer-netem.py \
         android-peer-audio.py pa-runtime-fixture.sh verify-pa-runtime-candidate.py \
         android-peer-artifact.py \
         online-gradle-output.py \
@@ -11536,6 +11536,7 @@ run_android_emulator_runtime() {
         "$source_root/scripts/android-emulator-frame.py" \
         "$source_root/scripts/android-peer-soak.py" \
         "$source_root/scripts/android-peer-network.py" \
+        "$source_root/scripts/android-peer-input.py" \
         "$source_root/scripts/flutter-peer-netem.py" \
         "$source_root/scripts/android-peer-audio.py" \
         "$source_root/scripts/pa-runtime-fixture.sh" \
@@ -11869,6 +11870,11 @@ run_android_emulator_runtime() {
     fi
     [ "$(stat -c '%s' -- "$output")" -le 2097152 ] \
         || fail 'Android emulator runtime replay output exceeds its bound'
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --input-latency ]; then
+        [ "$(grep -Fxc 'ANDROID_PEER_INPUT=pass trials=120 bootstrap=1 pixels=actual input=android-framework-keyboard response_limit_ms=2000 quiet_min_ms=200 observer_limit_ms=500 connection=retained source=resumed' "$output")" -eq 1 ] \
+            && [ "$(grep -c '^ANDROID_PEER_INPUT_CASE=' "$output")" -eq 121 ] \
+            || fail 'Android input-to-visible evidence is incomplete'
+    fi
     if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ] || [ "$ANDROID_RUNTIME_EXTENSION" = --network-congestion ]; then
         local network_cycles=6
         [ "$ANDROID_RUNTIME_EXTENSION" != --network-congestion ] || network_cycles=3
@@ -12224,6 +12230,7 @@ run_android_emulator_runtime() {
           "$source_root/scripts/android-emulator-frame.py" \
           "$source_root/scripts/android-peer-soak.py" \
           "$source_root/scripts/android-peer-network.py" \
+          "$source_root/scripts/android-peer-input.py" \
           "$source_root/scripts/flutter-peer-netem.py" \
           "$source_root/scripts/android-peer-audio.py" \
           "$source_root/scripts/pa-runtime-fixture.sh" \
@@ -12318,6 +12325,9 @@ run_android_emulator_runtime() {
         grep -E '^ANDROID_PEER_SERVER_LOG_(DIAGNOSTIC=|TAIL )' "$output"
         grep -E '^ANDROID_PEER_AUDIO(_CAPTURE|_EMPTY)?=' "$output"
         grep -E '^ANDROID_PEER_STATIC_(CASE=|COMPLETE )' "$output"
+        if [ "$ANDROID_RUNTIME_EXTENSION" = --input-latency ]; then
+            grep -E '^ANDROID_PEER_INPUT(_[A-Z]+)?=' "$output"
+        fi
         if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ] || [ "$ANDROID_RUNTIME_EXTENSION" = --network-congestion ]; then
             grep -E '^(ANDROID_PEER_NETWORK(_[A-Z]+)?=|FLUTTER_PEER_(TCP_|NETEM|PACKET_CALIBRATION|CONGESTION_CALIBRATION|BANDWIDTH_OBSERVED|INTERFACE))' "$output"
         fi

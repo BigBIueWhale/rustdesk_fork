@@ -9,7 +9,7 @@ die() {
 }
 
 [ "$#" -eq 6 ] || [ "$#" -eq 10 ] || [ "$#" -eq 11 ] \
-    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {recents|backup-transfer} | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm|storage-reload} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak|--network-impairment|--network-congestion]'
+    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {recents|backup-transfer} | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm|storage-reload} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak|--network-impairment|--network-congestion|--input-latency]'
 readonly APK=$1
 readonly APK_SHA256=$2
 readonly TEST_APK=$3
@@ -22,7 +22,7 @@ readonly PEER_TREE=${9:-}
 readonly PEER_MANIFEST_SHA256=${10:-}
 readonly PEER_EXTENSION=${11:-}
 if [ "$#" -eq 11 ]; then
-    { [ "$PEER_EXTENSION" = --soak ] || [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ]; } && [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
+    { [ "$PEER_EXTENSION" = --soak ] || [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ] || [ "$PEER_EXTENSION" = --input-latency ]; } && [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
         || die 'the peer extension requires peer-lifecycle'
 fi
 case "$RUNTIME_SCENARIO" in
@@ -1704,6 +1704,12 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         || die 'Android final static display evidence is incomplete'
     grep -E '^ANDROID_PEER_STATIC_(CASE=|COMPLETE )' "$RUNTIME_LOG"
     runtime_peer=production-loopback-cpace-changing-display
+    if [ "$PEER_EXTENSION" = --input-latency ]; then
+        [ "$(grep -Fxc 'ANDROID_PEER_INPUT=pass trials=120 bootstrap=1 pixels=actual input=android-framework-keyboard response_limit_ms=2000 quiet_min_ms=200 observer_limit_ms=500 connection=retained source=resumed' "$RUNTIME_LOG")" -eq 1 ] \
+            && [ "$(grep -c '^ANDROID_PEER_INPUT_CASE=' "$RUNTIME_LOG")" -eq 121 ] \
+            || die 'Android input-to-visible evidence is incomplete'
+        grep -E '^ANDROID_PEER_INPUT(_[A-Z]+)?=' "$RUNTIME_LOG"
+    fi
     if [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ]; then
         network_cycles=6
         [ "$PEER_EXTENSION" != --network-congestion ] || network_cycles=3

@@ -112,7 +112,7 @@ case "$#:${8:-}" in
     8:--host-network-tests)
         MODE=host-network-tests
         ;;
-    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-startup-tests|12:--linux-service-incumbent-tests|12:--linux-service-collision-tests|12:--linux-service-exclusive-tests|12:--linux-service-desktop-exclusive-tests|12:--linux-service-crash-tests|12:--linux-service-child-crash-tests|12:--linux-service-parent-death-tests|12:--linux-service-handoff-tests|12:--linux-service-stopped-child-tests|12:--linux-service-record-cleanup-tests|12:--linux-service-recovery-refusal-tests|12:--linux-service-openrc-tests|12:--linux-service-limiter-tests)
+    12:--linux-service-receiver-tests|12:--linux-service-convergence-failure-tests|12:--linux-service-notification-failure-tests|12:--linux-service-network-drain-tests|12:--linux-service-authorization-timeout-tests|12:--linux-service-committed-requester-exit-tests|12:--linux-service-startup-tests|12:--linux-service-incumbent-tests|12:--linux-service-collision-tests|12:--linux-service-exclusive-tests|12:--linux-service-desktop-exclusive-tests|12:--linux-service-crash-tests|12:--linux-service-child-crash-tests|12:--linux-service-parent-death-tests|12:--linux-service-handoff-tests|12:--linux-service-stopped-child-tests|12:--linux-service-record-cleanup-tests|12:--linux-service-recovery-refusal-tests|12:--linux-service-openrc-tests|12:--linux-service-limiter-tests)
         MODE=linux-service-receiver-tests
         if [ "${8}" = --linux-service-convergence-failure-tests ]; then
             LINUX_RECEIVER_PROFILE=convergence-failure
@@ -122,6 +122,8 @@ case "$#:${8:-}" in
             LINUX_RECEIVER_PROFILE=network-drain
         elif [ "${8}" = --linux-service-authorization-timeout-tests ]; then
             LINUX_RECEIVER_PROFILE=authorization-timeout
+        elif [ "${8}" = --linux-service-committed-requester-exit-tests ]; then
+            LINUX_RECEIVER_PROFILE=committed-requester-exit
         elif [ "${8}" = --linux-service-startup-tests ]; then
             LINUX_RECEIVER_PROFILE=startup
         elif [ "${8}" = --linux-service-incumbent-tests ]; then
@@ -1051,6 +1053,8 @@ run_linux_service_receiver_tests() {
         native_args+=(--network-drain)
     elif [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
         native_args+=(--authorization-timeout)
+    elif [ "$LINUX_RECEIVER_PROFILE" = committed-requester-exit ]; then
+        native_args+=(--committed-requester-exit)
     elif [ "$LINUX_RECEIVER_PROFILE" = startup ]; then
         native_args+=(--startup)
     elif [ "$LINUX_RECEIVER_PROFILE" = incumbent ]; then

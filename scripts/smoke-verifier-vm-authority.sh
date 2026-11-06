@@ -546,7 +546,7 @@ case "$#:${1:-}" in
             || { echo 'host network test input/run overrides are forbidden' >&2; exit 2; }
         MODE=host-network-tests
         ;;
-    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests|5:--linux-service-crash-tests|5:--linux-service-child-crash-tests|5:--linux-service-parent-death-tests|5:--linux-service-handoff-tests|5:--linux-service-stopped-child-tests|5:--linux-service-record-cleanup-tests|5:--linux-service-recovery-refusal-tests|5:--linux-service-openrc-tests|5:--linux-service-limiter-tests)
+    5:--linux-service-receiver-tests|5:--linux-service-convergence-failure-tests|5:--linux-service-notification-failure-tests|5:--linux-service-network-drain-tests|5:--linux-service-authorization-timeout-tests|5:--linux-service-committed-requester-exit-tests|5:--linux-service-startup-tests|5:--linux-service-incumbent-tests|5:--linux-service-collision-tests|5:--linux-service-exclusive-tests|5:--linux-service-desktop-exclusive-tests|5:--linux-service-crash-tests|5:--linux-service-child-crash-tests|5:--linux-service-parent-death-tests|5:--linux-service-handoff-tests|5:--linux-service-stopped-child-tests|5:--linux-service-record-cleanup-tests|5:--linux-service-recovery-refusal-tests|5:--linux-service-openrc-tests|5:--linux-service-limiter-tests)
         [ "$2" = --peer-commit ] && [ "$4" = --peer-manifest-sha256 ] \
             && [[ "$3" =~ ^[0-9a-f]{40}$ ]] && [[ "$5" =~ ^[0-9a-f]{64}$ ]] \
             && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -560,6 +560,8 @@ case "$#:${1:-}" in
             LINUX_RECEIVER_PROFILE=network-drain
         elif [ "$1" = --linux-service-authorization-timeout-tests ]; then
             LINUX_RECEIVER_PROFILE=authorization-timeout
+        elif [ "$1" = --linux-service-committed-requester-exit-tests ]; then
+            LINUX_RECEIVER_PROFILE=committed-requester-exit
         elif [ "$1" = --linux-service-startup-tests ]; then
             LINUX_RECEIVER_PROFILE=startup
         elif [ "$1" = --linux-service-incumbent-tests ]; then
@@ -904,6 +906,7 @@ case "$#:${1:-}" in
         printf 'Focused modifier release bookkeeping: %s --flutter-model-tests --modifier-release\n' "${0##*/}" >&2
         printf 'Focused directory-ordering publication and home correlation: %s --flutter-model-tests --directory-ordering\n' "${0##*/}" >&2
         printf 'Installed Linux authorization deadline: %s --linux-service-authorization-timeout-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
+        printf 'Installed Linux admitted requester exit: %s --linux-service-committed-requester-exit-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed-layout OpenRC lifecycle: %s --linux-service-openrc-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed-service limiter recovery: %s --linux-service-limiter-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
         printf 'Installed Linux IPC startup: %s --linux-service-startup-tests --peer-commit COMMIT --peer-manifest-sha256 SHA256\n' "${0##*/}" >&2
@@ -5287,6 +5290,8 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
         linux_receiver_guest_flag=--linux-service-network-drain-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
         linux_receiver_guest_flag=--linux-service-authorization-timeout-tests
+    elif [ "$LINUX_RECEIVER_PROFILE" = committed-requester-exit ]; then
+        linux_receiver_guest_flag=--linux-service-committed-requester-exit-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = startup ]; then
         linux_receiver_guest_flag=--linux-service-startup-tests
     elif [ "$LINUX_RECEIVER_PROFILE" = incumbent ]; then
@@ -6135,6 +6140,19 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
             require_exact_fixed_receipt "LINUX_SERVICE_STARTUP_CASE=pass phase=$phase" 'installed Linux service namespace startup'
         done
         require_exact_fixed_receipt "LINUX_SERVICE_STARTUP_NATIVE=pass cases=4 refusals=2 starts=2 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined" 'installed Linux startup finality'
+    elif [ "$LINUX_RECEIVER_PROFILE" = committed-requester-exit ]; then
+        for phase in root-applied committed-requester-exit committed-exit-restart admin-applied; do
+            require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed credential use after requester exit'
+        done
+        for phase in committed-requester-exit committed-exit-restart; do
+            require_exact_fixed_receipt "LINUX_RECEIVER_STALE=pass phase=$phase uid=4002 server=supervised-child listener=owned rejection=confirmation-mismatch journal=invocation-cursor-bound probe_sha256=$linux_receiver_probe_sha" 'obsolete credential refusal after requester exit'
+        done
+        require_exact_fixed_receipt 'LINUX_RECEIVER_COMMITTED_EXIT=pass uid=4001 administrator_uid=4003 authentication=polkit-pam durable=changed child=kernel-stopped requester=pidfd-SIGKILL-reaped cleanup=agent-client-joined' 'exact requester exit after administrator commit'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_COMMITTED_EXIT_CONVERGENCE=pass requester=exited-reaped child=same-generation credential=new-value durable=preserved' 'requester-independent same-child convergence'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_COMMITTED_EXIT_RESTART=pass generation=fresh credential=preserved new=accepted old=refused' 'requester-independent credential persistence'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN=pass uid=4001 administrator_uid=4003 subject=pid-start-bound authentication=polkit-pam policy=shipped durable=changed listener=owned cleanup=agent-client-joined' 'administrator mutation after requester loss'
+        require_exact_fixed_receipt 'LINUX_RECEIVER_ADMIN_FRESH=pass uid=4001 authentication=required result=denied durable=unchanged listener=owned' 'fresh administrator refusal after requester loss'
+        require_exact_fixed_receipt "LINUX_SERVICE_COMMITTED_EXIT_NATIVE=pass cpace=4 stale_refusals=2 admitted_exits=1 restarts=1 admin_grants=2 fresh_refusals=1 source=$ANDROID_RUNTIME_PEER_COMMIT binary_sha256=$linux_receiver_binary_sha probe_sha256=$linux_receiver_probe_sha fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined" 'installed committed requester exit profile'
     elif [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
         for phase in root-applied authorization-pending-root authorization-timeout-recovery admin-applied; do
             require_exact_fixed_receipt "LINUX_RECEIVER_CPACE=pass phase=$phase uid=4002 server=supervised-child listener=owned key_confirmation=mutual probe_sha256=$linux_receiver_probe_sha" 'installed Linux authorization-timeout credential use'
@@ -10051,6 +10069,11 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
             "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
             "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$vm_elapsed_seconds"
+    elif [ "$LINUX_RECEIVER_PROFILE" = committed-requester-exit ]; then
+        printf 'LINUX_SERVICE_COMMITTED_EXIT_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cpace=4 stale_refusals=2 admitted_exits=1 restarts=1 admin_grants=2 fresh_refusals=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
+            "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \
+            "$ANDROID_RUNTIME_PEER_COMMIT" "$ANDROID_RUNTIME_PEER_TREE" \
+            "$ANDROID_RUNTIME_PEER_MANIFEST_SHA256" "$linux_receiver_binary_sha" "$linux_receiver_probe_sha" "$vm_elapsed_seconds"
     elif [ "$LINUX_RECEIVER_PROFILE" = authorization-timeout ]; then
         printf 'LINUX_SERVICE_AUTHORIZATION_VM_OUTER=pass host_uid=%s harness=%s harness_tree=%s peer_commit=%s peer_tree=%s manifest_sha256=%s binary_sha256=%s probe_sha256=%s cases=4 cpace=4 timeouts=1 root_grants=2 admin_grants=1 fresh_refusals=1 fixture=installed-layout polkit=actual logind=actual child=supervised network=none listeners=no-harness-addition inputs=readonly-landlocked docker=retired cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" \

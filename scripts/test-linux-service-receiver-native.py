@@ -1433,8 +1433,65 @@ def close_admin_requester_session(client, agent, start, record, actor):
     return observed
 
 
+def stopped_receiver_threads(record):
+    proc = Path(f"/proc/{record['pid']}")
+    fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+    if int(fields[19]) != record["start"] or child_record() != record:
+        raise RuntimeError("stopped receiver generation changed")
+    threads = sorted(int(path.name) for path in (proc / "task").iterdir())
+    if not threads or any((proc / "task" / str(tid) / "stat").read_bytes()
+                          .rsplit(b") ", 1)[1].split()[0] != b"T" for tid in threads):
+        return None
+    return threads
+
+
+def admitted_admin_requester_exit(value, record, probe_sha):
+    listener = direct_listener(record)
+    before = credential()
+    child_fd = os.pidfd_open(record["pid"])
+    stopped = False
+    try:
+        if child_record() != record or select.select([child_fd], [], [], 0)[0]:
+            raise RuntimeError("requester-exit fixture lost its exact child")
+        signal.pidfd_send_signal(child_fd, signal.SIGSTOP)
+        stopped = True
+        deadline = time.monotonic() + 3
+        while stopped_receiver_threads(record) is None:
+            if time.monotonic() >= deadline:
+                raise RuntimeError("requester-exit child did not reach its kernel stop barrier")
+            time.sleep(0.005)
+        admitted = admin_change(value, record, "committed-requester-exit")
+        if (credential() == before or credential() != admitted["credential_digest"]
+                or stopped_receiver_threads(record) != admitted["child_threads"]
+                or Path(f"/proc/{admitted['requester_pid']}").exists()
+                or direct_listener(record) != listener):
+            raise RuntimeError("admitted requester exit lost durable state or its stopped receiver")
+        released_at = time.monotonic()
+        signal.pidfd_send_signal(child_fd, signal.SIGCONT)
+        stopped = False
+        # Allow the production one-second replica retry to run. Only the actual
+        # peer confirmation below establishes that this same child uses the value.
+        time.sleep(2)
+        keyed(value, "committed-requester-exit", record, probe_sha)
+        if credential() != admitted["credential_digest"]:
+            raise RuntimeError("requester-independent convergence rewrote durable state")
+        print("LINUX_RECEIVER_COMMITTED_EXIT_CONVERGENCE_OBSERVED=" + json.dumps(
+            {**admitted, **record, "listener_inode": listener,
+             "seconds_after_release": time.monotonic() - released_at,
+             "same_child": True, "durable_preserved": True}, sort_keys=True), flush=True)
+        print("LINUX_RECEIVER_COMMITTED_EXIT_CONVERGENCE=pass requester=exited-reaped "
+              "child=same-generation credential=new-value durable=preserved", flush=True)
+        return admitted["credential_digest"]
+    finally:
+        try:
+            if stopped and not select.select([child_fd], [], [], 0)[0]:
+                signal.pidfd_send_signal(child_fd, signal.SIGCONT)
+        finally:
+            os.close(child_fd)
+
+
 def admin_change(value, record, phase="apply", actor=None):
-    if phase not in ("apply", "requester-exit", "agent-exit", "supervisor-shutdown", "session-close", "bad-password", "authorization-timeout") or (phase == "session-close" and actor is None):
+    if phase not in ("apply", "requester-exit", "committed-requester-exit", "agent-exit", "supervisor-shutdown", "session-close", "bad-password", "authorization-timeout") or (phase == "session-close" and actor is None):
         raise RuntimeError("unknown administrator fixture phase")
     listener = direct_listener(record)
     if listener is None:
@@ -1468,6 +1525,7 @@ def admin_change(value, record, phase="apply", actor=None):
     denial = None
     denial_pidfd = None
     timeout_observation = None
+    committed_exit = None
     try:
         proc = Path("/proc") / str(client.pid)
         deadline = time.monotonic() + 3
@@ -1569,7 +1627,36 @@ def admin_change(value, record, phase="apply", actor=None):
                     password = INVALID_ADMIN_PASSWORD if phase == "bad-password" else ADMIN_PASSWORD
                     os.write(master, (password + "\n").encode())
                     password_sent = True
-        if phase not in ("requester-exit", "agent-exit", "supervisor-shutdown", "authorization-timeout"):
+        if phase == "committed-requester-exit":
+            deadline = time.monotonic() + 5
+            while (committed := credential()) == before:
+                if client.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError("authenticated requester did not reach durable commit")
+                time.sleep(0.005)
+            threads = stopped_receiver_threads(record)
+            if (not password_sent or terminal.count(b"AUTHENTICATION COMPLETE") != 1
+                    or ADMIN_PASSWORD.encode() in terminal or not threads or client.poll() is not None
+                    or direct_listener(record) != listener):
+                raise RuntimeError("requester exit is not after commit and before child convergence")
+            requester_fd = os.pidfd_open(client.pid)
+            try:
+                fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                if int(fields[19]) != start or select.select([requester_fd], [], [], 0)[0]:
+                    raise RuntimeError("committed requester changed before exact termination")
+                signal.pidfd_send_signal(requester_fd, signal.SIGKILL)
+                stdout, stderr = client.communicate(timeout=5)
+                if (client.returncode != -signal.SIGKILL or stdout.strip() or stderr
+                        or not select.select([requester_fd], [], [], 0)[0] or proc.exists()
+                        or credential() != committed or stopped_receiver_threads(record) != threads):
+                    raise RuntimeError("committed requester did not retire before receiver resumption")
+            finally:
+                os.close(requester_fd)
+            committed_exit = {**record, "requester_pid": client.pid, "requester_start": start,
+                              "requester_uid": 4001, "administrator_uid": 4003,
+                              "child_threads": threads, "credential_digest": committed,
+                              "cli_exit": client.returncode, "agent_terminal": terminal.decode(),
+                              "policy_sha256": digest(policy)}
+        elif phase not in ("requester-exit", "agent-exit", "supervisor-shutdown", "authorization-timeout"):
             try:
                 stdout, stderr = client.communicate(timeout=5)
             except subprocess.TimeoutExpired:
@@ -1685,6 +1772,17 @@ def admin_change(value, record, phase="apply", actor=None):
               "parallel_root=Applied durable=root-value child=retained listener=owned cleanup=agent-client-joined", flush=True)
         return
     changed = credential() != before
+    if phase == "committed-requester-exit":
+        if (committed_exit is None or not changed
+                or credential() != committed_exit["credential_digest"]
+                or stopped_receiver_threads(record) != committed_exit["child_threads"]
+                or direct_listener(record) != listener):
+            raise RuntimeError("committed state or child barrier changed during requester cleanup")
+        print("LINUX_RECEIVER_COMMITTED_EXIT_OBSERVED=" + json.dumps(committed_exit, sort_keys=True), flush=True)
+        print("LINUX_RECEIVER_COMMITTED_EXIT=pass uid=4001 administrator_uid=4003 "
+              "authentication=polkit-pam durable=changed child=kernel-stopped "
+              "requester=pidfd-SIGKILL-reaped cleanup=agent-client-joined", flush=True)
+        return committed_exit
     if phase == "session-close":
         if changed:
             raise RuntimeError("revoked administrator request changed the durable credential during cleanup")
@@ -4416,7 +4514,7 @@ def startup_namespace(commit, binary_sha, incumbents=False, collisions=False, ex
           f"binary_sha256={binary_sha} fixture=installed-layout unit=shipped legacy=unchanged cleanup=joined", flush=True)
 
 
-def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False, parent_death=False, handoff=False, openrc=False, limiter=False):
+def tests(args, convergence_failure=False, notification_failure=False, network_drain=False, authorization_timeout=False, committed_requester_exit=False, startup=False, incumbent=False, collisions=False, exclusive=False, desktop_exclusive=False, crash=False, recovery=False, child_crash=False, stopped_child=False, record_cleanup=False, parent_death=False, handoff=False, openrc=False, limiter=False):
     guard()
     checked = run(["/usr/bin/setpriv", "--reuid=1000", "--regid=1000", "--clear-groups",
                    "--inh-caps=-all", "--bounding-set=-all", "--ambient-caps=-all", "--no-new-privs",
@@ -4477,7 +4575,7 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
     if startup or incumbent or collisions or exclusive:
         startup_namespace(commit, spec["sha256"], incumbents=incumbent, collisions=collisions, exclusive=exclusive)
         return
-    file_workflow = not any((convergence_failure, notification_failure, network_drain, authorization_timeout))
+    file_workflow = not any((convergence_failure, notification_failure, network_drain, authorization_timeout, committed_requester_exit))
     pam = pam_module()
     confdir = WORK / "pam"
     confdir.mkdir(mode=0o700)
@@ -4532,7 +4630,19 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
             raise RuntimeError("root mutation did not converge on the original child")
         print("LINUX_RECEIVER_CASE=root-applied durable=root convergence=Applied", flush=True)
         keyed("Receiver-fixture-first-2026!", "root-applied", first, probe_spec["sha256"])
-        if authorization_timeout:
+        if committed_requester_exit:
+            value = "Receiver-committed-exit-2026!"
+            committed = admitted_admin_requester_exit(value, first, probe_spec["sha256"])
+            stale_refused("Receiver-fixture-first-2026!", "committed-requester-exit", first, probe_spec["sha256"])
+            run(["/usr/bin/systemctl", "restart", "rustdesk.service"], timeout=40)
+            second = ready(first)
+            if credential() != committed:
+                raise RuntimeError("requester-independent credential did not persist across restart")
+            keyed(value, "committed-exit-restart", second, probe_spec["sha256"])
+            stale_refused("Receiver-fixture-first-2026!", "committed-exit-restart", second, probe_spec["sha256"])
+            print("LINUX_RECEIVER_COMMITTED_EXIT_RESTART=pass generation=fresh "
+                  "credential=preserved new=accepted old=refused", flush=True)
+        elif authorization_timeout:
             admin_change("Receiver-timeout-refused-2026!", first, "authorization-timeout")
             second = first
             keyed(AUTH_TIMEOUT_ROOT_PASSWORD, "authorization-timeout-recovery", second, probe_spec["sha256"])
@@ -4710,6 +4820,12 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
                     run(["/usr/sbin/userdel", f"rdreceiver{uid}"])
     if Path("/tmp/.X11-unix/X77").exists() or pam.sessions():
         raise RuntimeError("owned X11 or PAM session remains after cleanup")
+    if committed_requester_exit:
+        print(f"LINUX_SERVICE_COMMITTED_EXIT_NATIVE=pass cpace=4 stale_refusals=2 admitted_exits=1 "
+              f"restarts=1 admin_grants=2 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
+              f"probe_sha256={probe_spec['sha256']} fixture=installed-layout polkit=actual logind=actual "
+              "child=supervised cleanup=joined", flush=True)
+        return
     if authorization_timeout:
         print(f"LINUX_SERVICE_AUTHORIZATION_NATIVE=pass cases=4 cpace=4 timeouts=1 root_grants=2 "
               f"admin_grants=1 fresh_refusals=1 source={commit} binary_sha256={spec['sha256']} "
@@ -4803,6 +4919,8 @@ if __name__ == "__main__":
         tests(sys.argv[1:6], network_drain=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--authorization-timeout":
         tests(sys.argv[1:6], authorization_timeout=True)
+    elif len(sys.argv) == 7 and sys.argv[-1] == "--committed-requester-exit":
+        tests(sys.argv[1:6], committed_requester_exit=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--startup":
         tests(sys.argv[1:6], startup=True)
     elif len(sys.argv) == 7 and sys.argv[-1] == "--incumbent":

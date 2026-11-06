@@ -143795,3 +143795,31 @@ retirement still need one coherent solution. This is a research checkpoint, not
 an implemented correction or a proof that no solution exists. No product edit,
 new test, VM, changed requirement or completion claim accompanies this entry;
 the recorded native failures are not rerun without a relevant change.
+
+### 2026-11-06 — installed password commit after requester exit
+
+The status-answer turn changed no implementation or acceptance evidence. Current
+review selects R-S11ie/R-S11ih: after irreversible admission, the service must
+finish persistence and child convergence without the requester's survival. The
+existing seventeen-scenario credential run already proves real polkit grants,
+denials and several shutdown schedules; it does not cover this post-commit exit.
+
+The focused fixture holds every thread of the exact server child, authorizes an
+ordinary CLI through the shipped polkit policy and actual PAM administrator,
+observes changed protected storage, then kills and reaps only that requester by
+pidfd. After releasing the child it requires mutual CPace using the new value,
+receiver-confirmed refusal of the old value, unchanged durable state through
+restart, a subsequent administrator change and fresh unauthenticated refusal.
+Kernel-held child identity and requester retirement precede resumption; an
+authentication-terminal message alone cannot satisfy commit or convergence.
+
+Primary references: [pkcheck](https://polkit.pages.freedesktop.org/polkit/pkcheck.1.html)
+requires the complete PID/start-time/UID subject; [polkit](https://polkit.pages.freedesktop.org/polkit/polkit.8.html)
+distinguishes the requester, privileged mechanism and authentication agent;
+[pidfd_send_signal](https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html)
+binds termination to the retained process. The fixture reuses these existing
+mechanisms and the admitted 4-GiB guest/6-GiB scratch receiver profile. Relevant
+IPC, Linux supervisor, server, config, unit and policy source is unchanged from
+retained peer `4c29a59f`; no rebuild or product change is needed. Shell/Python
+syntax and whitespace checks pass. Native execution follows; no new acceptance
+is claimed by this preparation.

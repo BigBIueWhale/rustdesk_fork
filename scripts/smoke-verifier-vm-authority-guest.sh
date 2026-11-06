@@ -6,6 +6,7 @@ FLUTTER_PEER_CANDIDATE=0
 FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_BUILD_CONTEXT=
 FLUTTER_APP_REPLAY=0
+FLUTTER_INSTALLED_SETTINGS=0
 FLUTTER_VIEWER_SUSPEND=0
 FLUTTER_CLIPBOARD_TEXT=0
 FLUTTER_KEYBOARD_INPUT=0
@@ -322,6 +323,7 @@ case "$#:${8:-}" in
     18:--linux-flutter-app-replay|19:--linux-flutter-app-replay)
         if [ "$#" -eq 19 ]; then
             case "${19}" in
+                --installed-settings) FLUTTER_INSTALLED_SETTINGS=1 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -14752,6 +14754,22 @@ run_flutter_peer_presentation() {
             "$provider_sha" "$provider_bytes" "$FLUTTER_PEER_SOURCE_COMMIT" "$provider_source_sha"
     fi
 
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
+        set +e
+        /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/test-linux-installed-settings.py" \
+            --run "$source_root" "$app_input/linux-x86_64-flutter-app" \
+            "$FLUTTER_APP_BUILD_CONTEXT" "$FLUTTER_APP_MANIFEST_SHA256" "$FLUTTER_APP_COMMIT" \
+            "$provider_installed" "$DEV_CHECK_IMAGE_CONFIG_ID" "$CLIENT" "$SOCK" "$CONFIG_ROOT" \
+            "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" \
+            2>&1 | tee "$output"
+        peer_status=${PIPESTATUS[0]}
+        set -e
+        [ "$peer_status" -eq 0 ] || fail "installed Flutter settings exited $peer_status"
+        [ "$(sha256sum <"$provider_installed/libxdo.so.3" | awk '{print $1}')" = "$provider_sha" ] \
+            || fail 'installed Flutter settings input provider changed'
+        [ "$(grep -Fxc "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent credential=unchanged cleanup=joined" "$output")" -eq 1 ] \
+            || fail 'installed Flutter settings completion is absent or duplicated'
+    else
     peer_args=(
         --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE"
         --commit "$FLUTTER_PEER_SOURCE_COMMIT"
@@ -15018,6 +15036,7 @@ run_flutter_peer_presentation() {
             || fail "Flutter full-peer lifecycle cycle $cycle is absent or duplicated"
     done
     fi
+    fi
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         || fail 'Flutter full-peer workload left a container'
     local -a retired_images=("$DEV_CHECK_IMAGE_CONFIG_ID")
@@ -15070,6 +15089,9 @@ run_flutter_peer_presentation() {
         printf 'LINUX_FLUTTER_APP_BUILD_VM=pass commit=%s tree=%s archive=%s flutter=%s epoch=%s builder=%s root=refused foreign=refused caller=refused network=none inputs=readonly-landlocked drivers=excluded cleanup=joined\n' \
             "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
             "$FLUTTER_PEER_RUNTIME_VERSION" "$SOURCE_DATE_EPOCH_PIN" "$DEB_BUILDER_CONFIG_ID"
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
+        printf 'LINUX_INSTALLED_SETTINGS_VM=pass harness=%s manifest=%s network=none root=disposable-guest-only app_build=absent cleanup=joined\n' \
+            "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_APP_MANIFEST_SHA256"
     else
     printf 'LINUX_FLUTTER_APP_REPLAY_VM=pass harness_commit=%s harness_tree=%s archive=%s app_commit=%s app_tree=%s manifest_sha256=%s driver_runtime=%s uid=1000 gid=1000 root=refused foreign=refused caller=refused vm_network=none container_network=owned-none-namespace artifact=readonly-landlocked build=absent cleanup=joined\n' \
         "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \

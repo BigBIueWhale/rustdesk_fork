@@ -2435,7 +2435,7 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def installed_desktop(scenario, close_session=False):
+def installed_desktop(scenario, close_session=False, settings=False):
     pam = pam_module()
     confdir = WORK / "pam"
     confdir.mkdir(mode=0o700)
@@ -2452,7 +2452,8 @@ def installed_desktop(scenario, close_session=False):
                 users.append(uid)
             else:
                 raise RuntimeError("desktop fixture UID already exists")
-        actor = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)), "--pam-actor"],
+        actor = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)),
+                                  "--settings-pam-actor" if settings else "--pam-actor"],
                                  env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         opened = pam.reply(actor)
         session = opened["session"]
@@ -4855,16 +4856,16 @@ def tests(args, convergence_failure=False, notification_failure=False, network_d
           "fixture=installed-layout polkit=actual logind=actual child=supervised cleanup=joined", flush=True)
 
 
-def actor(uid=4001, display=77):
+def actor(uid=4001, display=77, settings=False):
     guard()
     # pam_systemd creates the user's runtime directory during open_session. The desktop
     # command creates its authority file after that session is registered.
     command = ["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)),
-               "--desktop" if uid == 4001 else "--handoff-desktop"]
+               "--settings-desktop" if settings else "--desktop" if uid == 4001 else "--handoff-desktop"]
     pam_module().pam_actor(f"rdreceiver{uid}", "x11", WORK / "pam", display=f":{display}", desktop_command=command)
 
 
-def desktop(uid=4001, display=77):
+def desktop(uid=4001, display=77, settings=False):
     guard()
     auth = Path(f"/run/user/{uid}/gdm/Xauthority")
     auth.parent.mkdir(mode=0o700)
@@ -4878,7 +4879,8 @@ def desktop(uid=4001, display=77):
     os.execve("/usr/bin/setpriv", ["/usr/bin/setpriv", f"--reuid={uid}", f"--regid={uid}", "--clear-groups",
               "--bounding-set=-all", "--inh-caps=-all", "--ambient-caps=-all", "--no-new-privs",
               str(WORK / "Xvfb"), f":{display}", "-nolisten", "tcp", "-auth", str(auth),
-              "-screen", "0", "640x480x24", "-xkbdir", str(WORK / "xkb"), "-fp", "built-ins"], ENV)
+              "-screen", "0", "1024x768x24" if settings else "640x480x24",
+              "-xkbdir", str(WORK / "xkb"), "-fp", "built-ins"], ENV)
 
 
 def polkit_agent(subject, notify):
@@ -4903,6 +4905,10 @@ if __name__ == "__main__":
         install_polkit(*sys.argv[2:])
     elif sys.argv[1:] == ["--pam-actor"]:
         actor()
+    elif sys.argv[1:] == ["--settings-pam-actor"]:
+        actor(settings=True)
+    elif sys.argv[1:] == ["--settings-desktop"]:
+        desktop(settings=True)
     elif sys.argv[1:] == ["--desktop"]:
         desktop()
     elif sys.argv[1:] == ["--handoff-actor"]:

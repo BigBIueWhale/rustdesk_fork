@@ -51,6 +51,7 @@ DEV_CHECK_ARCHIVE=
 FLUTTER_PEER_CANDIDATE=0
 FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_REPLAY=0
+FLUTTER_INSTALLED_SETTINGS=0
 FLUTTER_VIEWER_SUSPEND=0
 FLUTTER_CLIPBOARD_TEXT=0
 FLUTTER_KEYBOARD_INPUT=0
@@ -740,6 +741,7 @@ case "$#:${1:-}" in
     11:--linux-flutter-app-replay|12:--linux-flutter-app-replay)
         if [ "$#" -eq 12 ]; then
             case "${12}" in
+                --installed-settings) FLUTTER_INSTALLED_SETTINGS=1 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -963,6 +965,7 @@ case "$#:${1:-}" in
 esac
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA256 FLUTTER_VIEWER_SUSPEND
 readonly FLUTTER_NETWORK_IMPAIRMENT
+readonly FLUTTER_INSTALLED_SETTINGS
 readonly FLUTTER_CLIPBOARD_TEXT
 readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
@@ -1735,6 +1738,32 @@ linux_receiver_input_inventory() {
     /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "${files[@]}"
     /usr/bin/sha256sum -- "${files[@]}"
     engine_xvfb_input_inventory
+}
+
+installed_settings_input_inventory() {
+    local archive=$REPO_ROOT/online/candidates/polkit-runtime/polkit-runtime-candidate.tar.gz
+    local file
+    for file in "$REPO_ROOT/online/candidates" "${archive%/*}"; do
+        [ -d "$file" ] && [ ! -L "$file" ] \
+            && [ "$(/usr/bin/readlink -f -- "$file")" = "$file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$file")" = "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'installed settings runtime parent authority differs'
+    done
+    [ -f "$archive" ] && [ ! -L "$archive" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$archive")" = \
+             "$HOST_UID:$HOST_GID:400:1:$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
+        || fail 'installed settings runtime archive authority differs'
+    verify_sha256 "$archive" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+    git_closed -C "$REPO_ROOT" diff --quiet "$FLUTTER_APP_COMMIT" HEAD -- \
+        src libs flutter Cargo.toml Cargo.lock build.rs .cargo res \
+        || fail 'installed settings app production sources differ from the current source'
+    /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$archive"
+    /usr/bin/sha256sum -- "$archive"
+    for file in test-linux-installed-settings.py linux-installed-settings-x11.c \
+        test-linux-service-receiver-native.py test-linux-logind-session-selection.py; do
+        verify_committed_test_source "$SCRIPT_DIR/$file"
+        /usr/bin/sha256sum -- "$SCRIPT_DIR/$file"
+    done
 }
 
 ANDROID_OWNER_KOTLIN_JARS=()
@@ -4340,6 +4369,11 @@ if [ "$MODE" = linux-service-receiver-tests ] \
         || fail 'retained Android peer capsule identity differs'
 fi
 linux_receiver_inputs_before=
+installed_settings_inputs_before=
+if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
+    installed_settings_inputs_before="$(installed_settings_input_inventory)" \
+        || fail 'cannot capture installed settings inputs'
+fi
 if [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_inputs_before="$(linux_receiver_input_inventory)" \
         || fail 'cannot capture installed Linux receiver inputs'
@@ -5121,6 +5155,15 @@ elif [ "$MODE" = android-emulator-boot ] || [ "$MODE" = android-emulator-app ] \
 elif [ "$MODE" = flutter-peer-presentation ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_PEER_SOURCE_ARCHIVE")
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
+        lifecycle_payload_grafts+=(
+            "polkit-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/polkit-runtime/polkit-runtime-candidate.tar.gz"
+            "repo/scripts/test-linux-installed-settings.py=$SCRIPT_DIR/test-linux-installed-settings.py"
+            "repo/scripts/test-linux-service-receiver-native.py=$SCRIPT_DIR/test-linux-service-receiver-native.py"
+            "repo/scripts/test-linux-logind-session-selection.py=$SCRIPT_DIR/test-linux-logind-session-selection.py"
+            "repo/res/com.carriez.RustDesk.policy=$REPO_ROOT/res/com.carriez.RustDesk.policy"
+        )
+    fi
 elif [ "$MODE" = dart-audit ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -5447,6 +5490,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
+        [ "$FLUTTER_INSTALLED_SETTINGS" -eq 0 ] || guest_invocation+=' --installed-settings'
         [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
         [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || guest_invocation+=' --screenshot-save-unavailable'
         [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || guest_invocation+=' --view-scaling'
@@ -9200,6 +9244,14 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         'Linux Flutter app build VM receipt'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
+elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
+    require_exact_fixed_receipt \
+        "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent credential=unchanged cleanup=joined" \
+        'installed Flutter password settings result'
+    require_exact_fixed_receipt \
+        "LINUX_INSTALLED_SETTINGS_VM=pass harness=$FLUTTER_PEER_SOURCE_COMMIT manifest=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 network=none root=disposable-guest-only app_build=absent cleanup=joined" \
+        'installed Flutter password settings VM result'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed settings cloud-init completion'
 elif [ "$MODE" = flutter-peer-presentation ]; then
     peer_scenario=focus-reconnect-resource
     [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_scenario=screenshot-save-unavailable
@@ -9812,6 +9864,10 @@ elif [ "$MODE" = android-peer-build ]; then
     publish_android_peer_artifact
 fi
 /usr/bin/printf 'VERIFIER_VM_HOST_LISTENER_AUDIT=pass complete_snapshots=before,during,after owned_ip_sockets=kernel-denied external_delta=unattributed inventory=protocol-endpoint-only process_inventory=absent\n'
+if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
+    [ "$(installed_settings_input_inventory)" = "$installed_settings_inputs_before" ] \
+        || fail 'installed settings inputs changed during execution'
+fi
 if [ "$MODE" = linux-service-receiver-tests ]; then
     [ "$(linux_receiver_input_inventory)" = "$linux_receiver_inputs_before" ] \
         && [ "$(android_peer_runtime_inventory)" = "$ANDROID_PEER_INPUT_INVENTORY" ] \
@@ -10462,6 +10518,9 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         "$HOST_UID" "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \
         "$FLUTTER_APP_MANIFEST_SHA256" "$FLUTTER_PEER_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH_PIN" \
         "$DEB_BUILDER_CONFIG_ID" "$vm_elapsed_seconds"
+elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
+    printf 'LINUX_INSTALLED_SETTINGS_VM_OUTER=pass harness=%s app=%s manifest=%s network=none listeners=no-harness-addition build=absent cleanup=joined elapsed_seconds=%s\n' \
+        "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_APP_COMMIT" "$FLUTTER_APP_EXPECTED_MANIFEST_SHA256" "$vm_elapsed_seconds"
 elif [ "$MODE" = flutter-peer-presentation ]; then
     printf 'LINUX_FLUTTER_APP_REPLAY_VM_OUTER=pass host_uid=%s harness_commit=%s harness_tree=%s app_commit=%s app_tree=%s manifest_sha256=%s network=none listeners=no-harness-addition inputs=readonly-landlocked artifact=readonly-landlocked docker=guest-only product=linux-x11-full-peer-%s build=absent cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" \

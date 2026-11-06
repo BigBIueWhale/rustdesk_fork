@@ -143928,3 +143928,28 @@ The pinned method, seven controls and whole-input round trip pass.
 scratch, three zero endpoint deltas and exact retirement. Eight evidence files /
 116,788 bytes match both hosts. This audit-only receipt preserves the counted
 ledger; whole-document classification/compression remains open.
+
+### 2026-11-06 — installed Flutter password cancellation and refusal fixture
+
+Continue the same R-S0/R-S11b/R-S11ie integration gap. The preceding user-requested
+status answer changed no implementation or acceptance state. Add an installed-settings
+branch to the existing full-app replay, retaining its bounded RAM admission, immutable
+app/source inputs, no-NIC VM and joined outer cleanup. It reuses bundle `d1bf0877`
+and its matching production sources; no application rebuild or host installation is
+needed. The signed polkit/PAM runtime, shipped service/policy and real desktop session
+come from the installed receiver fixture. The larger X11 geometry is opt-in.
+
+The ordinary-UID driver reuses PID-scoped AT-SPI/X11 discovery, activates real
+settings controls and types with XTest. GNOME's
+[Component.grab_focus contract](https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/method.Component.grab_focus.html)
+returns whether focus was obtained; a successful request alone is not acceptance
+of a password change. The fixture independently observes the actual dialog,
+root-owned credential digest, retained service child and receiver authorization
+refusals. The first schedule is cancel-before-submit, no-agent refusal and a second
+refused attempt with usable cancellation. Runtime dependencies and the driver are
+prepared as UID1000 in a pinned, networkless, read-only container; root installation
+is confined to the disposable VM, and the GUI runs as UID4001 without capabilities.
+
+Shell/Python parsing and diff whitespace pass before execution. This preparation
+does not accept the GUI workflow. Administrator success, restart, cancellation during
+authorization, explicit uncertain results, final packages and full R-S0 remain OPEN.

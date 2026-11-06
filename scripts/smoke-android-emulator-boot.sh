@@ -10,7 +10,7 @@ fail() {
 
 [ "$#" -eq 4 ] || [ "$#" -eq 5 ] || [ "$#" -eq 6 ] \
     || [ "$#" -eq 7 ] || [ "$#" -eq 8 ] \
-    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|backup-transfer|recents|lifecycle|peer-lifecycle|controlled-cm|storage-reload [RECENTS_GESTURE_JAR [--soak|--network-impairment|--network-congestion|--input-latency]]]]'
+    || fail 'usage: smoke-android-emulator-boot.sh EMULATOR_ZIP SYSTEM_IMAGE_ZIP ADB WORK_ROOT [RUNTIME_TEST_APK [launch|backup-transfer|recents|lifecycle|peer-lifecycle|controlled-cm|storage-reload [RECENTS_GESTURE_JAR [--soak|--network-impairment|--network-congestion|--input-latency|--input-recovery]]]]'
 readonly EMULATOR_ZIP=$1
 readonly SYSTEM_IMAGE_ZIP=$2
 readonly INPUT_ADB=$3
@@ -21,7 +21,7 @@ readonly RECENTS_GESTURE_JAR=${7:-}
 readonly PEER_EXTENSION=${8:-}
 NETWORK_IMPAIRMENT_ACTIVE=0
 if [ "$#" -eq 8 ]; then
-    { [ "$PEER_EXTENSION" = --soak ] || [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ] || [ "$PEER_EXTENSION" = --input-latency ]; } && [ "$APP_SCENARIO" = peer-lifecycle ] && [ -n "$RUNTIME_TEST_APK" ] \
+    { [ "$PEER_EXTENSION" = --soak ] || [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ] || [ "$PEER_EXTENSION" = --input-latency ] || [ "$PEER_EXTENSION" = --input-recovery ]; } && [ "$APP_SCENARIO" = peer-lifecycle ] && [ -n "$RUNTIME_TEST_APK" ] \
         || fail 'the peer extension requires a peer-lifecycle app workload'
 fi
 # RLIMIT_FSIZE also covers PulseAudio's 64-MiB shared-memory pool plus its
@@ -72,7 +72,7 @@ readonly RUN_UID="$(id -u)"
 readonly RUN_GID="$(id -g)"
 [ "$RUN_UID:$RUN_GID" = 1000:1000 ] \
     || fail 'the emulator workload requires numeric uid/gid 1000:1000'
-if [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ]; then
+if [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ] || [ "$PEER_EXTENSION" = --input-recovery ]; then
     python3 -I -S - <<'PY'
 import os, stat, time
 from pathlib import Path
@@ -3900,7 +3900,7 @@ open_peer_connection() {
         [ -z "$SOURCE_PID" ] && [ -z "$SOURCE_START" ] \
             || fail 'the Android peer changing-source generation is already owned'
         local -a response_arguments=()
-        if [ "$PEER_EXTENSION" = --input-latency ]; then
+        if [ "$PEER_EXTENSION" = --input-latency ] || [ "$PEER_EXTENSION" = --input-recovery ]; then
             mkdir -m 700 "$WORK_ROOT/peer-input-response"
             response_arguments=(--input-response "$WORK_ROOT/peer-input-response")
         fi
@@ -4181,7 +4181,12 @@ exercise_peer_input() {
         "$PEER_SERVER_LOG" "$FRAME_OBSERVER_FAILURE" "$ADB" "$SERIAL" \
         "$APP_PID" "$task" "$SERVER_PID" "$SERVER_START" "$SOURCE_PID" "$SOURCE_START" \
         "$PEER_SERVER_FILE_LIMIT" "$WORK_ROOT/peer-source-pause.log" "$WORK_ROOT/peer-input-response" \
+        "$PEER_EXTENSION" \
         || fail 'Android input did not produce the expected displayed response'
+    if [ "$PEER_EXTENSION" = --input-recovery ]; then
+        NETWORK_IMPAIRMENT_ACTIVE=0
+        runtime_interfaces_are_exact || fail 'Android input impairment interface remains after completion'
+    fi
     assert_main_service || fail 'input observation lost the foreground service'
 }
 
@@ -4773,7 +4778,9 @@ PY
             if [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ]; then
                 exercise_peer_network
             fi
-            [ "$PEER_EXTENSION" != --input-latency ] || exercise_peer_input
+            if [ "$PEER_EXTENSION" = --input-latency ] || [ "$PEER_EXTENSION" = --input-recovery ]; then
+                exercise_peer_input
+            fi
             background_cycle=0
             for background_seconds in "${PEER_BACKGROUND_SECONDS[@]}"; do
                 background_cycle=$((background_cycle + 1))

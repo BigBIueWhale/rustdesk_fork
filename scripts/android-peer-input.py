@@ -18,6 +18,9 @@ import time
 TRIALS = 120
 RESPONSE_MS = 2000
 QUIET_NS = 200_000_000
+RECOVERED_TRIALS = 40
+RECOVERY_MS = 8000
+DRIFT_MS = 250
 
 
 def require(value, message):
@@ -25,12 +28,23 @@ def require(value, message):
         raise RuntimeError(message)
 
 
+def summarize(responses):
+    ordered = sorted(responses)
+    return dict(trials=len(ordered), response_max_ms=ordered[-1],
+                response_p95_ms=ordered[(len(ordered) * 95 + 99) // 100 - 1],
+                response_p99_ms=ordered[(len(ordered) * 99 + 99) // 100 - 1])
+
+
 def main():
-    require(os.getuid() == os.getgid() == 1000 and len(sys.argv) == 17,
+    require(os.getuid() == os.getgid() == 1000 and len(sys.argv) == 18,
             'input observer principal or arguments differ')
     (decoder_path, frame, source, server_log, observer_failure, adb, serial,
      app_pid, task_id, server_pid, server_start, source_pid, source_start, file_limit,
-     pause_path, response_directory) = sys.argv[1:]
+     pause_path, response_directory, extension) = sys.argv[1:]
+    require(extension in ('--input-latency', '--input-recovery'), 'input scenario differs')
+    recovery = extension == '--input-recovery'
+    network = runpy.run_path(str(Path(__file__).with_name('android-peer-network.py')))['request']
+    network_retired = False
     require(serial == 'emulator-5554' and all(re.fullmatch('[1-9][0-9]*', value) for value in
             (app_pid, task_id, server_pid, server_start, source_pid, source_start, file_limit)),
             'input observer identities differ')
@@ -86,6 +100,15 @@ def main():
     baseline_resources = resources()
     previous_sequence = previous_state = -1
     last_frame = None
+
+    def observe_resources():
+        current = resources()
+        require(current['start'] == baseline_resources['start']
+                and current['rss_kib'] <= baseline_resources['rss_kib'] + 131072
+                and current['threads'] <= baseline_resources['threads'] + 8,
+                'Android process identity or resource bounds differ')
+        print('ANDROID_PEER_INPUT_RESOURCES=' + json.dumps(current, sort_keys=True), flush=True)
+        return current
 
     def sample(phase):
         nonlocal previous_sequence, previous_state, last_frame
@@ -160,12 +183,40 @@ def main():
             time.sleep(0.01)
         raise RuntimeError('source did not acknowledge ' + event)
 
+    def inject_request(request):
+        keys = ['KEYCODE_' + chr(ord('A') + ((request >> shift) & 15))
+                for shift in (12, 8, 4, 0)] + ['KEYCODE_ENTER']
+        began = time.monotonic_ns()
+        injection = subprocess.run([adb, '-s', serial, 'shell', 'input', 'keyboard', '-d', '0',
+                                    'keyevent', *keys], stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, check=True, timeout=RESPONSE_MS / 1000)
+        injected = time.monotonic_ns()
+        require(not injection.stdout and not injection.stderr, 'Android key injection reported output')
+        return began, injected
+
+    def observe_response(request, target, control, began, injected, phase,
+                         limit_ms=RESPONSE_MS, deadline_start=None):
+        row, history = wait_target(target, began if deadline_start is None else deadline_start,
+                                   limit_ms, phase)
+        require(began <= history[target] * 1000 <= row['observed_monotonic_ns'] <= row['monotonic_ns'],
+                'source/observation did not follow input')
+        if request == 0:
+            ready = read_file(Path(response_directory) / 'input-response.ready', 16)
+            require(ready == f'{target}\n'.encode(), 'source input readiness differs')
+        return dict(request=request, target=target, quiet=control, sent_ns=began,
+                    injected_ns=injected, publication_us=history[target],
+                    observation_ns=row['observed_monotonic_ns'], completed_ns=row['monotonic_ns'],
+                    response_ms=(row['monotonic_ns'] - began + 999999) // 1000000,
+                    observer_ms=row['observer_ms'])
+
     print('ANDROID_PEER_INPUT_PLAN=' + json.dumps(dict(
         trials=TRIALS, response_limit_ms=RESPONSE_MS, quiet_min_ms=200,
         observer_limit_ms=500, initial_settle_limit_ms=2500, resume_limit_ms=8000,
         measurement='pre-adb-command-to-observed-pixels', input='android-framework-keyboard',
         workload='1920x1080-texture-one-outstanding-request', baseline_resources=baseline_resources,
-        connection=connection, time_namespace=clock_namespace)), flush=True)
+        connection=connection, time_namespace=clock_namespace,
+        outage_seconds=[2, 6] if recovery else [], recovered_trials=RECOVERED_TRIALS,
+        recovery_limit_ms=RECOVERY_MS, drift_limit_ms=DRIFT_MS)), flush=True)
     responses = []
     with contextlib.ExitStack() as cleanup:
         owner = os.pidfd_open(int(source_pid))
@@ -180,38 +231,78 @@ def main():
             wait_target(target, paused_us * 1000, 2500, 'initial-settle')
             for request in range(TRIALS + 1):
                 control = quiet(target)
-                keys = ['KEYCODE_' + chr(ord('A') + ((request >> shift) & 15))
-                        for shift in (12, 8, 4, 0)] + ['KEYCODE_ENTER']
-                began = time.monotonic_ns()
-                injection = subprocess.run([adb, '-s', serial, 'shell', 'input', 'keyboard', '-d', '0',
-                                            'keyevent', *keys], stdout=subprocess.PIPE,
-                                           stderr=subprocess.PIPE, check=True, timeout=RESPONSE_MS / 1000)
-                injected = time.monotonic_ns()
-                require(not injection.stdout and not injection.stderr, 'Android key injection reported output')
+                began, injected = inject_request(request)
                 target += 1
-                row, history = wait_target(target, began, RESPONSE_MS, 'response')
-                require(began <= history[target] * 1000 <= row['observed_monotonic_ns'] <= row['monotonic_ns'],
-                        'source/observation did not follow input')
-                if request == 0:
-                    ready = read_file(Path(response_directory) / 'input-response.ready', 16)
-                    require(ready == f'{target}\n'.encode(), 'source input readiness differs')
-                case = dict(request=request, target=target, quiet=control, sent_ns=began,
-                            injected_ns=injected, publication_us=history[target],
-                            observation_ns=row['observed_monotonic_ns'], completed_ns=row['monotonic_ns'],
-                            response_ms=(row['monotonic_ns'] - began + 999999) // 1000000,
-                            observer_ms=row['observer_ms'])
+                case = observe_response(request, target, control, began, injected, 'response')
                 print('ANDROID_PEER_INPUT_CASE=' + json.dumps(case, sort_keys=True), flush=True)
                 if request:
                     responses.append(case['response_ms'])
                 if request % 20 == 0:
-                    current = resources()
-                    require(current['start'] == baseline_resources['start']
-                            and current['rss_kib'] <= baseline_resources['rss_kib'] + 131072
-                            and current['threads'] <= baseline_resources['threads'] + 8,
-                            'Android process identity or resource bounds differ')
-                    print('ANDROID_PEER_INPUT_RESOURCES=' + json.dumps(current, sort_keys=True), flush=True)
+                    observe_resources()
+            baseline = summarize(responses)
+            if recovery:
+                response_limit = min(RESPONSE_MS, baseline['response_max_ms'] + DRIFT_MS)
+                print('ANDROID_PEER_INPUT_BASELINE=' + json.dumps(baseline, sort_keys=True), flush=True)
+                for cycle, seconds in enumerate((2, 6), 1):
+                    control = quiet(target)
+                    before_loss = network('loss')
+                    outage_started = before_loss['monotonic_us'] * 1000
+                    deadline = outage_started + seconds * 1_000_000_000
+                    request += 1
+                    began, injected = inject_request(request)
+                    require(injected < deadline, 'input injection consumed the outage interval')
+                    stalled_samples = 0
+                    while time.monotonic_ns() < deadline:
+                        row, _ = sample(f'outage-{cycle}')
+                        require(row['state'] == row['source_state'] == target,
+                                'input response crossed the complete outage')
+                        stalled_samples += int(row['independent'])
+                        time.sleep(0.05)
+                    after_loss = network('snapshot')
+                    require(stalled_samples >= seconds * 2
+                            and after_loss['drops'] > before_loss['drops'],
+                            'outage lacks stalled pixels or actual packet drops')
+                    restored = time.monotonic_ns()
+                    require(deadline <= restored <= deadline + 1_000_000_000,
+                            'outage restoration missed its timing bound')
+                    healthy = network('healthy')
+                    target += 1
+                    pending = observe_response(request, target, control, began, injected,
+                                               f'pending-{cycle}', RECOVERY_MS, restored)
+                    require(pending['publication_us'] * 1000 >= restored,
+                            'pending input response preceded network restoration')
+                    recovered = []
+                    for trial in range(1, RECOVERED_TRIALS + 1):
+                        control = quiet(target)
+                        request += 1
+                        began, injected = inject_request(request)
+                        target += 1
+                        case = observe_response(request, target, control, began, injected,
+                                                f'recovered-{cycle}', response_limit)
+                        recovered.append(case['response_ms'])
+                        print('ANDROID_PEER_INPUT_RECOVERED=' + json.dumps(
+                            dict(cycle=cycle, trial=trial, **case), sort_keys=True), flush=True)
+                        if trial % 20 == 0:
+                            observe_resources()
+                    result = summarize(recovered)
+                    require(all(result[key] <= baseline[key] + DRIFT_MS for key in
+                                ('response_max_ms', 'response_p95_ms', 'response_p99_ms')),
+                            'recovered input latency drifted beyond the original baseline')
+                    print('ANDROID_PEER_INPUT_RECOVERY_CASE=' + json.dumps(dict(
+                        cycle=cycle, outage_seconds=seconds, outage_started_ns=outage_started,
+                        restored_ns=restored, kernel_before=before_loss, kernel_after=after_loss,
+                        healthy=healthy, stalled_samples=stalled_samples, pending=pending,
+                        recovery_ms=(pending['completed_ns'] - restored + 999999) // 1000000,
+                        recovered=result), sort_keys=True), flush=True)
+                network('finish')
+                network_retired = True
             quiet(target)
         except Exception:
+            if recovery and not network_retired:
+                try:
+                    network('healthy')
+                except Exception as restore_error:
+                    print('ANDROID_PEER_INPUT_RESTORE_FAILED=' + repr(restore_error), flush=True)
             if last_frame is not None:
                 print('ANDROID_PEER_FRAMEBUFFER_RECORD_BEGIN '
                       f'bytes={len(last_frame)} sha256={hashlib.sha256(last_frame).hexdigest()} '
@@ -236,12 +327,15 @@ def main():
         require(len(fresh) >= 4 and time.monotonic_ns() - began <= 8_000_000_000,
                 'moving display did not resume before deadline')
     require(len(responses) == TRIALS, 'input schedule is incomplete')
-    ordered = sorted(responses)
     print('ANDROID_PEER_INPUT_SUMMARY=' + json.dumps(dict(
-        trials=TRIALS, response_max_ms=max(ordered), response_p95_ms=ordered[113],
-        response_p99_ms=ordered[118], resumed_distinct_states=len(fresh)), sort_keys=True), flush=True)
+        **summarize(responses), resumed_distinct_states=len(fresh)), sort_keys=True), flush=True)
     print('ANDROID_PEER_INPUT=pass trials=120 bootstrap=1 pixels=actual input=android-framework-keyboard '
           'response_limit_ms=2000 quiet_min_ms=200 observer_limit_ms=500 connection=retained source=resumed', flush=True)
+    if recovery:
+        require(network_retired, 'input recovery retained impairment authority')
+        print('ANDROID_PEER_INPUT_RECOVERY=pass cycles=2 outage_seconds=2,6 recovered_trials=80 '
+              'pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 '
+              'transport=adb-reverse-linux-tcp-leg impairment=retired', flush=True)
 
 
 if __name__ == '__main__':

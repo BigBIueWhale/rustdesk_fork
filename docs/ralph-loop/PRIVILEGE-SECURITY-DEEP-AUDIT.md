@@ -143455,3 +143455,39 @@ zero endpoint deltas and verified exact QEMU/private/RAM absence. All eight
 files / 116,841 bytes match CTE/TUF. This audit-only receipt leaves the counted
 ledger unchanged. Document-role classification and complete release acceptance
 remain open; the accepted Android healthy-input baseline is now recorded.
+
+### 2026-11-06 — Android pending-input outage and latency recovery
+
+The preceding turn made concrete progress: the retained-app healthy input
+baseline and full lifecycle passed, with reconciled evidence and cleanup.
+Continue R-F5 with `--input-recovery` on the same APK `9b22f10f` and peer
+`4c29a59f`. This directly extends the accepted measurement and existing guest-only
+impairment owner; it takes priority over starting another unrelated verifier.
+
+Keep the 120-request healthy baseline plus bootstrap. Apply two- and six-second
+complete packet-loss intervals, each with one numbered Android framework input
+pending. Require unchanged source/display state during the outage, increasing
+kernel drop counters, and the matching response within eight seconds after
+restoration. Then measure forty further requests per cycle: each must meet the
+two-second ceiling and original maximum plus 250 ms; p95/p99 must also return
+within the original baseline plus 250 ms. The baseline is never recomputed from
+recovered results. Original quiet-pixel, identity, clock, resource and animation
+resumption checks remain. The native source fixture is unchanged; all 203 unique
+requests fit within its previously exercised 256-request sequence.
+
+Primary research: tc-netem documents packet-loss emulation and bounded queues;
+Android 14 InputShellCommand waits for framework event dispatch, which does not
+establish remote delivery. Therefore record packet counters, retained TCP socket
+identities, source publication and actual independently observed Android pixels.
+https://man7.org/linux/man-pages/man8/tc-netem.8.html
+https://raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/android-14.0.0_r1/services/core/java/com/android/server/input/InputShellCommand.java
+
+The four wrapper layers admit the explicit scenario and require its completion;
+inner wrappers require all 121 baseline, 80 recovered and two outage records.
+The existing impairment supervisor validates the exact Android command, controls
+only the retained isolated namespace and retires before lifecycle continuation.
+No product code, artifact, limit, host network or live instruction is changed.
+Two Python AST checks, four Bash syntax checks, whitespace and full diff review
+pass. Real retained-application execution is pending; source/refs will stay fixed
+through terminal status and reconciliation. Random/burst-loss and congestion input
+recovery, multi-hour/physical/other-role acceptance and full R-F5 remain open.

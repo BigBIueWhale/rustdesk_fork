@@ -9,7 +9,7 @@ die() {
 }
 
 [ "$#" -eq 6 ] || [ "$#" -eq 10 ] || [ "$#" -eq 11 ] \
-    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {recents|backup-transfer} | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm|storage-reload} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak|--network-impairment|--network-congestion|--input-latency]'
+    || die 'usage: android-emulator-runtime-check.sh APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {recents|backup-transfer} | APK APK_SHA256 TEST_APK TEST_APK_SHA256 ARTIFACT_SOURCE_COMMIT {peer-lifecycle|controlled-cm|storage-reload} PEER_ROOT PEER_COMMIT PEER_TREE MANIFEST_SHA256 [--soak|--network-impairment|--network-congestion|--input-latency|--input-recovery]'
 readonly APK=$1
 readonly APK_SHA256=$2
 readonly TEST_APK=$3
@@ -22,7 +22,7 @@ readonly PEER_TREE=${9:-}
 readonly PEER_MANIFEST_SHA256=${10:-}
 readonly PEER_EXTENSION=${11:-}
 if [ "$#" -eq 11 ]; then
-    { [ "$PEER_EXTENSION" = --soak ] || [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ] || [ "$PEER_EXTENSION" = --input-latency ]; } && [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
+    { [ "$PEER_EXTENSION" = --soak ] || [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ] || [ "$PEER_EXTENSION" = --input-latency ] || [ "$PEER_EXTENSION" = --input-recovery ]; } && [ "$RUNTIME_SCENARIO" = peer-lifecycle ] \
         || die 'the peer extension requires peer-lifecycle'
 fi
 case "$RUNTIME_SCENARIO" in
@@ -830,7 +830,7 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         --env "ANDROID_PEER_INPUT_PROVIDER_SHA256=$INPUT_PROVIDER_SHA256"
     )
 fi
-if [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ]; then
+if [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ] || [ "$PEER_EXTENSION" = --input-recovery ]; then
     runtime_mounts+=(--mount 'type=bind,source=/run/rustdesk-verifier-vm/netem.sock,target=/netem.sock,readonly,bind-recursive=disabled')
 fi
 readonly -a runtime_mounts runtime_environment
@@ -937,7 +937,7 @@ fi
 vm_docker start "$RUNTIME_CONTAINER" >/dev/null \
     || die 'cannot start the Android runtime container'
 start_runtime_log
-if [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ]; then
+if [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ] || [ "$PEER_EXTENSION" = --input-recovery ]; then
     python3 -I -S "$SCRIPT_DIR/flutter-peer-netem.py" --attach "$RUNTIME_CONTAINER"
     (set -o noclobber; printf 'peer-netem-ready\n' > "$OBSERVER_ROOT/netem.ready") \
         || die 'cannot release the calibrated Android network namespace'
@@ -1704,11 +1704,17 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         || die 'Android final static display evidence is incomplete'
     grep -E '^ANDROID_PEER_STATIC_(CASE=|COMPLETE )' "$RUNTIME_LOG"
     runtime_peer=production-loopback-cpace-changing-display
-    if [ "$PEER_EXTENSION" = --input-latency ]; then
+    if [ "$PEER_EXTENSION" = --input-latency ] || [ "$PEER_EXTENSION" = --input-recovery ]; then
         [ "$(grep -Fxc 'ANDROID_PEER_INPUT=pass trials=120 bootstrap=1 pixels=actual input=android-framework-keyboard response_limit_ms=2000 quiet_min_ms=200 observer_limit_ms=500 connection=retained source=resumed' "$RUNTIME_LOG")" -eq 1 ] \
             && [ "$(grep -c '^ANDROID_PEER_INPUT_CASE=' "$RUNTIME_LOG")" -eq 121 ] \
             || die 'Android input-to-visible evidence is incomplete'
-        grep -E '^ANDROID_PEER_INPUT(_[A-Z]+)?=' "$RUNTIME_LOG"
+        if [ "$PEER_EXTENSION" = --input-recovery ]; then
+            [ "$(grep -Fxc 'ANDROID_PEER_INPUT_RECOVERY=pass cycles=2 outage_seconds=2,6 recovered_trials=80 pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 transport=adb-reverse-linux-tcp-leg impairment=retired' "$RUNTIME_LOG")" -eq 1 ] \
+                && [ "$(grep -c '^ANDROID_PEER_INPUT_RECOVERED=' "$RUNTIME_LOG")" -eq 80 ] \
+                && [ "$(grep -c '^ANDROID_PEER_INPUT_RECOVERY_CASE=' "$RUNTIME_LOG")" -eq 2 ] \
+                || die 'Android input recovery evidence is incomplete'
+        fi
+        grep -E '^ANDROID_PEER_INPUT(_[A-Z_]+)?=' "$RUNTIME_LOG"
     fi
     if [ "$PEER_EXTENSION" = --network-impairment ] || [ "$PEER_EXTENSION" = --network-congestion ]; then
         network_cycles=6

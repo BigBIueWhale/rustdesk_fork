@@ -701,7 +701,7 @@ case "$#:${1:-}" in
         ANDROID_RUNTIME_PEER_COMMIT=${11}
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${13}
         if [ "$#" -eq 14 ]; then
-            { [ "${14}" = --soak ] || [ "${14}" = --network-impairment ] || [ "${14}" = --network-congestion ] || [ "${14}" = --input-latency ]; } && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] || exit 2
+            { [ "${14}" = --soak ] || [ "${14}" = --network-impairment ] || [ "${14}" = --network-congestion ] || [ "${14}" = --input-latency ] || [ "${14}" = --input-recovery ]; } && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] || exit 2
             ANDROID_RUNTIME_EXTENSION=${14}
         fi
         ;;
@@ -8978,10 +8978,18 @@ elif [ "$MODE" = android-emulator-runtime ]; then
     require_exact_fixed_receipt \
         'ANDROID_EMULATOR_FRAME_ENDPOINT=pass connect=127.0.0.1:8554 bind=[::]:8554 namespace=isolated-no-external-link transport=grpc-unary network=container-none' \
         'Android emulator frame-endpoint receipt'
-    if [ "$ANDROID_RUNTIME_EXTENSION" = --input-latency ]; then
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --input-latency ] || [ "$ANDROID_RUNTIME_EXTENSION" = --input-recovery ]; then
         require_exact_fixed_receipt \
             'ANDROID_PEER_INPUT=pass trials=120 bootstrap=1 pixels=actual input=android-framework-keyboard response_limit_ms=2000 quiet_min_ms=200 observer_limit_ms=500 connection=retained source=resumed' \
             'Android framework input-to-visible response'
+        if [ "$ANDROID_RUNTIME_EXTENSION" = --input-recovery ]; then
+            require_exact_fixed_receipt \
+                'ANDROID_PEER_INPUT_RECOVERY=pass cycles=2 outage_seconds=2,6 recovered_trials=80 pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 transport=adb-reverse-linux-tcp-leg impairment=retired' \
+                'Android input recovery response'
+            require_exact_fixed_receipt \
+                'FLUTTER_PEER_NETEM_JOINED status=0 namespace=retired socket=removed' \
+                'Android input impairment supervisor retirement'
+        fi
     fi
     if [ "$ANDROID_RUNTIME_EXTENSION" = --soak ]; then
         require_exact_fixed_receipt \

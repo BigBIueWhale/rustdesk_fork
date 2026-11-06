@@ -50,9 +50,10 @@ def activate_peer_interface(run):
 
 
 class Impairment:
-    def __init__(self, image, congestion=False, long_soak=False, android=False):
+    def __init__(self, image, congestion=False, long_soak=False, android=False, input_recovery=False):
         self.image = image
         self.android = android
+        self.input_recovery = input_recovery
         self.finished = False
         self.last_transport_complete = False
         self.congestion = congestion
@@ -91,6 +92,8 @@ class Impairment:
                 and not host['PortBindings'] and host['CapDrop'] == ['ALL'],
                 'server container contract differs')
         if self.android:
+            extension = ('--input-recovery' if self.input_recovery else
+                         '--network-congestion' if self.congestion else '--network-impairment')
             require(host['Devices'] == [dict(PathOnHost='/dev/kvm', PathInContainer='/dev/kvm',
                                              CgroupPermissions='rw')]
                     and host['SecurityOpt'] == ['no-new-privileges', 'apparmor=docker-default']
@@ -101,7 +104,7 @@ class Impairment:
                         '/inputs/emulator.zip', '/inputs/system-image.zip', '/inputs/adb',
                         '/tmp/android-emulator-app', '/inputs/app.apk', 'peer-lifecycle',
                         '/inputs/recents-dismiss.jar',
-                        '--network-congestion' if self.congestion else '--network-impairment'],
+                        extension],
                     'Android peer container contract differs')
         else:
             require(not host['Devices'] and host['SecurityOpt'] in (
@@ -474,7 +477,7 @@ def supervise(image, argv, android=False):
     subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=ENV, check=True, timeout=3)
     long_soak = '--congestion-soak' in argv or '--input-congestion-soak' in argv
     owner = Impairment(image, long_soak or '--network-congestion' in argv or '--input-congestion' in argv,
-                       long_soak, android)
+                       long_soak, android, android and '--input-recovery' in argv)
     child = None
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
         listener.bind(ENDPOINT)

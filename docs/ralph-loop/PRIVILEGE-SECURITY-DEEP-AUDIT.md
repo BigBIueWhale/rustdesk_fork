@@ -143820,6 +143820,48 @@ distinguishes the requester, privileged mechanism and authentication agent;
 binds termination to the retained process. The fixture reuses these existing
 mechanisms and the admitted 4-GiB guest/6-GiB scratch receiver profile. Relevant
 IPC, Linux supervisor, server, config, unit and policy source is unchanged from
-retained peer `4c29a59f`; no rebuild or product change is needed. Shell/Python
-syntax and whitespace checks pass. Native execution follows; no new acceptance
-is claimed by this preparation.
+retained peer `4c29a59f`, but the complete production-source admission also covers
+the newer keyboard FFI/tests. TUF preflight `eOL60mgDWi` correctly refuses that
+artifact before QEMU: zero scratch allocations, exact private/RAM retirement.
+The gate stays unchanged. Its 5,690 bytes of evidence match CTE/TUF.
+
+After checking all seven payload hashes against the original build manifest,
+the superseded `89828922` cache generation is retired on TUF, freeing 117,301,248
+allocated bytes. The named parent-death/crash evidence remains. The `d108183a`
+credential reference, `794a8d73` failing-video baseline and `4c29a59f` accepted
+Android peer remain; the four-generation cache bound is preserved. Exact intent
+and receipt total 5,991 bytes on both hosts. CTE had no corresponding cache entry.
+
+Matching-source build `7dYdpFrHdB` at `ea13742f` passes in 253 outer seconds.
+All seven payloads are independently rehashed; manifest
+`af2e678d908aaf0672a2cce55d3f992ce39cb2e5a0ad22d68c01a1ab0c0c6872`
+binds binary `f1d924f77843034caf0cf0eece6cd1a36425b4bd8ae631d329a90ebe7bad5ea9`.
+The build capsule binds 256.910 seconds, 5,856,198,656-byte peak RAM scratch,
+four zero endpoint deltas and exact QEMU/private/RAM retirement. Ten evidence
+files / 228,020 bytes match both hosts.
+
+Native `5rvH0MLkvt` passes the new profile with exit zero in 46 outer seconds.
+All fifteen child threads remain stopped through actual administrator approval,
+protected credential change, exact requester SIGKILL/reap and agent cleanup.
+The unchanged child/listener then completes mutual CPace with the new value;
+its journal proves one old-value confirmation mismatch. A fresh service
+generation preserves that credential and repeats both outcomes. A later actual
+administrator change succeeds and fresh unauthenticated mutation refuses.
+Four successful CPace exchanges, two old-value refusals and both administrator
+grants are independently reconciled against exact generation/policy identities.
+The two-second settling interval is fixture scheduling, not a latency claim.
+
+`linux-committed-exit-native-ea13742f.json` (21,342 bytes, SHA-256
+`c6eeb8b9585d68448bb9a0438418cbe924a2605b56fb0431761713f4c17c9e67`)
+retains the complete observations and raw-output identities. Storage observation
+spans 51.465 seconds with 4,108,005,376-byte peak scratch. Three endpoint deltas
+are zero; QEMU, private state and RAM are absent. Nine evidence files / 112,558
+bytes match CTE/TUF. A capsule serialization-name collision was corrected
+without changing or rerunning the passed native scenario.
+
+No product correction was needed for this schedule. The named R-S11ie/R-S11ih
+post-commit requester-independence condition is accepted in the debug/headless
+installed layout. GUI cancellation and error presentation, remaining identity/
+concurrency/failure schedules, final packages, other platforms and complete
+R-S0/release acceptance remain open. Continue with a missing installed settings
+workflow condition; do not repeat this passed scenario without a relevant change.

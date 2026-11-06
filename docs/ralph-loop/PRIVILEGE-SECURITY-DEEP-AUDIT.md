@@ -142346,3 +142346,15 @@ isolated scenario, preserve bounded storage while permitting legitimate runtime
 allocations, and validate complete log/lifecycle observation. The full goal and
 integrated Android acceptance remain OPEN. The successful pixel measurements
 are retained; no product correction is claimed for this evidence checkpoint.
+
+Publication/count receipt: `63d0b436` is pushed and synchronized on CTE/TUF.
+CTE `qorweP4VyK` counts the exact 1,825,466-byte ledger at 399,824 tokens with
+the fixed tiktoken/cl100k_base method, all seven controls and the byte round trip.
+Input SHA-256: a3c82a6eabc190d36f6489eeb3c0adf3a8da0f1e0780b9d5a0caa924b71a995c.
+The 30.866-second run peaks at 402,718,720 bytes of RAM scratch; three endpoint
+deltas are zero, and exact QEMU/private/RAM retirement is reconciled. Capsule:
+`android-soak-ledger-63d0b436.json`, SHA-256
+4ea2097fc980b589f56582aa4fe5c0b91dc887bc1b8b4d48bc4819258cc24934.
+All 74 retained files from this Android work, including the count and publication
+request, match on both hosts (2,196,872 bytes); neither has a private run directory.
+This audit-only receipt leaves the counted ledger unchanged.

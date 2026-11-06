@@ -142538,3 +142538,52 @@ Capsule `android-soak-ledger-88e1e519.json`, SHA-256
 The 30.576-second count retires QEMU/private/RAM with three zero endpoint deltas
 and 402,804,736-byte peak scratch. All nineteen soak/count evidence files match
 CTE/TUF (411,603 bytes). This audit-only receipt preserves the counted ledger.
+
+## 2026-11-06 — Android peer audio setup failure identified
+
+The preceding goal turn made progress through `b5411bdb` and source research;
+this continuation waited on the same live session 36671/QEMU 1384278 rather
+than restarting it. TUF `uPoqs5zB7r` exits zero using the retained `9b22f10f`
+app/peer. The diagnostic-only harness change preserves at most sixteen 256-byte
+audio reason prefixes, an 8-KiB pre-failure context and the existing bounded tail.
+`PULSE_LOG=4` enables native connection details; production binaries are unchanged.
+
+All 22 pixel phases, six ordinary reconnects, six task replacements and thirteen
+server/native/Dart timing records pass. Maximum content/observer age is
+1,212/103 ms; background/reconnect/task recovery maxima are 1,310/740/550 ms.
+RSS grows at most 12,304 KiB from 255,488 KiB; threads grow six from 57.
+Handles, input-to-visible response, impairment and physical devices remain unobserved.
+
+The 1,396,540-byte server log is below its 128-MiB ceiling, with no file-size
+errors, no saturation and one graceful shutdown. All 363 audio-capture endings
+have the prefix `Access denied`. The first captured native attempt creates its
+64-MiB memfd pool, then fails both the private `/tmp/pulse-…/native` and
+`/var/run/pulse/native` connection attempts with ENOENT. No audio daemon is
+started by this replay. This proves the captured failure is missing fixture
+infrastructure; it does not establish healthy audio or every earlier soak event.
+The 9,016 encoder errors are all `no valid frame`; their meaning remains open.
+
+The pinned `libpulse-binding` 2.28.1 context wrapper returns `PAErr(-1)` for
+the generic C connection failure, while `Context::errno()` reads the actual
+context error separately. Its error formatter calls `pa_strerror`, which takes
+the absolute value and interprets 1 as `Access denied`. Reviewed vendor files
+match their checksum manifest: context `be434df2…`, error `65a9bf0f…`;
+full digests and source notes are in the capsule. Primary references:
+[PulseAudio 16.1 connection code](https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/pulse/context.c),
+[error formatting](https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/pulse/error.c),
+and [diagnostic environment](https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/pulsecore/log.c).
+No permissions change or suppression of capture errors is justified by this message.
+
+Capsule `android-audio-diagnostic-b5411bdb.json`, 82,145 bytes, SHA-256
+03c172d3560ddace8d0145e303a60fc601b6d8e105f3c63ffad6e737f01b77fe,
+binds the raw results, exact artifact/source identities and cleanup. Five endpoint
+deltas are zero. QEMU/private/RAM absence is reconciled under the shared lock;
+storage lifetime is 1,327.939 seconds, peak RAM scratch 4,507,045,888 bytes.
+All eleven bounded evidence files match CTE/TUF (240,229 bytes).
+
+Next: provide the already authenticated private PulseAudio fixture for this
+retained-artifact replay and require positive capture evidence before expanding
+network-recovery validation. Accurate product connection-error reporting is also
+open. Do not replay the two-hour soak merely to obtain the same setup failure.
+The ledger replaces redundant historical app/task narration with this current
+finding and retains the earlier evidence references. Fresh counting follows.

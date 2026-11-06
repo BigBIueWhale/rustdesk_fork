@@ -7401,20 +7401,23 @@ and the audit; app/peer/observer provenance is in
 **OPEN:** audio/encoder follow-up, handles, input-to-visible response, impairment,
 physical devices, other supported roles and full R-F5 acceptance.
 
-**Historical app/task comparison (`f372aacf`).** `SwFv2D21aX` with peer `b30f4811`
-passes all 22 Android 14 pixel phases, six ordinary reconnects and six task
-replacements. Ordinary reconnects preserve the client owner; replacements change
-it while preserving process, foreground service and MediaProjection. Maximum
-sampled content/observer ages are 968/213 ms; background/reconnect/task recovery
-maxima are 550/1,320/1,200 ms. The 120-second background, 140.73-second connected
-and 120.38-second absent-task holds pass, as do credential/directory controls and
-13 RSS/thread samples (growth 856 KiB/four); handles remain unobserved. The input
-provider has byte-equal builds and verified live mapping. App build and replay
-join/retire; the replay has one unattributed endpoint addition, so no zero-drift
-claim applies. `android-current-f372aacf.json`, `android-presentation-1c429348.json`
-and Git `9b22f10f` retain the full comparison, hashes and timings. No original
-intermittent-failure cause, ARM64/device, multi-hour, input-to-visible or R-S0/R-F5
-acceptance follows. Camera and the independent CM Stop/admission race remain OPEN.
+**Audio fixture diagnosis (`b5411bdb`).** TUF `uPoqs5zB7r` reuses the same app/peer
+with bounded error reasons and native PulseAudio diagnostics. All 22 pixel phases,
+six reconnects, six task replacements and thirteen timing/resource records pass.
+All 363 capture terminations report `Access denied`; the first native failure shows
+both default Unix sockets returning ENOENT. This fixture starts no PulseAudio daemon.
+The pinned binding formats the generic connection return `-1` as that message;
+the actual context error is separate. This explains the captured setup failure,
+not every event in the earlier unretained soak log. The unsaturated 1,396,540-byte
+log also records 9,016 no-valid-frame errors and graceful shutdown. Exact VM/RAM
+retirement and five zero endpoint deltas pass. `android-audio-diagnostic-b5411bdb.json`
+retains evidence. Supply the private audio fixture and verify capture next;
+healthy audio, encoder behavior and full R-F5 remain OPEN.
+
+Historical `f372aacf` app/task results remain in `android-current-f372aacf.json`,
+`android-presentation-1c429348.json` and Git `9b22f10f`, including its unattributed
+endpoint addition. The original intermittent failure's cause, camera and the
+independent CM Stop/admission race remain OPEN.
 
 **Shared Flutter canvas and software-image behavior — historical component A/B
 evidence; current installed/native acceptance OPEN.** These seven checkpoints

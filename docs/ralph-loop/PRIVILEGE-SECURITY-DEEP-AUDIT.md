@@ -143253,3 +143253,14 @@ The ledger records this prerequisite; its fresh isolated count is pending.
 Next drive unique requests through the retained APK's real Android input path
 and observe corresponding displayed frames. Android input latency and full
 R-F5/release acceptance remain open.
+
+Final ledger count at `3d1a5dd8`, CTE `ZzMO7kJjRp`: **400,822 tokens** /
+1,829,592 bytes, SHA-256
+`a6d12bab4efbb8806b13a6a6a4433a36d8ac8cb2a6fe85401f1c4b0caa727128`.
+The pinned method, seven controls and full round trip pass. Capsule
+`fullhd-input-ledger-3d1a5dd8.json`, SHA-256
+`46269a607eb29a6a92fd82954ebb8324c2ce1e0a38e7c423291fa7d30ea0c2ec`,
+binds the 36.601-second run, 402,960,384-byte peak scratch, three zero listener
+deltas and independently verified exact QEMU/private/RAM retirement. All eight
+files / 118,830 bytes match CTE/TUF. This audit-only receipt leaves the counted
+ledger unchanged; whole-document role classification and the full goal stay open.

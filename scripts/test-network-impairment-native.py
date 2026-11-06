@@ -3,6 +3,8 @@
 import json
 import os
 from pathlib import Path
+import contextlib
+import runpy
 import socket
 import subprocess
 import time
@@ -55,6 +57,110 @@ def exchange(client, server, sequence):
 def connection_identity(client, server):
     return [(os.fstat(s.fileno()).st_ino, s.getsockname(), s.getpeername())
             for s in (client, server)]
+
+
+def scoped_peer_flow():
+    install = runpy.run_path(str(Path(__file__).with_name('flutter-peer-netem.py')))[
+        'install_peer_ingress']
+    interface_created = ingress_created = False
+    try:
+        run('ip', 'link', 'add', 'rd-netem', 'type', 'ifb')
+        interface_created = True
+        run('ip', 'link', 'set', 'rd-netem', 'up')
+        qdisc('delay', '0ms')
+        run('tc', 'qdisc', 'add', 'dev', 'lo', 'handle', 'ffff:', 'ingress')
+        ingress_created = True
+        install(run)
+        with contextlib.ExitStack() as cleanup:
+            pairs = {}
+            for port in (21118, 8554, 5037):
+                listener = cleanup.enter_context(socket.socket())
+                client = cleanup.enter_context(socket.socket())
+                listener.settimeout(3)
+                client.settimeout(3)
+                listener.bind(('127.0.0.1', port))
+                listener.listen(1)
+                client.connect(listener.getsockname())
+                server = cleanup.enter_context(listener.accept()[0])
+                server.settimeout(3)
+                for endpoint in (client, server):
+                    endpoint.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                pairs[port] = (client, server)
+            identities = {port: connection_identity(*pair) for port, pair in pairs.items()}
+            baseline = {port: [exchange(*pair, i) for i in range(3)]
+                        for port, pair in pairs.items()}
+            require(all(max(values) < 100 for values in baseline.values()),
+                    'scoped baseline exceeds the 100 ms envelope')
+            udp = cleanup.enter_context(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+            sender = cleanup.enter_context(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+            udp.bind(('127.0.0.1', 21118))
+            udp.settimeout(1)
+
+            def controls(sequence):
+                timings = {f'tcp{port}': exchange(*pairs[port], sequence) for port in (8554, 5037)}
+                started = time.monotonic_ns()
+                require(sender.sendto(b'control', udp.getsockname()) == 7, 'UDP send failed')
+                require(udp.recv(16) == b'control', 'UDP control differs')
+                timings['udp21118'] = (time.monotonic_ns() - started) / 1_000_000
+                print('NETWORK_PEER_CONTROL=' + json.dumps(timings, sort_keys=True), flush=True)
+                require(max(timings.values()) < 100, 'peer impairment delayed control traffic')
+                return timings
+
+            qdisc('delay', '125ms')
+            delayed = [exchange(*pairs[21118], i) for i in range(3, 6)]
+            require(all(200 <= value <= 1000 for value in delayed),
+                    'selected peer did not experience bidirectional delay')
+            unaffected = [controls(i) for i in range(3, 6)]
+            print('NETWORK_PEER_DELAY=' + json.dumps(delayed), flush=True)
+            outages = []
+            for direction, (writer, reader) in enumerate((pairs[21118], pairs[21118][::-1])):
+                qdisc('loss', '100%')
+                before = counters()
+                payload = b'pending-peer-' + bytes([direction])
+                started = time.monotonic_ns()
+                writer.sendall(payload)
+                reader.settimeout(0.25)
+                for sample in range(4):
+                    try:
+                        unexpected = reader.recv(len(payload))
+                    except socket.timeout:
+                        pass
+                    else:
+                        raise RuntimeError('selected outage delivered data or EOF: ' + repr(unexpected))
+                    unaffected.append(controls(10 + direction * 4 + sample))
+                after = counters()
+                held_ms = (time.monotonic_ns() - started) / 1_000_000
+                require(held_ms >= 1000 and after['drops'] > before['drops'],
+                        'selected outage duration or kernel drops missing')
+                restored = time.monotonic_ns()
+                qdisc('delay', '0ms')
+                reader.settimeout(3)
+                receive(reader, payload)
+                recovery_ms = (time.monotonic_ns() - restored) / 1_000_000
+                require(recovery_ms < 3000, 'selected TCP recovery exceeded deadline')
+                outages.append(dict(direction=direction, held_ms=held_ms,
+                                    drops=after['drops'] - before['drops'], recovery_ms=recovery_ms))
+            recovered = [exchange(*pairs[21118], i) for i in range(20, 25)]
+            require(max(recovered) < 100, 'selected TCP healthy latency did not return')
+            require({port: connection_identity(*pair) for port, pair in pairs.items()} == identities,
+                    'selected or control socket identity changed')
+            result = dict(baseline_ms=baseline, delayed_ms=delayed, control_ms=unaffected,
+                          outages=outages, recovered_ms=recovered, same_connections=True,
+                          selected='ipv4-tcp-port-21118-both-directions',
+                          excluded=['tcp8554', 'tcp5037', 'udp21118'], product='unexecuted')
+    finally:
+        if ingress_created:
+            run('tc', 'qdisc', 'del', 'dev', 'lo', 'ingress')
+        if interface_created:
+            run('ip', 'link', 'del', 'rd-netem')
+    require(interfaces() == ['lo'], 'scoped fixture interface retained')
+    require(all(entry['kind'] != 'ingress'
+                for entry in json.loads(run('tc', '-j', 'qdisc', 'show', 'dev', 'lo'))),
+            'scoped fixture ingress retained')
+    print('NETWORK_PEER_SCOPE=' + json.dumps(result, sort_keys=True), flush=True)
+    print('NETWORK_PEER_SCOPE_OK selected=delay-loss-recovery controls=unaffected '
+          'tcp_directions=2 udp=unaffected sockets=closed interface=removed product=unexecuted',
+          flush=True)
 
 
 def main():
@@ -152,6 +258,7 @@ def main():
     print('NETWORK_IMPAIRMENT_NATIVE=' + json.dumps(result, sort_keys=True), flush=True)
     print('NETWORK_IMPAIRMENT_NATIVE_OK delay=observed bypass=observed loss=observed '
           'recovery=same-tcp sockets=closed interface=removed queue=removed product=unexecuted', flush=True)
+    scoped_peer_flow()
 
 
 if __name__ == '__main__':

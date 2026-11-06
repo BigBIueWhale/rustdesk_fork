@@ -142912,3 +142912,29 @@ binds the 34.723-second run, 402,685,952-byte peak RAM scratch, three zero
 endpoint deltas and independently reconciled QEMU/private/RAM absence.
 All eight evidence files match CTE/TUF (116,756 bytes). This audit-only receipt
 preserves the counted ledger; whole-document classification remains open.
+
+## 2026-11-06 — select peer traffic before Android impairment
+
+The previous turn made progress: the final-static-screen A/B and lifecycle replay
+passed and its cleanup/evidence checkpoint is complete. Continue R-F5 with Android
+network recovery before reopening unrelated implementation work. The Linux netem
+supervisor currently redirects every IPv4 loopback packet; applying it unchanged
+to Android would also impair ADB and the independent pixel observer. The smallest
+necessary prerequisite is real-kernel proof that both directions of the peer flow
+are impaired while control traffic remains responsive on the same namespace.
+
+Primary iproute2 v6.1.0 documentation specifies that flower port matches require
+an explicit TCP/UDP/SCTP protocol. Use fixed IPv4 TCP source/destination port 21118
+matches for this fixture, keeping the existing IFB receiver-ingress placement and
+64-packet queue. References:
+https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-flower.8 and
+https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-netem.8.
+This selects the Linux TCP leg carrying the future ADB-reversed peer stream;
+it will not establish direct Android transport-stack or radio behavior.
+
+Preparation extracts the current match-all installation after existing calibration
+and adds real TCP 21118/8554/5037 and UDP 21118 controls to the isolated native lane.
+The selected flow must show 125-ms-per-direction delay, two directional outages,
+same-socket recovery and healthy exchanges under 100 ms; control exchanges must
+stay under 100 ms throughout. Baseline execution is pending. No product, Android
+runtime, privilege-immunity or release-acceptance claim follows from preparation.

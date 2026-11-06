@@ -27,6 +27,12 @@ def alive(fd):
     return not poll.poll(0)
 
 
+def install_peer_ingress(run):
+    run('tc', 'filter', 'add', 'dev', 'lo', 'parent', 'ffff:', 'protocol', 'ip',
+        'pref', '3', 'matchall', 'action', 'mirred', 'egress', 'redirect',
+        'dev', 'rd-netem')
+
+
 class Impairment:
     def __init__(self, image, congestion=False, long_soak=False):
         self.image = image
@@ -124,6 +130,9 @@ with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as receiver, \\
             sort_keys=True), flush=True)
         if self.congestion:
             self.calibrate_congestion()
+        self.run('tc', 'filter', 'del', 'dev', 'lo', 'parent', 'ffff:',
+                 'protocol', 'ip', 'pref', '3')
+        install_peer_ingress(self.run)
 
     def tbf_options(self, name):
         limited = name in ('bandwidth', 'bandwidth-jitter')

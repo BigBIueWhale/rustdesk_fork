@@ -2903,6 +2903,7 @@ fi
 debian_polkit_sources_before=
 if [ "$MODE" = network-impairment-probe ]; then
     verify_committed_test_source "$SCRIPT_DIR/test-network-impairment-native.py"
+    verify_committed_test_source "$SCRIPT_DIR/flutter-peer-netem.py"
 fi
 debian_package_inputs_before=
 debian_maintainer_sources=()
@@ -4751,6 +4752,7 @@ lifecycle_payload_grafts=()
 if [ "$MODE" = network-impairment-probe ]; then
     lifecycle_payload_grafts=(
         "repo/scripts/test-network-impairment-native.py=$SCRIPT_DIR/test-network-impairment-native.py"
+        "repo/scripts/flutter-peer-netem.py=$SCRIPT_DIR/flutter-peer-netem.py"
     )
 elif [ "$MODE" = authority-smoke ]; then
     for source in "${AUTHORITY_GATE_SOURCES[@]}"; do
@@ -5946,6 +5948,9 @@ elif [ "$MODE" = network-impairment-probe ]; then
     require_exact_fixed_receipt \
         'NETWORK_IMPAIRMENT_NATIVE_OK delay=observed bypass=observed loss=observed recovery=same-tcp sockets=closed interface=removed queue=removed product=unexecuted' \
         'actual receiver-ingress impairment and TCP recovery'
+    require_exact_fixed_receipt \
+        'NETWORK_PEER_SCOPE_OK selected=delay-loss-recovery controls=unaffected tcp_directions=2 udp=unaffected sockets=closed interface=removed product=unexecuted' \
+        'selected peer impairment with independent control traffic'
     require_exact_fixed_receipt \
         'NETWORK_IMPAIRMENT_PROBE_FINALITY=pass namespace=joined initial_network=preserved product=unexecuted docker=retired cleanup=joined' \
         'network impairment fixture finality'

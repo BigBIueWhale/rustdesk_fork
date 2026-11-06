@@ -15484,7 +15484,8 @@ features = {}
 for option, module in (
         ('NET_NS', None), ('VETH', 'drivers/net/veth'), ('IFB', 'drivers/net/ifb'),
         ('NET_SCH_NETEM', 'net/sched/sch_netem'), ('NET_SCH_INGRESS', 'net/sched/sch_ingress'),
-        ('NET_CLS_MATCHALL', 'net/sched/cls_matchall'), ('NET_ACT_MIRRED', 'net/sched/act_mirred')):
+        ('NET_CLS_MATCHALL', 'net/sched/cls_matchall'), ('NET_CLS_FLOWER', 'net/sched/cls_flower'),
+        ('NET_ACT_MIRRED', 'net/sched/act_mirred')):
     values = [value for value in ('y', 'm') if f'CONFIG_{option}={value}' in config]
     if f'# CONFIG_{option} is not set' in config:
         values.append('n')

@@ -4035,7 +4035,7 @@ Capsule: `android-input-latency-74da2653.json`; fixture controls and failed atte
 remain in the audit. Impaired-input recovery, multi-hour/physical/other-role
 acceptance, application handle bounds and full R-F5 remain OPEN.
 
-**Flutter keyboard ordering — Android input observations pass; overall replay OPEN.**
+**Flutter keyboard ordering — guest recovery passes; outer receipt correction pending.**
 The later `092364cd` recovery run fails before any outage: requests 0–86 pass,
 then request 87 receives `f` where its second `a` is required. This is a sequence
 discrepancy; its complete end-to-end cause remains unproved. `e32ca442` changes
@@ -4048,17 +4048,26 @@ errors and three asynchronous round errors. The two option tests and ninety
 bridge cases also pass. Capsules: `android-input-sequence-092364cd.json`,
 `keyboard-order-model-e32ca442.json`, `keyboard-order-native-279c9020.json`.
 The corrected APK `07845d15` passes compilation, installation, rendering and
-instrumentation (`keyboard-order-app-07845d15.json`). Its unchanged input-recovery
-run `py56YYxwnx` completes all 203 requests in order. Healthy p95/p99/worst are
-486/495/496 ms; pending inputs recover in 1,637/1,642 ms after two-/six-second
-outages. Each following forty-request window obeys the original baseline plus
-250 ms: p95/worst are 485/491 and 485/638 ms. Independent reconciliation binds
-1,072 pixel observations, eleven resource samples, actual packet drops and
-335 retained-socket observations. Capsule: `keyboard-order-recovery-07845d15.json`.
-The overall run exits 1 at its final source-workload check: the 51,511-us average
-includes deliberately paused/input-driven periods and exceeds 50,000 us.
-Moving-animation workload validation and the complete replay remain OPEN while
-that phase accounting is corrected; no rate or latency limit is relaxed.
+instrumentation (`keyboard-order-app-07845d15.json`). Its initial 203-request
+replay fails final workload accounting because deliberate pauses enter the
+animation mean (`keyboard-order-recovery-07845d15.json`). `a7c105c2` validates
+every pause against the complete publication history and measures uninterrupted
+animation separately; the existing 33–50 ms limit remains.
+TUF `vIkI9QRYXb` at `a4c6227e` reuses that APK and passes the guest scenario:
+all 203 requests are ordered, healthy p95/p99/worst are 489/499/500 ms, and
+pending inputs recover in 1,632/1,627 ms after two-/six-second outages.
+Following forty-request windows have p95/worst 478/490 and 476/510 ms, within
+the original baseline plus 250 ms. Reconciliation binds 1,081 pixel samples,
+eleven input-resource samples, 13/15 actual additional drops and 332 unchanged
+TCP-pair observations. All 17,806 animation intervals average 40,895 us;
+203 input publications and nine pause/resume cycles account for the remainder.
+Eight static cases, 22 moving phases, six reconnects/task relaunches and guest
+cleanup pass. The outer command exits 1 because the guest emits the identical
+verified input-provider receipt twice: explicitly, then through its input filter.
+The output correction selects one emission path; focused validation and complete
+wrapper acceptance remain OPEN. `android-input-recovery-a4c6227e.json` preserves
+that distinction, full raw output and exact VM/private/RAM retirement. All five
+endpoint deltas are zero. No application rebuild or latency-limit change is needed.
 Multi-hour/device/other-platform R-F5 and release acceptance remain OPEN.
 
 `bedd34b9` integrates the receiver-ingress impairment with the exact retained

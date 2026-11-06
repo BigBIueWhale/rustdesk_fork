@@ -760,6 +760,65 @@ print("ANDROID_SOURCE_HISTORY=pass publications=500000 reader_as_bytes=67108864 
         source.unlink()
 
 
+def test_input_receipt_publication():
+    guest = Path('/work/scripts/smoke-verifier-vm-authority-guest.sh').read_text()
+    begin = ('    if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then\n'
+             '        printf \'%s\\n\' "$frame_source_receipt"')
+    require(guest.count(begin) == 1, 'Android receipt publication boundary differs')
+    start = guest.index(begin)
+    end = guest.index('    elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then', start)
+    publication = guest[start:end] + '    fi\n'
+    host = Path('/work/scripts/smoke-verifier-vm-authority.sh').read_text()
+    start = host.index('require_exact_fixed_receipt() {\n')
+    check = host[start:host.index('\n}\n', start) + 3]
+    provider = ('ANDROID_PEER_INPUT_PROVIDER_OBSERVED=pass sha256=' + 'a' * 64
+                + ' unchanged=before-after mapping=owned-server cleanup=joined')
+    input_rows = ['ANDROID_PEER_INPUT_PROVIDER_MAPPED=fixture',
+                  'ANDROID_PEER_INPUT_PLAN={"trials":120}',
+                  'ANDROID_PEER_INPUT_CASE={"request":0}',
+                  'ANDROID_PEER_INPUT_SAMPLE={"sequence":1}',
+                  'ANDROID_PEER_INPUT_RESOURCES={"threads":1}',
+                  'ANDROID_PEER_INPUT_BASELINE={"trials":120}',
+                  'ANDROID_PEER_INPUT_RECOVERED={"request":122}',
+                  'ANDROID_PEER_INPUT_RECOVERY_CASE={"cycle":1}',
+                  'ANDROID_PEER_INPUT_SUMMARY={"trials":120}',
+                  'ANDROID_PEER_INPUT_RECOVERY=pass', 'ANDROID_PEER_INPUT=pass']
+    environment = dict(os.environ)
+    for variable in re.findall(r'\$(?:\{)?([A-Za-z_][A-Za-z_0-9]*)', publication):
+        environment[variable] = 'fixture-' + variable
+    environment.update(ANDROID_RUNTIME_SCENARIO='peer-lifecycle',
+                       input_provider_receipt=provider)
+    with tempfile.TemporaryDirectory(prefix='input-receipts-', dir='/tmp') as directory:
+        output = Path(directory) / 'runtime.log'
+        serial = Path(directory) / 'serial.log'
+        output.write_text('\n'.join([provider, *input_rows,
+            'ANDROID_PEER_SERVER_LOG_DIAGNOSTIC=fixture', 'ANDROID_PEER_AUDIO=pass',
+            'ANDROID_PEER_STATIC_CASE={}', 'ANDROID_PEER_NETWORK=pass',
+            'FLUTTER_PEER_NETEM_JOINED status=0 namespace=retired socket=removed']) + '\n')
+        environment.update(output=str(output), SERIAL_LOG=str(serial), EXPECTED=provider)
+        checker = 'fail() { exit 1; }\n' + check + '\nrequire_exact_fixed_receipt "$EXPECTED" provider\n'
+        for extension in ('', '--input-latency', '--input-recovery', '--network-impairment',
+                          '--network-congestion', '--soak'):
+            environment['ANDROID_RUNTIME_EXTENSION'] = extension
+            result = subprocess.run(['/bin/bash', '-euo', 'pipefail', '-c', publication],
+                                    env=environment, check=True, capture_output=True,
+                                    text=True, timeout=5)
+            lines = result.stdout.splitlines()
+            serial.write_text(result.stdout)
+            subprocess.run(['/bin/bash', '-euo', 'pipefail', '-c', checker],
+                           env=environment, check=True, capture_output=True, timeout=5)
+            expected = input_rows if extension in ('--input-latency', '--input-recovery') else []
+            require([line for line in lines if line.startswith('ANDROID_PEER_INPUT')
+                     and line != provider] == expected,
+                    f'Android input evidence changed during publication: {extension}')
+        for invalid in ('', provider + '\n' + provider + '\n', provider.replace('a' * 64, 'b' * 64) + '\n'):
+            serial.write_text(invalid)
+            result = subprocess.run(['/bin/bash', '-euo', 'pipefail', '-c', checker],
+                                    env=environment, capture_output=True, timeout=5)
+            require(result.returncode != 0, 'outer receipt check accepted absent, duplicate or wrong identity')
+    print('ANDROID_INPUT_RECEIPTS=pass extensions=6 refusals=3 provider=exactly-once evidence=preserved', flush=True)
+
+
 def test_source_workload(decoder):
     with tempfile.TemporaryDirectory(prefix="source-workload-", dir="/tmp") as directory:
         source = Path(directory) / 'publications'
@@ -1096,6 +1155,7 @@ def main():
     test_soak_atomic_read()
     test_observation_schedule(decoder)
     test_source_history()
+    test_input_receipt_publication()
     test_source_workload(decoder)
     inspect_retained_android_frame(decoder)
     fixture = Path("/build/fixture")

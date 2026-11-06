@@ -12322,7 +12322,7 @@ run_android_emulator_runtime() {
         printf '%s\n' "$peer_artifact_receipt"
     fi
     if [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ]; then
-        printf '%s\n' "$frame_source_receipt" "$input_provider_receipt"
+        printf '%s\n' "$frame_source_receipt"
         printf '%s\n' "$frame_endpoint_receipt" "$frame_parser_receipt" \
             "$frame_observer_self_test_receipt" "$frame_observer_build_receipt" \
             "$frame_observer_receipt" "$lifecycle_receipt" "$task_park_receipt" \
@@ -12335,6 +12335,8 @@ run_android_emulator_runtime() {
         grep -E '^ANDROID_PEER_STATIC_(CASE=|COMPLETE )' "$output"
         if [ "$ANDROID_RUNTIME_EXTENSION" = --input-latency ] || [ "$ANDROID_RUNTIME_EXTENSION" = --input-recovery ]; then
             grep -E '^ANDROID_PEER_INPUT(_[A-Z_]+)?=' "$output"
+        else
+            printf '%s\n' "$input_provider_receipt"
         fi
         if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ] || [ "$ANDROID_RUNTIME_EXTENSION" = --network-congestion ] || [ "$ANDROID_RUNTIME_EXTENSION" = --input-recovery ]; then
             grep -E '^(ANDROID_PEER_NETWORK(_[A-Z]+)?=|FLUTTER_PEER_(TCP_|NETEM|PACKET_CALIBRATION|CONGESTION_CALIBRATION|BANDWIDTH_OBSERVED|INTERFACE))' "$output"

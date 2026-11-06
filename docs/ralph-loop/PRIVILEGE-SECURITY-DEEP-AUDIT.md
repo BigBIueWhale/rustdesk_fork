@@ -143667,3 +143667,39 @@ peak scratch, three zero endpoint deltas and retired QEMU/private/RAM state.
 All seventeen files / 236,168 bytes match both hosts. This audit-only receipt
 preserves the counted ledger. Replay the retained `07845d15` APK with corrected
 workload accounting; no application rebuild is needed.
+
+### 2026-11-06 — input recovery guest passes; duplicate provider receipt corrected
+
+TUF `vIkI9QRYXb` at `a4c6227e` completes the corrected-accounting replay with
+retained APK `07845d15` and peer `4c29a59f`. The guest exits successfully;
+the outer command exits 1 because its exact-once provider check sees two copies.
+The guest first prints its verified `input_provider_receipt`, then its broad
+`ANDROID_PEER_INPUT` filter prints that same line again for input extensions.
+Both identify the admitted unchanged provider. No provider substitution is observed.
+
+Independent reconciliation verifies all 203 ordered input requests, 1,081 pixel
+samples, causal timestamps, eleven resource samples, 13/15 additional kernel
+drops and 332 observations of the unchanged TCP pair. Healthy p95/p99/worst are
+489/499/500 ms. Pending requests recover in 1,632/1,627 ms; subsequent windows
+have p95/p99/worst 478/490/490 and 476/510/510 ms, within the original limits.
+The complete source history has 18,019 publications: 17,806 animation intervals,
+203 input publications, nine resume boundaries and the first publication.
+Animation mean/max are 40,895/62,350 us; overall mean is 51,713 us. All eight
+static cases, 22 moving phases, six reconnects/task relaunches, Force Stop and
+guest cleanup pass. This remains emulator TCP-leg evidence, not physical-radio,
+multi-hour, application-handle or complete R-F5 acceptance.
+
+`android-input-recovery-a4c6227e.json` (130,184 bytes, SHA-256
+`1f953b31880fbb21517e7c9b707d6192599c004b06f48839d61791100020c9fa`)
+retains the outer failure and full raw output. The 1,564.101-second transaction
+peaks at 4,509,913,088 RAM-scratch bytes. Five endpoint deltas are zero;
+QEMU, RAM and exact private diagnostics retire after reconciliation. Eleven
+evidence files / 1,238,382 bytes match CTE/TUF; both APK hashes are reverified.
+
+Guest publication now emits the already-validated provider through the input
+filter for input extensions, or explicitly for other extensions, exactly once.
+The outer duplicate/identity refusal stays unchanged. A focused test executes
+the actual publication block for all six extension modes and the actual outer
+checker, preserving input records and refusing absent, duplicate and wrong-hash
+receipts. Its isolated execution and complete wrapper replay follow; no app or
+peer rebuild is needed. Full release acceptance remains open.

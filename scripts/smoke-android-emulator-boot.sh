@@ -3874,6 +3874,7 @@ open_peer_connection() {
         [ -z "$SOURCE_PID" ] && [ -z "$SOURCE_START" ] \
             || fail 'the Android peer changing-source generation is already owned'
         RUSTDESK_PRESENTATION_TRACE=1 "$PEER_FRAME_SOURCE" --full-hd \
+            --pause-output "$WORK_ROOT/peer-source-pause.log" \
             >"$PEER_SOURCE_LOG" 2>&1 &
         SOURCE_PID=$!
         SOURCE_START="$(process_start_time "$SOURCE_PID")" \
@@ -3948,6 +3949,144 @@ PY
     env "${PA_FIXTURE_ENV[@]}" python3 -I -S "$SCRIPT_DIR/android-peer-audio.py" \
         "$generation" "$SERVER_PID" "$SERVER_START" || return 1
     wait_peer_server_connections 1 exact
+}
+
+exercise_peer_static_display() {
+    local keyed_before
+    keyed_before="$(peer_server_keyed_session_count)"
+    wait_peer_server_connections 1 exact || return 1
+    python3 -B -I -S - "$SOURCE_PID" "$SOURCE_START" "$PEER_SOURCE_LOG" \
+        "$WORK_ROOT/peer-source-pause.log" "$FRAME_OBSERVER_FRAME" "$FRAME_DECODER" <<'PY'
+import base64
+import contextlib
+import json
+import os
+from pathlib import Path
+import re
+import runpy
+import select
+import signal
+import stat
+import sys
+import time
+
+pid, start = int(sys.argv[1]), int(sys.argv[2])
+source_log, pause_log, frame_path = map(Path, sys.argv[3:6])
+decoder = runpy.run_path(sys.argv[6])
+assert os.getuid() == os.getgid() == 1000
+
+def private_bytes(path, limit):
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+        info = os.fstat(stream.fileno())
+        assert stat.S_ISREG(info.st_mode)
+        assert (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode), info.st_nlink) == (1000, 1000, 0o600, 1)
+        assert info.st_size <= limit
+        data = stream.read(limit + 1)
+        assert len(data) <= limit
+        return data
+
+with contextlib.ExitStack() as cleanup:
+    proc = os.open(f'/proc/{pid}', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    cleanup.callback(os.close, proc)
+    owner = os.pidfd_open(pid)
+    cleanup.callback(os.close, owner)
+
+    def alive():
+        assert not select.select([owner], [], [], 0)[0], 'source exited'
+        with os.fdopen(os.open('stat', os.O_RDONLY | os.O_NOFOLLOW, dir_fd=proc), 'rb') as stream:
+            value = stream.read(4097)
+        assert len(value) <= 4096 and value.startswith(f'{pid} ('.encode())
+        fields = value.rsplit(b')', 1)[1].split()
+        assert int(fields[19]) == start and fields[0] not in (b'T', b't', b'Z', b'X')
+
+    def acknowledge(event, previous):
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            alive()
+            lines = private_bytes(pause_log, 8192).splitlines()
+            if len(lines) == previous + 1:
+                match = re.fullmatch(event.encode() + rb' state=([0-9]+) monotonic_us=([0-9]+)', lines[-1])
+                assert match is not None
+                return tuple(map(int, match.groups()))
+            assert len(lines) == previous
+            time.sleep(0.01)
+        raise RuntimeError('source did not acknowledge ' + event)
+
+    failures = 0
+    retained_frame = False
+    for cycle in range(1, 9):
+        time.sleep(2)
+        alive()
+        before = len(private_bytes(pause_log, 8192).splitlines())
+        assert before == (cycle - 1) * 2
+        signal.pidfd_send_signal(owner, signal.SIGUSR1)
+        try:
+            target, paused_us = acknowledge('paused', before)
+            history = decoder['source_history'](source_log)
+            assert max(history) == target and history[target] <= paused_us <= time.monotonic_ns() // 1000
+            publication_us = history[target]
+            deadline = paused_us + 5_000_000
+            first_match_ms = None
+            sequence = None
+            samples = 0
+            final_matches = 0
+            observed = set()
+            last_record = b''
+            while time.monotonic_ns() // 1000 < deadline:
+                alive()
+                assert decoder['source_history'](source_log) == history, 'source changed while paused'
+                data = private_bytes(frame_path, decoder['MAX_RECORD_BYTES'])
+                record = decoder['parse_record'](data)
+                assert record['observation_ms'] <= 500, 'observer became stale'
+                if sequence is not None:
+                    assert record['sequence'] >= sequence, 'observer sequence regressed'
+                if record['sequence'] != sequence:
+                    sequence = record['sequence']
+                    analysis = decoder['analyze'](record, history)
+                    # A static screen legitimately ages. Compare its exact published
+                    # identity, retaining all barcode/geometry and observer-age checks.
+                    candidates = [entry for entry in analysis['candidates']
+                                  if entry['age'] >= 0 and entry['score'] >= entry['minimum']]
+                    states = {entry['state'] for entry in candidates}
+                    assert len(states) <= 1, 'ambiguous displayed identity'
+                    displayed = next(iter(states), None)
+                    observed.add(displayed)
+                    now_us = time.monotonic_ns() // 1000
+                    if displayed == target:
+                        if first_match_ms is None:
+                            first_match_ms = (now_us - publication_us + 999) // 1000
+                        if now_us >= paused_us + 4_000_000:
+                            final_matches += 1
+                    elif first_match_ms is not None:
+                        raise RuntimeError('display regressed after final-state delivery')
+                    assert target + 1 not in states, 'unpublished identity accepted'
+                    last_record = data
+                    samples += 1
+                time.sleep(0.05)
+            assert samples >= 20, 'insufficient independent display observations'
+            accepted = first_match_ms is not None and first_match_ms <= 2500 and final_matches >= 5
+            print('ANDROID_PEER_STATIC_CASE=' + json.dumps(dict(
+                cycle=cycle, target=target, publication_us=publication_us, paused_us=paused_us,
+                first_match_ms=first_match_ms, deadline_ms=2500, hold_ms=5000,
+                samples=samples, final_matches=final_matches,
+                displayed=sorted(observed, key=lambda item: -1 if item is None else item),
+                verdict='pass' if accepted else 'fail'), sort_keys=True), flush=True)
+            if not accepted:
+                failures += 1
+                if not retained_frame:
+                    print('ANDROID_PEER_STATIC_FRAME=' + base64.b64encode(last_record).decode(), flush=True)
+                    print('ANDROID_PEER_STATIC_HISTORY=' + json.dumps(history, sort_keys=True), flush=True)
+                    retained_frame = True
+        finally:
+            signal.pidfd_send_signal(owner, signal.SIGUSR2)
+            acknowledge('resumed', before + 1)
+    print(f'ANDROID_PEER_STATIC_COMPLETE cycles=8 failures={failures} source=resumed observer=actual-pixels deadline_ms=2500 hold_ms=5000', flush=True)
+    assert failures == 0, 'final static display did not converge'
+PY
+    local status=$?
+    [ "$(peer_server_keyed_session_count)" = "$keyed_before" ] \
+        && wait_peer_server_connections 1 exact || return 1
+    return "$status"
 }
 
 exercise_peer_warm_hold() {
@@ -4570,6 +4709,8 @@ PY
                     fail 'the initial authenticated Android peer connection failed'
                 }
             PEER_INITIAL_RECOVERY_MS=$PEER_LAST_RECOVERY_MS
+            exercise_peer_static_display \
+                || fail 'the final static screen did not reach the Android viewer'
             background_cycle=0
             for background_seconds in "${PEER_BACKGROUND_SECONDS[@]}"; do
                 background_cycle=$((background_cycle + 1))

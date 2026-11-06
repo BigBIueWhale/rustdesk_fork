@@ -142800,3 +142800,31 @@ endpoint deltas and 402,743,296-byte peak scratch. All eight evidence files matc
 CTE/TUF. This audit-only receipt preserves the counted ledger. The intervening
 status-only answer is no progress; the continuation reconciles this completed
 checkpoint before selecting the pending final-static-frame delivery case.
+
+## 2026-11-06 — final static screen delivery; real-peer test preparation
+
+R-F5 remains the selected requirement. The next decisive observation is the last
+Full-HD screen state after drawing stops, using the retained Android APK and
+corrected Linux peer. This continues the encoder checkpoint before an unrelated
+implementation task. Native libvpx permits rate-control omission independently
+of encoding lag (v1.12.0 `vpx/vpx_encoder.h`, `rc_dropframe_thresh`); VP8's
+`vp8/encoder/onyx_if.c` advances its buffer accounting when another encode call
+drops a frame. Reviewed sources:
+https://raw.githubusercontent.com/webmproject/libvpx/v1.12.0/vpx/vpx_encoder.h and
+https://raw.githubusercontent.com/webmproject/libvpx/v1.12.0/vp8/encoder/onyx_if.c.
+X11 remembers the captured bytes before encoding; the service currently retries
+unchanged captures only for non-latency-free encoders. This remains a delivery
+hypothesis until actual peer pixels distinguish the behavior.
+
+The existing independently compiled source fixture now acknowledges a pause only
+after its complete publication and root-pixel checks. Its X window stays alive;
+SIGUSR2 resumes drawing through the same process. The Android driver retains a
+pidfd/start identity and exercises eight two-second moving/five-second static
+cycles without reconnecting. Each final identity must appear within 2,500 ms of
+publication and remain visible in at least five samples during the final second;
+at least twenty independent observer sequences and the existing 500-ms observer
+age bound are required per pause. Static content is matched by the full barcode,
+not rejected simply for aging while unchanged. One failed raw framebuffer and
+its publication history are retained. This workload does not itself certify that
+the native encoder dropped a selected frame. Compilation/runtime and peer result
+are pending; shell syntax and whitespace checks pass. Production is unchanged.

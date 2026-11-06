@@ -8797,6 +8797,9 @@ elif [ "$MODE" = android-emulator-runtime ]; then
         require_exact_fixed_receipt \
             'ANDROID_PEER_AUDIO=pass daemon=16.1 signal=sine440 monitor=pacat-native captures=13 scope=native-stream cleanup=joined' \
             'Android peer native recording and private audio fixture retirement'
+        require_exact_fixed_receipt \
+            'ANDROID_PEER_STATIC_COMPLETE cycles=8 failures=0 source=resumed observer=actual-pixels deadline_ms=2500 hold_ms=5000' \
+            'Android final static screen delivery without reconnect'
         for audio_phase in before-peer after-peer; do
             require_exact_fixed_receipt \
                 "ANDROID_PEER_AUDIO_EMPTY=pass phase=$audio_phase recordings=0" \

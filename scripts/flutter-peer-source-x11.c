@@ -34,6 +34,7 @@
 #define PUBLICATION_FILE_BYTES (64U * 1024U * 1024U)
 
 static volatile sig_atomic_t stop_requested = 0;
+static volatile sig_atomic_t pause_requested = 0;
 
 static const uint8_t palette[16][3] = {
     {232U, 36U, 36U},   {36U, 224U, 48U},   {36U, 64U, 232U},
@@ -49,6 +50,10 @@ static const uint8_t code_white[3] = {255U, 255U, 255U};
 static void request_stop(int signal_number) {
     (void)signal_number;
     stop_requested = 1;
+}
+
+static void request_pause(int signal_number) {
+    pause_requested = signal_number == SIGUSR1;
 }
 
 static int sleep_millis(unsigned int millis) {
@@ -248,6 +253,7 @@ int main(int argc, char **argv) {
     unsigned long texture_colors[3][256];
     uint32_t frame = 0U;
     int exit_status = 0;
+    int pause_output = -1;
     unsigned int source_width = SOURCE_WIDTH;
     unsigned int source_height = SOURCE_HEIGHT;
     unsigned int frame_interval_ms = FRAME_INTERVAL_MS;
@@ -261,10 +267,19 @@ int main(int argc, char **argv) {
     int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
     struct rlimit output_limit;
 
-    if (argc == 2 && strcmp(argv[1], "--full-hd") == 0) {
+    if ((argc == 2 || (argc == 4 && strcmp(argv[2], "--pause-output") == 0)) &&
+        strcmp(argv[1], "--full-hd") == 0) {
         source_width = 1920U;
         source_height = 1080U;
         frame_interval_ms = 33U;
+        if (argc == 4) {
+            pause_output = open(argv[3], O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW |
+                                O_CLOEXEC, 0600);
+            if (pause_output < 0) {
+                fputs("FLUTTER_PEER_SOURCE_FAIL pause output\n", stderr);
+                return 1;
+            }
+        }
     } else if (argc == 2 && strcmp(argv[1], "--two-monitors") == 0) {
         monitors = 2U;
     } else if (argc == 2 && strcmp(argv[1], "--inset-counter") == 0) {
@@ -275,7 +290,7 @@ int main(int argc, char **argv) {
         input_response = 1;
         response_directory = argv[2];
     } else if (argc != 1) {
-        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd|--two-monitors|--inset-counter|--input-response DIRECTORY]\n", stderr);
+        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd [--pause-output FILE]|--two-monitors|--inset-counter|--input-response DIRECTORY]\n", stderr);
         return 1;
     }
     if (getrlimit(RLIMIT_FSIZE, &output_limit) != 0) {
@@ -299,6 +314,13 @@ int main(int argc, char **argv) {
     if (sigaction(SIGTERM, &action, NULL) != 0 || sigaction(SIGINT, &action, NULL) != 0) {
         fputs("FLUTTER_PEER_SOURCE_FAIL signal handlers\n", stderr);
         return 1;
+    }
+    if (pause_output >= 0) {
+        action.sa_handler = request_pause;
+        if (sigaction(SIGUSR1, &action, NULL) != 0 || sigaction(SIGUSR2, &action, NULL) != 0) {
+            fputs("FLUTTER_PEER_SOURCE_FAIL pause signal handlers\n", stderr);
+            return 1;
+        }
     }
 
     for (attempt = 0U; attempt < DISPLAY_OPEN_ATTEMPTS; ++attempt) {
@@ -396,6 +418,29 @@ int main(int argc, char **argv) {
     }
 
     while (stop_requested == 0) {
+        /* Acknowledge only a fully published, root-pixel-checked frame. Keep the
+         * X window alive and unchanged until the observer explicitly resumes it. */
+        if (pause_output >= 0 && pause_requested != 0) {
+            if (frame == 0U || dprintf(pause_output, "paused state=%u monotonic_us=%llu\n",
+                                      frame - 1U, (unsigned long long)monotonic_micros()) < 0) {
+                fputs("FLUTTER_PEER_SOURCE_FAIL pause acknowledgement\n", stderr);
+                exit_status = 1;
+                break;
+            }
+            while (pause_requested != 0 && stop_requested == 0) {
+                if (sleep_millis(10U) != 0) {
+                    exit_status = 1;
+                    goto cleanup;
+                }
+            }
+            if (stop_requested != 0) break;
+            if (dprintf(pause_output, "resumed state=%u monotonic_us=%llu\n",
+                        frame - 1U, (unsigned long long)monotonic_micros()) < 0) {
+                fputs("FLUTTER_PEER_SOURCE_FAIL resume acknowledgement\n", stderr);
+                exit_status = 1;
+                break;
+            }
+        }
         /* One ordered publication history: even identities belong only to the
          * left monitor, odd identities only to the right. Each advances at 4 Hz. */
         unsigned int origin_x = (frame % monitors) * source_width;
@@ -510,6 +555,7 @@ int main(int argc, char **argv) {
         }
     }
 cleanup:
+    if (pause_output >= 0 && close(pause_output) != 0) exit_status = 1;
     if (texture != NULL) XDestroyImage(texture);
     XFreePixmap(display, back_buffer);
     XFreeGC(display, graphics);

@@ -1683,6 +1683,10 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         && [ "$(grep -Fxc 'ANDROID_PEER_AUDIO=pass daemon=16.1 signal=sine440 monitor=pacat-native captures=13 scope=native-stream cleanup=joined' "$RUNTIME_LOG")" -eq 1 ] \
         || die 'Android peer audio fixture completion differs'
     grep -E '^ANDROID_PEER_AUDIO(_CAPTURE|_EMPTY)?=' "$RUNTIME_LOG"
+    [ "$(grep -Fxc 'ANDROID_PEER_STATIC_COMPLETE cycles=8 failures=0 source=resumed observer=actual-pixels deadline_ms=2500 hold_ms=5000' "$RUNTIME_LOG")" -eq 1 ] \
+        && [ "$(grep -c '^ANDROID_PEER_STATIC_CASE=' "$RUNTIME_LOG")" -eq 8 ] \
+        || die 'Android final static display evidence is incomplete'
+    grep -E '^ANDROID_PEER_STATIC_(CASE=|COMPLETE )' "$RUNTIME_LOG"
     runtime_peer=production-loopback-cpace-changing-display
     if [ -n "$SOAK" ]; then
         grep '^ANDROID_PEER_SOAK_SUMMARY=pass ' "$RUNTIME_LOG"

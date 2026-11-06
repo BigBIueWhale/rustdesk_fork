@@ -12295,6 +12295,7 @@ run_android_emulator_runtime() {
             "$peer_receipt"
         grep -E '^ANDROID_PEER_SERVER_LOG_(DIAGNOSTIC=|TAIL )' "$output"
         grep -E '^ANDROID_PEER_AUDIO(_CAPTURE|_EMPTY)?=' "$output"
+        grep -E '^ANDROID_PEER_STATIC_(CASE=|COMPLETE )' "$output"
         [ -z "$ANDROID_RUNTIME_SOAK" ] || printf '%s\n' "$soak_receipt"
     elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         printf '%s\n' "$controlled_cm_receipt" "$controlled_stop_receipt" \

@@ -143056,3 +143056,44 @@ The driver now waits for four distinct fresh moving states within eight seconds
 before measuring the unchanged ten-second/2,000-ms healthy baseline. It reuses
 the same bounded fresh-state wait after restoration; no post-impairment baseline,
 recovery deadline, drift allowance or resource bound changes. Replay is pending.
+
+TUF `mG1FSCJ3QN` at `1ca5d7fe` passes the complete replay on the same retained
+APK `9b22f10f` and peer `4c29a59f`. The initial moving-state wait takes 1,413 ms;
+the original ten-second baseline has maximum/p95 ages 949/912 ms. Delay, 3%
+random loss, 8% random loss, burst loss and two-/six-second total outages recover
+four fresh displayed states in 1,831/2,055/2,078/1,195/2,285/4,016 ms. Each
+ten-second follow-up has forty independent samples; maxima are
+1,083/1,071/1,056/1,165/1,063/1,109 ms and p95 values
+1,036/1,011/1,017/1,073/1,009/1,029 ms. Every case meets the original eight-second
+deadline and baseline-plus-250-ms bounds. Kernel drop increases are
+39/39/132/66/15/17; the delayed case also encounters the bounded queue's drops.
+All 530 TCP snapshots retain the same exact two endpoint/inode/cookie identities.
+The complete serial preserves 512 pixel samples and twenty queue snapshots;
+reconciliation independently recomputes healthy windows and matches case counters
+to supervisor records. The IFB retires before intentional lifecycle reconnects.
+
+All eight static cases pass in 307–1,115 ms. The existing 22 moving-pixel phases,
+six reconnects, six task replacements and thirteen native audio captures pass.
+The 120,360-ms task-absent hold preserves process/service without a peer; resource
+samples show no RSS growth from 271,384 KiB and maximum thread growth four.
+Application handles and audible audio remain unobserved. The outer command exits
+zero; all five endpoint deltas are zero, and exact QEMU/private/RAM absence is
+independently reconciled. Storage lifetime is 1,529.216 seconds with 4,508,033,024
+bytes peak RAM scratch. Capsule `android-network-recovery-1ca5d7fe.json`, SHA-256
+0fad8d4bdb5a46a17b59736163415e6a64973bcb5de1431259d8df4f3277e346,
+binds the artifacts, observations, scope and cleanup. All ten files match CTE/TUF.
+The preceding baseline-transition failure's twelve files also match. This accepts
+the named Linux TCP-leg/Android emulator recovery checkpoint; direct mobile/radio,
+bandwidth/jitter, input response, multi-hour/physical/other-role and full R-F5
+acceptance remain open. No application code or live instruction file changed.
+
+Exact successful command on TUF, from the repository at `1ca5d7fe`:
+```sh
+bash scripts/smoke-verifier-vm-authority.sh --android-emulator-runtime \
+  --artifact-commit 9b22f10f7bbdb5bfd13c3c5fce2a36dd2c4e75bb \
+  --apk-sha256 d577d0186720b7316d64706a7641e08d94150904ee5f76d88cd1675dad03dd51 \
+  --test-apk-sha256 529f132b05b5e0bdcad7ffc324cfecb8143e9696b81dc0c94da29946d029dd93 \
+  --scenario peer-lifecycle --peer-commit 4c29a59fd936a214dae6cc339b10a01df1bb4ea8 \
+  --peer-manifest-sha256 a7293ff6253b8124ed8a59d069ae17247b02194e1f012f317f5680874c50b7b3 \
+  --network-impairment
+```

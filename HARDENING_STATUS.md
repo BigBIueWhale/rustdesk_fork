@@ -3999,8 +3999,26 @@ below 0.13 ms. Two directional outages record five/three kernel drops and
 same-socket recovery in 1,179/879 ms; subsequent exchanges are below 0.062 ms.
 Original native controls, socket/interface retirement and all three endpoint
 deltas pass. Capsules: `peer-scope-baseline-61019f83.json`,
-`peer-scope-corrected-1474740d.json`. Android integration, actual displayed-pixel
-recovery and complete R-F5 remain OPEN; this check executes no product.
+`peer-scope-corrected-1474740d.json`. Android integration and actual displayed-pixel
+recovery are exercised by the checkpoint below; this native classifier check
+executes no product. Complete R-F5 remains OPEN.
+
+**Android displayed recovery (`1ca5d7fe`) — six impairment cases pass.**
+TUF `mG1FSCJ3QN` reuses APK `9b22f10f` and Linux peer `4c29a59f`.
+After a bounded return from static to moving content, the ten-second baseline
+has maximum/p95 image age 949/912 ms. A 125-ms one-way delay, 3% and 8% random
+loss, burst loss, and two-/six-second outages recover four fresh states in
+1,831/2,055/2,078/1,195/2,285/4,016 ms. All following ten-second windows obey
+the original maximum/p95 plus 250 ms: largest maximum 1,165 ms, largest p95
+1,073 ms. All 530 transport samples retain the same socket pair; 512 pixel
+samples and kernel counters are preserved. No reconnect occurs during impairment.
+The addressless IFB retires before the existing lifecycle sequence, which passes
+22 moving-pixel phases, eight static cases, six reconnects and six task replacements.
+QEMU/private/RAM retirement and all five endpoint deltas pass. Artifacts,
+samples and limits: `android-network-recovery-1ca5d7fe.json`.
+This covers the Linux TCP leg of an ADB-reversed Android emulator connection.
+Direct Android/radio behavior, bandwidth/jitter, input-to-visible latency,
+multi-hour/physical/other-role acceptance, handle bounds and full R-F5 remain OPEN.
 
 `bedd34b9` integrates the receiver-ingress impairment with the exact retained
 `5d8cf83a` app and existing pixel observer. The guest-only supervisor retains

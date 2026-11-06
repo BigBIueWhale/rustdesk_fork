@@ -2058,6 +2058,7 @@ run_android_runtime_log_tests() {
     local unit_receipt='ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined'
     local native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
     local stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
+    local file_limit_receipt='ANDROID_PEER_FILE_LIMIT_REPRODUCED cases=3 limited=2 shm_failures=4 late_records_missing=2 control=finite-128m cleanup=joined product=unexecuted'
     local ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     local failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
     local serial_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
@@ -2114,6 +2115,8 @@ run_android_runtime_log_tests() {
         && [ "$(grep -Fc 'ANDROID_RUNTIME_DOCKER_LOG=' "$output")" -eq 1 ] \
         && grep -Fxq "$stage_receipt" "$output" \
         && [ "$(grep -Fc 'ANDROID_PEER_WARM_STAGE_TEST=' "$output")" -eq 1 ] \
+        && grep -Fxq "$file_limit_receipt" "$output" \
+        && [ "$(grep -Fc 'ANDROID_PEER_FILE_LIMIT_REPRODUCED ' "$output")" -eq 1 ] \
         && grep -Fxq "$ui_receipt" "$output" \
         && [ "$(grep -Fc 'ANDROID_PEER_UI_FINALITY_TEST=' "$output")" -eq 1 ] \
         && grep -Fxq "$failure_test_receipt" "$output" \
@@ -2171,7 +2174,8 @@ run_android_runtime_log_tests() {
         --remove-private-root "$export_work" --expected-identity "$export_work_id" \
         || fail 'cannot retire the failure-export fixture scratch'
     stop_docker_authority
-    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt" "$ui_receipt" "$failure_test_receipt" "$serial_receipt" "$output_receipt"
+    grep '^ANDROID_PEER_FILE_LIMIT=observed ' "$output"
+    printf '%s\n' "$unit_receipt" "$native_receipt" "$stage_receipt" "$file_limit_receipt" "$ui_receipt" "$failure_test_receipt" "$serial_receipt" "$output_receipt"
     printf 'ANDROID_RUNTIME_FAILURE_EXPORT_VM=pass bytes=%s sha256=%s fsync=acknowledged mount=retired uid=1000 gid=1000\n' "$export_bytes" "$export_sha"
     printf 'ANDROID_RUNTIME_LOG_TESTS_VM=pass cases=3 stage_cases=9 uid=4000 gid=4000 root=refused foreign=refused test_sha256=%s wrapper_sha256=%s stage_sha256=%s image=retired docker=retired network=none cleanup=joined\n' \
         "$test_sha" "$wrapper_sha" "$stage_sha"

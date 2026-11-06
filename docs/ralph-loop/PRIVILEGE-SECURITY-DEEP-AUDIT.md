@@ -110472,6 +110472,27 @@ durable-run peak 249,856 bytes. QEMU 222169 joins exit 0; its PID, RAM
 `run.zv39mfrc` and active owned roots are absent. All endpoint deltas are zero.
 This audit-only receipt leaves the counted ledger unchanged.
 
+## 2026-11-06 — short Android peer file-limit reproduction
+
+Selected prerequisite: distinguish the server's process-wide file-limit effects
+from Android presentation behavior before another soak. Linux getrlimit(2)
+documents EFBIG/SIGXFSZ when a process extends a file past RLIMIT_FSIZE
+(https://www.man7.org/linux/man-pages/man2/getrlimit.2.html). PulseAudio v16.1
+allocates 1,024 64-KiB slots by default and sizes memfd/POSIX shared files with
+ftruncate; POSIX storage adds a 40-byte marker. Primary source:
+https://github.com/pulseaudio/pulseaudio/blob/v16.1/src/pulsecore/memblock.c
+and https://github.com/pulseaudio/pulseaudio/blob/v16.1/src/pulsecore/shm.c.
+These sources explain the hypothesis; they do not identify the exact loaded
+PulseAudio build or prove that the original server log reached its ceiling.
+
+The existing isolated runtime-log lane now executes the exact Python limit/exec
+fragment from the Android peer launcher at its normal/soak limits. Native
+memfd and /dev/shm allocation, mapped first/last-byte controls and a late log
+record distinguish those cases from a finite 128-MiB inherited-limit control.
+Children join and temporary files retire before reporting. This is a bounded
+kernel-mechanism reproduction, with no product or emulator execution and no
+runtime-limit correction. Syntax/diff checks pass; isolated execution follows.
+
 ## 2026-10-28 — retire unused legacy-ID main IPC
 
 The previous locale-selection turn made verified progress. This continuation

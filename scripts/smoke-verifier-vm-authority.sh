@@ -5960,6 +5960,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     runtime_log_unit_receipt='ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined'
     runtime_log_native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
     runtime_log_stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
+    runtime_file_limit_receipt='ANDROID_PEER_FILE_LIMIT_REPRODUCED cases=3 limited=2 shm_failures=4 late_records_missing=2 control=finite-128m cleanup=joined product=unexecuted'
     runtime_log_ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     runtime_failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
     runtime_serial_test_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
@@ -5972,6 +5973,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     require_exact_fixed_receipt "$runtime_log_unit_receipt" 'runtime-log pipe/signal result'
     require_exact_fixed_receipt "$runtime_log_native_receipt" 'native Docker log-lifetime result'
     require_exact_fixed_receipt "$runtime_log_stage_receipt" 'warm/task presentation-stage result'
+    require_exact_fixed_receipt "$runtime_file_limit_receipt" 'peer process file-limit reproduction'
     require_exact_fixed_receipt "$runtime_log_ui_receipt" 'observable app UI finality result'
     require_exact_fixed_receipt "$runtime_failure_test_receipt" 'bounded failure-log publisher result'
     require_exact_fixed_receipt "$runtime_serial_test_receipt" 'bounded serial archive result'
@@ -6002,7 +6004,7 @@ PY
       "$runtime_failure_package_before" ] || fail 'runtime-log output exporter package changed'
     require_exact_fixed_receipt "$runtime_log_vm_receipt" 'runtime-log source/finality result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'runtime-log cloud-init completion'
-    printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_stage_receipt" "$runtime_log_ui_receipt" "$runtime_failure_test_receipt" "$runtime_serial_test_receipt" "$runtime_output_test_receipt" "$runtime_failure_receipt" "$runtime_log_vm_receipt"
+    printf '%s\n' "$runtime_log_unit_receipt" "$runtime_log_native_receipt" "$runtime_log_stage_receipt" "$runtime_file_limit_receipt" "$runtime_log_ui_receipt" "$runtime_failure_test_receipt" "$runtime_serial_test_receipt" "$runtime_output_test_receipt" "$runtime_failure_receipt" "$runtime_log_vm_receipt"
 elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     engine_prepare_receipt='FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 indexes=original pub=path-only network=none engine_build=unexecuted'
     engine_prepare_vm_receipt="FLUTTER_ENGINE_PREPARE_VM=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE helper_sha256=$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" | /usr/bin/awk '{print $1}') runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined"

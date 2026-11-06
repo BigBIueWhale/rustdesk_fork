@@ -3,6 +3,7 @@
 
 import ctypes
 import hashlib
+import json
 import os
 from pathlib import Path
 import select
@@ -236,6 +237,79 @@ if offsets != sorted(offsets):
     raise RuntimeError("runtime log owner boundaries differ")
 runtime_functions = wrapper[offsets[0]:offsets[-1]]
 boot = (scripts / "smoke-android-emulator-boot.sh").read_text()
+
+# Reproduce the server launcher's file-limit effects without an emulator or a
+# two-hour producer. The control keeps the same finite inherited 128-MiB limit.
+limit_begin = "        python3 -B -I -S -c '\nimport os, resource, sys\n"
+limit_end = "\n' \"$PEER_SERVER_LOG_LIMIT\" \"$PEER_TARGET/smoke-server-launcher\""
+if boot.count(limit_begin) != 1 or boot.count(limit_end) != 1:
+    raise RuntimeError("peer file-limit launcher is absent or ambiguous")
+limit_program = "import os, resource, sys\n" + boot.split(limit_begin, 1)[1].split(limit_end, 1)[0]
+allocation_probe = r'''
+import json, mmap, os, resource, sys, tempfile
+limit = int(sys.argv[1])
+observed = {"limit": list(resource.getrlimit(resource.RLIMIT_FSIZE))}
+for kind, size in (("memfd", 64 * 1024 * 1024), ("posix", 64 * 1024 * 1024 + 40)):
+    with tempfile.TemporaryFile(dir="/dev/shm") if kind == "posix" else os.fdopen(
+            os.memfd_create("peer-file-limit-probe", os.MFD_CLOEXEC), "w+b") as allocation:
+        try:
+            os.ftruncate(allocation.fileno(), size)
+            with mmap.mmap(allocation.fileno(), size) as memory:
+                memory[0], memory[-1] = 17, 29
+                if memory[0] != 17 or memory[-1] != 29:
+                    raise RuntimeError("shared-memory read/write control differs")
+            observed[kind] = {"errno": 0, "bytes": os.fstat(allocation.fileno()).st_size}
+        except OSError as error:
+            observed[kind] = {"errno": error.errno, "bytes": os.fstat(allocation.fileno()).st_size}
+remaining = limit
+while remaining:
+    remaining -= os.write(2, b"x" * min(65536, remaining))
+try:
+    observed["terminal_bytes"] = os.write(2, b"\nserver shutdown complete\n")
+    observed["terminal_errno"] = 0
+except OSError as error:
+    observed["terminal_bytes"] = 0
+    observed["terminal_errno"] = error.errno
+print(json.dumps(observed, sort_keys=True))
+'''
+for case, log_limit in (("normal", 2097152), ("soak", 8388608), ("control", 8388608)):
+    with tempfile.TemporaryDirectory(prefix="android-peer-file-limit.") as directory:
+        log = Path(directory) / "server.log"
+        command = ["/usr/bin/prlimit", "--fsize=134217728:134217728",
+                   sys.executable, "-B", "-I", "-S"]
+        if case != "control":
+            command += ["-c", limit_program, str(log_limit), sys.executable, "-B", "-I", "-S"]
+        command += ["-c", allocation_probe, str(log_limit)]
+        with log.open("xb", buffering=0) as output:
+            completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=output, timeout=5)
+        if completed.returncode or len(completed.stdout) > 1024:
+            raise RuntimeError(f"file-limit probe did not complete: {case}: {completed.returncode}")
+        actual = json.loads(completed.stdout)
+        refused = case != "control"
+        expected = {
+            "limit": [log_limit, log_limit] if refused else [134217728, 134217728],
+            "memfd": {"errno": 27 if refused else 0, "bytes": 0 if refused else 67108864},
+            "posix": {"errno": 27 if refused else 0, "bytes": 0 if refused else 67108904},
+            "terminal_bytes": 0 if refused else 26,
+            "terminal_errno": 27 if refused else 0,
+        }
+        if actual != expected or log.stat().st_size != log_limit + expected["terminal_bytes"]:
+            raise RuntimeError(f"peer file-limit observation differs: {case}: {actual}")
+        with log.open("rb") as output:
+            output.seek(max(0, log.stat().st_size - 64))
+            terminal_present = b"\nserver shutdown complete\n" in output.read(65)
+        if terminal_present == refused:
+            raise RuntimeError(f"late server log record observation differs: {case}")
+        print(f"ANDROID_PEER_FILE_LIMIT=observed case={case} "
+              f"limit_bytes={actual['limit'][0]} memfd_errno={actual['memfd']['errno']} "
+              f"posix_errno={actual['posix']['errno']} log_bytes={log.stat().st_size} "
+              f"terminal_errno={actual['terminal_errno']} terminal_present={str(terminal_present).lower()}",
+              file=sys.stderr)
+    if Path(directory).exists():
+        raise RuntimeError("peer file-limit scratch survived joined execution")
+print("ANDROID_PEER_FILE_LIMIT_REPRODUCED cases=3 limited=2 shm_failures=4 "
+      "late_records_missing=2 control=finite-128m cleanup=joined product=unexecuted", file=sys.stderr)
+
 stage_marker = "emit_peer_presentation_stage_receipts() {\n"
 if boot.count(stage_marker) != 1:
     raise RuntimeError("presentation stage receipt owner is absent or duplicated")

@@ -7391,33 +7391,34 @@ diagnostics follow below. Full-soak attribution and functional impact remain OPE
 QEMU/private/RAM retirement is reconciled. Four endpoint snapshots have zero
 delta; the final inventory has one unattributed addition and three removals, so
 no zero-drift claim applies. CTE/TUF retain `android-soak-file-limit-4ebb905e.json`.
-The earlier missing-log failure, five native file-limit controls and short replay
-remain in `android-soak-timed-a70a4bd6.json`,
-`android-peer-file-limit-fcd7051c.json`, `android-file-limit-lifecycle-4cad48ad.json`
-and the audit; app/peer/observer provenance is in
-`android-soak-{observer,app,peer}-9b22f10f.json`.
+The audit retains the missing-log failure, five native file-limit controls,
+short replay and app/peer/observer provenance.
 **OPEN:** audio/encoder follow-up, handles, input-to-visible response, impairment,
 physical devices, other supported roles and full R-F5 acceptance.
 
-**Android audio capture accepted; VPX empty output corrected.** `702d6a82`
-supplies the pinned private daemon to the same `9b22f10f` app/peer. The native
-monitor control, thirteen active CM recordings and all 22 pixel phases pass across
-six reconnects and six task replacements. Pre/post recordings are absent;
-daemon/socket/VM/RAM retirement and five zero endpoint deltas pass. Capsule:
-`android-audio-fixture-702d6a82.json`. The earlier missing-daemon diagnosis remains
-in `android-audio-diagnostic-b5411bdb.json`; the new replay has no Access-denied ending.
+**Android audio fixture and corrected VPX peer — named runtime acceptance.**
+`702d6a82` supplies a pinned private audio daemon. Native monitor controls and
+thirteen CM recordings pass with `9b22f10f`; pre/post recordings are absent,
+five endpoint deltas are zero and cleanup joins. `android-audio-fixture-702d6a82.json`
+retains the baseline; the audit retains the earlier missing-daemon diagnosis.
 
-`794a8d73` returns successful `None` for VPX empty output; the service skips
-publication and clears its failure counter. Native libvpx 1.12.0 tests reproduce
-normal drops reported as errors before correction, then pass all 28 checks:
-twelve codec/format/drop/path combinations, twelve invalid-input refusals and
-96 decoded pixel controls after explicitly disabling dropping. Existing allocation
-refusal/keyframe recovery passes. This does not prove automatic recovery.
-The complete matching Linux peer builds; runtime replay remains OPEN. Evidence:
-`vpx-drop-classification-14e6741d.json`, `vpx-drop-fixed-794a8d73.json`,
-`vpx-peer-build-794a8d73.json`. Attribution of every historical encoder event,
-audible audio, final-state/input latency, impairment, physical devices, release
-codec execution, shared PA-test revalidation and full R-F5 remain OPEN.
+`794a8d73` returns `None` for successful VPX empty output; the service skips
+publication and clears its error counter. All 28 native libvpx 1.12.0 checks pass:
+twelve codec/format/drop/path combinations, twelve invalid-input refusals,
+96 pixel controls after explicitly disabling dropping, and allocation/keyframe
+recovery. The audit retains classification, correction and complete-peer build evidence.
+
+TUF `M71LghSQ5j` at harness `5e875a68` reuses that peer and the `9b22f10f` APK.
+All 22 pixel phases, six reconnects, six task replacements and thirteen audio
+captures pass. Maximum sampled age is 1,046 ms; background/reconnect/task recovery
+maxima are 1,280/550/550 ms. The server logs zero encoder errors against 9,187 in
+the preceding comparable replay. Thirteen samples show no RSS growth and at most
+three additional threads; handles remain unobserved. Graceful shutdown and exact
+VM/private/RAM retirement pass with five zero endpoint deltas. Capsule:
+`vpx-peer-replay-5e875a68.json`. The audit retains the initial prompt-driver failure.
+Automatic recovery of a dropped final static change, every historical encoder
+event, audible audio, input latency, impairment, physical devices, release codec
+execution, shared PA-test revalidation and full R-F5 remain OPEN.
 
 Historical `f372aacf` app/task results remain in `android-current-f372aacf.json`,
 `android-presentation-1c429348.json` and Git `9b22f10f`, including its unattributed

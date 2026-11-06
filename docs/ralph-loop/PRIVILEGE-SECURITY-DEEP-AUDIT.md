@@ -142753,3 +142753,39 @@ exact private-tree removal. All twelve evidence files match CTE/TUF (230,928 byt
 binds the failure and cleanup. Its complete logs supersede truncated tool output.
 No live instruction file changed. Final-static-frame delivery after dropping,
 release codec/device execution and full R-F5 remain open.
+
+TUF `M71LghSQ5j` at `5e875a68` completes the same retained-artifact replay.
+The initial prompt passes in 8,350 ms with exact reason/title and zero network
+attempts. Success exports omit the temporary reveal marker, so they do not prove
+that the new Back branch executed. Wrong-password recovery passes with one refusal
+and no automatic retry over 140 seconds. All 22 actual pixel phases, six reconnects,
+six task replacements and thirteen native audio captures pass. Maximum sampled
+image age is 1,046 ms; background/reconnect/task recovery maxima are 1,280/550/550 ms.
+All thirteen server/native/Dart records match their wire generations; warm
+reconnects preserve the viewer owner and task replacements receive six fresh owners.
+The task-absent hold lasts 120,340 ms with the service/process retained and no peer.
+
+The complete unsaturated 253,239-byte server log has zero encoder/no-valid-frame
+errors and one graceful-shutdown record. Its bounded summary, context, tail and
+digest are retained, not the entire ephemeral log. The preceding comparable
+`702d6a82` replay of the old `9b22f10f` peer logged 9,187 such errors. The APK,
+scenario counts and acceptance bounds are unchanged; source comparison identifies
+only the VPX result/service correction and associated tests/API adaptations between
+peer sources. Both replays retain thirteen audio endings (twelve authority
+refusals, one owner EOF); this establishes neither audible sound nor attribution
+of every event in the earlier two-hour soak. Thirteen resource samples have no
+RSS growth from 265,752 KiB and at most three additional threads from 58;
+handles remain unobserved. No latency-improvement claim follows from log reduction.
+
+Capsule `vpx-peer-replay-5e875a68.json`, SHA-256
+b77e3e8a337900914de3344eb0e57cb5d92bfdc9b01dbbb351e1ab1392937f4f,
+binds the exact app/peer, source, observations and cleanup. The outer command
+exits zero; QEMU joins, all five endpoint deltas are zero, and private/RAM absence
+is independently reconciled under the shared lock. Storage lifetime is 1,352.145 s,
+with 4,508,286,976-byte peak RAM scratch. All eleven evidence files match CTE/TUF
+(251,516 bytes); both runs together retain 23 bounded files / 482,444 bytes.
+The next decisive case is final-static-frame delivery after intentional dropping:
+X11 suppresses equal captures and the service's WouldBlock retry currently excludes
+latency-free VPX. This is source-identified missing evidence, not a reproduced
+peer failure. The moving-display replay does not close it, release libvpx 1.15.2,
+physical-device/other-platform, input/impairment or full R-F5 acceptance.

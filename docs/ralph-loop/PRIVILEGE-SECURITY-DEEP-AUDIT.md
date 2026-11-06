@@ -143754,3 +143754,12 @@ loss and congestion input recovery, current-peer multi-hour execution, physical
 and other-platform targets, application handles and full R-F5/release acceptance
 remain open. At this checkpoint, the reproduced receive-namespace creation and
 shared-parent lifecycle defects have priority over repeating this passed scenario.
+
+At `fb044216`, CTE `U3vR13CztR` verifies the updated ledger at **401,612 tokens** /
+1,833,015 bytes, SHA-256
+`8fe6773ddd705aad7ded333287204d50272403316f93a46bea1556948e684246`.
+The pinned tokenizer method, seven controls and whole-input round trip pass.
+`android-input-recovery-ledger-fb044216.json` binds 31.169 seconds,
+402,862,080-byte peak RAM scratch, three zero endpoint deltas and exact retirement.
+Eight evidence files / 118,290 bytes match CTE/TUF. This audit-only receipt
+preserves the counted ledger; whole-document compression remains open.

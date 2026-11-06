@@ -7368,29 +7368,32 @@ histograms. TUF `RWJfstLFJO` passes the synthetic two-hour schedule, eleven refu
 cases and real atomic frame-replacement reads. Actual X11 observation spans
 3,130 ms/four samples, with 163-ms maximum age. This is observer evidence.
 
-**Two-hour pixels observed; integrated replay OPEN (2026-11-06).**
+**Two-hour pixels observed; corrected short replay passes; soak replay OPEN.**
 TUF `DeoOXfX07D`, harness `a70a4bd6`, reuses matching `9b22f10f` APK/peer.
-Timed unary capture passes ten executable observer cases and all 120 minute
-windows/7,201 observations over 7,200.116 seconds. Maximum content/observer/gap
-ages are **1,132/108/1,027 ms**; first-minute p95 is 998 ms, maximum upward
-drift 61 ms. Application RSS grows at most 28,120 KiB from 255,316 KiB;
-58 threads and app/service/task/peer identities remain stable. Original limits
-are unchanged. Authentication, background recovery and warm-hold controls pass.
+Unary capture passes ten observer cases and 120 minute windows/7,201 observations
+over 7,200.116 seconds. Maximum content/observer/gap ages are **1,132/108/1,027 ms**;
+first-minute p95 is 998 ms, maximum upward drift 61 ms. RSS grows at most
+28,120 KiB from 255,316 KiB; 58 threads and app/service/task/peer identities
+remain stable. Authentication, background recovery and warm-hold controls pass.
 
-The first subsequent reconnect presents changing pixels in 540 ms, but timing
-collection refuses **server=0/native=1/Dart=1** new records. Server shutdown also
-lacks its terminal record. Its retained log ends about 77 minutes before reconnect,
-mid-line amid encoder messages and PulseAudio `ftruncate: File too large` errors.
-That run used an 8-MiB process-wide file limit. Native controls reproduce shared-memory
-EFBIG and lost late records. `fcd7051c` admits a finite 128-MiB allowance and rejects
-insufficient inherited capacity or saturated logs; five focused cases pass in
-`android-peer-file-limit-fcd7051c.json`. Actual peer replay remains required.
-These observations do not establish complete healthy-session or lifecycle acceptance.
-Remaining reconnect/task phases, handles, input-to-visible response, impairment,
-physical devices and R-F5 remain OPEN. Outer QEMU/private/RAM retire with five zero
-endpoint deltas. `android-soak-timed-a70a4bd6.json` and its complete runtime log
-are retained on CTE/TUF. Earlier observer refusal and matching builds remain in
-`android-soak-{observer,app,peer}-9b22f10f.json`; the audit binds their provenance.
+Post-soak reconnect presents changing pixels in 540 ms but lacks the server timing
+record; shutdown lacks its terminal record. The log ends 77 minutes earlier amid
+encoder/PulseAudio file-size errors. Native controls reproduce allocation EFBIG
+and lost late records at the old 8-MiB process-wide limit. `fcd7051c` admits
+128 MiB and refuses insufficient inherited capacity/saturated logs; five cases pass
+in `android-peer-file-limit-fcd7051c.json`.
+
+With that correction, TUF `4MvSw96Rik`/`4cad48ad` passes 22 pixel phases, six
+ordinary reconnects, six task replacements, all 13 timing/resource records and
+graceful shutdown on the same app/peer. Maximum sampled content/observer ages are
+1,102/104 ms; background/reconnect/task recovery maxima 1,310/560/540 ms;
+RSS/thread growth 2,448 KiB/four. The short replay's server diagnostic counts
+were filtered from successful output; their export is corrected but unexecuted.
+Audio/encoder diagnostics, complete soak replay, handles, input-to-visible,
+impairment, physical devices and R-F5 remain OPEN. Both runs retire QEMU/private/RAM
+with five zero endpoint deltas. CTE/TUF retain `android-file-limit-lifecycle-4cad48ad.json`,
+`android-soak-timed-a70a4bd6.json` and its runtime log; matching build/observer
+provenance remains in `android-soak-{observer,app,peer}-9b22f10f.json` and the audit.
 
 **Earlier partial control (`24a8ad3e`).** With app `f372aacf`/peer `b30f4811`,
 `mDJFQwJwGj` passes five minute windows/301 observations before cancellation:

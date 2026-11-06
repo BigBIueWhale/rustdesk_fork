@@ -1665,6 +1665,7 @@ if [ "$RUNTIME_SCENARIO" = peer-lifecycle ]; then
         "${peer_resource_samples[@]}" "${peer_resource_bounds[0]}" \
         "${lifecycle_receipts[0]}" "${initial_credential_receipts[0]}" \
         "${peer_receipts[0]}"
+    grep -E '^ANDROID_PEER_SERVER_LOG_(DIAGNOSTIC=|TAIL )' "$RUNTIME_LOG"
     runtime_peer=production-loopback-cpace-changing-display
     if [ -n "$SOAK" ]; then
         grep '^ANDROID_PEER_SOAK_SUMMARY=pass ' "$RUNTIME_LOG"

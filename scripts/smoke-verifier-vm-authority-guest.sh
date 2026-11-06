@@ -12281,6 +12281,7 @@ run_android_emulator_runtime() {
             "${presentation_stage_receipts[@]}" \
             "${resource_samples[@]}" "$resource_bound_receipt" \
             "$peer_receipt"
+        grep -E '^ANDROID_PEER_SERVER_LOG_(DIAGNOSTIC=|TAIL )' "$output"
         [ -z "$ANDROID_RUNTIME_SOAK" ] || printf '%s\n' "$soak_receipt"
     elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then
         printf '%s\n' "$controlled_cm_receipt" "$controlled_stop_receipt" \

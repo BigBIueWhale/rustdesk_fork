@@ -142443,3 +142443,31 @@ Cleanup now emits the actual server-log byte count/hash, saturation and selected
 error counts, plus at most 24 lines/16 KiB of its tail. This preserves diagnostics
 on successful replay too; the counts are observations, not audio/video acceptance.
 Shell syntax and diff checks pass. Runtime execution follows with both trees fixed.
+
+TUF `4MvSw96Rik`, harness `4cad48ad`, exits zero with the same retained app/peer.
+All 22 changing-pixel phases pass: initial connection, three background returns,
+six connected-hold samples, six ordinary reconnects and six task replacements.
+Maximum sampled content/observer ages are 1,102/104 ms; background/reconnect/task
+recovery maxima are 1,310/560/540 ms. All thirteen server/native/Dart timing
+records are present. Reconnects preserve the client owner; each task replacement
+creates a new owner while preserving the app process and foreground service.
+The 120.38-second absent-task observation, credential controls, authenticated CM
+directory reply and graceful peer shutdown pass. Thirteen resource samples show
+RSS growth at most 2,448 KiB from 267,784 KiB and thread growth four from 58;
+handles remain unobserved. Original acceptance thresholds are unchanged.
+
+Exact QEMU/private/RAM retirement is reconciled under the shared lock, with five
+zero endpoint deltas. Storage lifetime is 1,328.057 seconds and peak RAM scratch
+4,641,501,184 bytes. Capsule `android-file-limit-lifecycle-4cad48ad.json`, SHA-256
+f9019fe26dd80adc3f5a583cc46ae38e19fb5f39a13d10e1f47e0c8f7b429645.
+
+Reporting correction: the preceding pre-run statement about retaining successful
+server diagnostics was incomplete. The boot script emitted them, but runtime-check
+and guest success filters omitted them from retained output. Actual server-log bytes/hash
+and audio/encoder counts are therefore unobserved in this pass. Both success filters now
+forward the already bounded diagnostic summary/tail. Syntax/diff checks cover this
+two-line change; its end-to-end execution remains pending. No absence of audio or
+encoder errors is claimed. Next: rerun the full two-hour integrated scenario with
+the corrected file allowance and export, inspecting those diagnostics alongside
+the original latency/resource criteria. Short replay success does not establish
+post-soak lifecycle, input-to-visible, impairment, device or complete R-F5 acceptance.

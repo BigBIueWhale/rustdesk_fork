@@ -144059,3 +144059,16 @@ screen coordinate or plaintext-setting shortcut is used. Add bounded failure-pha
 diagnostics. `installed-settings-focus-1a8b9a01.json` binds the 66.050-second run,
 3,817,996,288-byte peak scratch, four zero endpoint deltas and exact retirement;
 ten files / 263,260 bytes match CTE/TUF. No cancellation or mutation case passes yet.
+
+`EZwuHXSq6j` passes all nine actual GUI stages: open, fill, cancel, reopen and two
+submit/refusal/cancel cycles. Every root observation retains the same credential
+digest and service child. Overall acceptance correctly fails because the final
+observer looks for root authorization messages in journald. `init_log` writes
+optimized applications directly to files; the previous receiver was a debug build.
+Observe only a root-protected service log whose inode the retained supervisor has
+open, bound its bytes and require two polkit refusals for the exact observed GUI
+PID/start-time/UID. Preserve source authority and refuse a mismatching or missing
+log instead of accepting the visible generic Failed label alone. Capsule
+`installed-settings-ui-34fa19ad.json` binds 71.896 seconds, 3,818,127,360-byte peak
+RAM scratch, four zero endpoint deltas and exact retirement. Ten files / 122,418
+bytes match CTE/TUF. The complete three-case acceptance remains unclaimed.

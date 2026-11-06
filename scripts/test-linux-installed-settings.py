@@ -307,6 +307,56 @@ def session():
         retire_children()
 
 
+def service_refusals(record, requester, start):
+    # The complete optimized application logs to files, unlike the debug receiver.
+    directory = Path('/root/.local/share/logs/RustDesk/service')
+    for parent in [directory, *directory.parents]:
+        info = parent.lstat()
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
+            raise RuntimeError('service log ancestry is not root-protected')
+    held = set()
+    for fd in Path(f'/proc/{record["supervisor"]}/fd').iterdir():
+        try:
+            info = fd.stat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISREG(info.st_mode):
+            held.add((info.st_dev, info.st_ino))
+    files = list(directory.glob('*.log'))
+    if len(files) > 32:
+        raise RuntimeError('service log file count exceeds the product bound')
+    active = []
+    for path in files:
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1
+                or info.st_mode & 0o022):
+            raise RuntimeError('service log file authority differs')
+        if (info.st_dev, info.st_ino) in held:
+            active.append(path)
+    if len(active) != 1:
+        raise RuntimeError('the retained supervisor must own exactly one current service log')
+    path, = active
+    with path.open('rb') as stream:
+        before = os.fstat(stream.fileno())
+        data = stream.read(131073)
+        after = os.fstat(stream.fileno())
+    if (len(data) > 131072 or (before.st_dev, before.st_ino) not in held
+            or before.st_size != after.st_size or len(data) != after.st_size):
+        raise RuntimeError('service log exceeded its bound or changed during observation')
+    messages = data.decode().splitlines()
+    prefix = ('polkit denied action=com.carriez.RustDesk.set-unattended-password, '
+              f'subject={requester},{start},4001, status=exit status: ')
+    refusals = [line for line in messages if line.endswith(prefix + '2')]
+    print('LINUX_INSTALLED_SETTINGS_SERVICE_LOG=' + json.dumps(
+        {'path': str(path), 'supervisor': record['supervisor'], 'bytes': len(data),
+         'sha256': hashlib.sha256(data).hexdigest(), 'refusals': refusals}, sort_keys=True), flush=True)
+    if len(refusals) != 2:
+        print('LINUX_INSTALLED_SETTINGS_SERVICE_DIAGNOSTIC=' + json.dumps(
+            [line for line in messages if 'password' in line.lower()][-20:]), flush=True)
+        raise RuntimeError('visible errors do not match two actual service authorization refusals')
+    return refusals
+
+
 def scenario(receiver):
     unit = Path('/etc/systemd/system/rustdesk.service')
     if unit.exists():
@@ -323,6 +373,7 @@ def scenario(receiver):
               'child=supervised desktop=pam-logind-x11', flush=True)
         process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT), '--session'],
                                    env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        requester = None
         for stage in ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied'):
             if not select.select([process.stdout], [], [], 45)[0]:
                 raise RuntimeError('installed GUI stage timed out')
@@ -332,18 +383,19 @@ def scenario(receiver):
             event = json.loads(raw)
             if event.get('stage') != stage or receiver.credential() != before or receiver.child_record() != record:
                 raise RuntimeError(f'installed GUI stage or protected credential differs: {event}')
+            identity = (event['pid'], int(Path(f'/proc/{event["pid"]}/stat').read_bytes().rsplit(b') ', 1)[1].split()[19]))
+            if requester is not None and requester != identity:
+                raise RuntimeError('installed GUI requester generation changed')
+            requester = identity
             print('LINUX_INSTALLED_SETTINGS_OBSERVED=' + json.dumps({**event, 'credential_unchanged': True,
                   'service_generation': record['generation']}, sort_keys=True), flush=True)
             process.stdin.write(b'continue\n')
             process.stdin.flush()
         if process.wait(timeout=15) != 0:
             raise RuntimeError('installed GUI session did not retire successfully')
-        journal = run(['/usr/bin/journalctl', '--unit=rustdesk.service', '--no-pager', '-o', 'cat'])
-        refusals = [line for line in journal.splitlines()
-                    if 'polkit denied action=com.carriez.RustDesk.set-unattended-password' in line
-                    and f'subject={event["pid"]},' in line]
-        if len(refusals) != 2 or receiver.credential() != before:
-            raise RuntimeError('visible errors do not match two actual service authorization refusals')
+        refusals = service_refusals(record, *requester)
+        if receiver.credential() != before:
+            raise RuntimeError('protected credential changed after refused GUI requests')
         print('LINUX_INSTALLED_SETTINGS_REFUSALS=' + json.dumps(refusals), flush=True)
     finally:
         if process is not None:

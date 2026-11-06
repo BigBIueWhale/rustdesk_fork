@@ -143995,4 +143995,23 @@ observed Connect control as the startup condition. This is a corrected fixture
 expectation, not a UI defect or accepted password scenario. Capsule
 `installed-settings-semantics-9ea83bae.json` retains the tree, 69.623 seconds,
 3,792,027,648-byte peak scratch, four zero endpoint deltas and exact retirement.
-Ten files / 137,256 bytes match CTE/TUF.
+Ten files / 136,256 bytes match CTE/TUF.
+
+Run `MXyIQjxW8K` passes Connect readiness but still cannot observe the Settings
+tooltip. No password stage passes. `installed-settings-header-93ee5517.json`
+binds the live GUI/service, 70.021 seconds, 3,791,962,112-byte peak RAM scratch,
+four zero endpoint deltas and exact retirement; nine files / 100,478 bytes are
+rehashed on both hosts. The preceding user-requested status answer changed no
+implementation or acceptance state. Continue this same installed-workflow gap.
+
+Xvfb starts before the GUI with the receiver's closed environment; it cannot use
+the GUI-only driver search override. Install the pinned software renderer at its
+normal guest DRI path and require GDK to create and realize a context before UI
+navigation. The [GDK creation contract](https://docs.gtk.org/gdk3/method.Window.create_gl_context.html)
+requires realization before use. On driver failure, retain exact window/pointer
+geometry, the accessibility tree and a bounded PNG of this isolated synthetic
+desktop; [GdkPixbuf's buffer API](https://docs.gtk.org/gdk-pixbuf/method.Pixbuf.save_to_buffer.html)
+provides explicit length and caller-owned storage. Preserve the complete bounded
+diagnostic rather than truncating it to the exception tail. Match the actual
+English dialog title `Set password` from `src/lang/en.rs`. These are fixture
+corrections; application source and workflow acceptance remain unchanged.

@@ -22,11 +22,15 @@ WORK = Path('/var/tmp/rustdesk-linux-service-receiver')
 ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 
 
-def run(argv, *, env=ENV, timeout=30):
+def run(argv, *, env=ENV, timeout=30, output_limit=131072):
     result = subprocess.run(argv, env=env, capture_output=True, text=True, timeout=timeout)
-    if len(result.stdout) + len(result.stderr) > 131072:
+    if len(result.stdout) + len(result.stderr) > output_limit:
         raise RuntimeError('installed settings command exceeded its output bound')
     if result.returncode:
+        if argv[0] == str(WORK / 'settings-driver'):
+            print(result.stdout, end='', file=sys.stderr, flush=True)
+            print(result.stderr, end='', file=sys.stderr, flush=True)
+            raise RuntimeError(f'installed settings driver exited {result.returncode}')
         raise RuntimeError(f'{argv[0]} exited {result.returncode}: {result.stdout[-8192:]} {result.stderr[-8192:]}')
     return result.stdout
 
@@ -219,6 +223,8 @@ def install_runtime(prepared):
             path.chmod(0o755 if path.is_dir() else 0o644)
     install(prepared / 'driver-first', WORK / 'settings-driver', 0o755)
     install(prepared / '50_mesa.json', '/usr/share/glvnd/egl_vendor.d/50_mesa.json')
+    # Xvfb starts with the receiver's closed environment, before the GUI environment.
+    install(prepared / 'libraries/swrast_dri.so', '/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so')
     (WORK / 'fonts.conf').write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd">'
         f'<fontconfig><dir>{WORK}/fonts</dir><cachedir>/tmp/rustdesk-font-cache</cachedir></fontconfig>')
     (WORK / 'fonts.conf').chmod(0o644)
@@ -279,7 +285,8 @@ def session():
                                stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
         stages = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied')
         for stage in stages:
-            output = run([str(WORK / 'settings-driver'), str(app.pid), stage], env=environment, timeout=40)
+            output = run([str(WORK / 'settings-driver'), str(app.pid), stage], env=environment,
+                         timeout=40, output_limit=524288)
             print(output, end='', file=sys.stderr, flush=True)
             if app.poll() is not None:
                 raise RuntimeError('GUI exited during the settings workflow')

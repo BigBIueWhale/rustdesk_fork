@@ -143865,3 +143865,12 @@ installed layout. GUI cancellation and error presentation, remaining identity/
 concurrency/failure schedules, final packages, other platforms and complete
 R-S0/release acceptance remain open. Continue with a missing installed settings
 workflow condition; do not repeat this passed scenario without a relevant change.
+
+At `ca76bafe`, CTE `JvWeYOAZ2H` verifies the updated ledger at **401,851 tokens** /
+1,834,203 bytes, SHA-256
+`5b34992d54ea8c03090bfdce4e24c44a8c0968a96cf0514da363e500bee46340`.
+The pinned tokenizer method, seven controls and whole-input byte round trip pass.
+`linux-committed-exit-ledger-ca76bafe.json` binds 30.557 seconds,
+403,062,784-byte peak scratch, three zero endpoint deltas and exact retirement.
+Eight evidence files / 116,944 bytes match both hosts. This audit-only receipt
+preserves the counted ledger; whole-document classification/compression is open.

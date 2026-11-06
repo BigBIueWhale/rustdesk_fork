@@ -3972,36 +3972,18 @@ Retained exact commands, source/artifacts, samples and cleanup:
 `viewer-pacing-5d8cf83a.json`. Earlier capture-only evidence remains in
 `viewer-capture-cadence-108f40d2.json`;
 
-**Actual packet impairment — bounded probe recovery passes; broader R-F5 OPEN.**
-`39dbed34` adds a small isolated network prerequisite check. The existing
-6.1.0-50-cloud-amd64 guest already contains netem, IFB, ingress classification
-and iproute2 6.1.0; no package acquisition or new image is needed. Native run
-`0mRwjastCG` redirects a disposable namespace's loopback ingress through a
-64-packet netem queue. A 125-ms delay in each direction yields 250.35–250.48 ms
-TCP exchanges; removing the classifier restores sub-0.05-ms exchanges even
-while the delayed queue remains configured. A 2,002-ms total outage records
-seven kernel drops. The same socket objects and TCP endpoints receive the
-pending payload 1,872 ms after restoration; five subsequent exchanges remain
-inside the predeclared 100-ms fixture envelope (maximum 44.03 ms).
-
-Sockets close, the queue/interface retire, the namespace child joins and the
-initial guest network is preserved. The VM uses 400,461,824 bytes peak RAM
-scratch, joins QEMU and leaves zero listener deltas. This proves the impairment
-mechanism. Its command, observations and cleanup remain in
-`network-impairment-39dbed34.json`.
-
-**Peer/control separation (`1474740d`) — native prerequisite accepted.**
-The shared ingress classifier now selects IPv4 TCP source/destination port 21118.
-The unchanged baseline delays TCP 8554/5037 controls about 250 ms and UDP 21118
-about 125 ms, failing their 100-ms bound. Corrected CTE `FGVqtkQNlq` observes
-250.28–250.42-ms selected exchanges while all 33 control measurements remain
-below 0.13 ms. Two directional outages record five/three kernel drops and
-same-socket recovery in 1,179/879 ms; subsequent exchanges are below 0.062 ms.
-Original native controls, socket/interface retirement and all three endpoint
-deltas pass. Capsules: `peer-scope-baseline-61019f83.json`,
-`peer-scope-corrected-1474740d.json`. Android integration and actual displayed-pixel
-recovery are exercised by the checkpoint below; this native classifier check
-executes no product. Complete R-F5 remains OPEN.
+**Packet impairment and peer/control separation — native prerequisites accepted.**
+The existing Linux 6.1/iproute2 6.1 guest supplies IFB/netem with a 64-packet
+queue. `39dbed34` demonstrates actual delay, outage drops and same-socket
+recovery; `1474740d` restricts ingress selection to IPv4 TCP source/destination
+port 21118. Its unchanged baseline delays unrelated emulator/ADB/UDP controls;
+the correction preserves approximately 250-ms selected exchanges while all 33
+control measurements stay below 0.13 ms. Directional outages recover the same
+sockets in 1,179/879 ms. Native controls and exact socket/interface/namespace/VM
+retirement pass with zero listener deltas. Commands, samples and cleanup:
+`network-impairment-39dbed34.json`, `peer-scope-baseline-61019f83.json`,
+`peer-scope-corrected-1474740d.json`. These probes execute no product; actual
+Android displayed-pixel evidence follows. Complete R-F5 remains OPEN.
 
 **Android displayed recovery (`1ca5d7fe`) — six impairment cases pass.**
 TUF `mG1FSCJ3QN` reuses APK `9b22f10f` and Linux peer `4c29a59f`.
@@ -4017,8 +3999,25 @@ The addressless IFB retires before the existing lifecycle sequence, which passes
 QEMU/private/RAM retirement and all five endpoint deltas pass. Artifacts,
 samples and limits: `android-network-recovery-1ca5d7fe.json`.
 This covers the Linux TCP leg of an ADB-reversed Android emulator connection.
-Direct Android/radio behavior, bandwidth/jitter, input-to-visible latency,
+Direct Android/radio behavior, input-to-visible latency,
 multi-hour/physical/other-role acceptance, handle bounds and full R-F5 remain OPEN.
+
+**Android bandwidth/jitter (`a2092fe4`) — three displayed-recovery cases pass.**
+TUF `G7VL701dFY` reuses the same APK/peer with twenty seconds each of
+80 +/- 30 ms ingress delay, 32 kbit/s aggregate bandwidth and both together.
+Restoration preserves queued traffic and returns to the original 10 Mbit/s/no-delay
+baseline. Four fresh displayed states recover in **1,413/5,289/4,684 ms**, within
+the unchanged eight-second deadline. Ten-second follow-up maximum/p95 ages are
+1,345/1,316, 1,239/1,229 and 1,312/1,262 ms against baseline 1,150/1,137 ms;
+all obey baseline plus 250 ms and the two-second hard ceiling. Actual restricted
+delivery is 78,428/79,944 bytes over about twenty seconds. All 473 TCP/queue
+snapshots retain the same socket pair; 460 pixel observations support the result.
+Calibration proves delay variation and queued-datagram delivery after restoration.
+Eight static cases, 22 moving phases, six reconnects and six task replacements
+also pass. VM/private/RAM retirement and all five listener deltas pass. Capsule:
+`android-congestion-a2092fe4.json`. This covers the Linux TCP leg of an ADB-reversed
+Android emulator connection. Repeated/multi-hour impairment, direct mobile/radio,
+input-to-visible response, physical/other-role targets and full R-F5 remain OPEN.
 
 `bedd34b9` integrates the receiver-ingress impairment with the exact retained
 `5d8cf83a` app and existing pixel observer. The guest-only supervisor retains

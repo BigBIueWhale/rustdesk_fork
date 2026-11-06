@@ -143138,3 +143138,46 @@ TUF has 51,836,996 KiB available memory, the existing SSH master and no private
 run directory. Actual Android acceptance is pending. Source/refs will remain
 fixed through the isolated replay and evidence/cleanup reconciliation. This
 changes test orchestration only; complete R-F5 and release acceptance stay OPEN.
+
+TUF `G7VL701dFY` at `a2092fe4` exits zero after the complete replay. Four fresh
+moving states establish the baseline in 1,201 ms; its ten-second maximum/p95 is
+1,150/1,137 ms. Variable delay, bandwidth collapse and both together recover
+four fresh displayed states in 1,413/5,289/4,684 ms. Their ten-second follow-ups
+have forty independent samples each and maximum/p95 ages 1,345/1,316,
+1,239/1,229 and 1,312/1,262 ms. All original deadlines/drift/observer bounds pass.
+Kernel shaping delivers 78,428 bytes over 20.024 seconds and 79,944 over 20.028;
+overlimit counters increase. Calibration retains four queued datagrams and
+delivers them within 257 ms after restoration; sixteen delay samples span
+54–110 ms. All 473 transport snapshots preserve the exact socket pair. The
+raw serial retains 460 pixel observations and eleven queue/request records;
+independent reconciliation recomputes healthy maxima/p95, matches case counters
+to root snapshots and checks profile/byte-rate/queue/connection identities.
+Observed TCP-snapshot queue/backlog maxima are 56 packets/71,752 bytes.
+
+The existing eight static cases pass in 470–1,115 ms. All 22 moving phases,
+six ordinary reconnects, six task replacements and thirteen native audio
+captures pass. The task remains absent for 120,390 ms while process/service
+persist. Lifecycle samples show no RSS growth from 261,896 KiB and thread
+growth at most five from 56. App handles and audible audio remain unobserved.
+The original connection survives all congestion; impairment retires before
+the intentional lifecycle reconnects. Initial/background/reconnect/task recovery
+maxima are 1,110/1,330/720/560 ms; lifecycle maximum age is 1,071 ms.
+
+Exact QEMU PID 1559750, private run and RAM workspace `run.whsxgalq` are absent.
+All five listener deltas are zero. Storage lifetime is 1,514.229 seconds with
+4,510,023,680 bytes peak RAM scratch. Complete workload serial: 1,292,444 bytes,
+SHA-256 `a1ba2847faf6370d3aa967cca374095266ac04540ec27fa66bfcafcb1ff4aaa7`.
+Capsule `android-congestion-a2092fe4.json`: 48,355 bytes, SHA-256
+`4e029f20f667dde0aeed99113c5331f4aa398c9d0e398ebbc541fcf45b2418d0`.
+It binds the full command, source, retained app/peer, profiles, samples and cleanup.
+All ten bounded evidence files / 1,434,614 bytes match CTE/TUF. A missing bracket
+in the first reconciliation command caused a syntax error before any execution
+or file creation; the corrected command passed parsing and all evidence checks.
+No application build/change or instruction-file change occurred. This accepts
+the three named Android/Linux-leg congestion cases; direct radio/mobile,
+input-to-visible, repeated/multi-hour impairment, physical/other roles and
+complete R-F5/release acceptance remain open.
+
+The ledger adds this result and condenses the corresponding native prerequisite
+narration, retaining its evidence identities and limitations. Fresh isolated
+ledger counting is pending.

@@ -133,8 +133,9 @@ below retains the required authorized behavior.
 passes fresh bridges, the complete Rust/Flutter build, thirteen widget/two native
 command controls and all 73 payload hashes. `installed-gui-build-d1bf0877.json`
 binds exact cleanup and four zero listener deltas. That full bundle now passes
-installed-GUI pre-submit cancellation and two no-agent authorization refusals
-(`installed-settings-accepted-da9ddebc.json`); the installed section records scope.
+installed-GUI cancellation/refusal, administrator-authorized password change and
+service/GUI restart persistence (`installed-settings-authorized-9d41fc4e.json`);
+the installed section records scope.
 The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
 Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-release
@@ -7333,19 +7334,23 @@ R-S0/R-F5 and release acceptance remain OPEN.
 | Coordinator and raw v2 | `e69129bc` passed seven coordinator/23 raw-module cases in five groups: actual AF_UNIX readiness before disclosure, canonical/fragmented/empty/max/auth bodies, malformed/truncated/expired input, wiping, half-close, replay, expiry and shutdown. Pre-write refusal is NotSent; a started write is uncertain. `linux-wire-v2-accepted-e69129bc.json` retains exact scope. Two wording-only tests were later deleted; the current seven coordinator/21 protocol cases are not thereby validated. |
 | Current coordinator execution gap | At `04c7e32e`, the 28-case attempt refused before QEMU: admission required 39,936 MiB with 23,531 MiB available. No case ran. `login-inventory-role.json` retains the refusal. Guest/scratch admission and the no-disk-fallback rule remain binding. |
 
-**Full installed-layout GUI — cancellation/refusal accepted (2026-11-06).**
-TUF `MYaJse08Vz` at `da9ddebc` reuses optimized bundle `d1bf0877` with the shipped
-service/policy and actual PAM/logind/polkit. Nine real GUI stages pass: enter and
-cancel before submission, then two submitted requests with visible failure and
-usable cancellation. Each observation retains protected credential bytes and the
-same supervised child. The root-protected log held open by that supervisor records
-exactly two no-agent refusals for the observed GUI PID/start-time/UID; generic UI
-failure alone cannot pass. App payloads remain identical and all owned processes,
-service cgroup and RAM retire with four zero listener deltas. Capsule:
-`installed-settings-accepted-da9ddebc.json`. No product change was needed for these
-three cases. Administrator success, cancellation during authorization, restart,
-concurrency, final packages and complete R-S0 remain OPEN. The Boolean result API
-still collapses denied/failed/uncertain outcomes; this test does not close that gap.
+**Full installed-layout GUI — password change and restart accepted (2026-11-06).**
+TUF `7GwNLAn3ag` at `9d41fc4e` reuses optimized bundle `d1bf0877` with the shipped
+service/policy and actual PAM/logind/polkit. Six cases/eighteen actual GUI stages
+cover entered-text cancellation, two initial no-agent refusals, administrator-
+approved change, a fresh no-agent refusal and service/GUI restart. The ordinary
+UID4001 GUI submits through its actual controls; a PID/start-bound textual
+pkttyagent authenticates administrator UID4003 through PAM. The credential stays
+unchanged until approval, changes on GUI success, and survives restart. Five
+mutual CPace exchanges and two exact child-log-confirmed old-password refusals
+prove the network credential before/after restart. Three refusals correlate with
+the root supervisor's held log and exact GUI identity. App payloads are unchanged;
+processes, agent, cgroup and RAM retire, guest network returns to baseline and four
+host endpoint deltas are zero. Capsule: `installed-settings-authorized-9d41fc4e.json`.
+The earlier cancellation/refusal capsule remains valid. No product change was
+needed for these cases. Graphical OS-agent interaction, cancellation during
+authorization, concurrency, final packages and complete R-S0 remain OPEN. The
+Boolean result API still collapses denied/failed/uncertain outcomes.
 
 All installed rows below are debug/headless seatless-X11 fixtures using the shipped
 policy/unit, supervised active-user child and actual pinned polkit/PAM/logind where

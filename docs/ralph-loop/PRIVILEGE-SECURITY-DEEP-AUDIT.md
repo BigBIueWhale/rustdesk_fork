@@ -144152,3 +144152,26 @@ complete baseline equality. Any other difference refuses. The
 identifies the endpoints, state, timer and inode fields. The next run must expose
 the actual difference and satisfy the unchanged outer comparison; no host network
 or product change is authorized or needed for this observation.
+
+**Full workflow checkpoint accepted.** TUF `7GwNLAn3ag` at `9d41fc4e` exits zero
+with native, guest and outer receipts. All eighteen GUI stages, actual PAM grant,
+three root-supervisor-correlated refusals, five mutual CPace exchanges and two
+child-confirmed old-password refusals pass. Service restart changes the supervisor
+and child generation while retaining the GUI-committed credential. A new GUI opens
+and cancels the password dialog without changing it. The observed network remainder
+is exactly seven loopback TCP TIME_WAIT records, inode0/timer03; after 57.845 seconds
+they retire naturally and both complete network comparisons pass. No network state
+is exempted or changed by the fixture.
+
+`installed-settings-authorized-9d41fc4e.json` is 12,061 bytes, SHA-256
+`551030193a12a2d7b57eebb41bf0464e8eb4739fdcc9a0ab41a8986c7e83f9f4`.
+Nine files / 111,298 bytes match CTE/TUF. Storage records 143.083 seconds,
+3,839,533,056-byte peak RAM and exact QEMU/private/RAM retirement; all four host
+endpoint deltas are zero. The unchanged 73-file optimized app remains bound to
+`d1bf0877` and manifest `c290cab0…f96cf`. Update the live ledger to replace its stale
+authorized-success/restart gap with this specific installed-layout result.
+The agent is real textual pkttyagent/PAM, not a graphical desktop-agent UX test.
+Cancellation during authorization, typed denied/failed/uncertain reporting,
+concurrency, other platforms and final-package acceptance remain OPEN. The next
+decisive correction is preserving those distinct outcomes through native/Flutter
+calls; do not repeat this accepted workflow without a relevant change or concern.

@@ -143763,3 +143763,35 @@ The pinned tokenizer method, seven controls and whole-input round trip pass.
 402,862,080-byte peak RAM scratch, three zero endpoint deltas and exact retirement.
 Eight evidence files / 118,290 bytes match CTE/TUF. This audit-only receipt
 preserves the counted ledger; whole-document compression remains open.
+
+### 2026-11-06 — receive staging creation API decision
+
+At clean `963a4db9`, review follows the reproduced creation-time substitution
+and shared-parent retirement defects. `ReceiveNamespace::enroll_directory`
+publishes intent, calls status-only `mkdirat`, then `initialize_directory`
+reopens the public name and writes the identity marker. Its metadata/name replay
+proves current agreement, not that the descriptor identifies the created object.
+R-S8/R-S11fi/R-S11fj still require full authorized reach, preserved resume state,
+exact publication/cleanup and visible failure; those conditions are unchanged.
+
+The [October 24 v8 atomic-directory-create proposal](https://patchew.org/linux/20261024213539.1307600-1-jkoolstra@xs4all.nl/)
+would make `O_CREAT|O_DIRECTORY` return the created directory descriptor. The
+thread is still at maintainer review; the inspected upstream
+[`build_open_flags`](https://raw.githubusercontent.com/torvalds/linux/master/fs/open.c)
+still rejects that combination. The proposal also explicitly returns EOPNOTSUPP
+for filesystem implementations without its atomicity guarantee, including the
+listed network/FUSE families. Neither a kernel-version assumption nor waiting
+for this proposal supplies the required complete placement/lifecycle design.
+The [inotify contract](https://man7.org/linux/man-pages/man7/inotify.7.html)
+also excludes remote filesystem events and permits queue overflow; a notification
+watch alone cannot provide the general creation authority.
+
+Decision: do not replace this defect with another pathname preflight, assume an
+unavailable atomic API, or make notification/opaque-handle support a universal
+filesystem prerequisite. The earlier native mount, inode-reuse, ordinary-user,
+substitution and retirement observations remain the design constraints. Exact
+same-mount staging placement, creation authority, crash-resumable identity and
+retirement still need one coherent solution. This is a research checkpoint, not
+an implemented correction or a proof that no solution exists. No product edit,
+new test, VM, changed requirement or completion claim accompanies this entry;
+the recorded native failures are not rerun without a relevant change.

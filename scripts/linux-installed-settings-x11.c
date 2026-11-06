@@ -9,9 +9,7 @@ static int settings_graphics(void) {
     GdkGLContext *context = gdk_window_create_gl_context(gdk_get_default_root_window(), &error);
     int result = context != NULL && gdk_gl_context_realize(context, &error) ? 0 : -1;
     if (result == 0) {
-        int major, minor;
-        gdk_gl_context_get_version(context, &major, &minor);
-        printf("LINUX_INSTALLED_SETTINGS_GRAPHICS=pass version=%d.%d\n", major, minor);
+        puts("LINUX_INSTALLED_SETTINGS_GRAPHICS=pass context=realized");
     } else {
         fprintf(stderr, "LINUX_INSTALLED_SETTINGS_GRAPHICS_FAIL error=%s\n",
                 error != NULL ? error->message : "no context");

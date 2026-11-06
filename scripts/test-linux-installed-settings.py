@@ -98,7 +98,7 @@ def prepare():
                 if stream.read(4) == b'\x7fELF':
                     roots.append(path)
     roots += [Path('/out/driver-first'), Path('/xvfb-root/usr/bin/Xvfb'),
-              Path('/xvfb-root/usr/bin/xkbcomp'), Path('/usr/bin/dbus-daemon'),
+              Path('/xvfb-root/usr/bin/xkbcomp'), Path('/usr/bin/dbus-daemon'), Path('/usr/bin/fc-match'),
               Path('/atspi-root/usr/libexec/at-spi-bus-launcher'),
               Path('/atspi-root/usr/libexec/at-spi2-registryd')]
     dynamic = [Path('/usr/lib/x86_64-linux-gnu') / name for name in
@@ -125,8 +125,9 @@ def prepare():
             else:
                 shutil.copyfile(source, target)
     for source, name in (('/usr/share/X11/xkb', 'xkb'),
-                         ('/usr/share/fonts/truetype/dejavu', 'fonts')):
+                         ('/usr/share/fonts/truetype/dejavu', 'fonts'), ('/etc/fonts', 'fontconfig')):
         shutil.copytree(source, '/out/' + name)
+    shutil.copyfile('/usr/bin/fc-match', '/out/fc-match')
     vendor = Path('/usr/share/glvnd/egl_vendor.d/50_mesa.json')
     if json.loads(vendor.read_text()) != {'file_format_version': '1.0.0',
                                          'ICD': {'library_path': 'libEGL_mesa.so.0'}}:
@@ -217,17 +218,17 @@ def install_runtime(prepared):
     for path in (WORK / 'xvfb-root/usr/lib').rglob('*.so*'):
         if path.is_file():
             install(path, runtime / path.name)
-    for name in ('xkb', 'fonts'):
-        shutil.copytree(prepared / name, WORK / name)
-        for path in [WORK / name, *(WORK / name).rglob('*')]:
-            path.chmod(0o755 if path.is_dir() else 0o644)
+    for name, destination in (('xkb', WORK / 'xkb'),
+                              ('fonts', Path('/usr/share/fonts/truetype/dejavu')),
+                              ('fontconfig', Path('/etc/fonts'))):
+        for path in (prepared / name).rglob('*'):
+            if path.is_file():
+                install(path, destination / path.relative_to(prepared / name))
+    install(prepared / 'fc-match', WORK / 'fc-match', 0o755)
     install(prepared / 'driver-first', WORK / 'settings-driver', 0o755)
     install(prepared / '50_mesa.json', '/usr/share/glvnd/egl_vendor.d/50_mesa.json')
     # Xvfb starts with the receiver's closed environment, before the GUI environment.
     install(prepared / 'libraries/swrast_dri.so', '/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so')
-    (WORK / 'fonts.conf').write_text('<?xml version="1.0"?><!DOCTYPE fontconfig SYSTEM "fonts.dtd">'
-        f'<fontconfig><dir>{WORK}/fonts</dir><cachedir>/tmp/rustdesk-font-cache</cachedir></fontconfig>')
-    (WORK / 'fonts.conf').chmod(0o644)
     run(['/usr/sbin/ldconfig'])
     listing = run([*ordinary(4001), '/usr/bin/ldd', str(WORK / 'Xvfb')])
     if 'not found' in listing:
@@ -269,10 +270,14 @@ def session():
                    'DISPLAY': ':77', 'XAUTHORITY': '/run/user/4001/gdm/Xauthority',
                    'XDG_RUNTIME_DIR': '/run/user/4001', 'XDG_SESSION_TYPE': 'x11',
                    'XDG_DATA_DIRS': '/usr/local/share:/usr/share', 'GDK_BACKEND': 'x11',
-                   'LIBGL_ALWAYS_SOFTWARE': '1', 'LIBGL_DRIVERS_PATH': '/usr/local/lib/rustdesk-settings-fixture',
-                   'FONTCONFIG_FILE': str(WORK / 'fonts.conf')}
+                   'LIBGL_ALWAYS_SOFTWARE': '1', 'LIBGL_DRIVERS_PATH': '/usr/local/lib/rustdesk-settings-fixture'}
     bus = app = None
     try:
+        font = run([str(WORK / 'fc-match'), '-f', '%{file}', 'sans-serif'], env=environment).strip()
+        if not font.startswith('/usr/share/fonts/truetype/dejavu/') or not Path(font).is_file():
+            raise RuntimeError(f'ordinary desktop has no installed sans-serif font: {font}')
+        print(f'LINUX_INSTALLED_SETTINGS_FONT=pass path={font} sha256={digest(font)}',
+              file=sys.stderr, flush=True)
         bus = subprocess.Popen(['/usr/bin/dbus-daemon', '--session', '--nofork', '--print-address=1'],
                                env=environment, stdout=subprocess.PIPE, stderr=sys.stderr)
         if not select.select([bus.stdout], [], [], 5)[0]:

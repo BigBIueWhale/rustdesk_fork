@@ -144015,3 +144015,20 @@ provides explicit length and caller-owned storage. Preserve the complete bounded
 diagnostic rather than truncating it to the exception tail. Match the actual
 English dialog title `Set password` from `src/lang/en.rs`. These are fixture
 corrections; application source and workflow acceptance remain unchanged.
+
+`QMNiKbtGUz` removes the missing-GL warning and realizes the ordinary-user GDK
+context, but Settings navigation still fails. The new screenshot shows the actual
+800x600 home layout/icons and correct header pointer, with all ordinary text absent.
+The version getter is removed from the receipt: realization succeeds, but that
+getter returns 0.0 without making the context current. The screenshot and full tree
+are retained in `installed-settings-graphics-5e43cea1.json`; eleven files / 175,967
+bytes match CTE/TUF. The 69.929-second run peaks at 3,817,930,752 RAM bytes, has
+four zero endpoint deltas, and exact QEMU/private/RAM retirement is reconciled.
+
+Replace the fixture's minimal font configuration/search override with the pinned
+builder's actual `/etc/fonts` configuration and standard DejaVu installation path.
+The [fontconfig configuration contract](https://fontconfig.pages.freedesktop.org/fontconfig/fontconfig-user.html)
+separates the configuration, font directories and match rules. Before GUI startup,
+the ordinary desktop runs the same pinned `fc-match` binary and must select a
+readable installed DejaVu font. This is a runtime projection correction, not an
+application font or UI change; the actual workflow is still to be observed.

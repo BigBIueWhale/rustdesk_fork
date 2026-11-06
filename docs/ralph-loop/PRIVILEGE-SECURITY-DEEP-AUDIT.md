@@ -144046,3 +144046,16 @@ their SHOWING requirement. Masked character counts remain the entry oracle.
 `installed-settings-fonts-f00fba8c.json` binds 66.099 seconds, 3,818,848,256-byte
 peak RAM scratch, four zero endpoint deltas and exact retirement. Ten files /
 264,772 bytes match both hosts. Full workflow acceptance remains OPEN.
+
+`IvIwU34dyY` still stops before typing. Review of the
+[exact pinned Flutter node](https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc)
+and our engine patch establishes that node components do not implement grab_focus;
+the view's separate focus implementation does not focus a text field. The same
+source maps SHOWING to the inverse of password obscuring, explaining the visible
+password controls' absent SHOWING state. Use the retained role-selected field's
+actual screen bounds for an XTest pointer click, require containment within the
+exact application window/display, then observe FOCUSED before typing. No assumed
+screen coordinate or plaintext-setting shortcut is used. Add bounded failure-phase
+diagnostics. `installed-settings-focus-1a8b9a01.json` binds the 66.050-second run,
+3,817,996,288-byte peak scratch, four zero endpoint deltas and exact retirement;
+ten files / 263,260 bytes match CTE/TUF. No cancellation or mutation case passes yet.

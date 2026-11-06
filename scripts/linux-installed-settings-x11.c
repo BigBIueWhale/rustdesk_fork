@@ -84,12 +84,13 @@ static int settings_visible(unsigned int pid, const char *name, int present) {
     return -1;
 }
 
-static int settings_password(Display *display, unsigned int pid, const char *name) {
+static int settings_password(Display *display, Window main, unsigned int pid, const char *name) {
     static const char password[] = "InstalledGui2026";
     AtspiAccessible *field = NULL;
     AtspiText *text = NULL;
     GError *error = NULL;
     int result = -1;
+    const char *phase = "field";
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     int found;
     do {
@@ -101,22 +102,43 @@ static int settings_password(Display *display, unsigned int pid, const char *nam
         goto out;
     text = atspi_accessible_get_text_iface(field);
     if (text == NULL) goto out;
+    phase = "pointer-focus";
     AtspiComponent *component = atspi_accessible_get_component_iface(field);
     if (component == NULL) goto out;
-    gboolean focused = atspi_component_grab_focus(component, &error);
+    AtspiRect *rect = atspi_component_get_extents(component, ATSPI_COORD_TYPE_SCREEN, &error);
     g_object_unref(component);
-    if (!focused || error != NULL) goto out;
+    XWindowAttributes attributes;
+    Window child;
+    int x, y;
+    int inside = error == NULL && rect != NULL && rect->width > 0 && rect->height > 0 &&
+        XGetWindowAttributes(display, main, &attributes) != 0 &&
+        XTranslateCoordinates(display, main, DefaultRootWindow(display), 0, 0, &x, &y, &child) != 0 &&
+        rect->x >= x && rect->y >= y && rect->x >= 0 && rect->y >= 0 &&
+        (int64_t)rect->x + rect->width <= (int64_t)x + attributes.width &&
+        (int64_t)rect->y + rect->height <= (int64_t)y + attributes.height &&
+        (int64_t)rect->x + rect->width <= DisplayWidth(display, DefaultScreen(display)) &&
+        (int64_t)rect->y + rect->height <= DisplayHeight(display, DefaultScreen(display));
+    int clicked = inside &&
+        XTestFakeMotionEvent(display, DefaultScreen(display), rect->x + rect->width / 2,
+                            rect->y + rect->height / 2, CurrentTime) != 0 &&
+        XTestFakeButtonEvent(display, 1U, True, CurrentTime) != 0 &&
+        XTestFakeButtonEvent(display, 1U, False, CurrentTime) != 0;
+    if (rect != NULL) g_boxed_free(ATSPI_TYPE_RECT, rect);
+    if (!clicked) goto out;
+    XSync(display, False);
+    phase = "focused-state";
     for (;;) {
         atspi_accessible_clear_cache(field);
         AtspiStateSet *states = atspi_accessible_get_state_set(field);
         if (states == NULL) goto out;
-        focused = atspi_state_set_contains(states, ATSPI_STATE_FOCUSED);
+        gboolean focused = atspi_state_set_contains(states, ATSPI_STATE_FOCUSED);
         g_object_unref(states);
         if (focused) break;
         if (monotonic_millis() >= deadline || sleep_millis(50U) != 0) goto out;
     }
     KeyCode control = XKeysymToKeycode(display, XK_Control_L);
     KeyCode shift = XKeysymToKeycode(display, XK_Shift_L);
+    phase = "keystrokes";
     if (control == 0U || shift == 0U ||
         XTestFakeKeyEvent(display, control, True, CurrentTime) == 0) goto out;
     int selected = fake_key(display, XK_a);
@@ -131,6 +153,7 @@ static int settings_password(Display *display, unsigned int pid, const char *nam
         if (typed != 0) goto out;
     }
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    phase = "masked-character-count";
     while (monotonic_millis() < deadline) {
         gint count = atspi_text_get_character_count(text, &error);
         if (error != NULL) goto out;
@@ -141,6 +164,9 @@ static int settings_password(Display *display, unsigned int pid, const char *nam
         if (sleep_millis(50U) != 0) goto out;
     }
 out:
+    if (result != 0)
+        fprintf(stderr, "LINUX_INSTALLED_SETTINGS_FIELD_FAIL name=%s phase=%s error=%d\n",
+                name, phase, error != NULL ? error->code : 0);
     if (error != NULL) g_error_free(error);
     if (text != NULL) g_object_unref(text);
     if (field != NULL) g_object_unref(field);
@@ -208,8 +234,8 @@ int main(int argc, char **argv) {
         if (activate_named_control(pid, "Set permanent password") != 0 ||
             settings_visible(pid, "Set password", 1) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "submit") == 0 || strcmp(argv[2], "fill") == 0) {
-        if (settings_password(display, pid, "Password") != 0 ||
-            settings_password(display, pid, "Confirmation") != 0) goto atspi_out;
+        if (settings_password(display, main, pid, "Password") != 0 ||
+            settings_password(display, main, pid, "Confirmation") != 0) goto atspi_out;
         if (strcmp(argv[2], "submit") == 0 && activate_named_control(pid, "OK") != 0)
             goto atspi_out;
     } else if (strcmp(argv[2], "denied") == 0) {

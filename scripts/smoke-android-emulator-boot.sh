@@ -23,11 +23,10 @@ if [ "$#" -eq 8 ]; then
     [ "$SOAK" = --soak ] && [ "$APP_SCENARIO" = peer-lifecycle ] && [ -n "$RUNTIME_TEST_APK" ] \
         || fail 'the two-hour soak requires a peer-lifecycle app workload'
 fi
-if [ -n "$SOAK" ]; then
-    readonly PEER_SERVER_LOG_LIMIT=8388608
-else
-    readonly PEER_SERVER_LOG_LIMIT=2097152
-fi
+# RLIMIT_FSIZE also covers PulseAudio's 64-MiB shared-memory pool plus its
+# POSIX marker. Admit that allocation and bounded diagnostics in the same
+# existing RAM workspace; this ceiling applies to every server-created file.
+readonly PEER_SERVER_FILE_LIMIT=134217728
 readonly INSTRUMENTATION_APK=${RUSTDESK_ANDROID_INSTRUMENTATION_APK:-}
 readonly STORAGE_KEY_PROBE=${ANDROID_STORAGE_KEY_PROBE:-}
 if [ -n "$RUNTIME_TEST_APK" ] && [ "$APP_SCENARIO" = controlled-cm ]; then
@@ -1602,9 +1601,11 @@ import os, resource, sys
 limit = int(sys.argv[1])
 soft, hard = resource.getrlimit(resource.RLIMIT_FSIZE)
 limit = min(value for value in (limit, soft, hard) if value != resource.RLIM_INFINITY)
+if limit < int(sys.argv[1]):
+    raise SystemExit("Android peer file-size allowance unavailable")
 resource.setrlimit(resource.RLIMIT_FSIZE, (limit, limit))
 os.execv(sys.argv[2], sys.argv[2:])
-' "$PEER_SERVER_LOG_LIMIT" "$PEER_TARGET/smoke-server-launcher" "$PEER_TARGET/debug/rustdesk" \
+' "$PEER_SERVER_FILE_LIMIT" "$PEER_TARGET/smoke-server-launcher" "$PEER_TARGET/debug/rustdesk" \
         >"$PEER_SERVER_LOG" 2>&1 &
     SERVER_PID=$!
     SERVER_START="$(process_start_time "$SERVER_PID")" \
@@ -3939,6 +3940,7 @@ exercise_peer_soak() {
         "$FRAME_DECODER" "$FRAME_OBSERVER_FRAME" "$PEER_SOURCE_LOG" \
         "$PEER_SERVER_LOG" "$FRAME_OBSERVER_FAILURE" "$ADB" "$SERIAL" \
         "$APP_PID" "$task" "$SERVER_PID" "$SERVER_START" "$SOURCE_PID" "$SOURCE_START" \
+        "$PEER_SERVER_FILE_LIMIT" \
         || {
             print_peer_ui_failure_diagnostic soak || true
             fail 'the uninterrupted two-hour Android observation failed'
@@ -4837,7 +4839,7 @@ if [ "$WORKLOAD" = app-peer-lifecycle ]; then
     stop_peer_infrastructure \
         || fail 'the controlled Android peer infrastructure did not join'
     [ "$(stat -c '%s' -- "$PEER_SOURCE_LOG")" -le 67108864 ] \
-        && [ "$(stat -c '%s' -- "$PEER_SERVER_LOG")" -le "$PEER_SERVER_LOG_LIMIT" ] \
+        && [ "$(stat -c '%s' -- "$PEER_SERVER_LOG")" -lt "$PEER_SERVER_FILE_LIMIT" ] \
         && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \
         && [ ! -s "$PEER_XVFB_LOG" ] \
         || fail 'the controlled Android peer logs differ from their finite bounds'

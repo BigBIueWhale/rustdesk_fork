@@ -110493,6 +110493,31 @@ Children join and temporary files retire before reporting. This is a bounded
 kernel-mechanism reproduction, with no product or emulator execution and no
 runtime-limit correction. Syntax/diff checks pass; isolated execution follows.
 
+CTE `hH0F1qHS6o` at `d657375a` reproduces all three cases in the existing
+runtime-log lane. Both old limits produce EFBIG for both shared-file forms and
+for the late record; logs stop at exactly 2,097,152 / 8,388,608 bytes. The finite
+128-MiB control maps both allocations and retains the late record at 8,388,634
+bytes. Existing Docker log ownership, stage/UI, export and transport cases also
+pass. The 39.768-second transaction peaks at 414,347,264 bytes of RAM scratch;
+all four endpoint deltas are zero. Exact QEMU/private/RAM absence is reconciled
+under the shared lock. Capsule `android-peer-file-limit-d657375a.json`, SHA-256
+ebb2969765a47e9a4d01d62def56119e261ec03e7306a29efd108950040603eb.
+
+Correction: one 128-MiB process file ceiling admits the 64-MiB pool plus its
+marker, preserves a finite diagnostic bound and refuses insufficient inherited
+allowance before exec. This raises the individual file allowance, not the
+already-admitted container/VM/RAM capacity: the runtime retains its 12-GiB memory,
+10-GiB private tmpfs and 1-GiB shared-memory bounds and outer storage monitor.
+No disk scratch is introduced. The same ceiling reaches the soak reader;
+reaching it now refuses at the next resource sample and at final log acceptance.
+Previously a full 8-MiB log could repeatedly pass the retained-log check.
+The five-case focused check retains both old-limit controls, exercises actual
+mapping and late-record success, kernel-ceiling/reader refusal, and inherited
+limit refusal before exec. A saturated fixture is sparse. Display age, recovery,
+drift and application RSS/thread criteria are unchanged. Product binaries,
+PulseAudio execution and full Android lifecycle acceptance are still untested
+for this harness correction; focused execution follows.
+
 ## 2026-10-28 — retire unused legacy-ID main IPC
 
 The previous locale-selection turn made verified progress. This continuation

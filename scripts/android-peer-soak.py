@@ -16,7 +16,6 @@ import time
 
 PACKAGE = "com.carriez.flutter_hbb"
 DURATION_SECONDS = 7200
-SERVER_LOG_LIMIT = 8 * 1024 * 1024
 
 
 def require(condition, message):
@@ -47,11 +46,19 @@ def process_start(record, pid):
     return int(fields[19])
 
 
+def server_keyed_session_count(path, file_limit):
+    # A file at the kernel ceiling may already have silently lost later records.
+    return read_file(path, file_limit - 1).count(b" Connection opened from ")
+
+
 def main():
     require(os.getuid() == os.getgid() == 1000, "soak requires the disposable runtime principal")
-    require(len(sys.argv) == 14, "soak argument count differs")
+    require(len(sys.argv) == 15, "soak argument count differs")
     (decoder_path, frame, source, server_log, observer_failure, adb, serial,
-     app_pid, task_id, server_pid, server_start, source_pid, source_start) = sys.argv[1:]
+     app_pid, task_id, server_pid, server_start, source_pid, source_start, file_limit) = sys.argv[1:]
+    require(file_limit.isdecimal() and 0 < int(file_limit) <= 128 * 1024 * 1024,
+            "server file-size allowance is invalid")
+    file_limit = int(file_limit)
     require(all(re.fullmatch(r"[1-9][0-9]*", value) for value in
                 (app_pid, task_id, server_pid, server_start, source_pid, source_start)),
             "soak process/task identity is malformed")
@@ -75,7 +82,7 @@ def main():
         return connections[0]
 
     connection = local_identity()
-    keyed_count = read_file(server_log, SERVER_LOG_LIMIT).count(b" Connection opened from ")
+    keyed_count = server_keyed_session_count(server_log, file_limit)
     require(keyed_count > 0, "soak has no authenticated peer session")
     # One bounded shell transaction avoids serial ADB startup costs. These IDs
     # are numeric and the package is fixed; no caller-controlled shell text enters.
@@ -116,7 +123,7 @@ def main():
         threads = re.findall(r"^Threads:\s+([1-9][0-9]*)$", status, re.M)
         require(len(rss) == len(threads) == 1, "Android resource fields are unavailable")
         require(local_identity() == connection, "peer connection changed during resource observation")
-        require(read_file(server_log, SERVER_LOG_LIMIT).count(b" Connection opened from ") == keyed_count,
+        require(server_keyed_session_count(server_log, file_limit) == keyed_count,
                 "soak acquired another authenticated peer session")
         return identity, service_ids, int(rss[0]), int(threads[0]), (time.monotonic_ns() - started) // 1000000
 

@@ -2058,7 +2058,7 @@ run_android_runtime_log_tests() {
     local unit_receipt='ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined'
     local native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
     local stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
-    local file_limit_receipt='ANDROID_PEER_FILE_LIMIT_REPRODUCED cases=3 limited=2 shm_failures=4 late_records_missing=2 control=finite-128m cleanup=joined product=unexecuted'
+    local file_limit_receipt='ANDROID_PEER_FILE_LIMIT_TEST=pass cases=5 old_limits=2 allocations=admitted ceiling=refused saturated_log=refused inherited=refused cleanup=joined'
     local ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     local failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
     local serial_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
@@ -2116,7 +2116,7 @@ run_android_runtime_log_tests() {
         && grep -Fxq "$stage_receipt" "$output" \
         && [ "$(grep -Fc 'ANDROID_PEER_WARM_STAGE_TEST=' "$output")" -eq 1 ] \
         && grep -Fxq "$file_limit_receipt" "$output" \
-        && [ "$(grep -Fc 'ANDROID_PEER_FILE_LIMIT_REPRODUCED ' "$output")" -eq 1 ] \
+        && [ "$(grep -Fc 'ANDROID_PEER_FILE_LIMIT_TEST=' "$output")" -eq 1 ] \
         && grep -Fxq "$ui_receipt" "$output" \
         && [ "$(grep -Fc 'ANDROID_PEER_UI_FINALITY_TEST=' "$output")" -eq 1 ] \
         && grep -Fxq "$failure_test_receipt" "$output" \
@@ -15185,7 +15185,7 @@ for verify_source in verify.sh \
     online-pub-cache-output.py online-gradle-output.py \
     verify-online-fetch-gradle-output-authority.py android-gradle-cache.py \
     android-rust-check.sh \
-    smoke-android-emulator-boot.sh android-emulator-app-check.sh \
+    smoke-android-emulator-boot.sh android-peer-soak.py android-emulator-app-check.sh \
     android-emulator-runtime-check.sh AndroidRecentsDismiss.java \
     verify-android-emulator-apk.py \
     verify-android-apk-manifest.py publish-artifact-result.py \

@@ -4966,7 +4966,6 @@ elif [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ]; then
         "devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
         "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
         "repo/scripts/android-emulator-frame.py=$SCRIPT_DIR/android-emulator-frame.py"
-        "repo/scripts/android-peer-soak.py=$SCRIPT_DIR/android-peer-soak.py"
         "repo/scripts/flutter-peer-source-x11.c=$SCRIPT_DIR/flutter-peer-source-x11.c"
         "repo/scripts/x11-frame-oracle.h=$SCRIPT_DIR/x11-frame-oracle.h"
         "repo/scripts/test-x11-frame-oracle.c=$SCRIPT_DIR/test-x11-frame-oracle.c"
@@ -5176,6 +5175,7 @@ vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFI
     "repo/scripts/verify-windows-golden.sh=$WINDOWS_GOLDEN_SOURCE" \
     "repo/scripts/android-rust-check.sh=$ANDROID_RUST_SOURCE" \
     "repo/scripts/smoke-android-emulator-boot.sh=$ANDROID_EMULATOR_BOOT_SOURCE" \
+    "repo/scripts/android-peer-soak.py=$SCRIPT_DIR/android-peer-soak.py" \
     "repo/scripts/android-emulator-app-check.sh=$ANDROID_EMULATOR_APP_SOURCE" \
     "repo/scripts/android-emulator-runtime-check.sh=$ANDROID_EMULATOR_RUNTIME_SOURCE" \
     "repo/scripts/AndroidRecentsDismiss.java=$ANDROID_RECENTS_DRIVER_SOURCE" \
@@ -5960,7 +5960,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     runtime_log_unit_receipt='ANDROID_RUNTIME_PROGRESS_TEST=pass old=buffered new=before-eof diagnostics=filtered cardinality=1 children=joined'
     runtime_log_native_receipt='ANDROID_RUNTIME_DOCKER_LOG=pass cases=3 before_eof=observed normal=joined failure=live-log-bound producer=term-stopped cancel=143 pipeline=joined workspace=removed image=caller-owned'
     runtime_log_stage_receipt='ANDROID_PEER_WARM_STAGE_TEST=pass cases=9 warm_owner=preserved warm_peak=monotone task_owner=fresh missing=refused cardinality=13'
-    runtime_file_limit_receipt='ANDROID_PEER_FILE_LIMIT_REPRODUCED cases=3 limited=2 shm_failures=4 late_records_missing=2 control=finite-128m cleanup=joined product=unexecuted'
+    runtime_file_limit_receipt='ANDROID_PEER_FILE_LIMIT_TEST=pass cases=5 old_limits=2 allocations=admitted ceiling=refused saturated_log=refused inherited=refused cleanup=joined'
     runtime_log_ui_receipt='ANDROID_PEER_UI_FINALITY_TEST=pass cases=5 empty=refused foreign=refused disabled=refused residual=refused observed=required'
     runtime_failure_test_receipt='ANDROID_RUNTIME_FAILURE_LOG_TEST=pass cases=7 bytes=1048576 equality=exact oversized=refused symlink=refused hardlink=refused mode=refused occupied=preserved'
     runtime_serial_test_receipt='VERIFIER_SERIAL_ARCHIVE_TEST=pass cases=4 exact=retained occupied=preserved symlink=refused overflow=bounded'
@@ -5973,7 +5973,7 @@ elif [ "$MODE" = android-runtime-log-tests ]; then
     require_exact_fixed_receipt "$runtime_log_unit_receipt" 'runtime-log pipe/signal result'
     require_exact_fixed_receipt "$runtime_log_native_receipt" 'native Docker log-lifetime result'
     require_exact_fixed_receipt "$runtime_log_stage_receipt" 'warm/task presentation-stage result'
-    require_exact_fixed_receipt "$runtime_file_limit_receipt" 'peer process file-limit reproduction'
+    require_exact_fixed_receipt "$runtime_file_limit_receipt" 'peer file allocation and exhausted-log refusal'
     require_exact_fixed_receipt "$runtime_log_ui_receipt" 'observable app UI finality result'
     require_exact_fixed_receipt "$runtime_failure_test_receipt" 'bounded failure-log publisher result'
     require_exact_fixed_receipt "$runtime_serial_test_receipt" 'bounded serial archive result'

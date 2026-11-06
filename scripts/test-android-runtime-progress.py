@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import select
 import runpy
 import shlex
@@ -238,13 +239,18 @@ if offsets != sorted(offsets):
 runtime_functions = wrapper[offsets[0]:offsets[-1]]
 boot = (scripts / "smoke-android-emulator-boot.sh").read_text()
 
-# Reproduce the server launcher's file-limit effects without an emulator or a
-# two-hour producer. The control keeps the same finite inherited 128-MiB limit.
+# Exercise the actual launcher and soak log reader. The two historical limits
+# retain the reproduced kernel controls without requiring an emulator.
 limit_begin = "        python3 -B -I -S -c '\nimport os, resource, sys\n"
-limit_end = "\n' \"$PEER_SERVER_LOG_LIMIT\" \"$PEER_TARGET/smoke-server-launcher\""
+limit_end = "\n' \"$PEER_SERVER_FILE_LIMIT\" \"$PEER_TARGET/smoke-server-launcher\""
 if boot.count(limit_begin) != 1 or boot.count(limit_end) != 1:
     raise RuntimeError("peer file-limit launcher is absent or ambiguous")
 limit_program = "import os, resource, sys\n" + boot.split(limit_begin, 1)[1].split(limit_end, 1)[0]
+limits = re.findall(r"^readonly PEER_SERVER_FILE_LIMIT=([1-9][0-9]*)$", boot, re.M)
+if len(limits) != 1 or int(limits[0]) != 134217728:
+    raise RuntimeError("the finite peer file allowance differs")
+file_limit = int(limits[0])
+soak = runpy.run_path(str(scripts / "android-peer-soak.py"))
 allocation_probe = r'''
 import json, mmap, os, resource, sys, tempfile
 limit = int(sys.argv[1])
@@ -261,7 +267,13 @@ for kind, size in (("memfd", 64 * 1024 * 1024), ("posix", 64 * 1024 * 1024 + 40)
             observed[kind] = {"errno": 0, "bytes": os.fstat(allocation.fileno()).st_size}
         except OSError as error:
             observed[kind] = {"errno": error.errno, "bytes": os.fstat(allocation.fileno()).st_size}
-remaining = limit
+prefix = b" Connection opened from fixture\n"
+os.write(2, prefix)
+remaining = limit - len(prefix)
+if sys.argv[2] == "sparse":
+    os.ftruncate(2, limit)
+    os.lseek(2, limit, os.SEEK_SET)
+    remaining = 0
 while remaining:
     remaining -= os.write(2, b"x" * min(65536, remaining))
 try:
@@ -272,34 +284,46 @@ except OSError as error:
     observed["terminal_errno"] = error.errno
 print(json.dumps(observed, sort_keys=True))
 '''
-for case, log_limit in (("normal", 2097152), ("soak", 8388608), ("control", 8388608)):
+for case, requested, log_limit in (("old-normal", 2097152, 2097152),
+                                    ("old-soak", 8388608, 8388608),
+                                    ("admitted", file_limit, 8388608),
+                                    ("saturated", file_limit, file_limit)):
     with tempfile.TemporaryDirectory(prefix="android-peer-file-limit.") as directory:
         log = Path(directory) / "server.log"
         command = ["/usr/bin/prlimit", "--fsize=134217728:134217728",
-                   sys.executable, "-B", "-I", "-S"]
-        if case != "control":
-            command += ["-c", limit_program, str(log_limit), sys.executable, "-B", "-I", "-S"]
-        command += ["-c", allocation_probe, str(log_limit)]
+                   sys.executable, "-B", "-I", "-S", "-c", limit_program, str(requested),
+                   sys.executable, "-B", "-I", "-S", "-c", allocation_probe, str(log_limit),
+                   "sparse" if case == "saturated" else "written"]
         with log.open("xb", buffering=0) as output:
+            os.fchmod(output.fileno(), 0o600)
             completed = subprocess.run(command, stdout=subprocess.PIPE, stderr=output, timeout=5)
         if completed.returncode or len(completed.stdout) > 1024:
             raise RuntimeError(f"file-limit probe did not complete: {case}: {completed.returncode}")
         actual = json.loads(completed.stdout)
-        refused = case != "control"
+        refused = case.startswith("old-")
+        full = case != "admitted"
         expected = {
-            "limit": [log_limit, log_limit] if refused else [134217728, 134217728],
+            "limit": [requested, requested],
             "memfd": {"errno": 27 if refused else 0, "bytes": 0 if refused else 67108864},
             "posix": {"errno": 27 if refused else 0, "bytes": 0 if refused else 67108904},
-            "terminal_bytes": 0 if refused else 26,
-            "terminal_errno": 27 if refused else 0,
+            "terminal_bytes": 0 if full else 26,
+            "terminal_errno": 27 if full else 0,
         }
         if actual != expected or log.stat().st_size != log_limit + expected["terminal_bytes"]:
             raise RuntimeError(f"peer file-limit observation differs: {case}: {actual}")
         with log.open("rb") as output:
             output.seek(max(0, log.stat().st_size - 64))
             terminal_present = b"\nserver shutdown complete\n" in output.read(65)
-        if terminal_present == refused:
+        if terminal_present == full:
             raise RuntimeError(f"late server log record observation differs: {case}")
+        try:
+            count = soak["server_keyed_session_count"](log, requested)
+        except RuntimeError as error:
+            if not full or str(error) != "soak input metadata or size differs":
+                raise
+        else:
+            if full or count != 1:
+                raise RuntimeError(f"soak log admission differs: {case}")
         print(f"ANDROID_PEER_FILE_LIMIT=observed case={case} "
               f"limit_bytes={actual['limit'][0]} memfd_errno={actual['memfd']['errno']} "
               f"posix_errno={actual['posix']['errno']} log_bytes={log.stat().st_size} "
@@ -307,8 +331,15 @@ for case, log_limit in (("normal", 2097152), ("soak", 8388608), ("control", 8388
               file=sys.stderr)
     if Path(directory).exists():
         raise RuntimeError("peer file-limit scratch survived joined execution")
-print("ANDROID_PEER_FILE_LIMIT_REPRODUCED cases=3 limited=2 shm_failures=4 "
-      "late_records_missing=2 control=finite-128m cleanup=joined product=unexecuted", file=sys.stderr)
+completed = subprocess.run(
+    ["/usr/bin/prlimit", "--fsize=8388608:8388608", sys.executable, "-B", "-I", "-S",
+     "-c", limit_program, str(file_limit), sys.executable, "-B", "-I", "-S",
+     "-c", "raise SystemExit('child must not execute')"], capture_output=True, timeout=5)
+if (completed.returncode != 1 or completed.stdout
+        or completed.stderr != b"Android peer file-size allowance unavailable\n"):
+    raise RuntimeError("insufficient inherited file allowance did not refuse before exec")
+print("ANDROID_PEER_FILE_LIMIT_TEST=pass cases=5 old_limits=2 allocations=admitted "
+      "ceiling=refused saturated_log=refused inherited=refused cleanup=joined", file=sys.stderr)
 
 stage_marker = "emit_peer_presentation_stage_receipts() {\n"
 if boot.count(stage_marker) != 1:

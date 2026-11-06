@@ -1791,7 +1791,7 @@ fn handle_one_frame(
     let first = *first_frame;
     *first_frame = false;
     match encoder.encode_to_message(frame, ms) {
-        Ok(mut vf) => {
+        Ok(Some(mut vf)) => {
             *encode_fail_counter = 0;
             vf.display = display as _;
             if let Some(trace) = presentation_trace.as_mut() {
@@ -1811,6 +1811,7 @@ fn handle_one_frame(
                 |connection_ids, generation| frame_controller.prepare(connection_ids, generation),
             )?;
         }
+        Ok(None) => *encode_fail_counter = 0,
         Err(e) => {
             *encode_fail_counter += 1;
             // Encoding errors are not frequent except on Android

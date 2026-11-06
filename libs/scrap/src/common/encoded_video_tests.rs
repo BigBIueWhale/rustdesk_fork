@@ -3,9 +3,9 @@ use crate::codec::EncoderCfg;
 use crate::test_allocator::{arm, refusals, take_armed};
 use crate::{ImageFormat, ImageRgb};
 
-fn one_frame(message: VideoFrame, codec: VpxVideoCodecId, pts: i64) -> EncodedVideoFrame {
+fn one_frame(message: Option<VideoFrame>, codec: VpxVideoCodecId, pts: i64) -> EncodedVideoFrame {
     use hbb_common::message_proto::video_frame::Union;
-    let mut frames = match (codec, message.union.unwrap()) {
+    let mut frames = match (codec, message.unwrap().union.unwrap()) {
         (VpxVideoCodecId::VP8, Union::Vp8s(frames))
         | (VpxVideoCodecId::VP9, Union::Vp9s(frames)) => frames.frames,
         _ => panic!("unexpected encoded message codec"),

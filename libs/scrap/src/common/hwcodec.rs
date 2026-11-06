@@ -116,7 +116,7 @@ impl EncoderApi for HwRamEncoder {
         }
     }
 
-    fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<VideoFrame> {
+    fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<Option<VideoFrame>> {
         let mut vf = VideoFrame::new();
         let mut frames = Vec::new();
         for frame in self
@@ -140,7 +140,7 @@ impl EncoderApi for HwRamEncoder {
                 DataFormat::H265 => vf.set_h265s(frames),
                 _ => bail!("unsupported format: {:?}", self.format),
             }
-            Ok(vf)
+            Ok(Some(vf))
         } else {
             Err(anyhow!("no valid frame"))
         }

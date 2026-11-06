@@ -109,7 +109,8 @@ pub trait EncoderApi {
     where
         Self: Sized;
 
-    fn encode_to_message(&mut self, frame: EncodeInput, ms: i64) -> ResultType<VideoFrame>;
+    /// A successful encode may produce no packet, for example during rate-control dropping.
+    fn encode_to_message(&mut self, frame: EncodeInput, ms: i64) -> ResultType<Option<VideoFrame>>;
 
     fn yuvfmt(&self) -> EncodeYuvFormat;
 

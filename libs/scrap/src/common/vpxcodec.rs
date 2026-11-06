@@ -210,7 +210,7 @@ impl EncoderApi for VpxEncoder {
         }
     }
 
-    fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<VideoFrame> {
+    fn encode_to_message(&mut self, input: EncodeInput, ms: i64) -> ResultType<Option<VideoFrame>> {
         let encoded = self
             .encode(ms, input.yuv()?, STRIDE_ALIGN)
             .with_context(|| "Failed to encode")?;
@@ -222,10 +222,10 @@ impl EncoderApi for VpxEncoder {
                 return Err(error);
             }
         };
-        if frames.len() > 0 {
-            Ok(VpxEncoder::create_video_frame(self.id, frames))
+        if frames.is_empty() {
+            Ok(None)
         } else {
-            Err(anyhow!("no valid frame"))
+            Ok(Some(VpxEncoder::create_video_frame(self.id, frames)))
         }
     }
 
@@ -916,7 +916,7 @@ mod tests {
                     data[..format.u].fill(*level);
                     let packets: Vec<_> = if message_path {
                         match encoder.encode_to_message(EncodeInput::YUV(&data), ordinal as i64 * 1000) {
-                            Ok(message) => {
+                            Ok(Some(message)) => {
                                 let frames = match message.union.unwrap() {
                                     hbb_common::message_proto::video_frame::Union::Vp8s(frames) => frames,
                                     hbb_common::message_proto::video_frame::Union::Vp9s(frames) => frames,
@@ -924,6 +924,7 @@ mod tests {
                                 };
                                 frames.frames.into_iter().map(|frame| (frame.pts, frame.data.to_vec())).collect()
                             }
+                            Ok(None) => Vec::new(),
                             Err(error) => {
                                 println!("VIDEO_VPX_REALTIME_ERROR=observed codec={codec:?} i444={i444} ordinal={ordinal} error={error}");
                                 Vec::new()
@@ -1020,7 +1021,7 @@ mod tests {
                         }
                         let packets: Vec<_> = if message_path {
                             match encoder.encode_to_message(EncodeInput::YUV(&data), pts) {
-                                Ok(message) => {
+                                Ok(Some(message)) => {
                                     use hbb_common::message_proto::video_frame::Union;
                                     let frames = match (codec, message.union.unwrap()) {
                                         (VpxVideoCodecId::VP8, Union::Vp8s(frames))
@@ -1030,10 +1031,8 @@ mod tests {
                                     frames.frames.into_iter()
                                         .map(|frame| (frame.pts, frame.data.to_vec())).collect()
                                 }
-                                Err(error) => {
-                                    assert_eq!(error.to_string(), "no valid frame");
-                                    Vec::new()
-                                }
+                                Ok(None) => Vec::new(),
+                                Err(error) => panic!("valid rate-control input failed: {error:#}"),
                             }
                         } else {
                             // Success with no packet is observed at the native boundary.

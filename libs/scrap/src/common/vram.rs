@@ -98,7 +98,7 @@ impl EncoderApi for VRamEncoder {
         &mut self,
         frame: EncodeInput,
         ms: i64,
-    ) -> ResultType<hbb_common::message_proto::VideoFrame> {
+    ) -> ResultType<Option<hbb_common::message_proto::VideoFrame>> {
         let (texture, rotation) = frame.texture()?;
         if rotation != 0 {
             // to-do: support rotation
@@ -147,7 +147,7 @@ impl EncoderApi for VRamEncoder {
                 DataFormat::H265 => vf.set_h265s(frames),
                 _ => bail!("{:?} not supported", self.format),
             }
-            Ok(vf)
+            Ok(Some(vf))
         } else {
             Err(anyhow!("no valid frame"))
         }

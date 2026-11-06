@@ -34,6 +34,21 @@ def install_peer_ingress(run):
             'action', 'mirred', 'egress', 'redirect', 'dev', 'rd-netem')
 
 
+def activate_peer_interface(run):
+    # IFB is a queue adapter; it needs no automatically generated IP address.
+    run('ip', 'link', 'set', 'dev', 'rd-netem', 'addrgenmode', 'none')
+    run('ip', 'link', 'set', 'dev', 'rd-netem', 'up')
+    links = json.loads(run('ip', '-d', '-j', 'link', 'show'))
+    addresses = json.loads(run('ip', '-j', 'addr', 'show', 'dev', 'rd-netem'))
+    print('FLUTTER_PEER_INTERFACE=' + json.dumps(
+        dict(links=links, addresses=addresses), sort_keys=True), flush=True)
+    require(sorted(link['ifname'] for link in links) == ['lo', 'rd-netem']
+            and next(link for link in links if link['ifname'] == 'rd-netem')
+            ['linkinfo']['info_kind'] == 'ifb'
+            and len(addresses) == 1 and not addresses[0]['addr_info'],
+            'impairment interface topology or address readback differs')
+
+
 class Impairment:
     def __init__(self, image, congestion=False, long_soak=False, android=False):
         self.image = image
@@ -108,15 +123,7 @@ class Impairment:
                 == ['lo'], 'server namespace topology differs')
         self.run('ip', 'link', 'add', 'rd-netem', 'type', 'ifb')
         self.interface = True
-        self.run('ip', 'link', 'set', 'rd-netem', 'up')
-        if self.android:
-            links = json.loads(self.run('ip', '-d', '-j', 'link', 'show'))
-            addresses = json.loads(self.run('ip', '-j', 'addr', 'show', 'dev', 'rd-netem'))
-            require(sorted(link['ifname'] for link in links) == ['lo', 'rd-netem']
-                    and next(link for link in links if link['ifname'] == 'rd-netem')
-                    ['linkinfo']['info_kind'] == 'ifb'
-                    and len(addresses) == 1 and not addresses[0]['addr_info'],
-                    'Android impairment interface has external network authority')
+        activate_peer_interface(self.run)
         self.profile('healthy')
         self.run('tc', 'qdisc', 'add', 'dev', 'lo', 'handle', 'ffff:', 'ingress')
         self.ingress = True

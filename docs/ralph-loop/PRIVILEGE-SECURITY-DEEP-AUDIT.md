@@ -143014,3 +143014,24 @@ independent pixel samples per second. RSS/thread growth limits remain 128 MiB/ei
 Source/process/task/session identity, sixty-four-packet queue bounds and joined
 retirement are required. Input-to-visible latency, congestion, multi-hour and
 physical/other-role acceptance remain open. Runtime execution is pending.
+
+TUF `27rrpnhgza` at `801047aa` stops before emulator startup: the new IFB
+topology/address admission refuses attachment. The exact rejected readback was
+not logged, so its cause is unestablished. Empty runtime failure-log retention
+also refuses; the complete workload serial preserves the primary failure.
+`android-network-setup-801047aa.json`, SHA-256
+42c5a9a661a39defab80f5e506f28c5f42032dfe9588a5c0b32a4d8b1d2b924b,
+binds the 216.818-second run, five zero endpoint deltas, 4,507,312,128-byte peak
+RAM scratch and exact QEMU/private/RAM retirement. No Android network case ran.
+The intervening status-only answer closes no requirement; continuation reconciles
+this stopped run before changing source or admitting another VM.
+
+The shared IFB activation now explicitly selects `addrgenmode none` before UP,
+then records and validates the actual topology and empty address list. iproute2
+6.1.0 documents this mode as disabling automatic address generation:
+https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/ip-link.8.in.
+The native network fixture records default IFB addresses in its original case and
+executes the shared corrected activation in its peer/control case. This will
+observe whether default autoconfiguration explains the refusal while preserving
+all delay/loss/recovery/control bounds. Syntax and diff checks pass; native proof
+and Android replay remain pending. No application code or acceptance bound changes.

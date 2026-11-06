@@ -60,17 +60,16 @@ def connection_identity(client, server):
 
 
 def scoped_peer_flow():
-    install = runpy.run_path(str(Path(__file__).with_name('flutter-peer-netem.py')))[
-        'install_peer_ingress']
+    helper = runpy.run_path(str(Path(__file__).with_name('flutter-peer-netem.py')))
     interface_created = ingress_created = False
     try:
         run('ip', 'link', 'add', 'rd-netem', 'type', 'ifb')
         interface_created = True
-        run('ip', 'link', 'set', 'rd-netem', 'up')
+        helper['activate_peer_interface'](run)
         qdisc('delay', '0ms')
         run('tc', 'qdisc', 'add', 'dev', 'lo', 'handle', 'ffff:', 'ingress')
         ingress_created = True
-        install(run)
+        helper['install_peer_ingress'](run)
         with contextlib.ExitStack() as cleanup:
             pairs = {}
             for port in (21118, 8554, 5037):
@@ -178,6 +177,8 @@ def main():
         run('ip', 'link', 'add', 'rd-netem', 'type', 'ifb')
         interface_created = True
         run('ip', 'link', 'set', 'rd-netem', 'up')
+        print('NETWORK_IFB_DEFAULT_ADDRESSES=' + run(
+            'ip', '-j', 'addr', 'show', 'dev', 'rd-netem').strip(), flush=True)
         qdisc('delay', '0ms')
         run('tc', 'qdisc', 'add', 'dev', 'lo', 'handle', 'ffff:', 'ingress')
         ingress_created = True

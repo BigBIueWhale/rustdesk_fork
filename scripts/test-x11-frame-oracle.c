@@ -389,6 +389,28 @@ out:
     return result;
 }
 
+static int unarmed_input_case(const char *directory) {
+    Display *display = XOpenDisplay(":98");
+    SourceHistory history = {0};
+    uint8_t pixels[X11_FRAME_BYTES];
+    uint64_t captured = 0U, began = x11_frame_monotonic_us();
+    struct timespec pause = {0, 10000000L};
+    int result = -1;
+    if (display == NULL) return -1;
+    int64_t initial = x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured);
+    if (initial < 0 || response_request(display, 0U, 0U) != 0) goto out;
+    do {
+        if (x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured) != initial ||
+            x11_frame_refresh(&history, directory) != 0 || history.count != (uint64_t)initial + 1U ||
+            nanosleep(&pause, NULL) != 0) goto out;
+    } while (x11_frame_monotonic_us() - began < 200000U);
+    puts("X11_INPUT_RESPONSE_UNARMED=pass native_request=ignored pixels=unchanged");
+    result = 0;
+out:
+    if (XCloseDisplay(display) != 0) result = -1;
+    return result;
+}
+
 static int resumed_input_case(const char *directory) {
     Display *display = XOpenDisplay(":98");
     SourceHistory history = {0};
@@ -442,6 +464,7 @@ int main(int argc, char **argv) {
         if (strcmp(argv[1], "--input-response") == 0) return input_response_case(argv[2], 0) != 0;
         if (strcmp(argv[1], "--input-response-resume") == 0) return input_response_case(argv[2], 1) != 0;
         if (strcmp(argv[1], "--input-response-reentry") == 0) return resumed_input_case(argv[2]) != 0;
+        if (strcmp(argv[1], "--input-response-unarmed") == 0) return unarmed_input_case(argv[2]) != 0;
         return 1;
     }
     if (strcmp(argv[1], "--old-window-image") == 0) return geometry_case(1) != 0;

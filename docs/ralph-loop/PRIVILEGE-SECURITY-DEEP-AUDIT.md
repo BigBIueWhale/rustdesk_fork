@@ -143300,3 +143300,34 @@ open. Python AST, four Bash syntax checks and full diff/whitespace review pass.
 TUF has about 50 GiB available RAM, no private run and the existing SSH master.
 Isolated Android execution is pending; source/refs will remain fixed through
 terminal status and evidence/cleanup reconciliation.
+
+TUF `AQA7b74p81` at `7d4535a1` exits one before the input driver starts.
+The input-capable source processes keyboard traffic during the preceding ordinary
+static pause and rejects it. No `ANDROID_PEER_INPUT_PLAN` or input measurement
+exists; this is a fixture failure, not an Android latency result. Full runtime
+diagnostics are retained without inferring the exact rejected key from the old
+undetailed error. Capsule `android-input-setup-7d4535a1.json`, SHA-256
+`2668897223dac37b78fe62210e7ed34d881786185bf3abf820256ddfabab0f0a`,
+binds the failed command, 540.934-second storage lifetime and 4,506,193,920-byte
+peak RAM scratch. Exact QEMU/private/RAM absence and all five zero endpoint
+deltas are reconciled. All twelve files / 260,906 bytes match CTE/TUF.
+
+The subsequent user-requested goal-status answer made no implementation or
+acceptance progress. Continue the same R-F5 measurement with explicit fixture
+arming: SIGUSR1 keeps the ordinary static pause, SIGRTMIN pauses and selects
+numbered key responses, and SIGUSR2 resumes. The controller waits for each
+acknowledgement before its next mode change. The source retains its active mode
+through resume validation and preserves request identity across reentry. A native
+control sends a complete request while unarmed and requires unchanged actual
+pixels/history and absent readiness before ordinary animation resumes. Existing
+256-response, held/partial-input, duplicate, reentry and incomplete-resume controls
+remain. Invalid native key events now retain bounded numeric diagnostics.
+Android still requires 120 measured responses plus bootstrap, the original
+two-second deadline, independent quiet pixels and unchanged connection/resources.
+
+Primary reference: Linux sigaction(2),
+https://man7.org/linux/man-pages/man2/sigaction.2.html . Signal handlers only update
+sig_atomic_t flags; X11 operations and acknowledgement I/O remain in the main loop.
+The native frame lane must pass before the retained-app Android retry. No product
+source, live instruction, acceptance limit or previously passed impairment job is
+changed or rerun. Full R-F5 and release acceptance remain OPEN.

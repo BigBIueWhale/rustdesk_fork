@@ -6725,6 +6725,9 @@ elif [ "$MODE" = android-frame-tests ]; then
         'X11_INPUT_RESPONSE_JOINED=pass duplicate_request=refused source=joined xvfb=joined socket=absent' \
         'native input-driven source exact cleanup'
     require_exact_fixed_receipt \
+        'X11_INPUT_RESPONSE_UNARMED=pass native_request=ignored pixels=unchanged' \
+        'ordinary Full-HD pause remains independent of keyboard traffic'
+    require_exact_fixed_receipt \
         'X11_INPUT_RESPONSE_FULL_HD=pass no_input=stable held_key=stable partial_request=stable native_request=advances controls=4 requests=256 carries=16,256 pixels=actual scope=fixture-only' \
         'Full-HD native input-driven source exact advancement'
     require_exact_fixed_receipt \

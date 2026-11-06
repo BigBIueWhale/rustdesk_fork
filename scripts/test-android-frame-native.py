@@ -944,6 +944,17 @@ def test_input_response(fixture, oracle, environment, *, full_hd=False):
             wait_source(lambda: len(acknowledgements()) == 1, 'Full-HD source did not pause')
             require(re.fullmatch(r'paused state=' + str(publications()[-1]) + r' monotonic_us=\d+',
                                  acknowledgements()[0]), 'Full-HD paused state differs')
+            subprocess.run([str(oracle), '--input-response-unarmed', str(directory)],
+                           env=environment, check=True, timeout=5)
+            require(not (directory / 'input-response.ready').exists(), 'unarmed input acquired readiness')
+            final = publications()[-1]
+            children[-1].send_signal(signal.SIGUSR2)
+            wait_source(lambda: len(acknowledgements()) == 2 and publications()[-1] >= final + 4,
+                        'unarmed Full-HD source did not resume')
+            children[-1].send_signal(signal.SIGRTMIN)
+            wait_source(lambda: len(acknowledgements()) == 3, 'Full-HD source did not enter input mode')
+            require(re.fullmatch(r'paused state=' + str(publications()[-1]) + r' monotonic_us=\d+',
+                                 acknowledgements()[2]), 'Full-HD input pause differs')
         subprocess.run([str(oracle), '--input-response-resume' if full_hd else '--input-response',
                         str(directory)], env=environment, check=True, timeout=30 if full_hd else 10)
         require(children[0].poll() is None, 'input-response X11 display exited early')
@@ -952,14 +963,14 @@ def test_input_response(fixture, oracle, environment, *, full_hd=False):
             marker = (directory / 'input-response.ready').read_bytes()
             require(int(marker) + 256 == final, 'Full-HD input advanced an unexpected number of frames')
             children[-1].send_signal(signal.SIGUSR2)
-            wait_source(lambda: len(acknowledgements()) == 2 and publications()[-1] >= final + 4,
+            wait_source(lambda: len(acknowledgements()) == 4 and publications()[-1] >= final + 4,
                         'Full-HD source did not resume animation')
             require(re.fullmatch(r'resumed state=' + str(final) + r' monotonic_us=\d+',
-                                 acknowledgements()[1]), 'Full-HD resume state differs')
-            children[-1].send_signal(signal.SIGUSR1)
-            wait_source(lambda: len(acknowledgements()) == 3, 'Full-HD source did not pause again')
+                                 acknowledgements()[3]), 'Full-HD resume state differs')
+            children[-1].send_signal(signal.SIGRTMIN)
+            wait_source(lambda: len(acknowledgements()) == 5, 'Full-HD source did not pause again')
             require(re.fullmatch(r'paused state=' + str(publications()[-1]) + r' monotonic_us=\d+',
-                                 acknowledgements()[2]), 'Full-HD second paused state differs')
+                                 acknowledgements()[4]), 'Full-HD second paused state differs')
             subprocess.run([str(oracle), '--input-response-reentry', str(directory)],
                            env=environment, check=True, timeout=5)
             require((directory / 'input-response.ready').read_bytes() == marker,
@@ -971,7 +982,7 @@ def test_input_response(fixture, oracle, environment, *, full_hd=False):
                 'FLUTTER_PEER_SOURCE_COMPLETE ' not in source_path.read_text(),
                 'input-response source admitted incomplete resume or a duplicate request')
         if full_hd:
-            require(len(acknowledgements()) == 3, 'Full-HD source acknowledged incomplete resume')
+            require(len(acknowledgements()) == 5, 'Full-HD source acknowledged incomplete resume')
     finally:
         for child in reversed(children):
             if child.poll() is None:

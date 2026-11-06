@@ -8,6 +8,8 @@
  * the complete non-wrapping uint32 frame identity for the mobile observer. Each publication is
  * bound to its monotonic start time; nominal frame pacing is not a freshness measurement.
  * Full-HD adds deterministic changing texture below the counter and palette witnesses.
+ * Full-HD SIGUSR1 pauses animation; SIGRTMIN also arms numbered input responses.
+ * The controller waits for each acknowledgement before changing modes; SIGUSR2 resumes.
  */
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -35,6 +37,7 @@
 
 static volatile sig_atomic_t stop_requested = 0;
 static volatile sig_atomic_t pause_requested = 0;
+static volatile sig_atomic_t response_requested = 0;
 
 static const uint8_t palette[16][3] = {
     {232U, 36U, 36U},   {36U, 224U, 48U},   {36U, 64U, 232U},
@@ -53,7 +56,14 @@ static void request_stop(int signal_number) {
 }
 
 static void request_pause(int signal_number) {
+    response_requested = 0;
     pause_requested = signal_number == SIGUSR1;
+}
+
+static void request_input(int signal_number) {
+    (void)signal_number;
+    response_requested = 1;
+    pause_requested = 1;
 }
 
 static int sleep_millis(unsigned int millis) {
@@ -199,8 +209,12 @@ static int response_input(Display *display, Window root, ResponseInput *input) {
         char character = input->position == 4U ? '\r' : (char)('a' + digit);
         int size = XLookupString(&event.xkey, text, sizeof(text), &symbol, NULL);
         if (event.xkey.window != root || event.xkey.send_event ||
-            (event.xkey.state & 255U) != 0U || symbol != wanted || size != 1 || text[0] != character)
+            (event.xkey.state & 255U) != 0U || symbol != wanted || size != 1 || text[0] != character) {
+            fprintf(stderr, "FLUTTER_PEER_SOURCE_INPUT_REFUSED request=%u position=%u type=%d keycode=%u state=%u symbol=%lu wanted=%lu\n",
+                    input->request, input->position, event.type, event.xkey.keycode,
+                    event.xkey.state, (unsigned long)symbol, (unsigned long)wanted);
             return -1;
+        }
         if (event.type == KeyPress) {
             if (input->held != 0U || completed != 0U) return -1;
             input->held = event.xkey.keycode;
@@ -260,7 +274,7 @@ int main(int argc, char **argv) {
     unsigned int monitors = 1U;
     ResponseInput response = {0};
     int input_response = 0, interactive = 0, response_ready = 0;
-    int response_on_pause = 0, pause_acknowledged = 0;
+    int response_on_pause = 0, pause_acknowledged = 0, response_active = 0;
     const char *response_directory = NULL;
     unsigned int code_height, code_top = 0U;
     unsigned int texture_top;
@@ -325,6 +339,13 @@ int main(int argc, char **argv) {
         action.sa_handler = request_pause;
         if (sigaction(SIGUSR1, &action, NULL) != 0 || sigaction(SIGUSR2, &action, NULL) != 0) {
             fputs("FLUTTER_PEER_SOURCE_FAIL pause signal handlers\n", stderr);
+            return 1;
+        }
+    }
+    if (response_on_pause) {
+        action.sa_handler = request_input;
+        if (sigaction(SIGRTMIN, &action, NULL) != 0) {
+            fputs("FLUTTER_PEER_SOURCE_FAIL input signal handler\n", stderr);
             return 1;
         }
     }
@@ -428,7 +449,8 @@ int main(int argc, char **argv) {
          * X window alive and unchanged until the observer explicitly resumes it. */
         if (pause_output >= 0 && (pause_requested != 0 || pause_acknowledged)) {
             if (!pause_acknowledged) {
-                if (response_on_pause) {
+                response_active = response_on_pause && response_requested != 0;
+                if (response_active) {
                     Window focus;
                     int revert;
                     XSelectInput(display, root, KeyPressMask | KeyReleaseMask);
@@ -449,7 +471,7 @@ int main(int argc, char **argv) {
                 pause_acknowledged = 1;
             }
             while (pause_requested != 0 && stop_requested == 0) {
-                if (response_on_pause) {
+                if (response_active) {
                     int received = response_input(display, root, &response);
                     if (received < 0) {
                         fputs("FLUTTER_PEER_SOURCE_FAIL native input response\n", stderr);
@@ -468,7 +490,7 @@ int main(int argc, char **argv) {
             }
             if (stop_requested != 0) break;
             if (pause_requested == 0) {
-                if (response_on_pause) {
+                if (response_active) {
                     if (response_input(display, root, &response) != 0 ||
                         response.held != 0U || response.position != 0U) {
                         fputs("FLUTTER_PEER_SOURCE_FAIL incomplete input at resume\n", stderr);
@@ -479,6 +501,7 @@ int main(int argc, char **argv) {
                     XSync(display, False);
                 }
                 interactive = 0;
+                response_active = 0;
                 pause_acknowledged = 0;
                 if (dprintf(pause_output, "resumed state=%u monotonic_us=%llu\n",
                             frame - 1U, (unsigned long long)monotonic_micros()) < 0) {

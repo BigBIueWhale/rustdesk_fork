@@ -174,7 +174,7 @@ def main():
                 'source generation differs before pause')
         before = len(read_file(pause_path, 8192).splitlines())
         require(before == 16, 'the eight preceding static cases are incomplete')
-        signal.pidfd_send_signal(owner, signal.SIGUSR1)
+        signal.pidfd_send_signal(owner, signal.SIGRTMIN)
         try:
             target, paused_us = acknowledge('paused', before, owner)
             wait_target(target, paused_us * 1000, 2500, 'initial-settle')

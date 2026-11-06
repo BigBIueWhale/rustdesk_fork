@@ -143097,3 +143097,13 @@ bash scripts/smoke-verifier-vm-authority.sh --android-emulator-runtime \
   --peer-manifest-sha256 a7293ff6253b8124ed8a59d069ae17247b02194e1f012f317f5680874c50b7b3 \
   --network-impairment
 ```
+
+Final ledger count at `3fefac27`, CTE `BTJ3PQWKCg`: **400,633 tokens** /
+1,828,825 bytes, input SHA-256
+0ba3eb8b57b2e68c4905803e040cf799dfe36415cde76b172e039dfabb44ef1a.
+The pinned method, seven controls and complete round trip pass.
+`android-network-ledger-3fefac27.json` binds the 33.492-second run,
+402,825,216-byte peak scratch, three zero endpoint deltas and independent
+QEMU/private/RAM absence. Its eight files / 119,300 bytes match CTE/TUF.
+This audit-only receipt preserves the counted ledger; whole-document role
+classification remains open.

@@ -14,8 +14,11 @@ import sys
 import time
 
 
-PROFILES = (('delay', 6), ('random3', 8), ('random8', 8),
-            ('burst', 10), ('loss', 2), ('loss', 6))
+PROFILES = {
+    '--network-impairment': (('delay', 6), ('random3', 8), ('random8', 8),
+                             ('burst', 10), ('loss', 2), ('loss', 6)),
+    '--network-congestion': (('jitter', 20), ('bandwidth', 20), ('bandwidth-jitter', 20)),
+}
 RECOVERY_MS = 8000
 DRIFT_MS = 250
 PERIOD_NS = 250_000_000
@@ -42,10 +45,13 @@ def request(profile):
 
 
 def main():
-    require(os.getuid() == os.getgid() == 1000 and len(sys.argv) == 15,
+    require(os.getuid() == os.getgid() == 1000 and len(sys.argv) == 16,
             'network observer arguments or principal differ')
     (decoder_path, frame, source, server_log, observer_failure, adb, serial,
-     app_pid, task_id, server_pid, server_start, source_pid, source_start, file_limit) = sys.argv[1:]
+     app_pid, task_id, server_pid, server_start, source_pid, source_start, file_limit,
+     extension) = sys.argv[1:]
+    require(extension in PROFILES, 'network observation schedule differs')
+    profiles = PROFILES[extension]
     require(serial == 'emulator-5554' and all(re.fullmatch('[1-9][0-9]*', value) for value in
             (app_pid, task_id, server_pid, server_start, source_pid, source_start, file_limit)),
             'network observer identities differ')
@@ -162,7 +168,7 @@ def main():
         return elapsed_ms
 
     print('ANDROID_PEER_NETWORK_PLAN=' + json.dumps(dict(
-        profiles=PROFILES, baseline_seconds=10, recovered_seconds=10, healthy_age_limit_ms=2000,
+        profiles=profiles, baseline_seconds=10, recovered_seconds=10, healthy_age_limit_ms=2000,
         baseline_settle_limit_ms=RECOVERY_MS,
         drift_limit_ms=DRIFT_MS, recovery_limit_ms=RECOVERY_MS, recovered_distinct_states=4,
         observer_limit_ms=500, sample_period_ms=250, queue_limit_packets=64,
@@ -176,16 +182,16 @@ def main():
         baseline = summarize(window('baseline', 10, 2000))
         age_limit = min(2000, baseline['age_max_ms'] + DRIFT_MS)
         print('ANDROID_PEER_NETWORK_BASELINE=' + json.dumps(baseline, sort_keys=True), flush=True)
-        for ordinal, (profile, seconds) in enumerate(PROFILES, 1):
+        for ordinal, (profile, seconds) in enumerate(profiles, 1):
             before = request(profile)
             impaired = window(f'{ordinal}-{profile}', seconds)
             after = request('snapshot')
             require(after['packets'] >= before['packets'] and after['drops'] >= before['drops'],
                     'kernel impairment counters regressed')
-            if profile != 'delay':
+            if profile in ('random3', 'random8', 'burst', 'loss'):
                 require(after['drops'] > before['drops'], 'selected loss profile caused no kernel drops')
             else:
-                require(after['packets'] > before['packets'], 'selected delay carried no peer packets')
+                require(after['packets'] > before['packets'], 'selected profile carried no peer packets')
             restored = time.monotonic_ns()
             request('healthy')
             recovery_ms = wait_fresh(f'{ordinal}-recovery', age_limit, restored)
@@ -217,8 +223,8 @@ def main():
         except Exception as restore_error:
             print('ANDROID_PEER_NETWORK_RESTORE_FAILED=' + repr(restore_error), flush=True)
         raise
-    require(len(completed) == len(PROFILES), 'network schedule incomplete')
-    print('ANDROID_PEER_NETWORK=pass cycles=6 pixels=actual connection=retained '
+    require(len(completed) == len(profiles), 'network schedule incomplete')
+    print(f'ANDROID_PEER_NETWORK=pass cycles={len(profiles)} pixels=actual connection=retained '
           'recovery_limit_ms=8000 drift_limit_ms=250 observer_limit_ms=500 '
           'transport=adb-reverse-linux-tcp-leg impairment=retired', flush=True)
 

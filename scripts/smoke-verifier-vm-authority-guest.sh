@@ -301,7 +301,7 @@ case "$#:${8:-}" in
     20:--android-emulator-runtime|21:--android-emulator-runtime)
         [ "${17}" = peer-lifecycle ] || [ "${17}" = controlled-cm ] || [ "${17}" = storage-reload ] || exit 2
         if [ "$#" -eq 21 ]; then
-            { [ "${21}" = --soak ] || [ "${21}" = --network-impairment ]; } && [ "${17}" = peer-lifecycle ] || exit 2
+            { [ "${21}" = --soak ] || [ "${21}" = --network-impairment ] || [ "${21}" = --network-congestion ]; } && [ "${17}" = peer-lifecycle ] || exit 2
         fi
         MODE=android-emulator-runtime
         ;;
@@ -11770,7 +11770,7 @@ run_android_emulator_runtime() {
     fi
     mount_android_runtime_failure_output
     local -a impairment_supervisor=()
-    if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ]; then
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ] || [ "$ANDROID_RUNTIME_EXTENSION" = --network-congestion ]; then
         impairment_supervisor=(/usr/bin/python3 -I -S "$source_root/scripts/flutter-peer-netem.py"
             "$DEV_CHECK_IMAGE_CONFIG_ID" --android --)
     fi
@@ -11784,6 +11784,9 @@ run_android_emulator_runtime() {
     set -e
     if [ "$workload_status" -ne 0 ]; then
         grep '^ANDROID_PEER_ARTIFACT_ADMITTED=' "$output" >&2 || true
+        if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ] || [ "$ANDROID_RUNTIME_EXTENSION" = --network-congestion ]; then
+            grep -E '^FLUTTER_PEER_(TCP_|NETEM|PACKET_CALIBRATION|CONGESTION_CALIBRATION|BANDWIDTH_OBSERVED|INTERFACE)' "$output" >&2 || true
+        fi
         awk '
             /^ANDROID_FRAMEWORK_DIAGNOSTIC_BEGIN$/ { in_diag = 1 }
             in_diag { print }
@@ -11866,9 +11869,11 @@ run_android_emulator_runtime() {
     fi
     [ "$(stat -c '%s' -- "$output")" -le 2097152 ] \
         || fail 'Android emulator runtime replay output exceeds its bound'
-    if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ]; then
-        [ "$(grep -Fxc 'ANDROID_PEER_NETWORK=pass cycles=6 pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 observer_limit_ms=500 transport=adb-reverse-linux-tcp-leg impairment=retired' "$output")" -eq 1 ] \
-            && [ "$(grep -c '^ANDROID_PEER_NETWORK_CASE=' "$output")" -eq 6 ] \
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ] || [ "$ANDROID_RUNTIME_EXTENSION" = --network-congestion ]; then
+        local network_cycles=6
+        [ "$ANDROID_RUNTIME_EXTENSION" != --network-congestion ] || network_cycles=3
+        [ "$(grep -Fxc "ANDROID_PEER_NETWORK=pass cycles=$network_cycles pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 observer_limit_ms=500 transport=adb-reverse-linux-tcp-leg impairment=retired" "$output")" -eq 1 ] \
+            && [ "$(grep -c '^ANDROID_PEER_NETWORK_CASE=' "$output")" -eq "$network_cycles" ] \
             && [ "$(grep -Fxc 'FLUTTER_PEER_NETEM_JOINED status=0 namespace=retired socket=removed' "$output")" -eq 1 ] \
             && [ "$(grep -c '^FLUTTER_PEER_TCP_OBSERVED=' "$output")" -eq 1 ] \
             || fail 'Android network recovery or impairment retirement is incomplete'
@@ -12313,8 +12318,8 @@ run_android_emulator_runtime() {
         grep -E '^ANDROID_PEER_SERVER_LOG_(DIAGNOSTIC=|TAIL )' "$output"
         grep -E '^ANDROID_PEER_AUDIO(_CAPTURE|_EMPTY)?=' "$output"
         grep -E '^ANDROID_PEER_STATIC_(CASE=|COMPLETE )' "$output"
-        if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ]; then
-            grep -E '^(ANDROID_PEER_NETWORK(_[A-Z]+)?=|FLUTTER_PEER_(TCP_|NETEM|PACKET_CALIBRATION))' "$output"
+        if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ] || [ "$ANDROID_RUNTIME_EXTENSION" = --network-congestion ]; then
+            grep -E '^(ANDROID_PEER_NETWORK(_[A-Z]+)?=|FLUTTER_PEER_(TCP_|NETEM|PACKET_CALIBRATION|CONGESTION_CALIBRATION|BANDWIDTH_OBSERVED|INTERFACE))' "$output"
         fi
         [ "$ANDROID_RUNTIME_EXTENSION" != --soak ] || printf '%s\n' "$soak_receipt"
     elif [ "$ANDROID_RUNTIME_SCENARIO" = controlled-cm ]; then

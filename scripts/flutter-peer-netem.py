@@ -100,7 +100,8 @@ class Impairment:
                         '/source/scripts/smoke-android-emulator-boot.sh',
                         '/inputs/emulator.zip', '/inputs/system-image.zip', '/inputs/adb',
                         '/tmp/android-emulator-app', '/inputs/app.apk', 'peer-lifecycle',
-                        '/inputs/recents-dismiss.jar', '--network-impairment'],
+                        '/inputs/recents-dismiss.jar',
+                        '--network-congestion' if self.congestion else '--network-impairment'],
                     'Android peer container contract differs')
         else:
             require(not host['Devices'] and host['SecurityOpt'] in (

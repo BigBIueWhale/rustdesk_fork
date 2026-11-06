@@ -143107,3 +143107,34 @@ The pinned method, seven controls and complete round trip pass.
 QEMU/private/RAM absence. Its eight files / 119,300 bytes match CTE/TUF.
 This audit-only receipt preserves the counted ledger; whole-document role
 classification remains open.
+
+### 2026-11-06 — Android bandwidth and variable-delay recovery
+
+The user-requested status review made no implementation or acceptance progress.
+Continue R-F5's existing Android recovery checkpoint with the next missing network
+conditions, reusing APK `9b22f10f` and peer `4c29a59f`. This gives a decisive actual-
+pixel result without another application build or unrelated verifier expansion.
+The explicit `--network-congestion` extension admits three twenty-second cases:
+80 +/- 30 ms ingress delay, 32 kbit/s aggregate bandwidth, and both together.
+Healthy baseline/restoration uses 10 Mbit/s and no added delay. The existing
+eight-second/four-fresh-state recovery deadline, two-second hard age ceiling,
+original baseline maximum/p95 plus 250 ms, ten-second healthy windows, observer,
+queue, process/task/socket and resource bounds remain unchanged.
+
+Primary research: iproute2 v6.1.0 `tc-tbf.8` and `tc-netem.8`:
+https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-tbf.8
+https://raw.githubusercontent.com/iproute2/iproute2/v6.1.0/man/man8/tc-netem.8
+The inner netem queue supplies the packet bound; TBF's own limit is ineffective
+with an inner qdisc. The already accepted Linux mechanism checks both queues,
+actual throttled byte delivery/overlimits and variable delay, and proves queued
+datagrams survive restoration. Queue changes preserve backlog. Android admission
+now selects that existing mechanism with the exact container command. The driver
+requires delivered packets for these profiles; loss cases retain their drop check.
+Root queue/calibration/transport records are exported on success and failure.
+The original six-case impairment schedule and Linux implementation are retained.
+
+Python AST, four Bash syntax checks, full diff review and whitespace checks pass.
+TUF has 51,836,996 KiB available memory, the existing SSH master and no private
+run directory. Actual Android acceptance is pending. Source/refs will remain
+fixed through the isolated replay and evidence/cleanup reconciliation. This
+changes test orchestration only; complete R-F5 and release acceptance stay OPEN.

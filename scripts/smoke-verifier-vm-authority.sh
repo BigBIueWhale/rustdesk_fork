@@ -701,7 +701,7 @@ case "$#:${1:-}" in
         ANDROID_RUNTIME_PEER_COMMIT=${11}
         ANDROID_RUNTIME_PEER_MANIFEST_SHA256=${13}
         if [ "$#" -eq 14 ]; then
-            { [ "${14}" = --soak ] || [ "${14}" = --network-impairment ]; } && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] || exit 2
+            { [ "${14}" = --soak ] || [ "${14}" = --network-impairment ] || [ "${14}" = --network-congestion ]; } && [ "$ANDROID_RUNTIME_SCENARIO" = peer-lifecycle ] || exit 2
             ANDROID_RUNTIME_EXTENSION=${14}
         fi
         ;;
@@ -8970,9 +8970,11 @@ elif [ "$MODE" = android-emulator-runtime ]; then
             'ANDROID_PEER_SOAK=pass seconds=7200 observation=per-second age_limit_ms=2000 observer_limit_ms=500 gap_limit_ms=2000 drift_limit_ms=250 resources=rss-threads task=stable process=stable peer=stable logs=retained' \
             'uninterrupted two-hour Android soak receipt'
     fi
-    if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ]; then
+    if [ "$ANDROID_RUNTIME_EXTENSION" = --network-impairment ] || [ "$ANDROID_RUNTIME_EXTENSION" = --network-congestion ]; then
+        android_network_cycles=6
+        [ "$ANDROID_RUNTIME_EXTENSION" != --network-congestion ] || android_network_cycles=3
         require_exact_fixed_receipt \
-            'ANDROID_PEER_NETWORK=pass cycles=6 pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 observer_limit_ms=500 transport=adb-reverse-linux-tcp-leg impairment=retired' \
+            "ANDROID_PEER_NETWORK=pass cycles=$android_network_cycles pixels=actual connection=retained recovery_limit_ms=8000 drift_limit_ms=250 observer_limit_ms=500 transport=adb-reverse-linux-tcp-leg impairment=retired" \
             'Android network recovery receipt'
         require_exact_fixed_receipt \
             'FLUTTER_PEER_NETEM_JOINED status=0 namespace=retired socket=removed' \

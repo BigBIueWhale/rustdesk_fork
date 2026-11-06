@@ -14761,13 +14761,15 @@ run_flutter_peer_presentation() {
             "$FLUTTER_APP_BUILD_CONTEXT" "$FLUTTER_APP_MANIFEST_SHA256" "$FLUTTER_APP_COMMIT" \
             "$provider_installed" "$DEV_CHECK_IMAGE_CONFIG_ID" "$CLIENT" "$SOCK" "$CONFIG_ROOT" \
             "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" \
+            "$INSTALLED_SETTINGS_PROBE_COMMIT" "$INSTALLED_SETTINGS_PROBE_MANIFEST_SHA256" \
+            "$INSTALLED_SETTINGS_PROBE_SHA256" "$INSTALLED_SETTINGS_PROBE_SIZE" \
             2>&1 | tee "$output"
         peer_status=${PIPESTATUS[0]}
         set -e
         [ "$peer_status" -eq 0 ] || fail "installed Flutter settings exited $peer_status"
         [ "$(sha256sum <"$provider_installed/libxdo.so.3" | awk '{print $1}')" = "$provider_sha" ] \
             || fail 'installed Flutter settings input provider changed'
-        [ "$(grep -Fxc "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent credential=unchanged cleanup=joined" "$output")" -eq 1 ] \
+        [ "$(grep -Fxc "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=6 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam cpace=5 stale_refusals=2 restart=service-and-gui cleanup=joined" "$output")" -eq 1 ] \
             || fail 'installed Flutter settings completion is absent or duplicated'
     else
     peer_args=(

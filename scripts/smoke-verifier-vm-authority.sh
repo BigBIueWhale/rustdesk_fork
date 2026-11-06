@@ -1742,6 +1742,7 @@ linux_receiver_input_inventory() {
 
 installed_settings_input_inventory() {
     local archive=$REPO_ROOT/online/candidates/polkit-runtime/polkit-runtime-candidate.tar.gz
+    local probe_root=$REPO_ROOT/.harness-state/android-peer-artifacts/$INSTALLED_SETTINGS_PROBE_COMMIT/linux-x86_64-peer
     local file
     for file in "$REPO_ROOT/online/candidates" "${archive%/*}"; do
         [ -d "$file" ] && [ ! -L "$file" ] \
@@ -1759,6 +1760,28 @@ installed_settings_input_inventory() {
         || fail 'installed settings app production sources differ from the current source'
     /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$archive"
     /usr/bin/sha256sum -- "$archive"
+    for file in "${probe_root%/*/*}" "${probe_root%/*}"; do
+        [ -d "$file" ] && [ ! -L "$file" ] \
+            && [ "$(/usr/bin/readlink -f -- "$file")" = "$file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$file")" = "$HOST_UID:$HOST_GID:700" ] \
+            || fail 'installed settings probe parent authority differs'
+    done
+    [ -d "$probe_root" ] && [ ! -L "$probe_root" ] \
+        && [ "$(/usr/bin/readlink -f -- "$probe_root")" = "$probe_root" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$probe_root")" = "$HOST_UID:$HOST_GID:500" ] \
+        || fail 'installed settings sealed probe directory authority differs'
+    for file in "$probe_root/probe_client" "$probe_root/peer-manifest.json"; do
+        [ -f "$file" ] && [ ! -L "$file" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$file")" = "$HOST_UID:$HOST_GID:400:1" ] \
+            || fail 'installed settings probe input authority differs'
+        /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$file"
+    done
+    [ "$(/usr/bin/stat -c '%s' -- "$probe_root/probe_client")" = "$INSTALLED_SETTINGS_PROBE_SIZE" ] \
+        && [ "$(/usr/bin/stat -c '%s' -- "$probe_root/peer-manifest.json")" -le 8192 ] \
+        || fail 'installed settings probe input size differs'
+    verify_sha256 "$probe_root/probe_client" "$INSTALLED_SETTINGS_PROBE_SHA256"
+    verify_sha256 "$probe_root/peer-manifest.json" "$INSTALLED_SETTINGS_PROBE_MANIFEST_SHA256"
+    /usr/bin/sha256sum -- "$probe_root/probe_client" "$probe_root/peer-manifest.json"
     for file in test-linux-installed-settings.py linux-installed-settings-x11.c \
         test-linux-service-receiver-native.py test-linux-logind-session-selection.py; do
         verify_committed_test_source "$SCRIPT_DIR/$file"
@@ -5157,6 +5180,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     lifecycle_payload_grafts=("source.tar=$FLUTTER_PEER_SOURCE_ARCHIVE")
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
         lifecycle_payload_grafts+=(
+            "settings-probe/probe_client=$REPO_ROOT/.harness-state/android-peer-artifacts/$INSTALLED_SETTINGS_PROBE_COMMIT/linux-x86_64-peer/probe_client"
+            "settings-probe/peer-manifest.json=$REPO_ROOT/.harness-state/android-peer-artifacts/$INSTALLED_SETTINGS_PROBE_COMMIT/linux-x86_64-peer/peer-manifest.json"
             "polkit-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/polkit-runtime/polkit-runtime-candidate.tar.gz"
             "repo/scripts/test-linux-installed-settings.py=$SCRIPT_DIR/test-linux-installed-settings.py"
             "repo/scripts/test-linux-service-receiver-native.py=$SCRIPT_DIR/test-linux-service-receiver-native.py"
@@ -9246,7 +9271,7 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
     require_exact_fixed_receipt \
-        "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent credential=unchanged cleanup=joined" \
+        "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=6 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam cpace=5 stale_refusals=2 restart=service-and-gui cleanup=joined" \
         'installed Flutter password settings result'
     require_exact_fixed_receipt \
         "LINUX_INSTALLED_SETTINGS_VM=pass harness=$FLUTTER_PEER_SOURCE_COMMIT manifest=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 network=none root=disposable-guest-only app_build=absent cleanup=joined" \

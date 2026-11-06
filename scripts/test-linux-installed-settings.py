@@ -2,11 +2,15 @@
 """Real Flutter password controls with the installed service, in the owned VM only."""
 
 import ctypes
+from contextlib import ExitStack, contextmanager
+import grp
 import hashlib
 import importlib.util
 import json
 import os
 from pathlib import Path
+import pty
+import pwd
 import re
 import select
 import shutil
@@ -14,12 +18,17 @@ import signal
 import stat
 import subprocess
 import sys
+import termios
 import time
 
 MEDIA = Path('/mnt/rustdesk-verifier-inputs')
 SCRIPT = MEDIA / 'repo/scripts/test-linux-installed-settings.py'
 WORK = Path('/var/tmp/rustdesk-linux-service-receiver')
 ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
+BASELINE_PASSWORD = 'Installed-baseline-2026!'
+GUI_PASSWORD = 'InstalledGui2026'
+STAGES = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied',
+          'reopen', 'fill', 'submit-approved', 'applied', 'reopen', 'submit', 'denied')
 
 
 def run(argv, *, env=ENV, timeout=30, output_limit=131072):
@@ -262,7 +271,7 @@ def retire_children():
         time.sleep(0.05)
 
 
-def session():
+def session(restarted=False):
     guard(4001)
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), 'cannot retain GUI descendants')
@@ -288,7 +297,7 @@ def session():
         environment['DBUS_SESSION_BUS_ADDRESS'] = address
         app = subprocess.Popen(['/usr/share/rustdesk/rustdesk'], env=environment,
                                stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
-        stages = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied')
+        stages = ('open', 'cancel') if restarted else STAGES
         for stage in stages:
             output = run([str(WORK / 'settings-driver'), str(app.pid), stage], env=environment,
                          timeout=40, output_limit=524288)
@@ -307,15 +316,14 @@ def session():
         retire_children()
 
 
-def service_refusals(record, requester, start):
+def owned_log(directory, pid, uid):
     # The complete optimized application logs to files, unlike the debug receiver.
-    directory = Path('/root/.local/share/logs/RustDesk/service')
     for parent in [directory, *directory.parents]:
         info = parent.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-            raise RuntimeError('service log ancestry is not root-protected')
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid not in (0, uid) or info.st_mode & 0o022:
+            raise RuntimeError('product log ancestry authority differs')
     held = set()
-    for fd in Path(f'/proc/{record["supervisor"]}/fd').iterdir():
+    for fd in Path(f'/proc/{pid}/fd').iterdir():
         try:
             info = fd.stat()
         except FileNotFoundError:
@@ -328,13 +336,13 @@ def service_refusals(record, requester, start):
     active = []
     for path in files:
         info = path.lstat()
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != 0 or info.st_nlink != 1
+        if (not stat.S_ISREG(info.st_mode) or info.st_uid != uid or info.st_nlink != 1
                 or info.st_mode & 0o022):
             raise RuntimeError('service log file authority differs')
         if (info.st_dev, info.st_ino) in held:
             active.append(path)
     if len(active) != 1:
-        raise RuntimeError('the retained supervisor must own exactly one current service log')
+        raise RuntimeError('the retained process must own exactly one current product log')
     path, = active
     with path.open('rb') as stream:
         before = os.fstat(stream.fileno())
@@ -343,6 +351,11 @@ def service_refusals(record, requester, start):
     if (len(data) > 131072 or (before.st_dev, before.st_ino) not in held
             or before.st_size != after.st_size or len(data) != after.st_size):
         raise RuntimeError('service log exceeded its bound or changed during observation')
+    return path, data
+
+
+def service_refusals(record, requester, start, count):
+    path, data = owned_log(Path('/root/.local/share/logs/RustDesk/service'), record['supervisor'], 0)
     messages = data.decode().splitlines()
     prefix = ('polkit denied action=com.carriez.RustDesk.set-unattended-password, '
               f'subject={requester},{start},4001, status=exit status: ')
@@ -350,69 +363,239 @@ def service_refusals(record, requester, start):
     print('LINUX_INSTALLED_SETTINGS_SERVICE_LOG=' + json.dumps(
         {'path': str(path), 'supervisor': record['supervisor'], 'bytes': len(data),
          'sha256': hashlib.sha256(data).hexdigest(), 'refusals': refusals}, sort_keys=True), flush=True)
-    if len(refusals) != 2:
+    if len(refusals) != count:
         print('LINUX_INSTALLED_SETTINGS_SERVICE_DIAGNOSTIC=' + json.dumps(
             [line for line in messages if 'password' in line.lower()][-20:]), flush=True)
-        raise RuntimeError('visible errors do not match two actual service authorization refusals')
+        raise RuntimeError('visible errors do not match actual service authorization refusals')
     return refusals
 
 
-def scenario(receiver):
+@contextmanager
+def administrator(receiver, requester):
+    for name, mode, sha in (
+            ('/usr/bin/pkttyagent', 0o755, '820110471dd023bf8272a05dd0910d876c0d2c54f3c91ed49d6cc93598f7f814'),
+            ('/usr/lib/polkit-1/polkit-agent-helper-1', 0o4755, '8eb4c2d5f21698a41a0d6cdafb49c889c4ace55cada690c2cea118073fe05bab')):
+        info = Path(name).lstat()
+        if (not stat.S_ISREG(info.st_mode) or (info.st_uid, info.st_gid, stat.S_IMODE(info.st_mode)) != (0, 0, mode)
+                or digest(name) != sha):
+            raise RuntimeError('packaged authentication agent authority differs')
+    if (digest('/usr/share/polkit-1/actions/com.carriez.RustDesk.policy') !=
+            digest(MEDIA / 'repo/res/com.carriez.RustDesk.policy')
+            or 'rdreceiver4003' not in grp.getgrnam('sudo').gr_mem):
+        raise RuntimeError('administrator or shipped policy identity differs')
+    master, slave = pty.openpty()
+    notify_read, notify_write = os.pipe()
+    agent = None
+    try:
+        os.fchown(slave, 4001, 4001)
+        os.fchmod(slave, 0o600)
+        agent = subprocess.Popen(['/usr/bin/python3', '-B', '-I', '-S', str(Path(receiver.__file__)),
+                                  '--polkit-agent', f'{requester[0]},{requester[1]}', str(notify_write)],
+                                 env=ENV, pass_fds=(notify_write,), stdin=slave, stdout=slave, stderr=slave)
+        os.close(slave)
+        slave = None
+        os.close(notify_write)
+        notify_write = None
+        if not select.select([notify_read], [], [], 5)[0] or os.read(notify_read, 1) or agent.poll() is not None:
+            raise RuntimeError('actual polkit agent did not register for the GUI generation')
+        proc = Path(f'/proc/{agent.pid}')
+        status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+        if (not (proc / 'exe').samefile('/usr/bin/pkttyagent') or status['Uid'].split() != ['4001'] * 4
+                or status['NoNewPrivs'].strip() != '0'
+                or any(int(status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))):
+            raise RuntimeError('authentication agent principal or image differs')
+        yield agent, master
+    finally:
+        try:
+            if agent is not None:
+                if agent.poll() is None:
+                    os.killpg(agent.pid, signal.SIGTERM)
+                    try:
+                        agent.wait(timeout=5)
+                    except subprocess.TimeoutExpired:
+                        os.killpg(agent.pid, signal.SIGKILL)
+                        agent.wait(timeout=5)
+                deadline = time.monotonic() + 5
+                while True:
+                    try:
+                        os.killpg(agent.pid, 0)
+                    except ProcessLookupError:
+                        break
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError('owned authentication agent group did not retire')
+                    time.sleep(0.02)
+        finally:
+            for fd in (master, slave, notify_read, notify_write):
+                if fd is not None:
+                    os.close(fd)
+
+
+def authenticate(receiver, authority, requester, record, before):
+    agent, terminal_fd = authority
+    terminal = bytearray()
+    chosen = sent = False
+    deadline = time.monotonic() + 20
+    while b'AUTHENTICATION COMPLETE' not in terminal:
+        if agent.poll() is not None or time.monotonic() >= deadline:
+            raise RuntimeError(f'GUI administrator authorization did not complete: {terminal[-4096:]!r}')
+        if select.select([terminal_fd], [], [], 0.1)[0]:
+            data = os.read(terminal_fd, 4096)
+            if not data or len(terminal) + len(data) > 32768:
+                raise RuntimeError('administrator terminal closed or exceeded its bound')
+            terminal.extend(data)
+        if not chosen and b'Choose identity to authenticate as' in terminal:
+            matches = re.findall(rb'(?m)^\s*([1-9][0-9]*)\.\s+[^\r\n]*\brdreceiver4003\b[^\r\n]*', terminal)
+            if len(matches) != 1:
+                raise RuntimeError('administrator identity menu differs')
+            os.write(terminal_fd, matches[0] + b'\n')
+            chosen = True
+        if not sent and b'Password:' in terminal and not termios.tcgetattr(terminal_fd)[3] & termios.ECHO:
+            if (b'com.carriez.RustDesk.set-unattended-password' not in terminal
+                    or b'rdreceiver4003' not in terminal or receiver.credential() != before
+                    or receiver.child_record() != record):
+                raise RuntimeError('GUI authorization challenge or pre-approval state differs')
+            os.write(terminal_fd, (receiver.ADMIN_PASSWORD + '\n').encode())
+            sent = True
+    if (not sent or terminal.count(b'AUTHENTICATION COMPLETE') != 1
+            or receiver.ADMIN_PASSWORD.encode() in terminal):
+        raise RuntimeError('GUI administrator proof is incomplete or exposed its password')
+    print('LINUX_INSTALLED_SETTINGS_ADMIN=' + json.dumps(
+        {'requester_pid': requester[0], 'requester_start': requester[1], 'requester_uid': 4001,
+         'administrator_uid': 4003, 'agent_pid': agent.pid, 'terminal': terminal.decode()}, sort_keys=True), flush=True)
+
+
+def credential_network(receiver, record, probe_sha, phase):
+    receiver.keyed(GUI_PASSWORD, phase + '-new', record, probe_sha)
+    directory = Path('/home/rdreceiver4001/.local/share/logs/RustDesk/server')
+    path, baseline = owned_log(directory, record['pid'], 4001)
+    before = receiver.credential()
+    listener = receiver.direct_listener(record)
+    result = receiver.run([*ordinary(4002), str(receiver.PROBE), '127.0.0.1:21118', '--password-stdin', 'fail'],
+                          input=BASELINE_PASSWORD + '\n', timeout=45)
+    if result.stdout.splitlines() != ['probe_client: keying ok=false (expected=fail)', 'probe_client: PASS'] or result.stderr:
+        raise RuntimeError('obsolete GUI credential was not refused')
+    after_path, after = owned_log(directory, record['pid'], 4001)
+    delta = after[len(baseline):].decode() if after.startswith(baseline) else ''
+    failures = [line for line in delta.splitlines() if 'R-S10/R-T12 security summary' in line]
+    if (after_path != path or len(failures) != 1 or not failures[0].endswith(
+            'R-S10/R-T12 security summary (last 10s): shed=0 rate_limited=0 key_confirmation_failures=1 recent_src=Some(127.0.0.1)')
+            or receiver.credential() != before or receiver.direct_listener(record) != listener
+            or receiver.child_record() != record):
+        raise RuntimeError(f'obsolete credential lacks exact child confirmation-mismatch evidence: {delta}')
+    receiver.keyed(GUI_PASSWORD, phase + '-recovery', record, probe_sha)
+    print('LINUX_INSTALLED_SETTINGS_CREDENTIAL=' + json.dumps(
+        {'phase': phase, **record, 'old': 'receiver-confirmed-refusal', 'new': 'mutual-cpace',
+         'log': str(path), 'log_sha256': hashlib.sha256(after).hexdigest(), 'refusal': failures[0]}, sort_keys=True), flush=True)
+
+
+def scenario(receiver, probe_sha):
     unit = Path('/etc/systemd/system/rustdesk.service')
     if unit.exists():
         raise RuntimeError('installed settings require absent initial service state')
     install(MEDIA / 'repo/res/rustdesk.service', unit)
     run(['/usr/bin/systemctl', 'daemon-reload'])
     process = None
+    authorization = ExitStack()
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
         record = receiver.ready()
-        receiver.change(0, 'Installed-baseline-2026!', True)
+        receiver.change(0, BASELINE_PASSWORD, True)
         before = receiver.credential()
+        receiver.keyed(BASELINE_PASSWORD, 'gui-baseline', record, probe_sha)
         print('LINUX_INSTALLED_SETTINGS_BASELINE=pass service=actual credential=root-provisioned '
               'child=supervised desktop=pam-logind-x11', flush=True)
         process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT), '--session'],
                                    env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         requester = None
-        for stage in ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied'):
+        committed = None
+        authority = None
+        for index, stage in enumerate(STAGES):
             if not select.select([process.stdout], [], [], 45)[0]:
                 raise RuntimeError('installed GUI stage timed out')
             raw = process.stdout.readline(4096)
             if not raw or not raw.endswith(b'\n'):
                 raise RuntimeError(f'installed GUI ended before stage {stage}')
             event = json.loads(raw)
-            if event.get('stage') != stage or receiver.credential() != before or receiver.child_record() != record:
+            expected = committed if committed is not None else before
+            if stage == 'applied':
+                committed = receiver.credential()
+                if committed == before:
+                    raise RuntimeError('GUI reported success without changing the protected credential')
+                expected = committed
+            if event.get('stage') != stage or receiver.credential() != expected or receiver.child_record() != record:
                 raise RuntimeError(f'installed GUI stage or protected credential differs: {event}')
             identity = (event['pid'], int(Path(f'/proc/{event["pid"]}/stat').read_bytes().rsplit(b') ', 1)[1].split()[19]))
             if requester is not None and requester != identity:
                 raise RuntimeError('installed GUI requester generation changed')
             requester = identity
-            print('LINUX_INSTALLED_SETTINGS_OBSERVED=' + json.dumps({**event, 'credential_unchanged': True,
+            status = dict(line.split(':', 1) for line in Path(f'/proc/{identity[0]}/status').read_text().splitlines() if ':' in line)
+            if (status['Uid'].split() != ['4001'] * 4 or status['NoNewPrivs'].strip() != '1'
+                    or any(int(status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))
+                    or not Path(f'/proc/{identity[0]}/exe').samefile('/usr/share/rustdesk/rustdesk')):
+                raise RuntimeError('GUI requester is not the ordinary installed image')
+            if index == 8:
+                service_refusals(record, *requester, 2)
+            if index == 10:
+                authority = authorization.enter_context(administrator(receiver, requester))
+            if stage == 'submit-approved':
+                authenticate(receiver, authority, requester, record, before)
+                authorization.close()
+            print('LINUX_INSTALLED_SETTINGS_OBSERVED=' + json.dumps({**event, 'index': index,
+                  'credential': 'committed' if committed is not None else 'baseline',
                   'service_generation': record['generation']}, sort_keys=True), flush=True)
             process.stdin.write(b'continue\n')
             process.stdin.flush()
         if process.wait(timeout=15) != 0:
             raise RuntimeError('installed GUI session did not retire successfully')
-        refusals = service_refusals(record, *requester)
-        if receiver.credential() != before:
-            raise RuntimeError('protected credential changed after refused GUI requests')
+        refusals = service_refusals(record, *requester, 3)
+        if committed is None or receiver.credential() != committed:
+            raise RuntimeError('protected credential differs after the GUI workflow')
         print('LINUX_INSTALLED_SETTINGS_REFUSALS=' + json.dumps(refusals), flush=True)
+        credential_network(receiver, record, probe_sha, 'gui-applied')
+        run(['/usr/bin/systemctl', 'restart', 'rustdesk.service'], timeout=40)
+        restarted = receiver.ready(record)
+        if receiver.credential() != committed:
+            raise RuntimeError('GUI credential did not persist through service restart')
+        credential_network(receiver, restarted, probe_sha, 'gui-restarted')
+        for pipe in (process.stdin, process.stdout):
+            pipe.close()
+        process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT), '--session-restart'],
+                                   env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        for stage in ('open', 'cancel'):
+            if not select.select([process.stdout], [], [], 45)[0]:
+                raise RuntimeError('restarted GUI stage timed out')
+            event = json.loads(process.stdout.readline(4096))
+            if (event.get('stage') != stage or event.get('pid') == requester[0]
+                    or receiver.credential() != committed or receiver.child_record() != restarted):
+                raise RuntimeError('restarted GUI or protected credential differs')
+            print('LINUX_INSTALLED_SETTINGS_RESTART=' + json.dumps({**event, **restarted,
+                  'gui_pid': event['pid'], 'credential': 'preserved'}, sort_keys=True), flush=True)
+            process.stdin.write(b'continue\n')
+            process.stdin.flush()
+        if process.wait(timeout=15) != 0:
+            raise RuntimeError('restarted GUI did not retire')
     finally:
-        if process is not None:
-            if process.poll() is None:
-                process.stdin.close()  # EOF makes the owning controller drain its actual children.
-                process.wait(timeout=50)
-            for pipe in (process.stdin, process.stdout):
-                if pipe is not None and not pipe.closed:
-                    pipe.close()
-        run(['/usr/bin/systemctl', 'stop', 'rustdesk.service'], timeout=40)
-        if Path('/sys/fs/cgroup/system.slice/rustdesk.service').exists():
-            raise RuntimeError('installed service cgroup remains after stop')
+        try:
+            authorization.close()
+        finally:
+            try:
+                if process is not None:
+                    if process.poll() is None:
+                        process.stdin.close()  # EOF makes the owning controller drain its actual children.
+                        process.wait(timeout=50)
+                    for pipe in (process.stdin, process.stdout):
+                        if pipe is not None and not pipe.closed:
+                            pipe.close()
+            finally:
+                run(['/usr/bin/systemctl', 'stop', 'rustdesk.service'], timeout=40)
+                if Path('/sys/fs/cgroup/system.slice/rustdesk.service').exists():
+                    raise RuntimeError('installed service cgroup remains after stop')
 
 
 def main(arguments):
     guard()
-    source, app_input, context, manifest_sha, commit, provider, image, client, sock, config, archive_sha, polkit_manifest = arguments
+    (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
+     archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
     source, app_input, provider = Path(source), Path(app_input), Path(provider)
     receiver = receiver_module()
     receiver.guard()
@@ -452,12 +635,36 @@ def main(arguments):
     Path('/usr/bin/rustdesk').symlink_to('../share/rustdesk/rustdesk')
     install(provider / 'libxdo.so.3', '/usr/lib/rustdesk-fork/libxdo.so.3')
     Path('/usr/lib/rustdesk-fork').chmod(0o755)
-    receiver.installed_desktop(lambda: scenario(receiver), settings=True)
+    probe_manifest = MEDIA / 'settings-probe/peer-manifest.json'
+    probe = MEDIA / 'settings-probe/probe_client'
+    if (digest(probe_manifest) != probe_manifest_sha or digest(probe) != probe_sha
+            or probe.stat().st_size != int(probe_size)):
+        raise RuntimeError('retained CPace probe input identity differs')
+    probe_record = json.loads(probe_manifest.read_text())
+    if (probe_record['context']['source_commit'] != probe_commit
+            or probe_record['files']['probe_client'] != {'bytes': int(probe_size), 'sha256': probe_sha}):
+        raise RuntimeError('retained CPace probe provenance differs')
+    install(probe, receiver.PROBE, 0o755)
+    try:
+        pwd.getpwuid(4003)
+    except KeyError:
+        run(['/usr/sbin/useradd', '--uid', '4003', '--user-group', '--create-home',
+             '--shell', '/usr/sbin/nologin', '--groups', 'sudo', 'rdreceiver4003'])
+    else:
+        raise RuntimeError('fixture administrator UID already exists')
+    try:
+        receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
+        receiver.installed_desktop(lambda: scenario(receiver, probe_sha), settings=True)
+    finally:
+        run(['/usr/sbin/userdel', 'rdreceiver4003'])
     for name, record in manifest['files'].items():
         if name.startswith('bundle/') and digest(bundle / name[len('bundle/'):]) != record['sha256']:
             raise RuntimeError('installed application changed during execution')
-    print(f'LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
-          'ui=actual service=actual cancellation=before-submit denial=no-agent credential=unchanged cleanup=joined', flush=True)
+    if digest(receiver.PROBE) != probe_sha:
+        raise RuntimeError('CPace probe changed during the installed workflow')
+    print(f'LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=6 app_commit={commit} manifest_sha256={manifest_sha} '
+          'ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam '
+          'cpace=5 stale_refusals=2 restart=service-and-gui cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':
@@ -465,7 +672,9 @@ if __name__ == '__main__':
         prepare()
     elif sys.argv[1:] == ['--session']:
         session()
-    elif len(sys.argv) == 14 and sys.argv[1] == '--run':
+    elif sys.argv[1:] == ['--session-restart']:
+        session(restarted=True)
+    elif len(sys.argv) == 18 and sys.argv[1] == '--run':
         main(sys.argv[2:])
     else:
         raise SystemExit('closed installed-settings arguments required')

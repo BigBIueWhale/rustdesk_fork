@@ -144107,3 +144107,27 @@ The fixed tokenizer, seven controls and whole-input round trip pass.
 peak RAM scratch, three zero endpoint deltas and exact QEMU/private/RAM retirement.
 Eight files / 115,146 bytes match both hosts. This audit-only receipt leaves the
 counted ledger unchanged; whole-document classification/compression remains OPEN.
+
+## 2026-11-06 — installed GUI administrator success and restart
+
+The preceding goal turn answered the user's progress question and changed no
+authoritative state: no progress. Reinspection finds clean `ee9c8f3b` on CTE/TUF,
+the existing password-authenticated TUF SSH master, 48,371 MiB available RAM and
+no retained private VM run. Continue R-S0/R-S11b/R-S11ie installed functionality
+using the accepted full bundle; this closes a complete required workflow before
+expanding unrelated component coverage. The existing denial/cancellation evidence
+does not establish authorized GUI effects or persistence.
+
+Extend the same actual UI sequence with a PID/start-bound ordinary pkttyagent,
+real PAM authentication as fixture administrator UID4003, observed dialog success,
+protected credential change, a subsequent no-agent refusal, and service/GUI restart.
+The [pkttyagent contract](https://polkit.pages.freedesktop.org/polkit/pkttyagent.1.html)
+provides exact process/start binding and registration acknowledgement through FD
+closure. No permissive policy rule is added. Reuse TUF's `ea13742f` test-only CPace
+initiator, pin its existing manifest and bytes, and copy only those two inputs into
+RAM media. Its probe/CPace/TCP sources match current HEAD; CTE's `899dcad5` probe
+has identical bytes. Require five mutual key confirmations and two old-password
+refusals corroborated by the exact child-held optimized log. Both shipped app and
+policy remain unchanged. Acceptance is pending actual isolated execution; this
+preparation does not close the Boolean outcome API, cancellation while authorizing,
+other platforms or final packages.

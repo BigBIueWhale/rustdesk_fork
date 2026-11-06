@@ -233,11 +233,16 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[2], "reopen") == 0) {
         if (activate_named_control(pid, "Set permanent password") != 0 ||
             settings_visible(pid, "Set password", 1) != 0) goto atspi_out;
-    } else if (strcmp(argv[2], "submit") == 0 || strcmp(argv[2], "fill") == 0) {
+    } else if (strcmp(argv[2], "submit") == 0 || strcmp(argv[2], "submit-approved") == 0 ||
+               strcmp(argv[2], "fill") == 0) {
         if (settings_password(display, main, pid, "Password") != 0 ||
             settings_password(display, main, pid, "Confirmation") != 0) goto atspi_out;
-        if (strcmp(argv[2], "submit") == 0 && activate_named_control(pid, "OK") != 0)
+        if (strcmp(argv[2], "fill") != 0 && activate_named_control(pid, "OK") != 0)
             goto atspi_out;
+    } else if (strcmp(argv[2], "applied") == 0) {
+        if (settings_visible(pid, "Set password", 0) != 0 ||
+            settings_visible(pid, "Prompt: Failed", 0) != 0 ||
+            settings_visible(pid, "Set permanent password", 1) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "denied") == 0) {
         if (settings_visible(pid, "Prompt: Failed", 1) != 0 ||
             settings_visible(pid, "Set password", 1) != 0) goto atspi_out;

@@ -7357,9 +7357,8 @@ write failures. TUF `yEUlGGdzDf` passes 500,000 synthetic publications under a
 output-failure and inherited-limit checks, plus actual fresh/stale X11 pixels.
 The old reader rejects the same large history. The 62.537-second no-NIC run joins
 and retires RAM scratch with zero listener deltas. Retained comparison:
-`android-history-76cd9218.json`. This establishes observer capacity; uninterrupted
-multi-hour app freshness/resources, input-to-visible response and R-F5 remain OPEN.
-The integrated workload below remains incomplete.
+`android-history-76cd9218.json`. This establishes observer capacity; integrated
+application evidence is below. Input-to-visible response and R-F5 remain OPEN.
 
 **Scheduled observation (`94c54123`, `24a8ad3e`).** `observe_duration` rejects each stale,
 unknown, regressing or over-budget sample instead of waiting for later recovery.
@@ -7368,39 +7367,39 @@ histograms. TUF `RWJfstLFJO` passes the synthetic two-hour schedule, eleven refu
 cases and real atomic frame-replacement reads. Actual X11 observation spans
 3,130 ms/four samples, with 163-ms maximum age. This is observer evidence.
 
-**Two-hour pixels observed; corrected short replay passes; soak replay OPEN.**
-TUF `DeoOXfX07D`, harness `a70a4bd6`, reuses matching `9b22f10f` APK/peer.
-Unary capture passes ten observer cases and 120 minute windows/7,201 observations
-over 7,200.116 seconds. Maximum content/observer/gap ages are **1,132/108/1,027 ms**;
-first-minute p95 is 998 ms, maximum upward drift 61 ms. RSS grows at most
-28,120 KiB from 255,316 KiB; 58 threads and app/service/task/peer identities
-remain stable. Authentication, background recovery and warm-hold controls pass.
+**Two-hour Android display/lifecycle replay passes; broader R-F5 OPEN.**
+TUF `EI4PpMmAee`, harness `4ebb905e`, reuses matching `9b22f10f` APK/peer
+in Android 14 x86_64. All 120 minute windows/7,201 observations pass over
+7,200.119 seconds. Content age p50/p95/max is **658/1,008/1,130 ms**;
+observer/gap maxima are 113/1,041 ms. First-minute p95 stays fixed at 990 ms;
+maximum upward drift is 65 ms. RSS grows at most 19,692 KiB from 253,632 KiB;
+56 threads and app/service/task/peer identities remain stable throughout the soak.
 
-Post-soak reconnect presents changing pixels in 540 ms but lacks the server timing
-record; shutdown lacks its terminal record. The log ends 77 minutes earlier amid
-encoder/PulseAudio file-size errors. Native controls reproduce allocation EFBIG
-and lost late records at the old 8-MiB process-wide limit. `fcd7051c` admits
-128 MiB and refuses insufficient inherited capacity/saturated logs; five cases pass
-in `android-peer-file-limit-fcd7051c.json`.
+Credential/directory, background and warm-hold controls pass, followed by all six
+ordinary reconnects and six task replacements: 22 pixel phases, all thirteen
+server/native/Dart timing records, the 120.4-second absent-task hold and graceful
+shutdown. Background/reconnect/task recovery maxima are 1,320/540/720 ms;
+maximum content age across lifecycle phases is 1,158 ms. Thirteen lifecycle resource
+samples have no RSS growth from their 269,548-KiB baseline and thread growth six
+from 56. These are separate from the soak's baseline/samples; handles are unobserved.
 
-With that correction, TUF `4MvSw96Rik`/`4cad48ad` passes 22 pixel phases, six
-ordinary reconnects, six task replacements, all 13 timing/resource records and
-graceful shutdown on the same app/peer. Maximum sampled content/observer ages are
-1,102/104 ms; background/reconnect/task recovery maxima 1,310/560/540 ms;
-RSS/thread growth 2,448 KiB/four. The short replay's server diagnostic counts
-were filtered from successful output; their export is corrected but unexecuted.
-Audio/encoder diagnostics, complete soak replay, handles, input-to-visible,
-impairment, physical devices and R-F5 remain OPEN. Both runs retire QEMU/private/RAM
-with five zero endpoint deltas. CTE/TUF retain `android-file-limit-lifecycle-4cad48ad.json`,
-`android-soak-timed-a70a4bd6.json` and its runtime log; matching build/observer
-provenance remains in `android-soak-{observer,app,peer}-9b22f10f.json` and the audit.
+The corrected 128-MiB file allowance admits the 22,257,210-byte server
+log through shutdown, with no file-size errors or saturation and one shutdown
+record. Its retained diagnostic summary reports **177,635 no-valid-frame encoder
+messages and 6,714 audio-capture terminations**. Their cause and functional impact
+remain OPEN; display success does not establish healthy audio/encoder behavior.
+Only the bounded summary/tail and log digest are retained, not the complete log.
 
-**Earlier partial control (`24a8ad3e`).** With app `f372aacf`/peer `b30f4811`,
-`mDJFQwJwGj` passes five minute windows/301 observations before cancellation:
-maximum content/observer/gap ages 1,028/99/1,024 ms, minute p95 939→977 ms,
-RSS growth 6,428 KiB and 60 threads. Remaining observation, final logs and later
-lifecycle checks are unexecuted. Cleanup joins with zero listener deltas;
-provenance is in the audit's November 1 transfer-rate entry. This is not a soak pass.
+QEMU/private/RAM retirement is reconciled. Four endpoint snapshots have zero
+delta; the final inventory has one unattributed addition and three removals, so
+no zero-drift claim applies. CTE/TUF retain `android-soak-file-limit-4ebb905e.json`.
+The earlier missing-log failure, five native file-limit controls and short replay
+remain in `android-soak-timed-a70a4bd6.json`,
+`android-peer-file-limit-fcd7051c.json`, `android-file-limit-lifecycle-4cad48ad.json`
+and the audit; app/peer/observer provenance is in
+`android-soak-{observer,app,peer}-9b22f10f.json`.
+**OPEN:** audio/encoder follow-up, handles, input-to-visible response, impairment,
+physical devices, other supported roles and full R-F5 acceptance.
 
 **Historical app/task comparison (`f372aacf`).** `SwFv2D21aX` with peer `b30f4811`
 passes all 22 Android 14 pixel phases, six ordinary reconnects and six task

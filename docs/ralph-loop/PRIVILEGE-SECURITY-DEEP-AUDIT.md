@@ -142480,3 +142480,52 @@ c0efa8dbaab8bde73b1adb0f2660ea4e5d76e2fa64e066c8271a4f08a5705fc3.
 The 30.582-second count retires QEMU/private/RAM with three zero endpoint deltas
 and 402,870,272-byte peak scratch. All nineteen replay/count evidence files match
 on CTE/TUF (321,289 bytes). This audit-only receipt preserves the counted ledger.
+
+## 2026-11-06 — complete Android soak and post-soak lifecycle replay
+
+TUF `EI4PpMmAee`, harness `4ebb905e`, retained matching `9b22f10f` app/peer,
+exits zero. The uninterrupted 7,200.119-second observation passes all 120 minute
+windows and 7,201 samples. Content-age p50/p95/max is 658/1,008/1,130 ms;
+observer/gap maxima are 113/1,041 ms. The first-minute p95 remains fixed at
+990 ms, with maximum upward drift 65 ms. RSS baseline/maximum is
+253,632/273,324 KiB (growth 19,692 KiB); threads remain 56, and app process,
+foreground service, task and peer identities remain stable throughout the soak.
+The original limits remain unchanged. Handles and input-to-visible are unobserved.
+
+All credential/CM-directory, background and warm-hold controls pass. All 22 pixel
+phases pass, including six ordinary reconnects and six task replacements after
+the soak; all thirteen server/native/Dart timing records pass. Reconnects preserve the client
+owner; task replacements create six distinct owners while preserving the process
+and foreground service. The absent-task hold lasts 120.4 seconds. Maximum
+background/reconnect/task recovery is 1,320/540/720 ms; lifecycle content/observer
+maxima are 1,158/102 ms. Thirteen lifecycle resource samples have RSS baseline/max
+269,548 KiB, final 265,988 KiB, and thread baseline/max/final 56/62/62.
+These baseline/resource observations are separate from the uninterrupted soak.
+
+The new diagnostic forwarding executes end to end. Actual server-log size is
+22,257,210 bytes, below the 134,217,728-byte ceiling, with no file-size errors,
+no saturation and one graceful-shutdown completion record. Digest:
+dd8e7666c3e3db1b9cfe4ab5cf5e588b3caa850944a2d894b83789b89aaa214f.
+It contains 177,635 encoder messages, all `encode fail: no valid frame`, and
+6,714 `PulseAudio capture ended:` records. Counts and the final 24 lines are
+retained; the complete ephemeral log is not. These observations do not establish
+their cause or functional impact. Audio/encoder health remains OPEN; inspect the
+specific native behavior in a focused follow-up instead of repeating this soak
+or suppressing messages on the assumption that they are harmless frame drops.
+
+Exact QEMU/private/RAM absence is reconciled under the shared lock after terminal
+exit and supervisor join. Storage lifetime is 8,527.049 seconds, peak RAM scratch
+4,508,463,104 bytes. Four endpoint snapshots have zero delta. The final snapshot
+has an unattributed `tcp 0.0.0.0:5000` addition and removals of
+`tcp 0.0.0.0:7443`, `tcp 0.0.0.0:8443` and `tcp 127.0.0.1:8096`.
+The sealed wrapper's IP-socket denial proof remains present; the endpoint data
+do not identify those external changes' owners. No zero-drift claim is made,
+and no unrelated host service is inspected or changed to resolve the delta.
+
+Capsule `android-soak-file-limit-4ebb905e.json` is 104,771 bytes, SHA-256
+a820896b1dc4dc9b9c404fbf3420d5ed1edc0af5cf85c8c4feafcb9653888b13.
+All eleven bounded evidence files match CTE/TUF (294,787 bytes). The ledger
+replaces the incomplete-soak entry and removes the superseded five-minute partial
+control; its provenance remains in Git/audit history. Fresh ledger counting
+follows. This is test-only Android 14 x86_64/production-peer evidence, not
+physical-device, impairment, input-response, full audio/encoder or R-F5 acceptance.

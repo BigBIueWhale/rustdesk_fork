@@ -826,7 +826,7 @@ peer_server_keyed_session_count() {
 print_peer_server_log_diagnostic() {
     python3 -B -I -S - "$SCRIPT_DIR/android-peer-soak.py" \
         "$PEER_SERVER_LOG" "$PEER_SERVER_FILE_LIMIT" <<'PY'
-import hashlib, json, runpy, sys
+import hashlib, json, re, runpy, sys
 limit = int(sys.argv[3])
 data = runpy.run_path(sys.argv[1])["read_file"](sys.argv[2], limit)
 markers = {
@@ -839,6 +839,21 @@ markers = {
 summary = {name: data.count(marker) for name, marker in markers.items()}
 summary.update(bytes=len(data), limit_bytes=limit, saturated=len(data) == limit,
                sha256=hashlib.sha256(data).hexdigest())
+audio_reasons = {}
+audio_other = 0
+first_audio_context = ""
+for match in re.finditer(rb"PulseAudio capture ended:([^\r\n]{0,256})", data):
+    reason = match.group(1).decode("utf-8", errors="replace").strip()
+    if reason in audio_reasons or len(audio_reasons) < 16:
+        audio_reasons[reason] = audio_reasons.get(reason, 0) + 1
+    else:
+        audio_other += 1
+    if not first_audio_context:
+        first_audio_context = data[max(0, match.start() - 8192):match.end()].decode(
+            "utf-8", errors="replace")
+summary.update(audio_reason_prefix_counts=audio_reasons,
+               audio_other_reasons=audio_other,
+               first_audio_end_context=first_audio_context)
 print("ANDROID_PEER_SERVER_LOG_DIAGNOSTIC=" + json.dumps(summary, sort_keys=True))
 for line in data[-16384:].splitlines()[-24:]:
     print("ANDROID_PEER_SERVER_LOG_TAIL " + line.decode("utf-8", errors="replace"))
@@ -1619,7 +1634,7 @@ PY
         "$PEER_SEED_LOG" || true)" -eq 1 ] \
         && [ "$(stat -c '%s' -- "$PEER_SEED_LOG")" -le 4096 ] \
         || { tail -n 40 "$PEER_SEED_LOG" >&2; fail 'the Android peer password seed receipt differs'; }
-    HOME=/tmp/android-peer-server-home DISPLAY=:99 RUST_LOG=debug \
+    HOME=/tmp/android-peer-server-home DISPLAY=:99 RUST_LOG=debug PULSE_LOG=4 \
         LD_PRELOAD="$PEER_TARGET/smoke-bind-loopback.so" \
         python3 -B -I -S -c '
 import os, resource, sys

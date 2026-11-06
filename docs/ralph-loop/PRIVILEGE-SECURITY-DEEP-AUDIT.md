@@ -143388,3 +143388,13 @@ All eight files / 109,575 bytes match CTE/TUF. The ledger now records the curren
 fixture acceptance and the still-unmeasured Android input result; a fresh isolated
 count is pending. Next retry the same APK `9b22f10f` / peer `4c29a59f` with
 `--input-latency`. No application rebuild is needed. The full goal remains active.
+
+Fresh ledger count at `ccb8a1cd`, CTE `yzT0gRxGtE`: **400,856 tokens** /
+1,829,779 bytes, SHA-256
+`28364ebddc22e280b4b47a0e9de604a5952dc2dac3b6f12976c824869e4077e6`.
+The pinned method, seven controls and whole-file round trip pass. Capsule
+`input-fixture-ledger-ccb8a1cd.json` binds 30.827 seconds, 402,911,232-byte
+peak scratch, three zero endpoint deltas and independent QEMU/private/RAM absence.
+All eight files / 117,097 bytes match CTE/TUF. This audit-only receipt preserves
+the counted ledger; whole-document classification and full release acceptance
+remain open. The next decisive action remains the retained Android input retry.

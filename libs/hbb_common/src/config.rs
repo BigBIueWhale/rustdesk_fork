@@ -3638,10 +3638,7 @@ impl Config {
             match derive_permanent_password_storages(password) {
                 Some(pair) => pair,
                 None => {
-                    log::error!(
-                        "Failed to derive the CPace PRS; refusing permanent password update"
-                    );
-                    return Ok(false);
+                    bail!("Failed to derive the CPace PRS; refusing permanent password update");
                 }
             }
         };

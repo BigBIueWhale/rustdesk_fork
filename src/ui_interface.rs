@@ -15,6 +15,7 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
+use crate::password_mutation::PasswordMutationOutcome;
 
 #[cfg(not(any(target_os = "ios")))]
 use crate::ipc;
@@ -405,23 +406,30 @@ pub fn can_set_permanent_password() -> bool {
     }
 }
 
-pub fn set_permanent_password_with_result(password: String) -> bool {
+pub fn set_permanent_password_with_result(password: String) -> PasswordMutationOutcome {
     #[cfg(any(target_os = "android", target_os = "ios"))]
-    {
+    let result = {
         if !can_set_permanent_password() {
-            return false;
+            return PasswordMutationOutcome::Denied;
         }
-        return config::Config::set_permanent_password(&password);
-    }
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    {
-        let password = crate::ipc::SensitivePassword::new(password);
-        match crate::ipc::set_permanent_password_sensitive(password) {
-            Ok(()) => true,
-            Err(err) => {
-                log::warn!("Failed to set permanent password: {err}");
-                false
+        config::Config::set_permanent_password_persisted(&password).map(|accepted| {
+            if accepted {
+                PasswordMutationOutcome::Applied
+            } else {
+                PasswordMutationOutcome::Denied
             }
+        })
+    };
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let result = {
+        let password = crate::ipc::SensitivePassword::new(password);
+        crate::ipc::set_permanent_password_sensitive(password)
+    };
+    match result {
+        Ok(outcome) => outcome,
+        Err(err) => {
+            log::warn!("Failed to set permanent password: {err}");
+            PasswordMutationOutcome::Failed
         }
     }
 }

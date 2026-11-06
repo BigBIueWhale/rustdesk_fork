@@ -458,7 +458,7 @@ def observe_admin_authorization_timeout(client, agent, terminal, start, record, 
         helper_age_at_exit = time.clock_gettime(time.CLOCK_BOOTTIME) - helper_start / os.sysconf("SC_CLK_TCK")
         stdout, stderr = client.communicate(timeout=5)
         if (client.returncode != 1 or "Done!" in stdout
-                or "Changing service-owned unattended password was rejected by service" not in stderr
+                or "Password change was denied" not in stderr
                 or len(stdout) + len(stderr) > 32768):
             raise RuntimeError("authorization deadline did not produce explicit terminal denial")
         try:
@@ -632,7 +632,7 @@ def observe_admin_agent_exit(client, agent, terminal, start, record, before, lis
              "durable_unchanged": unchanged, "listener_unchanged": retained,
              "fresh_refusals": refusals}, sort_keys=True), flush=True)
         if (client.returncode != 1 or stdout.strip() == "Done!"
-                or "Changing service-owned unattended password was rejected by service" not in stderr
+                or "Password change was denied" not in stderr
                 or not exited or not reaped or elapsed > 5 or not unchanged or not retained or len(refusals) != 1
                 or terminal.count(b"Password:") != 1 or b"AUTHENTICATION COMPLETE" in terminal
                 or ADMIN_PASSWORD.encode() in terminal):
@@ -769,7 +769,7 @@ def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, be
              "cgroup_absent": not Path("/sys/fs/cgroup" + cgroup).exists(),
              "listener_absent": listener_absent, "durable_unchanged": unchanged,
              "root_journal": root_messages}, sort_keys=True), flush=True)
-        if (client.returncode != 1 or "Changing service-owned unattended password was rejected by service" not in stderr
+        if (client.returncode != 1 or "Password change was denied" not in stderr
                 or stdout.strip() == "Done!" or reply_seconds > 5 or elapsed >= 20
                 or not all(item["exited"] and item["reaped"] for item in retired.values())
                 or outcome != {"ActiveState": "inactive", "SubState": "dead", "Result": "success",
@@ -1115,7 +1115,7 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
                  "stderr_sha256": hashlib.sha256(stderr.encode()).hexdigest(),
                  "durable_retained": credential() == changed}, sort_keys=True), flush=True)
             if (client.returncode != 1 or "Done!" in stdout or not 590 <= time.monotonic() - began <= 625
-                    or "service-owned password mutation outcome remains unknown after bounded recovery" not in stderr
+                    or "Password change outcome remains unknown; it may have been applied" not in stderr
                     or credential() != changed):
                 raise RuntimeError("manager-killed mutation did not retain an explicit unknown client outcome")
             unit_reference.close()
@@ -1223,7 +1223,7 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
             unit_reference.close()
             stdout, stderr = client.communicate(timeout=5)
             if (client.returncode != 1 or "Done!" in stdout
-                    or "service-owned password mutation outcome remains unknown after bounded recovery" not in stderr):
+                    or "Password change outcome remains unknown; it may have been applied" not in stderr):
                 raise RuntimeError("unconverged root request did not retain an explicit uncertain outcome")
             run(["/usr/bin/journalctl", "--sync"], timeout=5)
             barrier_timestamp = int(shutdowns[0]["__MONOTONIC_TIMESTAMP"])
@@ -1731,7 +1731,7 @@ def admin_change(value, record, phase="apply", actor=None):
             if phase == "bad-password" and (not exited or terminal.count(b"Password:") != 1
                     or terminal.count(b"AUTHENTICATION FAILED") != 1 or b"AUTHENTICATION COMPLETE" in terminal
                     or INVALID_ADMIN_PASSWORD.encode() in terminal
-                    or "Changing service-owned unattended password was rejected by service" not in stderr):
+                    or "Password change was denied" not in stderr):
                 raise RuntimeError("incorrect administrator password did not produce actual authentication failure and helper exit")
     finally:
         try:

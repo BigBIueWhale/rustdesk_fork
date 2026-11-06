@@ -117,7 +117,7 @@ fn prompt_unattended_password() -> Result<crate::ipc::SensitivePassword, String>
 fn set_cli_permanent_password(
     password: crate::ipc::SensitivePassword,
 ) -> hbb_common::ResultType<()> {
-    crate::ipc::set_permanent_password_sensitive(password)
+    crate::ipc::set_permanent_password_sensitive(password)?.into_result()
 }
 
 /// shared by flutter and sciter main function

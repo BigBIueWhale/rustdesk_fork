@@ -1451,6 +1451,8 @@ CREDENTIAL_DIALOG_TESTS = {
         "one submit owns every action until durable completion",
         "failed mutation reopens the same dialog owner",
         "lost mutation result does not claim that the password stayed unchanged",
+        "denied mutation permits an explicit authorized retry",
+        "replacement dialog preserves an uncertain native outcome",
         "retired dialog ignores its outstanding completion",
         "replacement dialog takes over the same pending mutation",
     },

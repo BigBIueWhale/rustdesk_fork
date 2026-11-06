@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/permanent_password_dialog.dart';
+import 'package:flutter_hbb/generated_bridge.dart' show PasswordMutationOutcome;
 import 'package:flutter_test/flutter_test.dart';
 
 Widget _harness({
@@ -31,7 +32,7 @@ Finder _button(String label) => find.ancestor(
 void main() {
   testWidgets('one submit owns every action until durable completion',
       (tester) async {
-    final completion = Completer<bool>();
+    final completion = Completer<PasswordMutationOutcome>();
     final mutationCoordinator = PermanentPasswordMutationCoordinator();
     final writes = <String>[];
     final events = <String>[];
@@ -81,7 +82,7 @@ void main() {
     await tester.pump();
     expect(writes, ['Runtime1x']);
 
-    completion.complete(true);
+    completion.complete(PasswordMutationOutcome.Applied);
     await tester.pump();
     expect(events, ['close']);
   });
@@ -92,7 +93,7 @@ void main() {
     await tester.pumpWidget(_harness(
       writePassword: (password) async {
         attempts += 1;
-        return false;
+        return PasswordMutationOutcome.Failed;
       },
       mutationCoordinator: mutationCoordinator,
       close: () => fail('failed persistence closed the dialog'),
@@ -118,7 +119,7 @@ void main() {
 
   testWidgets('retired dialog ignores its outstanding completion',
       (tester) async {
-    final completion = Completer<bool>();
+    final completion = Completer<PasswordMutationOutcome>();
     final mutationCoordinator = PermanentPasswordMutationCoordinator();
     var closes = 0;
     await tester.pumpWidget(_harness(
@@ -134,16 +135,17 @@ void main() {
     await tester.pump();
 
     await tester.pumpWidget(const SizedBox.shrink());
-    completion.complete(true);
+    completion.complete(PasswordMutationOutcome.Applied);
     await tester.pump();
 
     expect(closes, 0);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('lost mutation result does not claim that the password stayed unchanged',
+  testWidgets(
+      'lost mutation result does not claim that the password stayed unchanged',
       (tester) async {
-    final completion = Completer<bool>();
+    final completion = Completer<PasswordMutationOutcome>();
     var writes = 0;
     var closes = 0;
     await tester.pumpWidget(_harness(
@@ -165,7 +167,9 @@ void main() {
 
     expect(writes, 1);
     expect(closes, 0);
-    expect(find.textContaining('The password change could not be confirmed. It may have been applied.'),
+    expect(
+        find.textContaining(
+            'The password change could not be confirmed. It may have been applied.'),
         findsOneWidget);
     expect(find.text('Prompt: Failed'), findsNothing);
     expect(find.byKey(const ValueKey('permanent-password-progress')), findsNothing);
@@ -173,15 +177,88 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('denied mutation permits an explicit authorized retry',
+      (tester) async {
+    var writes = 0;
+    var closes = 0;
+    await tester.pumpWidget(_harness(
+      writePassword: (_) async => ++writes == 1
+          ? PasswordMutationOutcome.Denied
+          : PasswordMutationOutcome.Applied,
+      mutationCoordinator: PermanentPasswordMutationCoordinator(),
+      close: () => closes += 1,
+    ));
+    final fields = find.byType(TextField);
+    await tester.enterText(fields.at(0), 'Runtime1x');
+    await tester.enterText(fields.at(1), 'Runtime1x');
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+
+    expect(find.text('Prompt: Password change was denied.'), findsOneWidget);
+    expect(find.text('Prompt: Failed'), findsNothing);
+    expect(writes, 1);
+    expect(closes, 0);
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+    expect(writes, 2);
+    expect(closes, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('replacement dialog preserves an uncertain native outcome',
+      (tester) async {
+    final completion = Completer<PasswordMutationOutcome>();
+    final coordinator = PermanentPasswordMutationCoordinator();
+    var writes = 0;
+    var retiredCloses = 0;
+    var replacementCloses = 0;
+    Future<PasswordMutationOutcome> writePassword(String _) {
+      writes += 1;
+      return completion.future;
+    }
+
+    await tester.pumpWidget(_harness(
+      writePassword: writePassword,
+      mutationCoordinator: coordinator,
+      close: () => retiredCloses += 1,
+    ));
+    await tester.enterText(find.byType(TextField).at(0), 'Runtime1x');
+    await tester.enterText(find.byType(TextField).at(1), 'Runtime1x');
+    await tester.tap(find.text('OK'));
+    await tester.pump();
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(_harness(
+      writePassword: writePassword,
+      mutationCoordinator: coordinator,
+      close: () => replacementCloses += 1,
+    ));
+    completion.complete(PasswordMutationOutcome.Uncertain);
+    await tester.pump();
+
+    expect(writes, 1);
+    expect(retiredCloses, 0);
+    expect(replacementCloses, 0);
+    expect(
+        find.textContaining(
+            'The password change could not be confirmed. It may have been applied.'),
+        findsOneWidget);
+    expect(find.text('Prompt: Failed'), findsNothing);
+    await tester.tap(find.text('Cancel'));
+    await tester.pump();
+    expect(replacementCloses, 1);
+    expect(writes, 1);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('replacement dialog takes over the same pending mutation',
       (tester) async {
-    final completion = Completer<bool>();
+    final completion = Completer<PasswordMutationOutcome>();
     final mutationCoordinator = PermanentPasswordMutationCoordinator();
     var writes = 0;
     var retiredCloses = 0;
     var replacementCloses = 0;
 
-    Future<bool> writePassword(String _) {
+    Future<PasswordMutationOutcome> writePassword(String _) {
       writes += 1;
       return completion.future;
     }
@@ -218,7 +295,7 @@ void main() {
       findsOneWidget,
     );
 
-    completion.complete(true);
+    completion.complete(PasswordMutationOutcome.Applied);
     await tester.pump();
 
     expect(writes, 1);

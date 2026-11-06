@@ -241,10 +241,10 @@ int main(int argc, char **argv) {
             goto atspi_out;
     } else if (strcmp(argv[2], "applied") == 0) {
         if (settings_visible(pid, "Set password", 0) != 0 ||
-            settings_visible(pid, "Prompt: Failed", 0) != 0 ||
+            settings_visible(pid, "Prompt: Password change was denied.", 0) != 0 ||
             settings_visible(pid, "Set permanent password", 1) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "denied") == 0) {
-        if (settings_visible(pid, "Prompt: Failed", 1) != 0 ||
+        if (settings_visible(pid, "Prompt: Password change was denied.", 1) != 0 ||
             settings_visible(pid, "Set password", 1) != 0) goto atspi_out;
         /* A failed request leaves the real cancel action usable. */
         if (activate_named_control(pid, "Cancel") != 0 ||

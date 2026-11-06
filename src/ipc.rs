@@ -24,6 +24,8 @@ mod main_config;
 pub use main_config::MainConfigKey;
 
 use crate::common::is_service_owned_server_process;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::password_mutation::PasswordMutationOutcome;
 #[cfg(target_os = "windows")]
 use crate::privacy_mode::PrivacyModeState;
 use bytes::Bytes;
@@ -6402,7 +6404,7 @@ async fn commit_service_owned_unattended_password_change(
     )
     .await
     {
-        Ok(IpcMutationResult::Applied) => Ok(IpcMutationResult::Applied),
+        Ok(PasswordMutationOutcome::Applied) => Ok(IpcMutationResult::Applied),
         Ok(result) => {
             crate::server::request_graceful_shutdown_after_authority_failure();
             bail!(
@@ -8471,7 +8473,7 @@ async fn complete_main_password_mutation(
     operation_id: String,
     mutation: MainPasswordMutationRequest<'_>,
     ms_timeout: u64,
-) -> ResultType<IpcMutationResult> {
+) -> ResultType<PasswordMutationOutcome> {
     let service_owned = mutation.is_service_owned();
     let value = mutation.value();
     let operation_uuid = hbb_common::uuid::Uuid::parse_str(&operation_id)
@@ -8481,16 +8483,25 @@ async fn complete_main_password_mutation(
     let recovery_deadline = tokio::time::Instant::now() + PASSWORD_MUTATION_RECOVERY_TIMEOUT;
     loop {
         if recovery_required && tokio::time::Instant::now() >= recovery_deadline {
-            bail!("password mutation outcome remains unknown after bounded recovery");
+            return Ok(PasswordMutationOutcome::Uncertain);
         }
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
         if query_only {
+            let remaining = match password::remaining_millis(deadline) {
+                Ok(remaining) => remaining,
+                Err(err) if !recovery_required => return Err(err),
+                Err(err) => {
+                    log::warn!("Retrying admitted password mutation after status deadline: {err}");
+                    hbb_common::sleep(0.1).await;
+                    continue;
+                }
+            };
             let stream = if service_owned {
                 #[cfg(target_os = "linux")]
                 {
                     let stream = {
                         let _scope = UserMainIpcScope::new();
-                        connect(password::remaining_millis(deadline)?, "").await
+                        connect(remaining, "").await
                     };
                     match stream {
                         Ok(stream) => {
@@ -8525,7 +8536,7 @@ async fn complete_main_password_mutation(
                     bail!("service-owned main password mutation is unsupported on this platform");
                 }
             } else {
-                match connect_user_owned_password_main(password::remaining_millis(deadline)?).await
+                match connect_user_owned_password_main(remaining).await
                 {
                     Ok(stream) => stream,
                     Err(err) if !recovery_required => return Err(err),
@@ -8567,15 +8578,21 @@ async fn complete_main_password_mutation(
                         PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending
                     );
                 }
-                WindowsCredentialClientDecision::Applied => return Ok(IpcMutationResult::Applied),
+                WindowsCredentialClientDecision::Applied => {
+                    return Ok(PasswordMutationOutcome::Applied)
+                }
                 WindowsCredentialClientDecision::Rejected => {
-                    return Ok(IpcMutationResult::Rejected)
+                    return Ok(PasswordMutationOutcome::Denied)
                 }
                 WindowsCredentialClientDecision::InternalFailure => {
-                    return Ok(IpcMutationResult::InternalFailure)
+                    return Ok(PasswordMutationOutcome::Failed)
                 }
                 WindowsCredentialClientDecision::NotAdmitted => {
-                    bail!("password mutation was not accepted because the daemon is shutting down")
+                    return Ok(if recovery_required {
+                        PasswordMutationOutcome::Uncertain
+                    } else {
+                        PasswordMutationOutcome::Failed
+                    });
                 }
             }
             hbb_common::sleep(0.05).await;
@@ -8689,13 +8706,17 @@ async fn complete_main_password_mutation(
                     PasswordMutationStatus::Prepared | PasswordMutationStatus::Pending
                 );
             }
-            WindowsCredentialClientDecision::Applied => return Ok(IpcMutationResult::Applied),
-            WindowsCredentialClientDecision::Rejected => return Ok(IpcMutationResult::Rejected),
+            WindowsCredentialClientDecision::Applied => return Ok(PasswordMutationOutcome::Applied),
+            WindowsCredentialClientDecision::Rejected => return Ok(PasswordMutationOutcome::Denied),
             WindowsCredentialClientDecision::InternalFailure => {
-                return Ok(IpcMutationResult::InternalFailure)
+                return Ok(PasswordMutationOutcome::Failed)
             }
             WindowsCredentialClientDecision::NotAdmitted => {
-                bail!("password mutation was not accepted because the daemon is shutting down")
+                return Ok(if recovery_required {
+                    PasswordMutationOutcome::Uncertain
+                } else {
+                    PasswordMutationOutcome::Failed
+                });
             }
         }
         hbb_common::sleep(0.05).await;
@@ -8805,20 +8826,18 @@ pub fn can_set_user_owned_permanent_password() -> bool {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn set_user_owned_permanent_password(v: String) -> ResultType<()> {
-    set_user_owned_permanent_password_sensitive(SensitivePassword::new(v))
+    set_user_owned_permanent_password_sensitive(SensitivePassword::new(v))?.into_result()
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn set_user_owned_permanent_password_sensitive(v: SensitivePassword) -> ResultType<()> {
+fn set_user_owned_permanent_password_sensitive(
+    v: SensitivePassword,
+) -> ResultType<PasswordMutationOutcome> {
     validate_unattended_password_value(&v)?;
     if Config::is_disable_change_permanent_password() {
-        bail!("Changing permanent password is disabled");
+        return Ok(PasswordMutationOutcome::Denied);
     }
-    if set_user_owned_permanent_password_with_ack_sensitive(v)? {
-        Ok(())
-    } else {
-        bail!("Changing permanent password was rejected by daemon");
-    }
+    set_user_owned_permanent_password_with_ack_sensitive(v)
 }
 
 #[cfg(target_os = "linux")]
@@ -8852,14 +8871,16 @@ pub fn can_set_permanent_password() -> bool {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn set_permanent_password(v: String) -> ResultType<()> {
-    set_permanent_password_sensitive(SensitivePassword::new(v))
+    set_permanent_password_sensitive(SensitivePassword::new(v))?.into_result()
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-pub(crate) fn set_permanent_password_sensitive(v: SensitivePassword) -> ResultType<()> {
+pub(crate) fn set_permanent_password_sensitive(
+    v: SensitivePassword,
+) -> ResultType<PasswordMutationOutcome> {
     validate_unattended_password_value(&v)?;
     if Config::is_disable_change_permanent_password() {
-        bail!("Changing permanent password is disabled");
+        return Ok(PasswordMutationOutcome::Denied);
     }
     if can_request_service_owned_unattended_password_change() {
         #[cfg(target_os = "windows")]
@@ -8867,63 +8888,52 @@ pub(crate) fn set_permanent_password_sensitive(v: SensitivePassword) -> ResultTy
         #[cfg(any(target_os = "linux", target_os = "macos"))]
         return set_service_owned_unattended_password_sensitive(v);
     }
-    if can_set_user_owned_permanent_password() {
+    if user_owned_permanent_password_is_writable()? {
         return set_user_owned_permanent_password_sensitive(v);
     }
-    bail!("Changing service-owned unattended password requires administrator authorization");
-}
-
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-#[tokio::main(flavor = "current_thread")]
-pub async fn set_user_owned_permanent_password_with_ack(v: String) -> ResultType<bool> {
-    set_user_owned_permanent_password_with_ack_async(SensitivePassword::new(v)).await
+    Ok(PasswordMutationOutcome::Denied)
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
 async fn set_user_owned_permanent_password_with_ack_sensitive(
     v: SensitivePassword,
-) -> ResultType<bool> {
+) -> ResultType<PasswordMutationOutcome> {
     set_user_owned_permanent_password_with_ack_async(v).await
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 async fn set_user_owned_permanent_password_with_ack_async(
     v: MainPasswordMutationValue,
-) -> ResultType<bool> {
+) -> ResultType<PasswordMutationOutcome> {
     validate_unattended_password_value(&v)?;
     let ms_timeout = 5_000;
     let operation_id = hbb_common::uuid::Uuid::new_v4().to_string();
-    let result = complete_main_password_mutation(
+    complete_main_password_mutation(
         operation_id,
         MainPasswordMutationRequest::UserOwned(&v),
         ms_timeout,
     )
-    .await?;
-    Ok(match result {
-        IpcMutationResult::Applied => true,
-        IpcMutationResult::Rejected => false,
-        IpcMutationResult::InternalFailure => bail!("password mutation failed internally"),
-    })
+    .await
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub fn set_service_owned_unattended_password(v: String) -> ResultType<()> {
-    set_service_owned_unattended_password_sensitive(SensitivePassword::new(v))
+    set_service_owned_unattended_password_sensitive(SensitivePassword::new(v))?.into_result()
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-fn set_service_owned_unattended_password_sensitive(v: SensitivePassword) -> ResultType<()> {
+fn set_service_owned_unattended_password_sensitive(
+    v: SensitivePassword,
+) -> ResultType<PasswordMutationOutcome> {
     validate_unattended_password_value(&v)?;
-    if set_service_owned_unattended_password_with_ack(v)? {
-        Ok(())
-    } else {
-        bail!("Changing service-owned unattended password was rejected by service");
-    }
+    set_service_owned_unattended_password_with_ack(v)
 }
 
 #[cfg(target_os = "windows")]
-fn set_windows_service_owned_unattended_password(v: SensitivePassword) -> ResultType<()> {
+fn set_windows_service_owned_unattended_password(
+    v: SensitivePassword,
+) -> ResultType<PasswordMutationOutcome> {
     validate_unattended_password_value(&v)?;
     // The service independently authenticates the live pipe peer before it
     // reads the password body. Reject a copied/portable caller here as well:
@@ -8931,11 +8941,7 @@ fn set_windows_service_owned_unattended_password(v: SensitivePassword) -> Result
     // indeterminate buffered-pipe write and enter the admitted-operation
     // recovery loop even though this image can never be authorized.
     crate::platform::windows::require_current_exe_is_fixed_service_runtime()?;
-    if set_windows_service_owned_unattended_password_with_ack(v)? {
-        Ok(())
-    } else {
-        bail!("Changing service-owned unattended password was rejected by service");
-    }
+    set_windows_service_owned_unattended_password_with_ack(v)
 }
 
 #[cfg(target_os = "macos")]
@@ -8959,14 +8965,16 @@ async fn macos_service_owned_password_authorization_right_ready(
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[tokio::main(flavor = "current_thread")]
-async fn set_service_owned_unattended_password_with_ack(v: SensitivePassword) -> ResultType<bool> {
+async fn set_service_owned_unattended_password_with_ack(
+    v: SensitivePassword,
+) -> ResultType<PasswordMutationOutcome> {
     let ms_timeout = 1_000;
     let operation_id = hbb_common::uuid::Uuid::new_v4();
     let mut recovery_required = false;
     let recovery_deadline = tokio::time::Instant::now() + PASSWORD_MUTATION_RECOVERY_TIMEOUT;
     loop {
         if recovery_required && tokio::time::Instant::now() >= recovery_deadline {
-            bail!("service-owned password mutation outcome remains unknown after bounded recovery");
+            return Ok(PasswordMutationOutcome::Uncertain);
         }
         #[cfg(target_os = "linux")]
         let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
@@ -8976,7 +8984,7 @@ async fn set_service_owned_unattended_password_with_ack(v: SensitivePassword) ->
                 tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
             match macos_service_owned_password_authorization_right_ready(readiness_deadline).await {
                 Ok(true) => {}
-                Ok(false) if !recovery_required => return Ok(false),
+                Ok(false) if !recovery_required => return Ok(PasswordMutationOutcome::Denied),
                 Err(err) if !recovery_required => return Err(err),
                 Ok(false) => {
                     log::warn!(
@@ -9066,13 +9074,21 @@ async fn set_service_owned_unattended_password_with_ack(v: SensitivePassword) ->
         match status {
             Ok(status) => match windows_credential_client_decision(status, recovery_required) {
                 WindowsCredentialClientDecision::Continue => recovery_required = true,
-                WindowsCredentialClientDecision::Applied => return Ok(true),
-                WindowsCredentialClientDecision::Rejected => return Ok(false),
+                WindowsCredentialClientDecision::Applied => {
+                    return Ok(PasswordMutationOutcome::Applied)
+                }
+                WindowsCredentialClientDecision::Rejected => {
+                    return Ok(PasswordMutationOutcome::Denied)
+                }
                 WindowsCredentialClientDecision::InternalFailure => {
-                    bail!("service-owned password mutation failed internally")
+                    return Ok(PasswordMutationOutcome::Failed)
                 }
                 WindowsCredentialClientDecision::NotAdmitted => {
-                    bail!("service stopped before password mutation admission")
+                    return Ok(if recovery_required {
+                        PasswordMutationOutcome::Uncertain
+                    } else {
+                        PasswordMutationOutcome::Failed
+                    });
                 }
             },
             Err(err) => log::warn!(
@@ -9087,14 +9103,14 @@ async fn set_service_owned_unattended_password_with_ack(v: SensitivePassword) ->
 #[tokio::main(flavor = "current_thread")]
 async fn set_windows_service_owned_unattended_password_with_ack(
     value: SensitivePassword,
-) -> ResultType<bool> {
+) -> ResultType<PasswordMutationOutcome> {
     let ms_timeout = 1_000;
     let operation_id = hbb_common::uuid::Uuid::new_v4();
     let mut recovery_required = false;
     let recovery_deadline = tokio::time::Instant::now() + PASSWORD_MUTATION_RECOVERY_TIMEOUT;
     loop {
         if recovery_required && tokio::time::Instant::now() >= recovery_deadline {
-            bail!("Windows service-owned password mutation outcome remains unknown after bounded recovery");
+            return Ok(PasswordMutationOutcome::Uncertain);
         }
         let attempt = crate::platform::windows::transact_sensitive_password(
             password::SERVICE_PASSWORD_IPC_POSTFIX,
@@ -9107,13 +9123,21 @@ async fn set_windows_service_owned_unattended_password_with_ack(
             crate::platform::windows::WindowsSensitivePasswordAttempt::Status(status) => {
                 match windows_credential_client_decision(status, recovery_required) {
                     WindowsCredentialClientDecision::Continue => recovery_required = true,
-                    WindowsCredentialClientDecision::Applied => return Ok(true),
-                    WindowsCredentialClientDecision::Rejected => return Ok(false),
+                    WindowsCredentialClientDecision::Applied => {
+                        return Ok(PasswordMutationOutcome::Applied)
+                    }
+                    WindowsCredentialClientDecision::Rejected => {
+                        return Ok(PasswordMutationOutcome::Denied)
+                    }
                     WindowsCredentialClientDecision::InternalFailure => {
-                        bail!("Windows service-owned password mutation failed internally")
+                        return Ok(PasswordMutationOutcome::Failed)
                     }
                     WindowsCredentialClientDecision::NotAdmitted => {
-                        bail!("Windows service stopped before password mutation admission")
+                        return Ok(if recovery_required {
+                            PasswordMutationOutcome::Uncertain
+                        } else {
+                            PasswordMutationOutcome::Failed
+                        });
                     }
                 }
             }

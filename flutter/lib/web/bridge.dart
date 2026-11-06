@@ -7,6 +7,8 @@ import 'package:uuid/uuid.dart';
 
 import 'package:flutter_hbb/consts.dart';
 
+enum PasswordMutationOutcome { Applied, Denied, Failed, Uncertain }
+
 class SoundInput {
   const SoundInput({required this.id, required this.label});
 
@@ -1438,7 +1440,7 @@ class RustdeskImpl {
     throw UnimplementedError("mainGetDataDirIos");
   }
 
-  Future<bool> mainSetPermanentPasswordWithResult(
+  Future<PasswordMutationOutcome> mainSetPermanentPasswordWithResult(
       {required String password, dynamic hint}) {
     throw UnimplementedError("mainSetPermanentPasswordWithResult");
   }

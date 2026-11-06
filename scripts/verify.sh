@@ -924,7 +924,7 @@ try:
     write_end = src.index("#[tokio::main(flavor = \"current_thread\")]\nasync fn user_owned_permanent_password_is_writable", write_start)
     can_start = src.index("pub fn can_set_permanent_password() -> bool")
     set_start = src.index("pub fn set_permanent_password(v: String) -> ResultType<()>")
-    set_end = src.index("#[tokio::main(flavor = \"current_thread\")]\npub async fn set_user_owned_permanent_password_with_ack", set_start)
+    set_end = src.index("#[tokio::main(flavor = \"current_thread\")]\nasync fn set_user_owned_permanent_password_with_ack_sensitive", set_start)
 except ValueError:
     raise SystemExit(1)
 query = src[query_start:query_end]
@@ -938,7 +938,7 @@ write_send = write.find("password::send_request_unix(")
 can_service = can_body.find("can_request_service_owned_unattended_password_change()")
 can_user = can_body.find("can_set_user_owned_permanent_password()")
 set_service = set_body.find("can_request_service_owned_unattended_password_change()")
-set_user = set_body.find("can_set_user_owned_permanent_password()")
+set_user = set_body.find("user_owned_permanent_password_is_writable()?")
 ok = (
     query_connect != -1 and query_send != -1 and query_connect < query_send
     and write_connect != -1 and write_send != -1 and write_connect < write_send
@@ -9156,7 +9156,7 @@ if grep -q 'set_cli_permanent_password(password)' <<<"$pw_arm" \
   && grep -q 'crate::ipc::set_permanent_password_sensitive(password)' <<<"$pw_cli_helper" \
   && grep -q 'can_request_service_owned_unattended_password_change()' <<<"$pw_sensitive_dispatch" \
   && grep -q 'set_service_owned_unattended_password_sensitive(v)' <<<"$pw_sensitive_dispatch" \
-  && grep -q 'can_set_user_owned_permanent_password()' <<<"$pw_sensitive_dispatch" \
+  && grep -q 'user_owned_permanent_password_is_writable()?' <<<"$pw_sensitive_dispatch" \
   && grep -q 'set_user_owned_permanent_password_sensitive(v)' <<<"$pw_sensitive_dispatch" \
   && ! grep -qE 'is_root|is_installed' <<<"$pw_arm$pw_cli_helper$pw_sensitive_dispatch"; then
   echo "  ok  R-D8/R-S11b safe password input reaches the sensitive owner-aware raw operation, with no root/install-path authority shortcut"

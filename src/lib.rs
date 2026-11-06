@@ -68,6 +68,7 @@ mod whiteboard;
 
 mod ui_cm_interface;
 mod ui_interface;
+mod password_mutation;
 mod ui_session_interface;
 #[cfg(test)]
 mod receive_test;

@@ -31,6 +31,7 @@ use std::{
 // FRB 1.80.1's temporary cbindgen stubs resolve `Dart_Handle` through this module. Re-export
 // dart-sys's canonical opaque handle instead of declaring a second, incompatible C pointer type.
 pub use dart_sys::Dart_Handle;
+pub use crate::password_mutation::PasswordMutationOutcome;
 
 pub type SessionID = uuid::Uuid;
 
@@ -1759,7 +1760,7 @@ pub fn main_get_langs() -> String {
 
 // R-X7: main_get_temporary_password / main_update_temporary_password removed (OTP excised).
 
-pub fn main_set_permanent_password_with_result(password: String) -> bool {
+pub fn main_set_permanent_password_with_result(password: String) -> PasswordMutationOutcome {
     ui_interface::set_permanent_password_with_result(password)
 }
 

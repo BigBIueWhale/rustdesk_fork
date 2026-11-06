@@ -4,16 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/custom_password.dart';
 import 'package:flutter_hbb/common/widgets/password_text_field.dart';
+import 'package:flutter_hbb/generated_bridge.dart'
+    if (dart.library.html) 'package:flutter_hbb/web/bridge.dart'
+    show PasswordMutationOutcome;
 import 'package:get/get.dart';
 
-typedef PermanentPasswordWriter = Future<bool> Function(String password);
+typedef PermanentPasswordWriter = Future<PasswordMutationOutcome> Function(
+    String password);
 
 class PermanentPasswordMutation {
   PermanentPasswordMutation._({
     required this.result,
   });
 
-  final Future<bool> result;
+  final Future<PasswordMutationOutcome> result;
   Object? _dialogOwner;
 
   void _claim(Object dialogOwner) {
@@ -54,7 +58,7 @@ class PermanentPasswordMutationCoordinator {
     }
 
     final mutation = PermanentPasswordMutation._(
-      result: Future<bool>.sync(() => writePassword(password)),
+      result: Future<PasswordMutationOutcome>.sync(() => writePassword(password)),
     );
     mutation._claim(dialogOwner);
     _active = mutation;
@@ -254,12 +258,12 @@ class _PermanentPasswordDialogState extends State<PermanentPasswordDialog> {
   }
 
   Future<void> _finishMutation(PermanentPasswordMutation mutation) async {
-    var persisted = false;
+    var outcome = PasswordMutationOutcome.Uncertain;
     try {
-      persisted = await mutation.result;
+      outcome = await mutation.result;
     } catch (error) {
       debugPrint(
-        'Permanent password mutation failed: ${error.runtimeType}',
+        'Permanent password mutation result unavailable: ${error.runtimeType}',
       );
     }
     if (!mounted ||
@@ -272,15 +276,21 @@ class _PermanentPasswordDialogState extends State<PermanentPasswordDialog> {
     if (identical(_mutation, mutation)) {
       _mutation = null;
     }
-    if (!persisted) {
-      setState(() {
-        _submitting = false;
-        _passwordError = '${_translate('Prompt')}: ${_translate("Failed")}';
-      });
+    final message = switch (outcome) {
+      PasswordMutationOutcome.Applied => null,
+      PasswordMutationOutcome.Denied => 'Password change was denied.',
+      PasswordMutationOutcome.Failed => 'Failed',
+      PasswordMutationOutcome.Uncertain =>
+        'The password change could not be confirmed. It may have been applied.',
+    };
+    if (message == null) {
+      widget.close();
       return;
     }
-
-    widget.close();
+    setState(() {
+      _submitting = false;
+      _passwordError = '${_translate('Prompt')}: ${_translate(message)}';
+    });
   }
 
   @override
@@ -308,6 +318,7 @@ class _PermanentPasswordDialogState extends State<PermanentPasswordDialog> {
                       labelText: _translate('Password'),
                       errorText:
                           _passwordError.isNotEmpty ? _passwordError : null,
+                      errorMaxLines: 3,
                     ),
                     controller: _password,
                     autofocus: true,

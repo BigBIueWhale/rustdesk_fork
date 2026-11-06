@@ -637,5 +637,7 @@ pub static ref T: std::collections::HashMap<&'static str, &'static str> =
         ("Unknown response.", "استجابة غير معروفة."),
         ("Why this happens", "سبب حدوث ذلك"),
         ("chat-history-limited-tip", "لم يعد جزء من سجل الدردشة معروضًا."),
+        ("Password change was denied.", ""),
+        ("The password change could not be confirmed. It may have been applied.", ""),
     ].iter().cloned().collect();
 }

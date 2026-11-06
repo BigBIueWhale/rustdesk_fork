@@ -2520,9 +2520,9 @@ def verify_callers(rust: Mapping[str, RustSource]) -> None:
             (("is_disable_change_permanent_password", "(", ")"), "policy gate"),
             (("can_request_service_owned_unattended_password_change", "(", ")"), "installed service authority selection"),
             (("set_service_owned_unattended_password_sensitive", "(", "v", ")"), "privileged service path"),
-            (("can_set_user_owned_permanent_password", "(", ")"), "user-owned capability fallback"),
+            (("user_owned_permanent_password_is_writable", "(", ")", "?"), "fallible user-owned capability query"),
             (("set_user_owned_permanent_password_sensitive", "(", "v", ")"), "user-owned raw path"),
-            (("bail", "!", "(", '"Changing service-owned unattended password requires administrator authorization"', ")"), "no-authority rejection"),
+            (("Ok", "(", "PasswordMutationOutcome", "::", "Denied", ")"), "no-authority rejection"),
         )
     )
     dispatch.forbid(("Config", "::", "set_permanent_password"), "caller-side persistence fallback")

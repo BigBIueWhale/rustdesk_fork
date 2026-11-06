@@ -891,15 +891,37 @@ def test_observation_schedule(decoder):
           "clock=synthetic refusals=11 boundaries=accepted final_interval=checked", flush=True)
 
 
-def test_input_response(fixture, oracle, environment):
-    directory = Path('/tmp/input-response-source')
+def test_input_response(fixture, oracle, environment, *, full_hd=False):
+    directory = Path('/tmp/input-response-full-hd' if full_hd else '/tmp/input-response-source')
     directory.mkdir(mode=0o700)
     source_path = directory / 'frame-source.log'
+    pause_path = directory / 'pause.log'
     children = []
+
+    def publications():
+        require(source_path.stat().st_size <= 1024 * 1024, 'input-response source log exceeds bound')
+        return [int(value) for value in re.findall(
+            r'^RUSTDESK_PRESENTATION_TRACE stage=source-publish monotonic_us=\d+ state=(\d+) low=\d+ high=\d+$',
+            source_path.read_text(), re.M)]
+
+    def acknowledgements():
+        if not pause_path.exists():
+            return []
+        require(pause_path.stat().st_size <= 8192, 'input-response pause log exceeds bound')
+        return pause_path.read_text().splitlines()
+
+    def wait_source(predicate, message):
+        began = time.monotonic()
+        while not predicate():
+            require(all(child.poll() is None for child in children) and time.monotonic() - began < 2,
+                    message)
+            time.sleep(0.01)
+
     try:
         with (directory / 'xvfb.log').open('wb') as log:
             children.append(subprocess.Popen([
-                '/xvfb-root/usr/bin/Xvfb', ':98', '-screen', '0', '640x480x24',
+                '/xvfb-root/usr/bin/Xvfb', ':98', '-screen', '0',
+                '1920x1080x24' if full_hd else '640x480x24',
                 '-nolisten', 'tcp', '-ac', '-noreset',
             ], env=environment, stdout=log, stderr=subprocess.STDOUT))
         began = time.monotonic()
@@ -908,18 +930,48 @@ def test_input_response(fixture, oracle, environment):
                     'input-response X11 display did not start')
             time.sleep(0.05)
         source_environment = dict(environment, DISPLAY=':98')
+        arguments = ['--input-response', str(directory)]
+        if full_hd:
+            arguments = ['--full-hd', '--pause-output', str(pause_path)] + arguments
         with source_path.open('wb') as log:
             source_path.chmod(0o600)
             children.append(subprocess.Popen([
-                str(fixture / 'frame-source'), '--input-response', str(directory),
+                str(fixture / 'frame-source'), *arguments,
             ], env=source_environment, stdout=log, stderr=subprocess.STDOUT))
-        subprocess.run([str(oracle), '--input-response', str(directory)],
-                       env=environment, check=True, timeout=10)
+        if full_hd:
+            wait_source(lambda: len(publications()) >= 4, 'Full-HD source did not animate')
+            children[-1].send_signal(signal.SIGUSR1)
+            wait_source(lambda: len(acknowledgements()) == 1, 'Full-HD source did not pause')
+            require(re.fullmatch(r'paused state=' + str(publications()[-1]) + r' monotonic_us=\d+',
+                                 acknowledgements()[0]), 'Full-HD paused state differs')
+        subprocess.run([str(oracle), '--input-response-resume' if full_hd else '--input-response',
+                        str(directory)], env=environment, check=True, timeout=30 if full_hd else 10)
         require(children[0].poll() is None, 'input-response X11 display exited early')
+        if full_hd:
+            final = publications()[-1]
+            marker = (directory / 'input-response.ready').read_bytes()
+            require(int(marker) + 256 == final, 'Full-HD input advanced an unexpected number of frames')
+            children[-1].send_signal(signal.SIGUSR2)
+            wait_source(lambda: len(acknowledgements()) == 2 and publications()[-1] >= final + 4,
+                        'Full-HD source did not resume animation')
+            require(re.fullmatch(r'resumed state=' + str(final) + r' monotonic_us=\d+',
+                                 acknowledgements()[1]), 'Full-HD resume state differs')
+            children[-1].send_signal(signal.SIGUSR1)
+            wait_source(lambda: len(acknowledgements()) == 3, 'Full-HD source did not pause again')
+            require(re.fullmatch(r'paused state=' + str(publications()[-1]) + r' monotonic_us=\d+',
+                                 acknowledgements()[2]), 'Full-HD second paused state differs')
+            subprocess.run([str(oracle), '--input-response-reentry', str(directory)],
+                           env=environment, check=True, timeout=5)
+            require((directory / 'input-response.ready').read_bytes() == marker,
+                    'Full-HD source replaced input readiness')
+            children[-1].send_signal(signal.SIGUSR2)
+        failure = 'incomplete input at resume' if full_hd else 'native input response'
         require(children[-1].wait(timeout=5) == 1 and
-                'FLUTTER_PEER_SOURCE_FAIL native input response' in source_path.read_text() and
+                'FLUTTER_PEER_SOURCE_FAIL ' + failure in source_path.read_text() and
                 'FLUTTER_PEER_SOURCE_COMPLETE ' not in source_path.read_text(),
-                'input-response source admitted a duplicate request')
+                'input-response source admitted incomplete resume or a duplicate request')
+        if full_hd:
+            require(len(acknowledgements()) == 3, 'Full-HD source acknowledged incomplete resume')
     finally:
         for child in reversed(children):
             if child.poll() is None:
@@ -930,7 +982,11 @@ def test_input_response(fixture, oracle, environment):
                 child.kill()
                 child.wait(timeout=5)
     require(not Path('/tmp/.X11-unix/X98').exists(), 'input-response X11 socket remained')
-    print('X11_INPUT_RESPONSE_JOINED=pass duplicate_request=refused source=joined xvfb=joined socket=absent', flush=True)
+    if full_hd:
+        print('X11_INPUT_RESPONSE_FULL_HD_JOINED=pass animation=resumed reentry=accepted incomplete_resume=refused '
+              'source=joined xvfb=joined socket=absent', flush=True)
+    else:
+        print('X11_INPUT_RESPONSE_JOINED=pass duplicate_request=refused source=joined xvfb=joined socket=absent', flush=True)
 
 
 def main():
@@ -999,6 +1055,7 @@ def main():
     test_soak_accounting(environment, before=True)
     test_soak_accounting(environment)
     test_input_response(fixture, oracle_binaries[0], environment)
+    test_input_response(fixture, oracle_binaries[0], environment, full_hd=True)
     children = []
     display = None
     lib = ctypes.CDLL("libX11.so.6")

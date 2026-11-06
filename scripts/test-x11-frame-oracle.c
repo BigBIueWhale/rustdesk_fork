@@ -301,7 +301,7 @@ static int response_request(Display *display, unsigned int request, unsigned int
     return 0;
 }
 
-static int input_response_case(const char *directory) {
+static int input_response_case(const char *directory, int resume) {
     Display *display = XOpenDisplay(":98");
     SourceHistory history = {0};
     uint8_t pixels[X11_FRAME_BYTES];
@@ -356,7 +356,8 @@ static int input_response_case(const char *directory) {
         uint64_t sent = x11_frame_monotonic_us();
         for (;;) {
             int64_t identity = x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured);
-            if (identity == (int64_t)initial + trial + 1) break;
+            if (x11_frame_refresh(&history, directory) != 0) goto out;
+            if (identity == (int64_t)initial + trial + 1 && history.count == initial + trial + 2U) break;
             if (identity > (int64_t)initial + trial + 1 ||
                 x11_frame_monotonic_us() - sent > 1000000U || nanosleep(&pause, NULL) != 0) goto out;
         }
@@ -367,17 +368,64 @@ static int input_response_case(const char *directory) {
         uint64_t sent = x11_frame_monotonic_us();
         for (;;) {
             int64_t identity = x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured);
-            if (identity == (int64_t)initial + request) break;
+            if (x11_frame_refresh(&history, directory) != 0) goto out;
+            if (identity == (int64_t)initial + request && history.count == initial + request + 1U) break;
             if (identity > (int64_t)initial + request ||
                 x11_frame_monotonic_us() - sent > 1000000U || nanosleep(&pause, NULL) != 0) goto out;
         }
     }
-    if (response_request(display, 256U, 0U) != 0) goto out;
-    puts("X11_INPUT_RESPONSE_FIXTURE=pass no_input=stable held_key=stable partial_request=stable native_request=advances "
-         "controls=4 requests=256 carries=16,256 pixels=actual scope=fixture-only");
+    if (resume) {
+        puts("X11_INPUT_RESPONSE_FULL_HD=pass no_input=stable held_key=stable partial_request=stable native_request=advances "
+             "controls=4 requests=256 carries=16,256 pixels=actual scope=fixture-only");
+    } else {
+        if (response_request(display, 256U, 0U) != 0) goto out;
+        puts("X11_INPUT_RESPONSE_FIXTURE=pass no_input=stable held_key=stable partial_request=stable native_request=advances "
+             "controls=4 requests=256 carries=16,256 pixels=actual scope=fixture-only");
+    }
     result = 0;
 out:
     if (held && XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) result = -1;
+    if (XCloseDisplay(display) != 0) result = -1;
+    return result;
+}
+
+static int resumed_input_case(const char *directory) {
+    Display *display = XOpenDisplay(":98");
+    SourceHistory history = {0};
+    uint8_t pixels[X11_FRAME_BYTES];
+    uint64_t captured = 0U;
+    struct timespec pause = {0, 10000000L};
+    int result = -1;
+    if (display == NULL) return -1;
+    int64_t initial = x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured);
+    KeyCode key = XKeysymToKeycode(display, XK_a);
+    if (initial < 0 || key == 0U) goto out;
+    for (unsigned int phase = 0U; phase < 2U; ++phase) {
+        uint64_t quiet = x11_frame_monotonic_us();
+        do {
+            if (x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured) != initial ||
+                x11_frame_refresh(&history, directory) != 0 || history.count != (uint64_t)initial + 1U ||
+                nanosleep(&pause, NULL) != 0) goto out;
+        } while (x11_frame_monotonic_us() - quiet < 200000U);
+        if (phase != 0U) break;
+        if (response_request(display, 257U, 0U) != 0) goto out;
+        uint64_t sent = x11_frame_monotonic_us();
+        ++initial;
+        for (;;) {
+            int64_t identity = x11_frame_capture(display, DefaultRootWindow(display), pixels, &captured);
+            if (x11_frame_refresh(&history, directory) != 0) goto out;
+            if (identity == initial && history.count == (uint64_t)initial + 1U) break;
+            if (identity > initial || x11_frame_monotonic_us() - sent > 1000000U ||
+                nanosleep(&pause, NULL) != 0) goto out;
+        }
+        /* Leave request 258 incomplete, with its first key released. */
+        if (XTestFakeKeyEvent(display, key, True, CurrentTime) == 0 ||
+            XTestFakeKeyEvent(display, key, False, CurrentTime) == 0) goto out;
+        XSync(display, False);
+    }
+    puts("X11_INPUT_RESPONSE_REENTRY=pass request=257 counter=preserved no_input=stable partial_request=stable pixels=actual");
+    result = 0;
+out:
     if (XCloseDisplay(display) != 0) result = -1;
     return result;
 }
@@ -390,7 +438,12 @@ int main(int argc, char **argv) {
     if ((argc != 2 && argc != 3) || getuid() != 4000 || geteuid() != 4000 || getgid() != 4000 || getegid() != 4000) {
         return 1;
     }
-    if (argc == 3) return strcmp(argv[1], "--input-response") != 0 || input_response_case(argv[2]) != 0;
+    if (argc == 3) {
+        if (strcmp(argv[1], "--input-response") == 0) return input_response_case(argv[2], 0) != 0;
+        if (strcmp(argv[1], "--input-response-resume") == 0) return input_response_case(argv[2], 1) != 0;
+        if (strcmp(argv[1], "--input-response-reentry") == 0) return resumed_input_case(argv[2]) != 0;
+        return 1;
+    }
     if (strcmp(argv[1], "--old-window-image") == 0) return geometry_case(1) != 0;
     if (strcmp(argv[1], "--geometry") == 0) return unit_cases() != 0 || geometry_case(0) != 0;
     return native_case(argv[1]) != 0;

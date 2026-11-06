@@ -143195,3 +143195,38 @@ All eight files / 117,043 bytes match CTE/TUF. This audit-only receipt preserves
 the counted ledger. The selected congestion checkpoint is complete; Android
 input-to-visible recovery remains the next missing R-F5 observation. The full
 goal stays active with the existing security, platform and release obligations.
+
+### 2026-11-06 — Full-HD input-response prerequisite for Android latency
+
+The preceding user-requested release-status answer is a no-progress goal turn:
+it inspected the current evidence but changed no implementation or acceptance.
+Continue the selected R-F5 Android input-to-visible work. The current Android
+recovery artifacts already support Full-HD display observation, whereas the
+input-response fixture previously supported only the smaller Linux workload.
+Completing this prerequisite permits a decisive same-artifact Android input
+measurement without a product rebuild or an unrelated verification expansion.
+
+The Full-HD source now accepts input-response mode during an explicit pause.
+Only a complete, uniquely numbered four-letter-plus-Return native key sequence
+publishes one new frame; ordinary animation resumes on the existing signal.
+Reentry preserves the request counter, and resuming with incomplete input fails.
+The native fixture will observe actual root pixels and publication history for
+no input, held/partial input, 256 complete requests, resumed animation and request
+257 after reentry, then verify incomplete-resume refusal and joined cleanup.
+Existing small-source duplicate refusal and frame-oracle controls remain required.
+Per-response allowance remains one second; only the aggregate Full-HD fixture
+timeout is thirty seconds to include 256 textured publications and quiet controls.
+
+Primary research: X.Org's XSetInputFocus/XGetInputFocus contract explains root
+keyboard focus and its same-connection readback; the fixture changes only its
+owned Xvfb display. Android 14 InputShellCommand injects ordered down/up events
+and waits for framework dispatch. That return does not establish remote response:
+later Android acceptance must observe the corresponding source publication and
+actual displayed identity, with quiet no-input controls.
+https://xorg.freedesktop.org/archive/X11R6.8.2/doc/XGetInputFocus.3.html
+https://raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/android-14.0.0_r1/services/core/java/com/android/server/input/InputShellCommand.java
+
+Python AST, Bash syntax and whitespace checks pass. Native execution is pending
+in the existing zero-NIC `--android-frame-tests` lane. Source/refs will remain
+fixed through terminal status and evidence/cleanup reconciliation. This is a
+measurement-fixture change, not Android input-latency or release acceptance.

@@ -260,6 +260,7 @@ int main(int argc, char **argv) {
     unsigned int monitors = 1U;
     ResponseInput response = {0};
     int input_response = 0, interactive = 0, response_ready = 0;
+    int response_on_pause = 0, pause_acknowledged = 0;
     const char *response_directory = NULL;
     unsigned int code_height, code_top = 0U;
     unsigned int texture_top;
@@ -267,18 +268,23 @@ int main(int argc, char **argv) {
     int trace_enabled = trace_value != NULL && strcmp(trace_value, "1") == 0;
     struct rlimit output_limit;
 
-    if ((argc == 2 || (argc == 4 && strcmp(argv[2], "--pause-output") == 0)) &&
+    if ((argc == 2 || ((argc == 4 || (argc == 6 && strcmp(argv[4], "--input-response") == 0)) &&
+                      strcmp(argv[2], "--pause-output") == 0)) &&
         strcmp(argv[1], "--full-hd") == 0) {
         source_width = 1920U;
         source_height = 1080U;
         frame_interval_ms = 33U;
-        if (argc == 4) {
+        if (argc >= 4) {
             pause_output = open(argv[3], O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW |
                                 O_CLOEXEC, 0600);
             if (pause_output < 0) {
                 fputs("FLUTTER_PEER_SOURCE_FAIL pause output\n", stderr);
                 return 1;
             }
+        }
+        if (argc == 6) {
+            input_response = response_on_pause = 1;
+            response_directory = argv[5];
         }
     } else if (argc == 2 && strcmp(argv[1], "--two-monitors") == 0) {
         monitors = 2U;
@@ -290,7 +296,7 @@ int main(int argc, char **argv) {
         input_response = 1;
         response_directory = argv[2];
     } else if (argc != 1) {
-        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd [--pause-output FILE]|--two-monitors|--inset-counter|--input-response DIRECTORY]\n", stderr);
+        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd [--pause-output FILE [--input-response DIRECTORY]]|--two-monitors|--inset-counter|--input-response DIRECTORY]\n", stderr);
         return 1;
     }
     if (getrlimit(RLIMIT_FSIZE, &output_limit) != 0) {
@@ -352,7 +358,7 @@ int main(int argc, char **argv) {
         return 1;
     }
     root = RootWindow(display, screen);
-    if (input_response) {
+    if (input_response && !response_on_pause) {
         XSelectInput(display, root, KeyPressMask | KeyReleaseMask);
         XSetInputFocus(display, root, RevertToParent, CurrentTime);
     }
@@ -420,25 +426,66 @@ int main(int argc, char **argv) {
     while (stop_requested == 0) {
         /* Acknowledge only a fully published, root-pixel-checked frame. Keep the
          * X window alive and unchanged until the observer explicitly resumes it. */
-        if (pause_output >= 0 && pause_requested != 0) {
-            if (frame == 0U || dprintf(pause_output, "paused state=%u monotonic_us=%llu\n",
-                                      frame - 1U, (unsigned long long)monotonic_micros()) < 0) {
-                fputs("FLUTTER_PEER_SOURCE_FAIL pause acknowledgement\n", stderr);
-                exit_status = 1;
-                break;
+        if (pause_output >= 0 && (pause_requested != 0 || pause_acknowledged)) {
+            if (!pause_acknowledged) {
+                if (response_on_pause) {
+                    Window focus;
+                    int revert;
+                    XSelectInput(display, root, KeyPressMask | KeyReleaseMask);
+                    XSetInputFocus(display, root, RevertToParent, CurrentTime);
+                    XGetInputFocus(display, &focus, &revert);
+                    if (focus != root) {
+                        fputs("FLUTTER_PEER_SOURCE_FAIL input focus\n", stderr);
+                        exit_status = 1;
+                        break;
+                    }
+                }
+                if (frame == 0U || dprintf(pause_output, "paused state=%u monotonic_us=%llu\n",
+                                          frame - 1U, (unsigned long long)monotonic_micros()) < 0) {
+                    fputs("FLUTTER_PEER_SOURCE_FAIL pause acknowledgement\n", stderr);
+                    exit_status = 1;
+                    break;
+                }
+                pause_acknowledged = 1;
             }
             while (pause_requested != 0 && stop_requested == 0) {
+                if (response_on_pause) {
+                    int received = response_input(display, root, &response);
+                    if (received < 0) {
+                        fputs("FLUTTER_PEER_SOURCE_FAIL native input response\n", stderr);
+                        exit_status = 1;
+                        goto cleanup;
+                    }
+                    if (received == 1) {
+                        interactive = 1;
+                        break;
+                    }
+                }
                 if (sleep_millis(10U) != 0) {
                     exit_status = 1;
                     goto cleanup;
                 }
             }
             if (stop_requested != 0) break;
-            if (dprintf(pause_output, "resumed state=%u monotonic_us=%llu\n",
-                        frame - 1U, (unsigned long long)monotonic_micros()) < 0) {
-                fputs("FLUTTER_PEER_SOURCE_FAIL resume acknowledgement\n", stderr);
-                exit_status = 1;
-                break;
+            if (pause_requested == 0) {
+                if (response_on_pause) {
+                    if (response_input(display, root, &response) != 0 ||
+                        response.held != 0U || response.position != 0U) {
+                        fputs("FLUTTER_PEER_SOURCE_FAIL incomplete input at resume\n", stderr);
+                        exit_status = 1;
+                        break;
+                    }
+                    XSelectInput(display, root, NoEventMask);
+                    XSync(display, False);
+                }
+                interactive = 0;
+                pause_acknowledged = 0;
+                if (dprintf(pause_output, "resumed state=%u monotonic_us=%llu\n",
+                            frame - 1U, (unsigned long long)monotonic_micros()) < 0) {
+                    fputs("FLUTTER_PEER_SOURCE_FAIL resume acknowledgement\n", stderr);
+                    exit_status = 1;
+                    break;
+                }
             }
         }
         /* One ordered publication history: even identities belong only to the
@@ -449,7 +496,7 @@ int main(int argc, char **argv) {
         unsigned int row, bar;
         uint64_t publication_us;
 
-        if (input_response) {
+        if (input_response && !response_on_pause) {
             int received;
             do {
                 received = response_input(display, root, &response);

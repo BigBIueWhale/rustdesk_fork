@@ -19,18 +19,18 @@ static int settings_visible(unsigned int pid, const char *name, int present) {
     return -1;
 }
 
-static int settings_password(Display *display, unsigned int pid, const char *name) {
+static int settings_password(Display *display, Window main, unsigned int pid, const char *name) {
     static const char password[] = "InstalledGui2026";
     AtspiAccessible *field = NULL;
-    AtspiComponent *component = NULL;
+    AtspiText *text = NULL;
     GError *error = NULL;
     int result = -1;
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     if (query_named_accessible(pid, name, deadline, &field, 0) != 0 || field == NULL ||
         atspi_accessible_get_role(field, &error) != ATSPI_ROLE_PASSWORD_TEXT || error != NULL)
         goto out;
-    component = atspi_accessible_get_component_iface(field);
-    if (component == NULL || !atspi_component_grab_focus(component, &error) || error != NULL)
+    text = atspi_accessible_get_text_iface(field);
+    if (text == NULL || click_main_control(display, main, pid, name) != 0)
         goto out;
     KeyCode control = XKeysymToKeycode(display, XK_Control_L);
     KeyCode shift = XKeysymToKeycode(display, XK_Shift_L);
@@ -47,10 +47,19 @@ static int settings_password(Display *display, unsigned int pid, const char *nam
         XSync(display, False);
         if (typed != 0) goto out;
     }
-    result = 0;
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        gint count = atspi_text_get_character_count(text, &error);
+        if (error != NULL) goto out;
+        if (count == (gint)(sizeof(password) - 1U)) {
+            result = 0;
+            break;
+        }
+        if (sleep_millis(50U) != 0) goto out;
+    }
 out:
     if (error != NULL) g_error_free(error);
-    if (component != NULL) g_object_unref(component);
+    if (text != NULL) g_object_unref(text);
     if (field != NULL) g_object_unref(field);
     return result;
 }
@@ -104,7 +113,8 @@ int main(int argc, char **argv) {
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
     if (strcmp(argv[2], "open") == 0) {
-        if (activate_header_control(display, main, pid, "Settings") != 0 ||
+        if (settings_visible(pid, "Your Desktop", 1) != 0 ||
+            activate_header_control(display, main, pid, "Settings") != 0 ||
             activate_named_control(pid, "Security") != 0 ||
             settings_open_password(display, main, pid) != 0 ||
             settings_visible(pid, "Set Password", 1) != 0) goto atspi_out;
@@ -114,10 +124,11 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[2], "reopen") == 0) {
         if (activate_named_control(pid, "Set permanent password") != 0 ||
             settings_visible(pid, "Set Password", 1) != 0) goto atspi_out;
-    } else if (strcmp(argv[2], "submit") == 0) {
-        if (settings_password(display, pid, "Password") != 0 ||
-            settings_password(display, pid, "Confirmation") != 0 ||
-            activate_named_control(pid, "OK") != 0) goto atspi_out;
+    } else if (strcmp(argv[2], "submit") == 0 || strcmp(argv[2], "fill") == 0) {
+        if (settings_password(display, main, pid, "Password") != 0 ||
+            settings_password(display, main, pid, "Confirmation") != 0) goto atspi_out;
+        if (strcmp(argv[2], "submit") == 0 && activate_named_control(pid, "OK") != 0)
+            goto atspi_out;
     } else if (strcmp(argv[2], "denied") == 0) {
         if (settings_visible(pid, "Prompt: Failed", 1) != 0 ||
             settings_visible(pid, "Set Password", 1) != 0) goto atspi_out;
@@ -128,6 +139,12 @@ int main(int argc, char **argv) {
     printf("LINUX_INSTALLED_SETTINGS_UI=pass stage=%s pid=%u controls=atspi input=xtest\n", argv[2], pid);
     result = 0;
 atspi_out:
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        fprintf(stderr, "LINUX_INSTALLED_SETTINGS_UI_FAIL stage=%s\n", argv[2]);
+        if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+            fputs("LINUX_INSTALLED_SETTINGS_DIAGNOSTIC incomplete-accessibility-tree\n", stderr);
+    }
     atspi_exit();
 out:
     XCloseDisplay(display);

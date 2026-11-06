@@ -143976,3 +143976,15 @@ library opened by name. Product source remains unchanged. Capsule
 `installed-settings-egl-454757e7.json` binds 69.430 seconds, 3,789,729,792-byte peak
 scratch, four zero endpoint deltas and exact retirement. Ten files / 120,958 bytes
 match both hosts. No GUI workflow acceptance follows from this failed setup.
+
+Run `IfxKLOyu6S` launches the full GUI and initializes its native bridge, but the
+driver fails to observe the Settings tooltip. It previously moved the pointer as
+soon as the GTK window existed, before Flutter's initial layout and centering.
+Require the actual Your Desktop semantics to stabilize before that action, and
+retain the bounded PID-scoped accessibility tree on failure. Use real XTest pointer
+focus for password entry and observe masked character counts. The cancellation
+case now includes entered text with an independent protected-state observation
+before submission. No product behavior is yet accepted. Capsule
+`installed-settings-startup-8c56cd9c.json` binds 69.680 seconds, 3,791,437,824-byte
+peak scratch, four zero endpoint deltas and exact retirement; ten files /
+120,697 bytes match both hosts.

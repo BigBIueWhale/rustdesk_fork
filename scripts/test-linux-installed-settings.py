@@ -277,7 +277,7 @@ def session():
         environment['DBUS_SESSION_BUS_ADDRESS'] = address
         app = subprocess.Popen(['/usr/share/rustdesk/rustdesk'], env=environment,
                                stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
-        stages = ('open', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied')
+        stages = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied')
         for stage in stages:
             output = run([str(WORK / 'settings-driver'), str(app.pid), stage], env=environment, timeout=40)
             print(output, end='', file=sys.stderr, flush=True)
@@ -311,7 +311,7 @@ def scenario(receiver):
               'child=supervised desktop=pam-logind-x11', flush=True)
         process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT), '--session'],
                                    env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        for stage in ('open', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied'):
+        for stage in ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied'):
             if not select.select([process.stdout], [], [], 45)[0]:
                 raise RuntimeError('installed GUI stage timed out')
             raw = process.stdout.readline(4096)

@@ -146815,3 +146815,38 @@ and eight files / 115,887 bytes match both hosts. QEMU4023618 joins zero after
 listener deltas are zero, and exact private/RAM roots are absent. Approximate
 400,000-token compression remains OPEN. This audit-only append leaves the measured
 ledger unchanged.
+
+## 2026-11-11 — resolve maintained Android plugin inputs for the candidate SDK
+
+Previous turn progressed: actual Gradle compilation/plugin resolution passes.
+Continue SDK/lock alignment because it unlocks the APK; do not repeat unrelated
+Linux package tests. Review confirms sqflite is still needed through the chat
+image-cache dependency, as already recorded on November4. It is not an orphan.
+Current sqflite2.4.6 includes native correctness fixes and requires Dart3.12,
+which the candidate SDK3.47.5/Dart3.13.4 provides. FilePicker's current12.x API
+requires bytes and owns writing, whereas RustDesk's screenshot receiver owns the
+write and needs only a path. Flutter's maintained file_selector1.1.0 exposes
+getSaveLocation/getDirectoryPath with explicit cancellation and suitable PNG
+filters; evaluate that matching API instead of retaining a legacy registrar or
+moving screenshot bytes into the UI. Primary sources consulted:
+https://pub.dev/packages/sqflite/changelog
+https://pub.dev/packages/file_picker/changelog
+https://pub.dev/packages/file_selector/changelog
+https://pub.dev/documentation/file_selector/latest/file_selector/getSaveLocation.html
+https://pub.dev/documentation/file_selector/latest/file_selector/getDirectoryPath.html
+https://dart.dev/tools/pub/cmd/pub-get
+
+The new acquisition-VM diagnostic copies the exact project and candidate lock,
+changes only file_picker to file_selector1.1.0 and sqflite to2.4.6, and removes
+the obsolete lifecycle override so dependency constraints govern its selection.
+Pub get retains existing locked versions when compatible. Resolve from an empty
+private cache, then replay the resulting lock in a separate no-NIC container and
+analyze the required selector/SQLite API contract. This is dependency/API evidence,
+not application compilation, real dialogs, native Android execution or an APK.
+The 12 GiB VM has a 12 GiB overlay ceiling inside the standard bounded RAM
+workspace; containers are ordinary UID/GID, read-only root, dropped capabilities,
+8 GiB memory/no swap expansion, 512 PIDs, four CPUs and 2 GiB private tmpfs.
+The only writable mount is a freshly owned VM-private workspace. Exact source,
+SDK and prior lock remain read-only; neither canonical nor candidate cache is
+published. Retain the bounded discovered manifest/lock and true stage outcomes;
+independent package authentication and application migration remain required.

@@ -2933,6 +2933,45 @@ maintenance_discover_android_gradle() {
             --sha256 "$SHA256_ANDROID_CANDIDATE_GRADLE_BIN"
 }
 
+maintenance_probe_flutter_plugin_migration() {
+    local builder="$DEB_BUILDER_CONFIG_ID" work work_identity phase network
+    local sdk="$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-$FLUTTER_PRESENTATION_CANDIDATE_VERSION.tar.xz"
+    local -a mounts
+    verify_or_load_deb_builder_image
+    require_online_fetch_builder_image deb-builder "$builder"
+    assert_online_fetch_source_tools
+    prepare_gradle_source
+    verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
+    work="$(umask 077; /usr/bin/mktemp -d "$ONLINE_FETCH_TMP/flutter-plugin-probe.XXXXXXXXXX")"
+    work_identity="$(/usr/bin/stat -c '%d:%i' "$work")"
+    mounts=(
+        --mount "type=bind,source=$work,target=/work,bind-recursive=disabled"
+        --mount "type=bind,source=$sdk,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/flutter,target=/project-source,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$SCRIPT_DIR/probe-flutter-plugin-migration.sh,target=/authority/probe.sh,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$SCRIPT_DIR/pins.env,target=/authority/pins.env,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$SCRIPT_DIR/flutter-presentation-candidate-pubspec.lock,target=/authority/pubspec.lock,readonly,bind-recursive=disabled"
+    )
+    for phase in resolve replay; do
+        network=none
+        [ "$phase" != resolve ] || network=bridge
+        online_docker run --rm --pull=never --network="$network" --read-only \
+            --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --pids-limit=512 --memory=8g --memory-swap=8g --cpus=4 \
+            --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
+            "${mounts[@]}" "$(online_fetch_builder_runtime_ref "$builder")" \
+            /bin/bash --noprofile --norc /authority/probe.sh "$phase"
+    done
+    verify_gradle_source_unchanged
+    retire_gradle_source_build
+    verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
+    [ -d "$work" ] && [ ! -L "$work" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i' "$work")" = "$work_identity" ] \
+        || die 'plugin migration probe workspace identity changed'
+    /usr/bin/rm -rf --one-file-system -- "$work"
+}
+
 maintenance_probe_android_candidate_gradle() {
     local builder="$ANDROID_BUILDER_CONFIG_ID"
     local sdk="$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-$FLUTTER_PRESENTATION_CANDIDATE_VERSION.tar.xz"
@@ -8878,6 +8917,12 @@ main() {
             [ "$#" -eq 1 ] \
                 || die "--maintenance-discover-android-gradle takes no arguments"
             maintenance_discover_android_gradle
+            return 0
+            ;;
+        --maintenance-probe-flutter-plugin-migration)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-probe-flutter-plugin-migration takes no arguments"
+            maintenance_probe_flutter_plugin_migration
             return 0
             ;;
         --maintenance-probe-android-candidate-gradle)

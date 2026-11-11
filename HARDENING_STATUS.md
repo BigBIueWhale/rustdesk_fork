@@ -513,16 +513,25 @@ records exactly, adding eleven, changing three and removing file_picker plus
 the unused lifecycle override/package. A separate no-NIC replay enforces the
 unchanged lock; Dart analysis accepts the required path-selection/SQLite APIs.
 `flutter-plugin-migration-2aa4157d.json` retains the exact manifest/lock, package
-metadata, output and joined cleanup. These are exploratory dependencies; the
-application and published caches remain unchanged. All fourteen changed archives
+metadata, output and joined cleanup. The application remains unchanged. All fourteen changed archives
 now pass first-pin cross-checking at `ba16484a`, TUF `wCPbX9TySX`: publisher
 metadata, exact pub.dev bytes, separately served CFUG bytes and the discovered
 lock agree for 767,477 bytes. `flutter-plugin-archives-ba16484a.json` retains
 per-package provenance, manifests, native build files and joined cleanup. Both
 new Android plugins use `flutter.compileSdkVersion` (36 in the candidate SDK)
 and declare AGP 8.13.1; the selector also declares Kotlin 2.3.0. The earlier
-Gradle fixture does not resolve this new plugin closure. Next stage the verified
-packages, migrate both dialog calls and Windows/macOS secondary-window
+Gradle fixture does not resolve this new plugin closure. The candidate Pub cache
+is now published separately at `6133c546`, TUF `UiGVUgazlP`, with pinned digest
+`fc3d40987ffbc03c0aa675d990852264c126e67a358a4a78797c2ee6d6d5d931`.
+All 31,327 seed entries and hardlink groups are preserved; fourteen authenticated
+versions extend the hosted inventory from 258 to 272 packages. At `7719eed1`,
+TUF `ws6QfdZxD3`, the retained cache passes a fresh no-network, enforced-lock
+replay with five kernel-checked read-only input mounts, including the workspace
+that previously exposed a writable cache alias. Manifest, lock, SDK and both
+cache digests remain unchanged. `flutter-plugin-cache-stage-6133c546.json` and
+`flutter-plugin-cache-replay-7719eed1.json` bind publication/reuse, exact output
+and joined cleanup. The reusable candidate occupies about 524 MiB on TUF;
+temporary VM storage is retired. Next migrate both dialog calls and Windows/macOS secondary-window
 registrations, then compose the actual SDK/cache closure and build the APK. SDK/lock/engine
 promotion, actual dialog/Android behavior and cross-platform acceptance stay **OPEN**.
 

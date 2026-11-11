@@ -146970,3 +146970,44 @@ bytes match both hosts. QEMU4049218 joins zero after30.492seconds; scratch peak
 403,013,632bytes, zero listener additions/removals and exact private/RAM absence.
 The approximate400,000-token compression obligation remains OPEN. This audit
 append leaves the measured ledger unchanged.
+
+### 2026-11-11 — authenticated plugin cache publication and immutable offline replay
+
+Continue the R-B10/R-B12 prerequisite for the dialog/plugin migration and current
+Android APK. Commit 9a2c44f6 replaces the exploratory resolver with exact manifest/
+194-package lock inputs. Dart's enforced-lock acquisition populates a private copy
+of the authenticated seed; its documented offline mode then replays that graph:
+https://dart.dev/tools/pub/cmd/pub-get
+https://raw.githubusercontent.com/dart-lang/pub/master/doc/cache_layout.md
+Run 49KpxZCUoT/tool2408 derives digest
+fc3d40987ffbc03c0aa675d990852264c126e67a358a4a78797c2ee6d6d5d931.
+All 31,327 seed entries and hardlink groups survive, with exactly fourteen newly
+authenticated hosted versions: 258→272 packages, 32,445 total entries. Exact lock
+e03728db829b4d7e0fd100f3b3e9846caad0a2dcbeecba7ad142bb19c2972279 and
+manifest d9d9e5a64cd38d336d4c2e4d29cbbb298e0425b881ca7ddeefb65185c6468f92 remain unchanged.
+
+Commit 6133c546 pins that digest and uses the existing transactional publisher at
+online/candidates/flutter-plugin-migration/pub-cache. UiGVUgazlP/tool22587 passes
+publication beside the unchanged accepted seed, exact-copy verification and joined
+cleanup: QEMU 4053345 exits 0, 448.878 seconds, peak scratch 6,737,506,304 bytes.
+Eight files/98,320 bytes in flutter-plugin-cache-stage-6133c546.json match both
+hosts; discovery retains another eight files/99,315 bytes under
+flutter-plugin-cache-9a2c44f6.json.
+
+Review found the initial replay's read-only cache subtrees still had a writable
+private /work alias. Commit 7719eed1 makes /work read-only during replay, keeps
+only fresh Pub bookkeeping writable and checks all five input mount flags inside
+the container. Docker's readonly bind option and os.statvfs(ST_RDONLY) define the
+checked property: https://docs.docker.com/engine/storage/bind-mounts/
+https://docs.python.org/3/library/os.html#os.statvfs
+The existing-cache path now prepares only the SDK/project and reuses the published
+cache without copying or downloading it. ws6QfdZxD3/tool55629 passes real Dart
+offline/enforced-lock resolution, all five mount checks, unchanged source/SDK/
+manifest/lock/cache digests and the same inventory. QEMU 4056730 exits 0 after
+300.154 seconds; scratch peak 6,159,720,448 bytes. Both success-v5 runs have no added
+host listener and exact private/RAM/Unix endpoint absence. Eight files/87,103 bytes
+in flutter-plugin-cache-replay-7719eed1.json match both hosts. The retained cache
+has 479,707,324 regular-file bytes/549,171,200 allocated bytes, excluding directory
+blocks. No canonical cache replacement, application migration, APK or native
+dialog acceptance is claimed. Those are the next integration work; record a fresh
+count after the concise current-ledger update.

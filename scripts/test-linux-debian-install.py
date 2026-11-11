@@ -129,13 +129,27 @@ def main(source, prepared, app_input, manifest_sha, commit):
     command(['/usr/bin/dpkg-deb', '--control', str(archive), str(controls)], 'control')
     require((controls / 'control').read_bytes() == control, 'package and resolved dependency metadata differ')
     version, = re.findall(r'^Version: (.+)$', control.decode(), re.M)
-    apt = ['/usr/bin/apt-get', '-o', 'Dir::Etc::sourcelist=/dev/null',
-           '-o', 'Dir::Etc::sourceparts=-', '--no-download', '--no-install-recommends', '--no-remove', '--yes']
+    cache = runtime / 'packages'
+    cached_application = cache / f'rustdesk_{version}_amd64.deb'
+    require(not cached_application.exists(), 'application cache slot is occupied')
+    shutil.copyfile(archive, cached_application)
+    cached_application.chmod(0o400)
+    require(digest(cached_application) == digest(archive), 'cached application differs')
+    sources = runtime / 'sources.list'
+    sources.write_text('')
+    for directory in ('sources.list.d', 'lists', 'lists/partial', 'packages/partial'):
+        (runtime / directory).mkdir(mode=0o700)
+    # --no-download consumes the archive cache without running file acquisition.
+    # Supply the verified files there, as well as their package metadata arguments.
+    apt = ['/usr/bin/apt-get', '-o', f'Dir::Etc::sourcelist={sources}',
+           '-o', f'Dir::Etc::sourceparts={runtime}/sources.list.d',
+           '-o', f'Dir::State::lists={runtime}/lists', '-o', f'Dir::Cache::archives={cache}',
+           '--no-download', '--no-install-recommends', '--no-remove', '--yes']
     user_created = False
     pidfds = []
     try:
         command([*apt, 'install', *(str(runtime / 'packages' / name) for name in sorted(records)),
-                 str(archive)], 'install', timeout=240)
+                 str(cached_application)], 'install', timeout=240)
         command([*apt, 'check'], 'dependencies')
         require(command(['/usr/bin/dpkg', '--audit'], 'dpkg-audit') == '', 'dpkg has incomplete packages')
         installed = command(['/usr/bin/dpkg-query', '--show',

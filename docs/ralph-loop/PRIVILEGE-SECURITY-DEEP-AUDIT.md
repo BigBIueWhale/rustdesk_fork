@@ -145322,3 +145322,19 @@ https://www.debian.org/doc/debian-policy/ch-maintainerscripts.html
 The closed --debian-candidate-install selector retains source/input freezes,
 bounded RAM admission, no-NIC isolation and joined cleanup. Native execution is
 pending; the new fixture itself does not establish installed correctness.
+
+First native attempt lxbgITfdCg at 5550d5fc exits one (tool51048) before package
+installation. APT resolves the complete local set but --no-download leaves a
+relative package-manager filename because the fixture supplied local-file
+arguments without populating APT's configured archive cache. Debian APT 2.6.1
+apt-private/private-install.cc and apt-pkg/acquire-item.cc confirm that this mode
+skips acquisition and expects already-cached archives. Point the private cache
+at the verified package directory, add the verified application under its normal
+cache basename, and use actual empty private source/list paths. Keep no-download,
+normal dependency validation and no-remove; do not add an override or network.
+https://raw.githubusercontent.com/Debian/apt/2.6.1/apt-pkg/acquire-item.cc
+
+debian-install-cache-5550d5fc.json retains the failed fixture. Nine files/96,389
+bytes match CTE/TUF; four listener deltas are zero. The 61.833-second transaction
+joins QEMU3885395, retires RAM scratch, then reconciles/removes the exact private
+diagnostic root under the shared lock. No application installation is credited.

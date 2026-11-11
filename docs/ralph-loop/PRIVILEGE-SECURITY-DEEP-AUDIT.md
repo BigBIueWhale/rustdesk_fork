@@ -144654,3 +144654,11 @@ controls using this exact app. Neither installed recovery nor broad release
 acceptance is inferred from successful compilation. The user requested a candid
 completion assessment; outstanding cross-platform, R-S0/R-F5, final-artifact,
 reproduction and independent-review obligations remain open.
+
+Fresh ledger count `GCgcKA8QGF` at `cc625f75` exits zero: 403,218 tokens /
+1,840,344 bytes, SHA-256
+`e1dfd2056feadc77d94c32ed6fd0261ea2d6af194e4763b662eb1f109188c27b`.
+The fixed tokenizer, seven controls and complete round trip pass. QEMU3825391
+joins with zero; private/RAM state disappear and three endpoint deltas are zero.
+`bounded-build-ledger-cc625f75.json` binds eight matching CTE/TUF files /
+116,194 bytes. The approximate 400,000-token compression target remains open.

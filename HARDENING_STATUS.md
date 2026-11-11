@@ -479,10 +479,20 @@ identity, receipt and joined VM/RAM cleanup. The shared publisher's actual
 filesystem/refusal tests also pass (`flutter-candidate-archive-tests-6a400ff4.json`).
 The existing Gradle cache has eight of eleven direct dependency versions; exact
 annotation 1.8.1, relinker 1.4.5 and exifinterface 1.4.1 directories are absent.
-This inventory is not dependency resolution or cache authentication. Next run the
-matched isolated Gradle resolution/build path and complete its authenticated
-closure. SDK/lock/engine promotion, canonical build integration and cross-platform
-release acceptance remain **OPEN**.
+This inventory is not dependency resolution or cache authentication. The pinned
+candidate SDK also requires Gradle >=8.14.0, AGP >=8.11.1 and Kotlin plugin >=2.2.20;
+the current 8.7/8.5.2/2.0.21 toolchain cannot build it. Gradle 8.14.7 candidate
+staging now passes at `55f04f1d`, TUF `kc1u7VP7iN`: the 139,424,091-byte binary ZIP
+matches the publisher/GitHub checksum and exact release-asset size. Archive CRC,
+inventory and final file authority pass; existing SDK and Maven identities are
+unchanged. `android-gradle-stage-55f04f1d.json` binds receipt and joined cleanup;
+`android-gradle-archive-tests-55f04f1d.json` retains the shared publisher's native
+transaction/refusal tests. Gradle has not executed. Next complete the matching
+plugin/compiler dependency closure and Build Tools 35, then run isolated Gradle
+resolution and the APK build. Cached plugins declare compile SDK 31–34; Flutter's
+default SDK 36 alone does not require changing the fork's compile/target SDK.
+SDK/lock/engine promotion, canonical build integration and cross-platform release
+acceptance remain **OPEN**.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,

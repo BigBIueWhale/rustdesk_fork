@@ -146644,3 +146644,31 @@ Add that exact size to the candidate pin and existing candidate fixed transactio
 its closed manifest now requires SDK, six Maven files and this Gradle distribution.
 The existing cached files remain reusable. Native eight-entry manifest controls
 and actual authenticated distribution acquisition are the next checks.
+
+At 55f04f1d, TUF sJTBTjKZ25/tool85257 passes the shared fixed-archive filesystem
+transaction/refusal tests, including the eight-entry candidate and incomplete
+manifest refusals, plus 22 base-metadata cases and WiX retirement. HTTP responses
+are injected; filesystem operations are actual. QEMU4004228 joins zero after
+15.302 monitor seconds, RAM scratch peaks at 411,693,056 bytes, three host listener
+deltas are zero, and private/RAM roots and Unix endpoints are absent.
+android-gradle-archive-tests-55f04f1d.json and eight files/76,533 bytes match CTE/TUF.
+
+Actual acquisition kc1u7VP7iN/tool59459 exits zero at the same source. The new
+Gradle binary ZIP is 139,424,091 bytes with the reviewed SHA-256, UID/GID1000,
+mode0400, single link and no xattrs. Inert inspection finds 322 unique canonical
+ZIP entries, 154,633,824 expanded bytes and valid CRCs; no archive code executes.
+SDK and all six Maven input identities remain unchanged. The success-v5 receipt
+binds exact source/tree, serial, stdout and stderr. QEMU4004971 joins zero after
+61 outer seconds/95.324 monitor seconds, RAM scratch peaks at 3,535,167,488 bytes,
+private/RAM roots and Unix endpoints are absent, and no host listener is added.
+android-gradle-stage-55f04f1d.json and nine files/93,779 bytes match both hosts.
+Only the intentional authenticated Gradle candidate archive adds durable bulk.
+
+Inert inspection of the candidate Pub cache finds compile SDK31–34 in thirteen
+Android plugin build files. Flutter's SDK36 default therefore does not by itself
+require changing the fork's explicit compile34/target33 contract. The installed
+Gradle cache lacks the required newer AGP/Kotlin versions and the SDK lacks Build
+Tools35. Actual resolution may reveal additional requirements; no Gradle run or
+APK build is claimed. Continue the matched plugin/compiler/Build Tools closure
+and isolated build before coherent SDK/lock/engine promotion. Update the existing
+ledger entry and obtain its fresh isolated count without repeating passed checks.

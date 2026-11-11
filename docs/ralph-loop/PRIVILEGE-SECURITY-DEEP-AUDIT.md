@@ -144388,3 +144388,11 @@ mutation recovery across receiver restart, authorization cancellation/concurrenc
 other platforms and final packages remain open. Next: exercise a committed change
 whose result cannot be confirmed, using the actual GUI and existing bounded
 recovery semantics; preserve the now-demonstrated Applied/Denied/Failed behavior.
+
+Fresh ledger count `nSq0CpBWLw` at `5ecb871f` exits zero: 402,614 tokens /
+1,837,786 bytes, complete-input SHA-256
+`cef418c0841409803d8a236b534ed3fdc2e9de3da22e24329e2fad65070a617b`.
+The fixed method's seven controls, round trip and outer acceptance pass. Exact
+QEMU/private/RAM retirement and three zero endpoint deltas are reconciled;
+`password-failure-ledger-5ecb871f.json` binds eight matching CTE/TUF files totaling
+115,430 bytes. The ledger remains above 400,000 tokens; compression stays open.

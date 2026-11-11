@@ -147443,3 +147443,13 @@ failure/recovery, installed or other-platform acceptance. The known discarded
 recording errors and premature active-status publication remain OPEN; native
 failure/status/retry and exact recording-attempt ownership are the next decisive
 work. Update the current ledger, then measure it with the unchanged fixed tokenizer.
+
+Fresh count at 46e595cf/I80s9CJVJt/tool74617 passes: 408,748 tokens /
+1,865,354 bytes, SHA-256
+2a397ae1c1ea94397abe0223b56e5f71602abd7a4b724efdc52412c42971d1bc.
+The fixed tokenizer, seven controls and whole-input round trip pass. Eight files /
+115,659 bytes in recording-output-ledger-46e595cf.json match both hosts.
+QEMU 463799 joins zero after 30.326 seconds, peak scratch 403,030,016 bytes,
+three zero listener deltas and exact private/socket/RAM cleanup. The approximate
+400,000-token compression remains OPEN. This audit-only append preserves the
+counted ledger bytes.

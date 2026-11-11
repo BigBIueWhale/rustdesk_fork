@@ -183,8 +183,11 @@ def main(source, prepared, app_input, manifest_sha, commit):
             require('not found' not in listing, 'installed application has an unresolved library')
             props = dict(line.split('=', 1) for line in settings.run(['/usr/bin/systemctl', 'show', 'rustdesk.service',
                 '--property=ActiveState,SubState,MainPID,FragmentPath,NRestarts']).splitlines())
+            print('LINUX_DEBIAN_INSTALL_UNIT=' + json.dumps({'phase': phase, **props}, sort_keys=True), flush=True)
             require(props['ActiveState'] == 'active' and props['SubState'] == 'running'
-                    and props['FragmentPath'] == '/usr/lib/systemd/system/rustdesk.service'
+                    and props['FragmentPath'] in ('/usr/lib/systemd/system/rustdesk.service',
+                                                 '/lib/systemd/system/rustdesk.service')
+                    and Path(props['FragmentPath']).samefile('/usr/lib/systemd/system/rustdesk.service')
                     and props['NRestarts'] == '0', 'package did not start the vendor service normally')
             pid = int(props['MainPID'])
             fd = os.pidfd_open(pid)

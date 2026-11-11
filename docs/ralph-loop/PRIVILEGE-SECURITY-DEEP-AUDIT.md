@@ -145338,3 +145338,18 @@ debian-install-cache-5550d5fc.json retains the failed fixture. Nine files/96,389
 bytes match CTE/TUF; four listener deltas are zero. The 61.833-second transaction
 joins QEMU3885395, retires RAM scratch, then reconciles/removes the exact private
 diagnostic root under the shared lock. No application installation is credited.
+
+Run jJ2gTZDI2s at 2a491d01 exits one (tool46165). Normal APT installation,
+dependency checking, empty dpkg audit, all 330 exact installed dependency versions,
+configured RustDesk, package checksums, all 72 app payloads, dpkg link/unit ownership
+and loader resolution pass. The real unit reports Started. The fixture then fails
+its unit-property conjunction without printing those properties. Preserve this
+limitation rather than infer which property failed. Emit them before assertion;
+accept the vendor unit's /lib or /usr/lib spelling only when its inode equals the
+dpkg-owned /usr/lib unit. This observes actual file authority on merged-/usr
+Debian instead of requiring one lexical search-path spelling. No product changes.
+
+debian-install-unit-2a491d01.json and nine files/106,141 bytes match CTE/TUF.
+QEMU3886895 joins zero after 76.742 seconds, peak RAM scratch 4,170,743,808 bytes;
+all four listener deltas are zero and private/RAM roots retire. Credential,
+reinstall, removal and purge acceptance remain unexecuted in this failed run.

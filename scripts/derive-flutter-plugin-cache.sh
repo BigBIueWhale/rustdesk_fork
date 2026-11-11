@@ -4,7 +4,7 @@ set -euo pipefail
 umask 077
 [ "$#" -eq 1 ] && [ "$(id -u)" -ne 0 ] && [ "$(id -g)" -ne 0 ] \
     || { echo 'plugin cache derivation requires one phase and an ordinary principal' >&2; exit 1; }
-case "$1" in derive|replay) ;; *) exit 1 ;; esac
+case "$1" in prepare|derive|replay) ;; *) exit 1 ;; esac
 source /authority/pins.env
 readonly work=/work
 [ "$(stat -c '%u:%g:%a' "$work")" = "$(id -u):$(id -g):700" ]
@@ -31,13 +31,12 @@ run_logged() {
     return "$status"
 }
 
-if [ "$1" = derive ]; then
+if [ "$1" != replay ]; then
     [ -z "$(find "$work" -mindepth 1 -maxdepth 1 -print -quit)" ]
-    mkdir "$work/toolchain" "$work/project" "$work/pub-cache"
+    mkdir "$work/toolchain" "$work/project"
     tar -xJf /inputs/flutter.tar.xz -C "$work/toolchain" --no-same-owner --no-same-permissions
     cp -a /project-source/. "$work/project/"
-    cp -a /seed/. "$work/pub-cache/"
-    chmod -R u+rwX "$work/project" "$work/pub-cache"
+    chmod -R u+rwX "$work/project"
     cp /authority/pubspec.lock "$work/project/pubspec.lock"
     python3 -I -S - <<'PY'
 import pathlib
@@ -55,6 +54,13 @@ PY
         "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_MANIFEST" ]
     sha256sum pubspec.yaml pubspec.lock >"$work/resolved.sha256"
     dart --version
+    if [ "$1" = prepare ]; then
+        printf 'FLUTTER_PLUGIN_CACHE_PREPARE=pass\n'
+        exit 0
+    fi
+    mkdir "$work/pub-cache"
+    cp -a /seed/. "$work/pub-cache/"
+    chmod -R u+rwX "$work/pub-cache"
     run_logged "$work/derive.log" timeout --signal=TERM --kill-after=10s 300 \
         dart pub get --enforce-lockfile --no-example
     sha256sum --check --status "$work/resolved.sha256"
@@ -74,15 +80,20 @@ PY
     printf 'FLUTTER_PLUGIN_CACHE_DERIVE=pass lock_sha256=%s\n' \
         "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK"
 else
-    # The completed cache subtrees are mounted read-only into this fresh cache root.
+    # Both the workspace and the completed cache subtrees must be read-only.
     export PUB_CACHE=/tmp/pub-cache
     python3 -I -S - <<'PY'
-import pathlib,shutil
+import os,shutil
+paths=['/work','/seed','/tmp/pub-cache/hosted','/tmp/pub-cache/hosted-hashes','/tmp/pub-cache/git']
+for path in paths:
+    if not os.statvfs(path).f_flag & os.ST_RDONLY:
+        raise ValueError('replay input mount is writable: '+path)
+print('FLUTTER_PLUGIN_CACHE_READONLY=pass mounts='+str(len(paths)))
 shutil.copytree('/work/project','/tmp/replay',ignore=shutil.ignore_patterns('.dart_tool','build'))
 PY
     cd /tmp/replay
     sha256sum --check --status "$work/resolved.sha256"
-    run_logged "$work/replay.log" timeout --signal=TERM --kill-after=10s 180 \
+    run_logged /tmp/replay.log timeout --signal=TERM --kill-after=10s 180 \
         dart pub get --offline --enforce-lockfile --no-example
     sha256sum --check --status "$work/resolved.sha256"
     printf 'FLUTTER_PLUGIN_CACHE_REPLAY=pass lock_sha256=%s cache=readonly network=none\n' \

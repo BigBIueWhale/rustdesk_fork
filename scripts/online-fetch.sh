@@ -2954,6 +2954,7 @@ maintenance_discover_flutter_plugin_archives() {
 maintenance_stage_flutter_plugin_cache() {
     local builder="$DEB_BUILDER_CONFIG_ID" work work_identity phase network
     local seed_receipt cache_receipt lock_fd publication_fd staging staging_id
+    local publication=new initial_phase=derive cache
     local publication_root="$ONLINE_CANDIDATE_ROOT/flutter-plugin-migration"
     local sdk="$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-$FLUTTER_PRESENTATION_CANDIDATE_VERSION.tar.xz"
     local -a mounts phase_mounts provenance
@@ -2993,19 +2994,16 @@ maintenance_stage_flutter_plugin_cache() {
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
         [ "$cache_receipt" = "sha256=$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" ] \
             || die 'existing plugin cache differs from its pin'
-        verify_gradle_source_unchanged
-        retire_gradle_source_build
-        "$FLOCK_BIN" --unlock "$publication_fd"
-        exec {publication_fd}<&-
-        "$FLOCK_BIN" --unlock "$lock_fd"
-        exec {lock_fd}<&-
-        printf 'FLUTTER_PLUGIN_CACHE_STAGE=pass %s publication=existing\n' "$cache_receipt"
-        return 0
+        publication=existing
+        initial_phase=prepare
     fi
     work="$(umask 077; /usr/bin/mktemp -d "$ONLINE_FETCH_TMP/flutter-plugin-cache.XXXXXXXXXX")"
     work_identity="$(/usr/bin/stat -c '%d:%i' "$work")"
+    cache="$work/pub-cache"
+    if [ "$publication" = existing ]; then
+        cache="$publication_root/pub-cache"
+    fi
     mounts=(
-        --mount "type=bind,source=$work,target=/work,bind-recursive=disabled"
         --mount "type=bind,source=$sdk,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$FLUTTER_PRESENTATION_CANDIDATE_ROOT/pub-cache,target=/seed,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/flutter,target=/project-source,readonly,bind-recursive=disabled"
@@ -3013,25 +3011,26 @@ maintenance_stage_flutter_plugin_cache() {
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/pins.env,target=/authority/pins.env,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/flutter-plugin-migration-pubspec.lock,target=/authority/pubspec.lock,readonly,bind-recursive=disabled"
     )
-    for phase in derive replay; do
+    for phase in "$initial_phase" replay; do
         network=none
-        phase_mounts=()
+        phase_mounts=(--mount "type=bind,source=$work,target=/work,bind-recursive=disabled")
         if [ "$phase" = derive ]; then
             network=bridge
-        else
-            cache_receipt="$(pub_cache_output_tool verify-reproduction \
-                --cache "$work/pub-cache" --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
-            [[ "$cache_receipt" =~ ^sha256=[0-9a-f]{64}$ ]] \
-                || die 'derived plugin cache receipt is malformed'
+        elif [ "$phase" = replay ]; then
+            if [ "$publication" = new ]; then
+                cache_receipt="$(pub_cache_output_tool verify-reproduction \
+                    --cache "$cache" --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
+            fi
             [ "$cache_receipt" = "sha256=$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" ] \
                 || die 'reproduced plugin cache differs from its reviewed pin'
             /usr/bin/install -d -m 0700 "$work/replay-cache" \
                 "$work/replay-cache/hosted" "$work/replay-cache/hosted-hashes" "$work/replay-cache/git"
             phase_mounts=(
+                --mount "type=bind,source=$work,target=/work,readonly,bind-recursive=disabled"
                 --mount "type=bind,source=$work/replay-cache,target=/tmp/pub-cache,bind-recursive=disabled"
-                --mount "type=bind,source=$work/pub-cache/hosted,target=/tmp/pub-cache/hosted,readonly,bind-recursive=disabled"
-                --mount "type=bind,source=$work/pub-cache/hosted-hashes,target=/tmp/pub-cache/hosted-hashes,readonly,bind-recursive=disabled"
-                --mount "type=bind,source=$work/pub-cache/git,target=/tmp/pub-cache/git,readonly,bind-recursive=disabled"
+                --mount "type=bind,source=$cache/hosted,target=/tmp/pub-cache/hosted,readonly,bind-recursive=disabled"
+                --mount "type=bind,source=$cache/hosted-hashes,target=/tmp/pub-cache/hosted-hashes,readonly,bind-recursive=disabled"
+                --mount "type=bind,source=$cache/git,target=/tmp/pub-cache/git,readonly,bind-recursive=disabled"
             )
         fi
         online_docker run --rm --pull=never --network="$network" --read-only \
@@ -3042,14 +3041,16 @@ maintenance_stage_flutter_plugin_cache() {
             "${mounts[@]}" "${phase_mounts[@]}" "$(online_fetch_builder_runtime_ref "$builder")" \
             /bin/bash --noprofile --norc /authority/derive.sh "$phase"
     done
-    [ "$(pub_cache_output_tool verify-reproduction --cache "$work/pub-cache" \
-          --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")" = "$cache_receipt" ] \
-        || die 'derived plugin cache changed during read-only replay'
+    if [ "$publication" = new ]; then
+        [ "$(pub_cache_output_tool verify-reproduction --cache "$cache" \
+              --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")" = "$cache_receipt" ] \
+            || die 'derived plugin cache changed during read-only replay'
+    fi
     [ "$(pub_cache_output_tool check-complete --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
           --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")" = "$seed_receipt" ] \
         || die 'authenticated plugin cache seed changed'
     /usr/bin/python3 -I -S - "$GRADLE_SOURCE_AUTHORITY/scripts" \
-        "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/pub-cache" "$work/pub-cache" <<'PY'
+        "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/pub-cache" "$cache" <<'PY'
 import ast,importlib.util,json,pathlib,sys
 scripts,seed,cache=map(pathlib.Path,sys.argv[1:])
 spec=importlib.util.spec_from_file_location('pub_output',scripts/'online-pub-cache-output.py')
@@ -3082,19 +3083,21 @@ PY
     verify_gradle_source_unchanged
     retire_gradle_source_build
     verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
-    mapfile -d '' provenance < <(flutter_presentation_pub_provenance_args)
-    staging="$(umask 077; /usr/bin/mktemp -d "$publication_root/.rustdesk-pub-cache.XXXXXXXXXX")"
-    staging_id="$(/usr/bin/stat -c '%d:%i' "$staging")"
-    pub_cache_output_tool prepare --online "$publication_root" --staging "$staging" \
-        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}"
-    /usr/bin/cp -a -- "$work/pub-cache/." "$staging/output/"
-    [ "$(pub_cache_output_tool verify --online "$publication_root" --staging "$staging" \
-          --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}")" = "$cache_receipt" ] \
-        || die 'plugin cache publication copy differs'
-    pub_cache_output_tool publish --online "$publication_root" --staging "$staging" \
-        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}" \
-        --expected-digest "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE"
-    retire_flutter_presentation_pub_staging "$staging" "$staging_id" "$publication_root"
+    if [ "$publication" = new ]; then
+        mapfile -d '' provenance < <(flutter_presentation_pub_provenance_args)
+        staging="$(umask 077; /usr/bin/mktemp -d "$publication_root/.rustdesk-pub-cache.XXXXXXXXXX")"
+        staging_id="$(/usr/bin/stat -c '%d:%i' "$staging")"
+        pub_cache_output_tool prepare --online "$publication_root" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}"
+        /usr/bin/cp -a -- "$cache/." "$staging/output/"
+        [ "$(pub_cache_output_tool verify --online "$publication_root" --staging "$staging" \
+              --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}")" = "$cache_receipt" ] \
+            || die 'plugin cache publication copy differs'
+        pub_cache_output_tool publish --online "$publication_root" --staging "$staging" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}" \
+            --expected-digest "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE"
+        retire_flutter_presentation_pub_staging "$staging" "$staging_id" "$publication_root"
+    fi
     [ "$(pub_cache_output_tool check-complete --online "$publication_root" \
           --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")" = "$cache_receipt" ] \
         || die 'published plugin cache differs'
@@ -3109,9 +3112,9 @@ PY
     exec {publication_fd}<&-
     "$FLOCK_BIN" --unlock "$lock_fd"
     exec {lock_fd}<&-
-    printf 'FLUTTER_PLUGIN_CACHE_STAGE=pass %s lock_sha256=%s seed_sha256=%s publication=new\n' \
+    printf 'FLUTTER_PLUGIN_CACHE_STAGE=pass %s lock_sha256=%s seed_sha256=%s publication=%s\n' \
         "$cache_receipt" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK" \
-        "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE"
+        "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$publication"
 }
 
 maintenance_probe_android_candidate_gradle() {

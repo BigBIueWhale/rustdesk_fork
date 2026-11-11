@@ -147453,3 +147453,53 @@ QEMU 463799 joins zero after 30.326 seconds, peak scratch 403,030,016 bytes,
 three zero listener deltas and exact private/socket/RAM cleanup. The approximate
 400,000-token compression remains OPEN. This audit-only append preserves the
 counted ledger bytes.
+
+## 2026-11-12 — Native viewer recording refusal and checked finalization prerequisite
+
+Continue the reproduced recording-status blocker under R-S0. TUF's existing SSH
+master works; no authentication or host configuration changes are needed.
+The selected result is accurate recording failure/stop/retry while preserving
+the live desktop, ahead of unrelated dependency work.
+
+c99cea4d adds real-pointer failure/retry to the existing recording-directory
+scenario. On retained app fd93151b, run DBhrMR6TOH/tool91145 exits 1: generation
+one's folder/cancel/storage/shutdown checks pass; generation two restores the
+Unicode folder, then EACCES is proved by an actual write probe after chmod 0500.
+Clicking Record produces no file or error dialog, leaves Stop visible and Start
+unavailable, while four fresh frames have maximum age 302 ms. The viewer log records
+the actual recording Permission denied. The observer restores mode 0700 even on
+failure. The required same-viewer successful retry is not reached on this baseline.
+recording-failure-baseline-c99cea4d.json binds twelve files/628,950 bytes on both
+hosts. QEMU 483584 joins zero; RAM and exact private state retire, with four zero
+listener deltas. The validated duplicate private app payload releases 62,525,440
+allocated bytes; the authenticated retained app remains available.
+
+Source: VideoHandler::handle_frame discards write_frame errors, queued start
+immediately advertises recording, and stopping drops the writer without a caller
+result. Backend finalization already checks native completion and flush.
+Rust Write::flush documents fallible completion:
+https://doc.rust-lang.org/std/io/trait.Write.html#tymethod.flush
+Expose that existing result before implementing per-attempt UI ownership.
+9828b63e adds consuming Recorder::finish: close the owned epoch, return any
+finalization failure, and otherwise preserve an earlier terminal write failure.
+It does not reopen or remove output. No application caller is changed yet.
+
+PP7ruBufku/tool63340 exits 0: all 38 actual native recording tests pass, including
+complete VP8/VP9 timestamps and inode/mode preservation, empty/nonkey-only stop,
+EFBIG at finalization, and both earlier native write-failure cases. Kernel file
+limits are exercised in the fixture's child process and restored before assertions.
+Library compilation takes 65 s; execution rounds to 0 s; production parent checking
+takes 108 s. The exact test artifact SHA-256 is
+fcd694c5bf1ead13ef218b665e77f19f37c2257c2d0b423f316394a6009d9995.
+recording-finish-9828b63e.json binds nine files/98,357 bytes on both hosts.
+Storage lasts 235.159 s, peak RAM scratch 4,916,305,920 bytes, guest RAM 6 GiB and
+headroom 6 GiB. QEMU 628632 joins zero; private/socket/RAM absence and four zero
+listener deltas pass. Source stays frozen until reconciliation and evidence copy.
+
+This is checked recorder finalization and parent compilation, not a corrected UI.
+Next: bind each worker's writes and explicit completion to its exact recording
+attempt; retain errors until the I/O owner observes them, drain before retry,
+and keep recorder failure separate from decoder/connection failure. Then run the
+caller regressions and unchanged native denied-write/visible-error/decoded-retry
+scenario. Controlled-side error propagation and broader installed/platform,
+R-S0/R-F5 and release acceptance remain OPEN.

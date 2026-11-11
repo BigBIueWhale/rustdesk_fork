@@ -6650,18 +6650,27 @@ hardware and installed-root recording, creator/wrong-principal and authorized UI
 transactions, native Apple ACLs and Windows/macOS acceptance remain OPEN.
 These named Linux component results establish no overall recording or LPE closure.
 
-**Viewer recording failure status — OPEN, regression preparation only.**
+**Viewer recording failure status — OPEN, native failure reproduced.**
 `VideoHandler::handle_frame` discards the recording write result; the I/O owner
 publishes active status when it queues the start control. A later output failure
 has no path back to the session flag or UI status. The controlled-side message
-wrapper also discards its write result. Two unexecuted caller regressions now
-cover a non-directory output failure and a writable-output control, with native
-VP8 frames, real session commands, status callbacks and joined workers. The
-`--viewer-video-tests` inventory is ten cases/two groups; these caller regressions
-remain uncompiled/unexecuted. Full app `fd93151b` and the healthy native VP9
-workflow above now pass, but no failure baseline or correction is claimed.
-Exact recording-attempt ownership,
-late failure after stop/restart, finalization feedback and full UI remain required.
+wrapper also discards its write result. At `c99cea4d`, native app `fd93151b`
+reproduces the failure after real folder selection and viewer restart: the kernel
+refuses a write to the selected directory with EACCES, but the toolbar remains
+active, no error appears and no file exists. Four fresh display frames still pass
+with maximum age 302 ms. `recording-failure-baseline-c99cea4d.json` retains the
+failed run and joined cleanup; the same scenario requires visible error, inactive
+status and a decoded successful retry after restoring the directory permissions.
+
+`9828b63e` adds consuming `Recorder::finish`, exposing finalization failure and
+preserving an earlier terminal write failure. All 38 Linux native recording cases
+pass, including complete VP8/VP9 files, empty/nonkey-only stop, real EFBIG during
+finalization, and earlier write failures. The production parent also compiles;
+`recording-finish-9828b63e.json` binds source, artifact and cleanup. This is a
+prerequisite: the application callers do not yet use the new method. The two
+caller regressions in `--viewer-video-tests` remain uncompiled/unexecuted.
+Exact attempt ownership, late failure after stop/restart, finalization feedback
+and the full UI failure/retry correction remain required.
 
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,

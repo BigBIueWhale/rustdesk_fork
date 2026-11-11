@@ -32,7 +32,7 @@ def digest(path):
         return hashlib.file_digest(stream, 'sha256').hexdigest()
 
 
-def command(arguments, phase, timeout=180):
+def command(arguments, phase, timeout=180, expected=0):
     print('LINUX_DEBIAN_INSTALL_STAGE=' + phase, flush=True)
     result = subprocess.run(arguments, env=ENV, capture_output=True, timeout=timeout)
     output = result.stdout + result.stderr
@@ -42,7 +42,7 @@ def command(arguments, phase, timeout=180):
         'sha256': hashlib.sha256(output).hexdigest(),
         'tail': output[-8192:].decode('utf-8', errors='replace'),
     }, sort_keys=True), flush=True)
-    require(result.returncode == 0, f'package command failed: {phase}')
+    require(result.returncode == expected, f'package command exit differs: {phase}')
     return result.stdout.decode('utf-8')
 
 
@@ -323,10 +323,12 @@ def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_arc
 
 def obsolete_conffiles(source, prepared, archive, settings, installed_state):
     predecessor = prepared / 'conffile-predecessor.deb'
+    refused = prepared / 'conffile-refused.deb'
     contents = settings.historical_conffiles(source, MEDIA / 'debian-conffiles')
     manifest = json.loads((prepared / 'manifest.json').read_text())
-    require(manifest[predecessor.name] == {'bytes': predecessor.stat().st_size, 'sha256': digest(predecessor)},
-            'conffile predecessor archive changed')
+    for candidate in (predecessor, refused):
+        require(manifest[candidate.name] == {'bytes': candidate.stat().st_size, 'sha256': digest(candidate)},
+                'conffile fixture archive changed')
     root = Path('/etc/rustdesk')
     require(not os.path.lexists(root), 'obsolete conffile fixture directory is occupied')
     root.mkdir(mode=0o755)
@@ -366,6 +368,20 @@ def obsolete_conffiles(source, prepared, archive, settings, installed_state):
             print('LINUX_DEBIAN_CONFFILES_INITIAL=' + json.dumps({
                 'case': case, 'files': originals, 'registration': registered,
                 'predecessor_sha256': digest(predecessor)}, sort_keys=True), flush=True)
+            command(['/usr/bin/dpkg', '--install', str(refused)], 'conffiles-' + case + '-abort',
+                    timeout=90, expected=1)
+            require(settings.run(['/usr/bin/dpkg-query', '--show', '--showformat=${Status}', 'rustdesk'])
+                    == 'install ok installed', 'aborted migration did not preserve predecessor package state')
+            require(all(snapshot(root / name) == record for name, record in originals.items())
+                    and all(not os.path.lexists(root / (name + suffix)) for name in contents
+                            for suffix in ('.dpkg-bak', '.dpkg-backup', '.dpkg-remove'))
+                    and snapshot(neighbor) == neighbor_before
+                    and not os.path.lexists('/usr/bin/rustdesk'),
+                    'aborted migration did not restore the exact original conffiles')
+            print('LINUX_DEBIAN_CONFFILES_ABORT=' + json.dumps({
+                'case': case, 'files': originals, 'package': 'installed-predecessor',
+                'refused_sha256': digest(refused), 'neighbor': neighbor_before,
+            }, sort_keys=True), flush=True)
             previous_fd = None
             for phase in ('upgrade', 'reinstall', 'remove', 'purge'):
                 arguments = (['/usr/bin/dpkg', '--install', str(archive)] if phase in ('upgrade', 'reinstall')
@@ -706,7 +722,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
     if conffiles:
         print(f'LINUX_DEBIAN_CONFFILES_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'predecessor=conffile-only-fixture current=actual-package unmodified=removed modified=preserved '
-              'deleted=absent remove=preserved purge=retired neighbor=unchanged cleanup=joined', flush=True)
+              'deleted=absent abort=restored remove=preserved purge=retired neighbor=unchanged cleanup=joined', flush=True)
     elif upgrade:
         print(f'LINUX_DEBIAN_UPGRADE_NATIVE=pass previous_app={previous["context"]["source_commit"]} '
               f'app_commit={commit} manifest_sha256={manifest_sha} dependencies=apt-checked '

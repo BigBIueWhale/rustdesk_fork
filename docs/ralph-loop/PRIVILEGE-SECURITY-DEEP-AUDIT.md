@@ -146106,3 +146106,38 @@ Only obsolete-path conffile differences may appear in dpkg verification; every
 other verification difference remains fatal. The normal credential/bootstrap/
 CPace/refusal/package lifecycle also runs. Keep full historical maintainer-script,
 cross-base and final release acceptance OPEN. Native result is pending.
+
+TUF py60GBvxOs at f744d5ef reproduces the missing migration (tool89033 exits 1).
+All three predecessor installations establish the exact historical dpkg records.
+Untouched and edited files retain their original paths through actual-package
+upgrade/reinstall/removal; deletion remains respected and all purges remove the
+files. Thus edits are not lost, but untouched obsolete files are not retired and
+edited content is not moved to the intended backup. All twelve observations,
+eight installed real-supervisor states and 25 successful package commands are
+retained. The ordinary package/credential/desktop/CPace controls pass before the
+matrix. No full conffile acceptance is claimed.
+
+QEMU3963994 joins zero after 93.521 seconds; peak RAM scratch 4,219,494,400 bytes,
+four zero listener deltas and absent RAM workspace are reconciled under the free
+shared lock. Compare exported/private raw captures, verify private identity,
+mount absence and the exact 29-file diagnostic inventory, then retire only that
+descriptor-owned tree. package-conffile-baseline-f744d5ef.json and nine files /
+265,654 bytes match CTE/TUF. The larger failed outer transcript is copied as
+exact bytes; no product or private-state residue remains from the run.
+
+Add identical checked dpkg-maintscript-helper rm_conffile calls for the two
+fixed paths to preinst, postinst and postrm. Dpkg's helper owns preparation,
+finish, abort restoration and purge; no ad hoc deletion or conffile payload is
+introduced. Omit a prior-version cutoff deliberately: package version remains
+1.4.7 across fork releases, and the helper requires recorded package ownership
+before preparing a migration. Repeated configuration is idempotent and edited
+content remains as .dpkg-bak until explicit purge. Fresh package inventories and
+all service-manager policy are unchanged.
+
+Repeat the unchanged twelve lifecycle observations. Add three actual dpkg abort
+controls: an otherwise-current package fixture changes only preinst's final
+exit to 1 after the real preparation code. The real new postrm must restore the
+exact earlier file identities or absence, preserve predecessor installed state
+and leave no temporary backup before a successful retry. The genuine package
+still passes its independent archive validator; the intentionally refused package
+is explicitly a bounded fault fixture. Corrected native acceptance is pending.

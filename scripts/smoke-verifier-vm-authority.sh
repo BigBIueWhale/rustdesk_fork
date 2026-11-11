@@ -9444,7 +9444,7 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
         require_exact_fixed_receipt \
-            "LINUX_DEBIAN_CONFFILES_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 predecessor=conffile-only-fixture current=actual-package unmodified=removed modified=preserved deleted=absent remove=preserved purge=retired neighbor=unchanged cleanup=joined" \
+            "LINUX_DEBIAN_CONFFILES_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 predecessor=conffile-only-fixture current=actual-package unmodified=removed modified=preserved deleted=absent abort=restored remove=preserved purge=retired neighbor=unchanged cleanup=joined" \
             'actual Debian obsolete conffile migration'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ]; then
         require_exact_fixed_receipt \

@@ -299,6 +299,15 @@ def prepare_package(single=False, graphical=False, settings=False, upgrade=False
         if Path('/out/conffile-predecessor.deb').stat().st_size > 16384:
             raise RuntimeError('conffile predecessor archive exceeds its bound')
         shutil.rmtree(stage)
+        refused = Path('/out/conffile-refused-stage')
+        run(['/usr/bin/dpkg-deb', '--raw-extract', '/out/first.deb', str(refused)], timeout=60)
+        preinst = refused / 'DEBIAN/preinst'
+        before = preinst.read_text()
+        if before != Path('/work/res/DEBIAN/preinst').read_text() or before.count('\nexit 0\n') != 1:
+            raise RuntimeError('conffile abort fixture preinst differs')
+        preinst.write_text(before.replace('\nexit 0\n', '\nexit 1\n'))
+        module['build_debian_archive'](refused, Path('/out/conffile-refused.deb'))
+        shutil.rmtree(refused)
     if single:
         print(run(['/bin/bash', '/work/scripts/smoke-xvfb-prepare.sh'], timeout=60), end='', flush=True)
         shutil.copytree('/usr/share/X11/xkb', '/out/xkb')

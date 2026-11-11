@@ -134,15 +134,11 @@ includes the corrected SIGPIPE launcher and passes the complete Rust/Flutter bui
 thirteen widget/two native command controls and all 73 payload hashes. Two Cargo
 jobs and a 10-GiB compiler limit fit the admitted 14-GiB guest with zero OOM events;
 scratch/headroom limits remain unchanged. `linux-sigpipe-build-83fa8494.json`
-binds the artifact and joined cleanup. Installed recovery and Applied/Denied/Failed
-replays on this corrected bundle remain OPEN. The prior `SVoK2UEeoN` at `53f66299`
-passes fresh bridges, the complete Rust/Flutter build, thirteen widget/two native
-command controls and all 73 payload hashes. `password-outcome-build-53f66299.json`
-binds exact cleanup and four zero listener deltas. That full bundle now passes
-installed-GUI cancellation, explicit Denied reporting, administrator-authorized
-Applied and restart persistence (`password-outcome-installed-c1375436.json`);
-the same bundle also passes unavailable-service Failed and recovery in the same GUI
-(`password-outcome-failed-d7459a5a.json`). The installed section records scope.
+binds the artifact and joined cleanup. This bundle passes installed GUI
+Applied/Denied/Failed and restart controls (`linux-sigpipe-settings-a3c017a6.json`),
+plus actual ten-minute Uncertain reporting, same-child recovery and credential
+persistence (`linux-sigpipe-recovery-a3c017a6.json`). The installed section records
+the named schedules, predecessor failures and remaining acceptance scope.
 The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
 Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-release
@@ -5187,7 +5183,7 @@ with Windows transport in `src/platform/windows.rs`, macOS authorization in
 | R-S11ie / R-S11e-268 / #390 | `LinuxServiceOwnedPasswordAdmission` retains the post-polkit requester through the exact `Authorizing` to `Committing` transition. Denial cancels only its matching pending claim. | The installed-layout `ea13742f` checkpoint below accepts administrator-authorized post-commit requester exit, same-child convergence, restart persistence and subsequent grant/refusal. Remaining identity/replay races, GUI cancellation, concurrency/drain schedules and final-package acceptance stay open; earlier timeout/shutdown scenarios retain their named artifact scope. |
 | R-S11if / R-S11e-269 / #391 | Windows endpoint-derived typed requests retain user/service admissions through the bounded queue. User admission fixes its action; fresh service `Active` insertion consumes service admission. | Installed user and LocalSystem endpoints, UAC, wrong endpoint/token, queue lifetime, request races, retry and crash recovery. |
 | R-S11ig / R-S11e-270 / #392 | Linux credential response admission consumes the exact child requester and retains its UUID; only that owner reads and sends the runtime PRS. | Child identity/ancestry/runtime-generation and socket races, malformed/trailing requests, child exit and response failure. |
-| R-S11ih / R-S11e-271 / #393 | `LinuxServiceOwnedPasswordReplicaWriter` retains the exact child; only a typed PRS reread after durable commit selects convergence. The consuming send preserves `NotSent` versus `Uncertain`. | Root-supervisor/active-user-child exchanges, final role/UID/ancestry replay and connect/pre-send/send/response uncertainty with bounded recovery. |
+| R-S11ih / R-S11e-271 / #393 | `LinuxServiceOwnedPasswordReplicaWriter` retains the exact child; only a typed PRS reread after durable commit selects convergence. The consuming send preserves `NotSent` versus `Uncertain`. | Installed `a3c017a6` on app `83fa8494` accepts same-child convergence after the real GUI uncertainty deadline, new/old credential outcomes and restart persistence. Final role/UID/ancestry replay, remaining connect/pre-send/send/response schedules and final-package acceptance stay open. |
 | R-S11ii / R-S11e-272 / #394 | The Linux child receiver retains the root launch/direct-parent generation through consuming runtime-PRS admission; a dedicated typed worker owns nonpersistent installation, separate from durable mutation. | Parent exit/PID reuse/UID/PPID/start-time/launch-parent races, replay, malformed input, shutdown and error finality before and after irreversible admission. |
 | R-S11ij / R-S11e-273 / #395 | The macOS credential receiver retains the fixed stream and opaque helper authorization through one UUID exchange, final full-token replay and consuming runtime-only install. | Exact signed child/helper allow/refusal, helper exit/token/PID/descriptor changes, malformed or mismatched response, deadline and reconnect finality. |
 | R-S11ik / R-S11e-274 / #396 | The Linux initial credential receiver retains its stream and root-parent PID/UID/start time through response/deadline replay and consuming runtime-only install; the debug fixture is clear-only. | Installed root supervisor/active-user child across desktops/init systems; changed parent, UID/PPID/start time, descriptor handoff, malformed/replayed response and socket races. |
@@ -7341,34 +7337,41 @@ R-S0/R-F5 and release acceptance remain OPEN.
 | Coordinator and raw v2 | `e69129bc` passed seven coordinator/23 raw-module cases in five groups: actual AF_UNIX readiness before disclosure, canonical/fragmented/empty/max/auth bodies, malformed/truncated/expired input, wiping, half-close, replay, expiry and shutdown. Pre-write refusal is NotSent; a started write is uncertain. `linux-wire-v2-accepted-e69129bc.json` retains exact scope. Two wording-only tests were later deleted; the current seven coordinator/21 protocol cases are not thereby validated. |
 | Current coordinator execution gap | At `04c7e32e`, the 28-case attempt refused before QEMU: admission required 39,936 MiB with 23,531 MiB available. No case ran. `login-inventory-role.json` retains the refusal. Guest/scratch admission and the no-disk-fallback rule remain binding. |
 
-**Full installed-layout GUI — Applied/Denied, unavailable-service Failed and restart accepted (2026-11-11).**
-TUF `JuDHUtbhR2` at `c1375436` reuses optimized bundle `53f66299` with the shipped
-service/policy and actual PAM/logind/polkit. Six cases/eighteen actual GUI stages
-cover entered-text cancellation, two initial no-agent refusals, administrator-
-approved change, a fresh no-agent refusal and service/GUI restart. The ordinary
-UID4001 GUI submits through its actual controls; a PID/start-bound textual
-pkttyagent authenticates administrator UID4003 through PAM. The credential stays
-unchanged until approval, changes on GUI success, and survives restart. Five
-mutual CPace exchanges and two exact child-log-confirmed old-password refusals
-prove the network credential before/after restart. Three refusals correlate with
-the root supervisor's held log and exact GUI identity. App payloads are unchanged;
-processes, agent, cgroup and RAM retire, guest network returns to baseline and four
-host endpoint deltas are zero. Capsule: `password-outcome-installed-c1375436.json`.
-The agent remains alive through observed Applied and retires before the final
-refusal; the preceding early-agent-exit attempt failed after PAM completion.
-The older `d1bf0877` acceptance remains valid for its own artifact.
+**Full installed-layout GUI — four password outcomes and named recovery schedules accepted (2026-11-11).**
+TUF harness `a3c017a6` reuses optimized app `83fa8494`, manifest `15ce8bb5`, with
+the shipped service/policy and actual PAM/logind/polkit. The ordinary UID4001 GUI
+uses its actual controls; a PID/start-bound textual pkttyagent authenticates
+administrator UID4003 through PAM. Both runs preserve all 73 application payloads.
 
-TUF `hu6NHtlHxk` at `d7459a5a` extends the unchanged bundle to eight cases / 23 GUI
-stages with complete outer acceptance. After the restarted GUI fills the dialog,
-the exact service processes exit and its cgroup/runtime record retire; all three
-privileged sockets refuse connections. Submission displays Failed, leaves protected
-and user-profile credential fields unchanged, and permits cancellation. Following
-service restart, the same GUI obtains a fresh root-log-correlated Denied. Seven
-mutual CPace exchanges and three old-password refusals establish credential use
-across the three service generations. Guest network/session, QEMU and private/RAM
-cleanup pass with four zero endpoint deltas. Capsule: `password-outcome-failed-d7459a5a.json`.
-The earlier fixture pathname assumption and duplicate-receipt rejection are retained
-in the audit; neither was accepted as a product failure or an overall pass.
+`yh1jjFKBlo` passes eight cases / 23 GUI stages: entered-text cancellation,
+no-agent Denied, administrator-authorized Applied, fresh refusal, service/GUI
+restart, unavailable-service Failed and recovery in the same GUI. The credential
+changes only on approval and persists across restart. During service absence,
+exact processes/cgroup/runtime retire and all three privileged sockets refuse
+connections; submission preserves protected and user-profile credential fields.
+Fresh service recovery yields a root-log-correlated Denied in the same GUI.
+Seven mutual CPace exchanges and three child-log-confirmed old-password refusals
+prove credential use across three service generations. Capsule:
+`linux-sigpipe-settings-a3c017a6.json`.
+
+`ul5yo0NAiR` passes three cases / 30 GUI stages. Actual administrator approval
+commits protected storage while all eighteen threads of the exact service child
+are kernel-stopped. Twenty-one pending observations preserve the committed
+credential and unchanged user-profile fields. The real GUI reports Uncertain at
+602.253 seconds. Resuming that same child preserves its PID/start/generation;
+mutual CPace accepts the new password and the child explicitly refuses the old
+one. The warning remains visible until cancellation; the same GUI then reopens
+and receives a fresh no-agent Denied. Service restart preserves the credential
+and repeats both network outcomes: five CPace exchanges and two old-password
+refusals overall. Capsule: `linux-sigpipe-recovery-a3c017a6.json`.
+
+Both complete outer runs exit zero, retire exact processes/agents/cgroups and
+private/RAM state, restore guest networking and record four zero host endpoint
+deltas. These accept the named Linux X11 installed-layout schedules; graphical
+OS-agent interaction and final-package acceptance remain separate. Earlier
+`53f66299` Applied/Denied and Failed checkpoints remain in
+`password-outcome-installed-c1375436.json` and `password-outcome-failed-d7459a5a.json`;
+the audit retains their fixture failures and the older `d1bf0877` scope.
 
 `d9fc6405`/`53f66299` replace the Boolean native/Flutter password result with
 Applied/Denied/Failed/Uncertain, retain bounded-recovery expiry as Uncertain,
@@ -7377,17 +7380,11 @@ an unconfirmed change may already have applied and never automatically retries.
 All 120 rendered cases, including seven password-dialog cases, and three selected
 parser controls pass at `750883af`; an intermediate stale count rejects that outer
 run. `d365011d` corrects the remaining count, whose fresh outer acceptance is OPEN.
-The full bundle above proves native Applied/Denied and pre-admission unavailable-service
-Failed through the actual UI. TUF `h74xYQsLKD` at `17553c34` observes the actual
-Uncertain warning after 602.369 seconds, following 21 pending-dialog checks with
-the exact child kernel-stopped, protected credential committed and user-profile
-fields unchanged. After child resume, the combined generation/credential check
-fails before network or restart validation; the differing state was not retained.
-The overall scenario fails and same-child recovery remains OPEN. Capsule:
-`password-outcome-uncertain-17553c34.json`. Diagnostic replay `p5EnPeh5rh` at
-`9e5963d5` preserves the credential but proves the original child exits from SIGPIPE;
-the supervisor replaces it within the same service generation. Its held log and
-exact identities are retained in `password-uncertain-diagnostic-9e5963d5.json`.
+The predecessor fails recovery after its actual Uncertain warning
+(`password-outcome-uncertain-17553c34.json`). Diagnostic replay `p5EnPeh5rh` at
+`9e5963d5` proves that SIGPIPE kills the original child and the supervisor replaces
+it; the protected credential survives. Exact identities and held-log evidence are
+in `password-uncertain-diagnostic-9e5963d5.json`.
 `b7b0569b` initializes checked SIGPIPE-ignore policy at the Linux Flutter executable
 entry before loading the Rust library, so broken pipes reach existing I/O error
 handling. Native launcher comparison `Eyapzgp8No` at `ff3aac3b` passes eight cases:
@@ -7396,15 +7393,18 @@ the corrected launcher receives EPIPE and reaches normal core completion. Both
 healthy controls pass. Production main/header compile against pinned GTK, but the
 loaded core and unused GUI entry are fixtures. `linux-launcher-native-ff3aac3b.json`
 binds source/executable identities and joined cleanup. The affected Debian archive
-lane also passes unchanged (`launcher-debian-regression-ff3aac3b.json`). Complete
-application recovery remains unverified. After the retained admission refusal,
-`83fa8494` bounds compilation to two Cargo jobs and 10 GiB inside a 14-GiB guest,
-preserving scratch, overlay and host-headroom bounds. Full build `Bk1AusTf8r`
-passes fresh bridges, thirteen widget/two native controls and all 73 payload hashes,
-with zero compiler OOM events. `linux-sigpipe-build-83fa8494.json` binds manifest
-`15ce8bb5`, exact QEMU/private/RAM retirement and four zero endpoint deltas.
-The corrected complete app is now available. Replay the original same-child
-recovery case plus Applied/Denied/Failed controls against this bundle.
+lane also passes (`launcher-debian-regression-ff3aac3b.json`). Complete build
+`linux-sigpipe-build-83fa8494.json` and the two installed runs above close this
+specific recovery failure and its ordinary-settings regression.
+
+The first corrected-app replay survives resume and authenticates the new password,
+then fails the old log observer's 128-KiB/stable-size assumption before the stale
+credential probe (`linux-sigpipe-recovery-4970df73.json`). `a3c017a6` captures a
+bounded complete-record prefix from the exact held descriptor. Six real-file
+checks pass for size, concurrent append, partial UTF-8, truncation, oversize and
+replacement. The successful recovery run observes a 145,029-byte child log,
+above the old cap; the prior exception did not preserve which predicate failed.
+No product deadline or authentication/identity/restart requirement was relaxed.
 Other failure paths, mutation recovery across receiver restart, native macOS
 outcome classification, graphical OS-agent interaction,
 cancellation during authorization, concurrency, other platforms, final packages

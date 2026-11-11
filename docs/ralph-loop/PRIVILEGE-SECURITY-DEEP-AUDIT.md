@@ -144694,3 +144694,37 @@ snapshot, append during observation, partial UTF-8 record, truncation, oversize 
 pathname replacement. Execute ordinary installed settings first for quick
 observer/regression feedback, then repeat the unchanged ten-minute uncertainty
 scenario on the same app. Product authority, deadlines and acceptance stay fixed.
+
+**Installed corrected-app acceptance.** TUF `yh1jjFKBlo` at `a3c017a6` exits zero
+with the unchanged `83fa8494` app: all eight cases / 23 actual GUI stages,
+seven mutual CPace exchanges and three receiver-confirmed old-password refusals
+pass. Applied/Denied, pre-submit cancellation, service/GUI restart, unavailable-
+service Failed and fresh service recovery in the same GUI are accepted. The six
+real-file log controls pass during ordinary preparation. Runtime is 155.137
+seconds, RAM workspace peak 3,839,680,512 bytes. QEMU3833403 joins with zero;
+private/RAM state disappear and all four endpoint deltas are zero.
+`linux-sigpipe-settings-a3c017a6.json` is 19,625 bytes, SHA-256
+`1c65aa33348c657616fdc0e5ceb930ac20ef8e507ee031dd564db4929cc1790c`;
+nine files / 130,307 bytes match both hosts.
+
+The full uncertainty replay `ul5yo0NAiR` then exits zero on the same app/harness.
+Actual PAM approval commits at 11.313 seconds with all eighteen child threads
+stopped. All 21 pending checks pass; Uncertain appears at 602.253 seconds.
+Child9075/start5387, supervisor9066 and generation remain unchanged after resume;
+mutual CPace accepts the new password and the child confirms old-password refusal.
+The actual GUI preserves the warning until cancellation, reopens and receives
+a fresh root-log-correlated Denied. Service restart repeats new acceptance and
+old refusal. All three cases / 30 GUI stages, five CPace exchanges, two stale
+refusals, network/session retirement and immutable app checks pass.
+
+The resumed child log is 145,029 bytes before the stale probe, exceeding the
+old observer cap. Snapshot length and SHA-256 remain retained; the first failed
+run's ambiguous exception is not retroactively classified. This run takes
+740.388 seconds with 3,839,287,296 peak workspace bytes. QEMU3835405 joins with
+zero; private/RAM state disappear and all four endpoint deltas are zero.
+`linux-sigpipe-recovery-a3c017a6.json` is 17,621 bytes, SHA-256
+`a456f00638c560418a05d7533b8df4b731b878ce29c79db1c93b3efbe21a5f13`;
+nine files / 123,630 bytes match CTE/TUF. The reproduced SIGPIPE recovery failure
+is closed for this exact installed Linux schedule. Other authorization/cancellation/
+concurrency schedules, graphical OS agents, final packages, other platforms,
+complete R-S0/R-F5 and independent release acceptance remain OPEN.

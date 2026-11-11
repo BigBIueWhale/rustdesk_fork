@@ -147295,3 +147295,79 @@ The fixed tokenizer, seven controls and whole-input round trip pass. Eight files
 joins zero after 29.872 seconds, peak scratch 402,964,480 bytes, three zero
 listener deltas and exact private/RAM cleanup. The approximate 400,000-token
 compression remains OPEN. This audit-only append leaves the measured ledger intact.
+
+## 2026-11-12 — Native recording folder selection, cancellation and restart
+
+Previous slice: progress, with actual screenshot save/cancel and corrected Linux
+selector shutdown. Select the remaining migrated recording-folder workflow under
+R-S0: the retained full application can decide native selection, cancellation,
+persistence and restart in minutes, before the larger Android SDK/Gradle closure.
+This is missing acceptance evidence, not a presumed product defect. Actual
+recorded video output is a separate acceptance condition.
+
+Source: flutter/lib/desktop/pages/desktop_setting_page.dart _RecordingState owns
+one pending getDirectoryPath operation, preserves cancellation and writes through
+mainSetLocalOption; src/ui_interface.rs video_save_directory reads the local value.
+GTK SELECT_FOLDER chooses an existing directory and get_filename returns its
+absolute path; set_current_folder only initializes navigation:
+https://docs.gtk.org/gtk3/enum.FileChooserAction.html
+https://docs.gtk.org/gtk3/method.FileChooser.get_filename.html
+https://docs.gtk.org/gtk3/method.FileChooser.set_current_folder.html
+Drive the actual dialog, then observe the UI and independent storage after exit.
+Do not infer persisted state solely from a successful chooser response.
+
+9ff1b544 adds --recording-directory through the existing isolated replay path.
+One server and two fully joined viewer generations use the existing actual
+password prompt. The native driver opens Settings/Change, identifies the exact
+process-owned GTK dialog, enters /tmp/recording-selected-שלום and selects Open.
+Cancel with a different path must preserve the displayed value and settings
+device/inode/size/SHA-256. After each viewer joins zero, independent bounded TOML
+parsing checks video-save-directory. The second viewer must display the saved
+path before any setting mutation. Each generation requires four fresh presented
+frames on its original connection, the existing resource limits and clean engine
+shutdown. Both empty fixture directories retire inside the viewer container.
+
+Two failed attempts are retained without acceptance claims. t5hAcKwFB7/tool7341
+at 9ff1b544 selects the actual path, then the retirement observer rejects a partial
+AT-SPI traversal as a child disappears. 7352f195 retries whole scans within the
+original deadline; only three complete absent scans establish retirement.
+KWV5oeYXm0/tool92146 then passes generation-one selection, cancellation and fresh
+pixels, but reaches the unrelated credential-restart result branch and exits for
+an unset credential_phase. fc52d6a8 routes this scenario before that branch and
+requires the actual password prompt in both generations. Neither repair weakens
+the expected product outcomes or changes the application. Failed private roots
+and duplicate payloads are removed only after exact inventory/hash and owner
+verification; 62,066,688 and 62,001,152 allocated bytes are freed. Capsules
+native-recording-9ff1b544.json (12 files/397,073 bytes) and
+native-recording-7352f195.json (12 files/338,737 bytes) match both hosts.
+Both QEMU children join zero, RAM retires and all four listener deltas are zero.
+
+Final WAK2813C72/tool81113 exits zero at fc52d6a8139911f47fd5c88f983919187c017264.
+It reuses app fd93151be34374f808864b9c0dd32fc584d7fa27, manifest
+f11a9eac46012a23627bb9d99a16d9cdf1ca692542b4c061d14a64af28e7834d,
+with unchanged patched engine ddb1541d. Both native driver builds compare equal.
+Generation one selects the exact Unicode folder; generation two restores it.
+Both cancellation checks preserve file identity/bytes and displayed path; both
+post-join storage checks pass. Four fresh frames follow each settings sequence,
+maximum ages 301 and 318 ms, on each generation's original connection.
+RSS/threads/descriptors remain within the existing limits:
+359,400 to 416,592 KiB / 60 to 55 / 45 to 46 in generation one;
+373,472 to 419,744 KiB / 63 to 55 / 44 to 45 in generation two.
+Both viewers exit zero with the existing engine-retirement gate satisfied.
+Server, source, Xvfb and listener also retire with no server replacement.
+
+native-recording-fc52d6a8.json binds nine files/105,737 bytes independently
+verified on CTE and TUF. Raw console SHA-256 is
+0ec22a62ab9977983a09ba3825d42568bde0b190829e449469362387312b1312;
+outer SHA-256 is e2ac426957b021dd2a69990ed64022fb9695bc13cb9b9f58c6e3c6c242fda4ce.
+Storage lasts 127.674 seconds, peak RAM scratch 3,025,326,080 bytes under 7 GiB,
+with 10 GiB guest RAM and 6 GiB host headroom. QEMU 372046 joins zero; exact
+private/socket/RAM state is absent and four host listener deltas are zero.
+No app rebuild, host product execution, host authority or SSH-authentication
+change occurs. Source stays frozen through terminal reconciliation/evidence copy.
+
+This closes Linux native folder selection, unchanged cancellation and restoration
+after full viewer restart on the named bundle. Recording output/playback,
+interrupted/concurrent chooser lifetimes, failure durability, other platforms,
+installed artifacts and broader R-S0/R-F5/release acceptance remain OPEN.
+The ledger records this scope; measure it once with the fixed tokenizer.

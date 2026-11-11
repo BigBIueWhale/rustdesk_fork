@@ -11,7 +11,7 @@ FLUTTER_VIEWER_SUSPEND=0
 FLUTTER_CLIPBOARD_TEXT=0
 FLUTTER_KEYBOARD_INPUT=0
 FLUTTER_MOUSE_INPUT=0
-FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=0
+FLUTTER_SCREENSHOT_SAVE=0
 FLUTTER_VIEW_SCALING=0
 FLUTTER_SESSION_CLOSE=0
 FLUTTER_MONITOR_SWITCH=0
@@ -357,7 +357,7 @@ case "$#:${8:-}" in
                 --view-only-save-failure) FLUTTER_KEYBOARD_INPUT=5 ;;
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
-                --screenshot-save-unavailable) FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE=1 ;;
+                --screenshot-save) FLUTTER_SCREENSHOT_SAVE=1 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --monitor-switch) FLUTTER_MONITOR_SWITCH=1 ;;
@@ -476,7 +476,7 @@ readonly FLUTTER_NETWORK_IMPAIRMENT
 readonly FLUTTER_CLIPBOARD_TEXT
 readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
-readonly FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE
+readonly FLUTTER_SCREENSHOT_SAVE
 readonly FLUTTER_VIEW_SCALING
 readonly FLUTTER_SESSION_CLOSE
 readonly FLUTTER_MONITOR_SWITCH
@@ -14848,7 +14848,7 @@ run_flutter_peer_presentation() {
     fi
     peer_args+=(--engine-context "$FLUTTER_APP_ENGINE_CONTEXT")
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
-    [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 0 ] || peer_args+=(--screenshot-save-unavailable)
+    [ "$FLUTTER_SCREENSHOT_SAVE" -eq 0 ] || peer_args+=(--screenshot-save)
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_args+=(--session-close)
     [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || peer_args+=(--monitor-switch)
@@ -15024,8 +15024,8 @@ run_flutter_peer_presentation() {
     elif [ "$FLUTTER_VIEW_SCALING" -eq 1 ]; then
         peer_scenario=view-scaling
         peer_cycles=1
-    elif [ "$FLUTTER_SCREENSHOT_SAVE_UNAVAILABLE" -eq 1 ]; then
-        peer_scenario=screenshot-save-unavailable
+    elif [ "$FLUTTER_SCREENSHOT_SAVE" -eq 1 ]; then
+        peer_scenario=screenshot-save
         peer_cycles=1
     elif [ "$FLUTTER_MOUSE_INPUT" -eq 2 ]; then
         peer_scenario=mouse-retirement

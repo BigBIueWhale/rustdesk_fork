@@ -100,7 +100,7 @@ case "$#:${1:-}" in
         --keyboard-retirement) PEER_SCENARIO=keyboard-retirement ;;
         --mouse-input) PEER_SCENARIO=mouse-input ;;
         --mouse-retirement) PEER_SCENARIO=mouse-retirement ;;
-        --screenshot-save-unavailable) PEER_SCENARIO=screenshot-save-unavailable ;;
+        --screenshot-save) PEER_SCENARIO=screenshot-save ;;
         --view-scaling) PEER_SCENARIO=view-scaling ;;
         --image-quality) PEER_SCENARIO=image-quality ;;
         --quality-restart) PEER_SCENARIO=quality-restart ;;
@@ -292,11 +292,11 @@ elif [ "$PEER_SCENARIO" = view-scaling ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined view_scaling=9 input_points=45 pixels=fresh stable_connection=true resources=bounded'
-elif [ "$PEER_SCENARIO" = screenshot-save-unavailable ]; then
+elif [ "$PEER_SCENARIO" = screenshot-save ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined screenshot_received=true save=unavailable error=visible stable_connection=true'
+  VIEWER_RESULT='viewer=joined xvfb=joined cases=2 cancel=empty save=png source_frame=verified stable_connection=true'
 elif [ "$PEER_SCENARIO" = mouse-retirement ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

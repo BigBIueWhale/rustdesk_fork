@@ -33,7 +33,7 @@ case "$PEER_SCENARIO" in
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|congestion-soak|input-latency|input-recovery|input-loss|input-congestion|input-soak|input-congestion-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
   focus-reconnect-resource|account-stores) EXPECTED_RESTARTS=3 ;;
   view-only|view-only-save-failure) EXPECTED_RESTARTS=0 ;;
-  viewer-suspend|network-impairment|network-loss|network-congestion|clipboard-text|clipboard-images|keyboard-input|keyboard-modes|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save-unavailable|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
+  viewer-suspend|network-impairment|network-loss|network-congestion|clipboard-text|clipboard-images|keyboard-input|keyboard-modes|keyboard-retirement|mouse-input|mouse-retirement|screenshot-save|view-scaling|credential-restart|credential-rotation|credential-forget|credential-menu|credential-menu-accessible) EXPECTED_RESTARTS=0 ;;
   *) fail 'unknown peer runtime scenario' ;;
 esac
 readonly EXPECTED_RESTARTS
@@ -1801,16 +1801,7 @@ PY
         controller_args+=(--credential-restore)
       fi
     fi
-    if [ "$PEER_SCENARIO" = screenshot-save-unavailable ]; then
-      command -v which >/dev/null || fail 'file-picker executable lookup tool is absent'
-      for helper in qarma kdialog zenity; do
-        if command -v "$helper" >/dev/null; then
-          fail "missing-picker scenario unexpectedly has $helper"
-        fi
-      done
-      echo 'FLUTTER_PEER_SCREENSHOT_PICKER_ENV helpers=absent lookup=available'
-      controller_args+=(--screenshot-save-unavailable)
-    fi
+    [ "$PEER_SCENARIO" != screenshot-save ] || controller_args+=(--screenshot-save)
     [ "$PEER_SCENARIO" != viewer-suspend ] || controller_args+=(--viewer-suspend)
     [ "$PEER_SCENARIO" != viewer-soak ] || controller_args+=(--viewer-soak)
     [ "$PEER_SCENARIO" != congestion-soak ] || controller_args+=(--congestion-soak)
@@ -2217,10 +2208,10 @@ PY
       [ "$(grep -Ec '^FLUTTER_PEER_VIEW_SCALE_INPUT_POINT_OK sequence=7 point=1 .* entry_click=1$' <<<"$controller_output")" -eq 1 ] \
         || fail 'first click after entering the smaller viewer is absent or duplicated'
       viewer_result='viewer=joined xvfb=joined view_scaling=9 input_points=45 pixels=fresh stable_connection=true resources=bounded'
-    elif [ "$PEER_SCENARIO" = screenshot-save-unavailable ]; then
-      grep -Fxq 'FLUTTER_PEER_SCREENSHOT_SAVE_UNAVAILABLE_OK screenshot_received=true save=unavailable error=visible stable_connection=true' \
-        <<<"$controller_output" || fail 'native screenshot missing-picker result is absent'
-      viewer_result='viewer=joined xvfb=joined screenshot_received=true save=unavailable error=visible stable_connection=true'
+    elif [ "$PEER_SCENARIO" = screenshot-save ]; then
+      grep -Fxq 'FLUTTER_PEER_SCREENSHOT_SAVE_OK cases=2 cancel=empty save=png source_frame=verified stable_connection=true' \
+        <<<"$controller_output" || fail 'native screenshot save/cancel result is absent'
+      viewer_result='viewer=joined xvfb=joined cases=2 cancel=empty save=png source_frame=verified stable_connection=true'
     elif [ "$PEER_SCENARIO" = mouse-retirement ]; then
       grep -Fxq 'FLUTTER_PEER_MOUSE_RETIREMENT_OK remote_buttons=3 local_button=preserved viewer_exit=abrupt native_releases=true fixture_buttons_released=true' \
         <<<"$controller_output" || fail 'native mouse retirement verdict is missing'

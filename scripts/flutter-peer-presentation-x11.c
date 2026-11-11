@@ -133,6 +133,7 @@ typedef struct {
     int focused_text;
     int name_fragment;
     int password_text;
+    AtspiRole role;
 } NamedControlScan;
 
 static int sleep_millis(unsigned int millis) {
@@ -597,6 +598,15 @@ static int scan_named_control_node(AtspiAccessible *accessible, unsigned int exp
                     return named_control_refusal(scan, "focused-role-query", depth, error);
                 }
                 matches = role == ATSPI_ROLE_TEXT;
+            }
+            if (matches && scan->role != ATSPI_ROLE_INVALID) {
+                AtspiRole role = atspi_accessible_get_role(accessible, &error);
+                if (error != NULL) {
+                    g_free(name);
+                    g_object_unref(states);
+                    return named_control_refusal(scan, "role-query", depth, error);
+                }
+                matches = role == scan->role;
             }
             if (scan->text_content == 0 && matches &&
                 (scan->dialog_caption == 0 || dialog_scope != 0)) {
@@ -7642,54 +7652,242 @@ out:
     return result;
 }
 
-static int exercise_screenshot_save_unavailable(const ViewerWindow *viewer,
-                                                const ConnectionIdentity *connection,
-                                                const ProcessResources *baseline) {
-    static const char missing_picker[] =
-        "Exception: Couldn't find the executable zenity in the path.";
+static int screenshot_chooser_control(AtspiAccessible *dialog, unsigned int pid,
+                                      const char *name, AtspiRole role, int focused,
+                                      AtspiAccessible **control) {
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-    AtspiAccessible *show = NULL, *hide = NULL, *error_text = NULL;
-    ConnectionIdentity after = {{0}, {0}, 0UL};
-    ProcessResources resources = {0};
-    int result = -1;
-
-    if (query_named_accessible((unsigned int)viewer->pid, "Show toolbar", deadline, &show, 0) != 0 ||
-        query_named_accessible((unsigned int)viewer->pid, "Hide toolbar", deadline, &hide, 0) != 0 ||
-        (show == NULL) == (hide == NULL)) goto out;
-    if (show != NULL && activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0)
-        goto out;
-    if (activate_named_control((unsigned int)viewer->pid, "Control actions") != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Take screenshot") != 0 ||
-        activate_named_control((unsigned int)viewer->pid, "Save as...") != 0) goto out;
-    puts("FLUTTER_PEER_SCREENSHOT_RESPONSE_OBSERVED actions=visible save_as=activated");
-    fflush(stdout);
-
-    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-    while (monotonic_millis() < deadline && error_text == NULL) {
-        /* Replaced dialog nodes can invalidate a read; only a complete peer-bound scan counts. */
-        if (query_accessible((unsigned int)viewer->pid, missing_picker,
-                             deadline, &error_text, 1, 1, NULL) != 0)
-            g_clear_object(&error_text);
-        if (error_text == NULL && sleep_millis(PASSWORD_PROMPT_SCAN_INTERVAL_MS) != 0) goto out;
+    *control = NULL;
+    while (monotonic_millis() < deadline) {
+        NamedControlScan scan = {.name = name, .deadline = deadline,
+                                .focused_text = focused, .role = role};
+        int result = scan_named_control_node(dialog, pid, 0U, &scan, 0);
+        if (result == 0 && scan.matches == 1U) {
+            *control = scan.match;
+            return 0;
+        }
+        g_clear_object(&scan.match);
+        if (result < 0 || sleep_millis(100U) != 0) break;
     }
-    if (error_text == NULL || monotonic_millis() >= deadline ||
-        read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
-        read_process_resources(viewer->pid, &resources) != 0 ||
-        !resources_are_bounded(baseline, &resources)) goto out;
-    print_resources("screenshot-save-unavailable", 1U, &resources);
-    puts("FLUTTER_PEER_SCREENSHOT_SAVE_ERROR_OBSERVED helper=zenity error=visible "
-         "screenshot_actions=received saved_file=unproved");
+    fprintf(stderr, "FLUTTER_PEER_SCREENSHOT_CONTROL_FAIL name=%s\n", name);
+    return -1;
+}
+
+static int screenshot_png_matches(int directory, SourceHistory *history,
+                                  uint64_t requested_us, uint64_t received_us) {
+    static const char filename[] = "screen-שלום.png";
+    GError *error = NULL;
+    GdkPixbufLoader *loader = NULL;
+    GdkPixbuf *picture = NULL;
+    gchar *digest = NULL;
+    unsigned char *data = NULL;
+    uint8_t pixels[X11_FRAME_BYTES];
+    struct stat before, after;
+    int file = -1, result = -1;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        file = openat(directory, filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+        if (file >= 0) break;
+        if (errno != ENOENT || sleep_millis(40U) != 0) goto out;
+    }
+    if (file < 0 || fstat(file, &before) != 0 || !S_ISREG(before.st_mode) ||
+        before.st_uid != geteuid() || before.st_gid != getegid() || before.st_nlink != 1U ||
+        (before.st_mode & 07777U) != 0600U || before.st_size <= 0 ||
+        before.st_size > 1024 * 1024) goto out;
+    data = malloc((size_t)before.st_size);
+    if (data == NULL) goto out;
+    size_t offset = 0U;
+    while (offset < (size_t)before.st_size) {
+        ssize_t count = read(file, data + offset, (size_t)before.st_size - offset);
+        if (count < 0 && errno == EINTR) continue;
+        if (count <= 0) goto out;
+        offset += (size_t)count;
+    }
+    if (fstat(file, &after) != 0 || after.st_dev != before.st_dev ||
+        after.st_ino != before.st_ino || after.st_size != before.st_size ||
+        after.st_mtim.tv_sec != before.st_mtim.tv_sec ||
+        after.st_mtim.tv_nsec != before.st_mtim.tv_nsec) goto out;
+    /* Bound the decoder's allocation before admitting the PNG header. */
+    static const unsigned char header[] = {
+        137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 'I', 'H', 'D', 'R',
+        0, 0, 2, 128, 0, 0, 1, 224
+    };
+    if (offset < 33U || memcmp(data, header, sizeof(header)) != 0) goto out;
+    loader = gdk_pixbuf_loader_new_with_type("png", &error);
+    if (loader == NULL) goto out;
+    gboolean written = gdk_pixbuf_loader_write(loader, data, offset, &error);
+    gboolean closed = gdk_pixbuf_loader_close(loader, written ? &error : NULL);
+    if (!written || !closed) goto out;
+    picture = gdk_pixbuf_loader_get_pixbuf(loader);
+    if (picture == NULL || gdk_pixbuf_get_width(picture) != 640 ||
+        gdk_pixbuf_get_height(picture) != 480 ||
+        gdk_pixbuf_get_colorspace(picture) != GDK_COLORSPACE_RGB ||
+        gdk_pixbuf_get_bits_per_sample(picture) != 8) goto out;
+    int channels = gdk_pixbuf_get_n_channels(picture);
+    if (channels != 3 && channels != 4) goto out;
+    const guchar *image = gdk_pixbuf_read_pixels(picture);
+    for (unsigned int y = 0U; y < X11_FRAME_HEIGHT; ++y)
+        for (unsigned int x = 0U; x < X11_FRAME_WIDTH; ++x)
+            memcpy(pixels + (y * X11_FRAME_WIDTH + x) * 3U,
+                   image + (y * 480U / X11_FRAME_HEIGHT) * gdk_pixbuf_get_rowstride(picture) +
+                       (x * 640U / X11_FRAME_WIDTH) * channels, 3U);
+    int64_t frame = x11_frame_decode(pixels);
+    if (frame < 0 || x11_frame_refresh(history, "/coord") != 0 ||
+        (uint64_t)frame >= history->count ||
+        history->publication_us[frame] + 1000000U < requested_us ||
+        history->publication_us[frame] > received_us) goto out;
+    digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256, data, offset);
+    if (digest == NULL) goto out;
+    printf("FLUTTER_PEER_SCREENSHOT_PNG_OK bytes=%zu sha256=%s dimensions=640x480 "
+           "frame=%lld source_publication_us=%llu request_us=%llu received_us=%llu "
+           "path=exact-unicode mode=0600\n", offset, digest, (long long)frame,
+           (unsigned long long)history->publication_us[frame],
+           (unsigned long long)requested_us, (unsigned long long)received_us);
     result = 0;
 out:
-    if (show != NULL) g_object_unref(show);
-    if (hide != NULL) g_object_unref(hide);
-    if (error_text != NULL) g_object_unref(error_text);
+    if (file >= 0 && close(file) != 0) result = -1;
+    g_clear_object(&loader);
+    g_clear_error(&error);
+    g_free(digest);
+    free(data);
+    return result;
+}
+
+static int exercise_screenshot_save(Display *display, const ViewerWindow *viewer,
+                                   SourceHistory *history, const ConnectionIdentity *connection,
+                                   const ProcessResources *baseline) {
+    char directory[] = "/tmp/rustdesk-screenshot-XXXXXX";
+    char path[PATH_MAX];
+    const char *phase = "private-directory";
+    AtspiAccessible *show = NULL, *hide = NULL, *dialog = NULL, *field = NULL, *button = NULL;
+    AtspiEditableText *editable = NULL;
+    AtspiText *text = NULL;
+    AtspiAction *action = NULL;
+    GError *error = NULL;
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    ProcessResources resources = {0};
+    int root = -1, result = -1, created = 0;
+    if (mkdtemp(directory) == NULL) goto out;
+    created = 1;
+    root = open(directory, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (root < 0) goto out;
+    for (unsigned int sequence = 0U; sequence < 2U; ++sequence) {
+        const char *filename = sequence == 0U ? "cancelled.png" : "screen-שלום.png";
+        if (snprintf(path, sizeof(path), "%s/%s", directory, filename) >= (int)sizeof(path)) goto out;
+        phase = "screenshot-request";
+        uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        uint64_t requested_us = x11_frame_monotonic_us();
+        if (query_named_accessible((unsigned int)viewer->pid, "Show toolbar", deadline, &show, 0) != 0 ||
+            query_named_accessible((unsigned int)viewer->pid, "Hide toolbar", deadline, &hide, 0) != 0 ||
+            (show == NULL) == (hide == NULL)) goto out;
+        if (show != NULL && activate_named_control((unsigned int)viewer->pid, "Show toolbar") != 0)
+            goto out;
+        g_clear_object(&show);
+        g_clear_object(&hide);
+        if (activate_named_control((unsigned int)viewer->pid, "Control actions") != 0 ||
+            activate_named_control((unsigned int)viewer->pid, "Take screenshot") != 0 ||
+            activate_named_control((unsigned int)viewer->pid, "Save as...") != 0) goto out;
+        uint64_t received_us = x11_frame_monotonic_us();
+        phase = "native-dialog";
+        deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        while (monotonic_millis() < deadline && dialog == NULL) {
+            if (query_named_accessible((unsigned int)viewer->pid, "Save File", deadline, &dialog, 0) != 0)
+                goto out;
+            if (dialog == NULL && sleep_millis(100U) != 0) goto out;
+        }
+        if (dialog == NULL) goto out;
+        AtspiRole role = atspi_accessible_get_role(dialog, &error);
+        if (error != NULL || role != ATSPI_ROLE_FILE_CHOOSER) goto out;
+        phase = "filename";
+        if (screenshot_chooser_control(dialog, (unsigned int)viewer->pid, "filename",
+                                       ATSPI_ROLE_TEXT, 1, &field) != 0 ||
+            (editable = atspi_accessible_get_editable_text_iface(field)) == NULL ||
+            (text = atspi_accessible_get_text_iface(field)) == NULL) goto out;
+        gchar *suggested = atspi_text_get_text(text, 0, -1, &error);
+        int valid = error == NULL && suggested != NULL &&
+                    g_str_has_prefix(suggested, "screenshot_") && g_str_has_suffix(suggested, ".png");
+        g_free(suggested);
+        if (!valid || !atspi_editable_text_set_text_contents(editable, path, &error) ||
+            error != NULL) goto out;
+        gchar *selected = atspi_text_get_text(text, 0, -1, &error);
+        valid = error == NULL && selected != NULL && strcmp(selected, path) == 0;
+        g_free(selected);
+        if (!valid) goto out;
+        g_clear_object(&editable);
+        g_clear_object(&text);
+        g_clear_object(&field);
+        phase = sequence == 0U ? "cancel" : "save";
+        if (screenshot_chooser_control(dialog, (unsigned int)viewer->pid,
+                                       sequence == 0U ? "Cancel" : "Save",
+                                       ATSPI_ROLE_PUSH_BUTTON, 0, &button) != 0 ||
+            (action = atspi_accessible_get_action_iface(button)) == NULL) goto out;
+        gint actions = atspi_action_get_n_actions(action, &error);
+        if (error != NULL || actions != 1) goto out;
+        gchar *name = atspi_action_get_action_name(action, 0, &error);
+        valid = error == NULL && name != NULL && strcmp(name, "click") == 0;
+        g_free(name);
+        if (!valid || !atspi_action_do_action(action, 0, &error) || error != NULL) goto out;
+        g_clear_object(&action);
+        g_clear_object(&button);
+        g_clear_object(&dialog);
+        phase = "dialog-retirement";
+        deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        unsigned int absent = 0U;
+        while (monotonic_millis() < deadline && absent < 3U) {
+            if (query_named_accessible((unsigned int)viewer->pid, "Save File", deadline, &dialog, 0) != 0)
+                goto out;
+            absent = dialog == NULL ? absent + 1U : 0U;
+            g_clear_object(&dialog);
+            if (sleep_millis(100U) != 0) goto out;
+        }
+        if (absent != 3U) goto out;
+        phase = "filesystem-result";
+        struct stat unused;
+        if (fstatat(root, "cancelled.png", &unused, AT_SYMLINK_NOFOLLOW) == 0 || errno != ENOENT)
+            goto out;
+        if (sequence == 0U) {
+            DIR *entries = opendir(directory);
+            if (entries == NULL) goto out;
+            int empty = 1;
+            errno = 0;
+            for (struct dirent *entry; (entry = readdir(entries)) != NULL;)
+                if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) empty = 0;
+            if (errno != 0) empty = 0;
+            if (closedir(entries) != 0) empty = 0;
+            if (!empty) goto out;
+            puts("FLUTTER_PEER_SCREENSHOT_CANCEL_OK dialog=retired directory=empty");
+        } else if (screenshot_png_matches(root, history, requested_us, received_us) != 0) goto out;
+        phase = "session-preserved";
+        uint64_t first_fresh = 0U, maximum_age = 0U;
+        if (read_connection_identity(&after) != 0 || !same_connection(connection, &after) ||
+            read_process_resources(viewer->pid, &resources) != 0 ||
+            !resources_are_bounded(baseline, &resources) ||
+            wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS,
+                                    4U, &first_fresh, &maximum_age) != 0) goto out;
+        print_resources("screenshot-save", sequence + 1U, &resources);
+    }
+    result = 0;
+out:
     if (result != 0) {
         PasswordPromptScan diagnostic;
-        fputs("FLUTTER_PEER_X11_FAIL screenshot missing-picker scenario\n", stderr);
+        fprintf(stderr, "FLUTTER_PEER_SCREENSHOT_FAIL phase=%s error=%s\n",
+                phase, error != NULL ? error->message : "unavailable");
         if (scan_password_prompt((unsigned int)viewer->pid, &diagnostic, 1) != 0)
-            fputs("FLUTTER_PEER_X11_FAIL screenshot accessibility diagnostic\n", stderr);
+            fputs("FLUTTER_PEER_SCREENSHOT_FAIL diagnostic=unavailable\n", stderr);
     }
+    g_clear_error(&error);
+    g_clear_object(&show);
+    g_clear_object(&hide);
+    g_clear_object(&dialog);
+    g_clear_object(&field);
+    g_clear_object(&editable);
+    g_clear_object(&text);
+    g_clear_object(&button);
+    g_clear_object(&action);
+    if (root >= 0) {
+        if (unlinkat(root, "screen-שלום.png", 0) != 0 && errno != ENOENT) result = -1;
+        if (close(root) != 0) result = -1;
+    }
+    if (created && rmdir(directory) != 0) result = -1;
     return result;
 }
 
@@ -7925,7 +8123,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--view-only-save-failure") != 0 &&
                                     strcmp(argv[5], "--mouse-input") != 0 &&
                                     strcmp(argv[5], "--mouse-retirement") != 0 &&
-                                    strcmp(argv[5], "--screenshot-save-unavailable") != 0 &&
+                                    strcmp(argv[5], "--screenshot-save") != 0 &&
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--image-quality") != 0 &&
                                     strcmp(argv[5], "--quality-best") != 0 &&
@@ -7976,7 +8174,7 @@ int main(int argc, char **argv) {
               "--language-direction, --language-direction-english, --language-direction-restore, "
               "--native-components\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--input-congestion-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save-unavailable|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--input-congestion-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -8406,7 +8604,7 @@ int main(int argc, char **argv) {
         int view_only = view_only_save_failure || strcmp(argv[5], "--view-only") == 0;
         int mouse_input = strcmp(argv[5], "--mouse-input") == 0;
         int mouse_retirement = strcmp(argv[5], "--mouse-retirement") == 0;
-        int screenshot_unavailable = strcmp(argv[5], "--screenshot-save-unavailable") == 0;
+        int screenshot_save = strcmp(argv[5], "--screenshot-save") == 0;
         int view_scaling = strcmp(argv[5], "--view-scaling") == 0;
         int image_quality = strcmp(argv[5], "--image-quality") == 0;
         int monitor_burst = strcmp(argv[5], "--monitor-burst") == 0;
@@ -8434,8 +8632,8 @@ int main(int argc, char **argv) {
             session_close ? exercise_session_close(
             display, &viewer, argv[4], &current_connection) : view_scaling ? exercise_view_scaling(
             source, display, &viewer, &history, &current_connection, &baseline_resources) :
-            screenshot_unavailable ? exercise_screenshot_save_unavailable(
-            &viewer, &current_connection, &baseline_resources) : mouse_retirement ? exercise_mouse_retirement(
+            screenshot_save ? exercise_screenshot_save(
+            display, &viewer, &history, &current_connection, &baseline_resources) : mouse_retirement ? exercise_mouse_retirement(
             source, display, &viewer, argv[4], &current_connection) : mouse_input ? exercise_mouse_input(
             source, display, &viewer, &current_connection, &baseline_resources) :
             keyboard_retirement ? exercise_keyboard_retirement(
@@ -8482,9 +8680,9 @@ int main(int argc, char **argv) {
             puts("FLUTTER_PEER_VIEW_SCALING_OK cases=9 styles=original,adaptive "
                  "geometry=pixel-witness input_points=45 tolerance_px=1 pixels=fresh "
                  "stable_connection=true resources=bounded");
-        } else if (screenshot_unavailable) {
-            puts("FLUTTER_PEER_SCREENSHOT_SAVE_UNAVAILABLE_OK screenshot_received=true "
-                 "save=unavailable error=visible stable_connection=true");
+        } else if (screenshot_save) {
+            puts("FLUTTER_PEER_SCREENSHOT_SAVE_OK cases=2 cancel=empty save=png "
+                 "source_frame=verified stable_connection=true");
         } else if (mouse_retirement) {
             puts("FLUTTER_PEER_MOUSE_RETIREMENT_OK remote_buttons=3 local_button=preserved "
                  "viewer_exit=abrupt native_releases=true fixture_buttons_released=true");

@@ -146456,3 +146456,12 @@ https://cloud.google.com/storage/docs/json_api/v1/objects
 https://cloud.google.com/storage/docs/json_api/v1/objects/get
 The release SDK migration remains selected and OPEN. Update the ledger and obtain
 its fresh isolated count; the retained application/engine evidence is unchanged.
+
+Fresh count PkmoNN8SoU at 7103f39c exits zero (tool 20167): 406,312 tokens /
+1,855,373 bytes, SHA-256 ed63a0fa61a90d15adaddd95463acd91d05d9caff284119397de03868c999c1f.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and byte round trip. flutter-candidate-maven-ledger-7103f39c.json and eight files /
+115,639 bytes match CTE/TUF. QEMU 3988165 joins zero after 29.938 seconds; three
+host listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.

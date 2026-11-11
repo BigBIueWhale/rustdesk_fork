@@ -144444,3 +144444,13 @@ original-child and current-child log on this failure. Missing logs are explicit.
 It changes no application, deadline, stop/resume schedule or acceptance condition.
 Next: replay this same artifact with that diagnostic before deciding whether the
 fixture expectation or product recovery requires correction. Complete R-S0 stays open.
+
+Fresh ledger count `XIqDFGe3op` at `2205be5d` exits zero: 402,733 tokens /
+1,838,326 bytes, complete-input SHA-256
+`28056fbc4970dab81fa69c664bae877c46ae87473e1f6b6ac8a28cc0cd827601`.
+The fixed method, seven controls and complete byte round trip pass; all three
+endpoint deltas are zero and exact QEMU/private/RAM retirement is reconciled.
+`password-uncertain-ledger-2205be5d.json` binds eight matching CTE/TUF files /
+115,948 bytes. The approximate 400,000-token target remains exceeded; compression
+is still open. The timeout/recovery scenario remains an overall failure, with its
+diagnostic follow-up prepared for the same retained application.

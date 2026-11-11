@@ -7777,6 +7777,8 @@ static int recording_path_visible(unsigned int pid) {
     return -1;
 }
 
+#include "flutter-peer-recording.h"
+
 static int exercise_recording_directory(Display *display, const ViewerWindow *viewer,
                                          SourceHistory *history,
                                          const ConnectionIdentity *connection,
@@ -7826,6 +7828,12 @@ static int exercise_recording_directory(Display *display, const ViewerWindow *vi
         read_process_resources(viewer->pid, &resources) != 0 ||
         !resources_are_bounded(baseline, &resources)) goto out;
     print_resources("recording-directory", restore ? 2U : 1U, &resources);
+    if (restore && (recording_output(display, viewer, history) != 0 ||
+        wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
+        read_connection_identity(&final) != 0 || !same_connection(connection, &final) ||
+        read_process_resources(viewer->pid, &resources) != 0 ||
+        !resources_are_bounded(baseline, &resources))) goto out;
+    if (restore) print_resources("recording-output", 1U, &resources);
     printf("FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=%u cancel=unchanged path=exact "
            "fresh_pixels=4 maximum_age_ms=%llu stable_connection=true\n",
            restore ? 2U : 1U, (unsigned long long)age);

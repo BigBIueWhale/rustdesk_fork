@@ -578,7 +578,8 @@ PY
       || fail 'driver output must be a fresh private directory'
     for input in flutter-peer-source-x11.c flutter-peer-presentation-x11.c \
         x11-frame-oracle.h flutter-peer-wakelock.h flutter-peer-recent-search.h \
-        flutter-peer-native-components.h test-x11-frame-oracle.c smoke-bind-loopback.c; do
+        flutter-peer-native-components.h flutter-peer-recording.h \
+        test-x11-frame-oracle.c smoke-bind-loopback.c; do
       verify_regular "/source/scripts/$input"
     done
     /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
@@ -594,7 +595,7 @@ PY
         $(pkg-config --cflags --libs x11) -o "/tmp/drivers.$pass/flutter-peer-source-x11"
       /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
         /source/scripts/flutter-peer-presentation-x11.c \
-        $(pkg-config --cflags --libs x11 xtst xi atspi-2 gobject-2.0 gtk+-3.0) \
+        $(pkg-config --cflags --libs x11 xtst xi atspi-2 gobject-2.0 gtk+-3.0 vpx) \
         -o "/tmp/drivers.$pass/flutter-peer-presentation-x11"
       /usr/bin/cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
         /source/scripts/smoke-bind-loopback.c \
@@ -1973,7 +1974,11 @@ PY
     if [ "$PEER_SCENARIO" = recording-directory ]; then
       grep -Eq "^FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=$viewer_generation cancel=unchanged path=exact fresh_pixels=4 maximum_age_ms=[0-9]+ stable_connection=true$" \
         <<<"$controller_output" || fail 'native recording directory result is absent'
-      viewer_result='viewer=joined xvfb=joined recording_directory=passed generations=2 cancel=unchanged path=exact storage=verified pixels=fresh'
+      if [ "$viewer_generation" -eq 2 ]; then
+        grep -Eq '^FLUTTER_PEER_RECORDING_OUTPUT_OK codec=vp[89] packets=[0-9]+ decoded_frames=[0-9]+ first_frame=[0-9]+ last_frame=[0-9]+ duration_ms=[0-9]+ bytes=[0-9]+ sha256=[0-9a-f]{64} path=selected mode=0600 stopped=ui viewer=alive truncated=refused$' \
+          <<<"$controller_output" || fail 'native recording decode result is absent'
+      fi
+      viewer_result='viewer=joined xvfb=joined recording_directory=passed generations=2 cancel=unchanged path=exact storage=verified pixels=fresh recording=decoded'
     elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
       keyboard_before=(legacy map translate legacy)
       keyboard_after=(map translate legacy legacy)
@@ -2518,6 +2523,39 @@ try:
           + ' selected=' + (expected or 'system') + ' process=joined')
 except (OSError, ValueError, KeyError, TypeError):
     raise SystemExit('fixture local preference storage state differs') from None
+PY
+    fi
+    if [ "$PEER_SCENARIO" = recording-directory ] && [ "$viewer_generation" -eq 2 ]; then
+      python3 - <<'PY'
+import hashlib, json, os, stat
+with open('/coord/recording-output.json', 'rb') as receipt:
+    metadata = os.fstat(receipt.fileno())
+    assert stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid()
+    assert metadata.st_nlink == 1 and stat.S_IMODE(metadata.st_mode) == 0o600
+    assert 0 < metadata.st_size <= 1024
+    expected = json.loads(receipt.read(1025))
+assert set(expected) == {'name', 'bytes', 'sha256', 'device', 'inode'}
+name = expected['name']
+assert name.startswith('outgoing_') and name.endswith('.webm')
+assert all(c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-' for c in name)
+directory = os.open('/tmp/recording-selected-שלום', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+try:
+    assert os.listdir(directory) == [name]
+    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+    with os.fdopen(descriptor, 'rb') as video:
+        metadata = os.fstat(video.fileno())
+        assert stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid()
+        assert metadata.st_gid == os.getegid() and metadata.st_nlink == 1
+        assert stat.S_IMODE(metadata.st_mode) == 0o600
+        assert 0 < metadata.st_size == expected['bytes'] <= 1024 * 1024
+        assert (metadata.st_dev, metadata.st_ino) == (expected['device'], expected['inode'])
+        assert hashlib.sha256(video.read(1024 * 1024 + 1)).hexdigest() == expected['sha256']
+    os.unlink(name, dir_fd=directory)
+    assert not os.listdir(directory)
+finally:
+    os.close(directory)
+print('FLUTTER_PEER_RECORDING_RETAINED_OK process=joined bytes=' + str(expected['bytes'])
+      + ' sha256=' + expected['sha256'] + ' file=unchanged cleanup=exact')
 PY
     fi
     if [ "$PEER_SCENARIO" = audio-mute ]; then

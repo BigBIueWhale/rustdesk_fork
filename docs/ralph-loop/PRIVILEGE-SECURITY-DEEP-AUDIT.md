@@ -146561,3 +146561,27 @@ profile, old engine and incomplete-candidate refusals. Use the existing 4 GiB gu
 cleanup. No new entry or execution authority is introduced. Shell syntax, Python
 AST parsing and diff hygiene pass; native fixed-archive and actual acquisition
 acceptance are pending. This does not establish a Gradle closure or APK build.
+
+At 6a400ff4, TUF XT5mAuZhaC/tool72768 passes the existing fixed-archive native
+transaction tests, new candidate refusals, 22 actual base-metadata cases and WiX
+retirement. QEMU3995098 joins zero after 15.186 monitor seconds; scratch peaks at
+411,426,816 bytes, three listener deltas are zero, private/RAM roots are absent.
+flutter-candidate-archive-tests-6a400ff4.json and eight files/76,727 bytes match
+CTE/TUF. HTTP responses are injected; filesystem operations are actual.
+
+Actual acquisition rSoZbwjBpd/tool1627 exits zero at the same source. All six final
+Maven objects match the reviewed size/SHA-256, UID/GID1000, mode0400, single links
+and absent xattrs. Their exact directory inventory totals 86,240,316 bytes; the
+SDK retains its device/inode, size, owner/mode, mtime and ctime. Its transaction
+revalidates the existing SDK hash. No candidate staging transaction remains.
+The success-v5 receipt binds exact source/tree, serial, stdout and stderr hashes;
+stderr contains the two normal acquisition/publication log lines. QEMU3995894
+joins zero, outer64seconds/monitor98.143seconds, scratch peak3,517,935,616 bytes;
+private/RAM roots and Unix endpoints are absent, with no listener additions.
+flutter-candidate-maven-stage-6a400ff4.json and nine files/93,322 bytes match both
+hosts. Only the intentional authenticated candidate inputs remain on TUF.
+The retained eleven-coordinate cache inventory confirms eight exact-version
+directories and the three absences above; Gradle may select other versions, so
+only real isolated resolution can establish the remaining closure. Canonical
+inputs, APK and cross-platform promotion remain OPEN. Update the selected ledger
+entry and obtain its fresh isolated count.

@@ -470,10 +470,19 @@ The publisher's SHA-1 sidecars are absent; the accepted provenance uses object
 metadata plus the independent content path. MD5 is an integrity observation,
 not a signature. Candidate size/SHA-256/generation pins are in `scripts/pins.env`;
 `flutter-maven-provenance-8ebb6205.json` retains per-object metadata and both URLs,
-native controls, exact source/output binding and joined VM/RAM cleanup. No
-downloaded Maven object or canonical input was published by discovery. Next
-prepare the matched offline Android closure. SDK/lock/engine promotion, canonical
-build integration and cross-platform release acceptance remain **OPEN**.
+native controls, exact source/output binding and joined VM/RAM cleanup. Candidate
+staging now passes at `6a400ff4`, TUF `rSoZbwjBpd`: the existing fixed-archive
+publisher acquires all six generation-selected objects, verifies their pinned
+sizes/SHA-256 and publishes 86,240,316 bytes without replacing the cached SDK.
+`flutter-candidate-maven-stage-6a400ff4.json` binds final files, unchanged SDK
+identity, receipt and joined VM/RAM cleanup. The shared publisher's actual
+filesystem/refusal tests also pass (`flutter-candidate-archive-tests-6a400ff4.json`).
+The existing Gradle cache has eight of eleven direct dependency versions; exact
+annotation 1.8.1, relinker 1.4.5 and exifinterface 1.4.1 directories are absent.
+This inventory is not dependency resolution or cache authentication. Next run the
+matched isolated Gradle resolution/build path and complete its authenticated
+closure. SDK/lock/engine promotion, canonical build integration and cross-platform
+release acceptance remain **OPEN**.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,

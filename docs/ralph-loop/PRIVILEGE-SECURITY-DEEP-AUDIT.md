@@ -146632,3 +146632,15 @@ eleven rejected metadata records. No downloaded code executes or publishes here;
 the existing 4 GiB/five-minute VM profile and container restrictions apply. Exact
 byte-size discovery and subsequent fixed-archive staging are pending. A compiler
 version mismatch is not a product vulnerability or native APK result.
+
+Native jgYMn1Di04/tool48257 at 156529a6 passes all metadata controls and reads the
+exact uploaded Gradle8.14.7 binary asset734590992: 139,424,091 bytes, matching the
+reviewed publisher/GitHub SHA-256. Reconcile exact source/tree, serial/stdout and
+success-v5 receipt under both free locks. QEMU4000674 joins zero, outer48seconds /
+monitor82.184seconds, scratch peak3,067,170,816 bytes; private/RAM roots and Unix
+endpoints are absent, no listener additions. android-gradle-discovery-156529a6.json
+and eight files/82,580 bytes match CTE/TUF. No archive was downloaded by discovery.
+Add that exact size to the candidate pin and existing candidate fixed transaction;
+its closed manifest now requires SDK, six Maven files and this Gradle distribution.
+The existing cached files remain reusable. Native eight-entry manifest controls
+and actual authenticated distribution acquisition are the next checks.

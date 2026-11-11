@@ -464,6 +464,12 @@ readonly -a FLUTTER_PRESENTATION_CANDIDATE_FIXED_ARCHIVE_ARGS=(
     "$SIZE_FLUTTER_CANDIDATE_ANDROID_X86_64_RELEASE_POM"
     "$SHA256_FLUTTER_CANDIDATE_ANDROID_X86_64_RELEASE_POM"
     "storage.googleapis.com"
+    --entry
+    "gradle-${ANDROID_CANDIDATE_GRADLE_VERSION}-bin.zip"
+    "https://github.com/gradle/gradle-distributions/releases/download/v${ANDROID_CANDIDATE_GRADLE_VERSION}/gradle-${ANDROID_CANDIDATE_GRADLE_VERSION}-bin.zip"
+    "$SIZE_ANDROID_CANDIDATE_GRADLE_BIN"
+    "$SHA256_ANDROID_CANDIDATE_GRADLE_BIN"
+    "github.com,release-assets.githubusercontent.com,objects.githubusercontent.com"
 )
 readonly -a ANDROID_EMULATOR_FIXED_ARCHIVE_ARGS=(
     --entry
@@ -2232,7 +2238,7 @@ stage_flutter_presentation_candidate() {
     stage_archive_bundle flutter-presentation-candidate \
         "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
         .rustdesk-flutter-presentation-candidate \
-        "pinned Flutter presentation candidate SDK/Maven inputs" \
+        "pinned Flutter presentation candidate SDK/Maven/Gradle inputs" \
         "$ANDROID_BUILDER_CONFIG_ID" android-builder
 }
 

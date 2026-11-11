@@ -236,7 +236,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             )
         return
     if len(specs) == 7:
-        android_build = (
+        if names != (
             "android-cmdline-tools.zip",
             "android-ndk-r28c.zip",
             "flutter-3.24.5.tar.xz",
@@ -244,8 +244,11 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             "rust-1.75.tar.xz",
             "rust-std-1.75-aarch64-linux-android.tar.xz",
             "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
-        )
-        flutter_candidate = (
+        ):
+            fail("the seven-entry manifest is not the exact Android toolchain source")
+        return
+    if len(specs) == 8:
+        if names != (
             "flutter-3.47.5.tar.xz",
             "flutter-maven/arm64_v8a_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.jar",
             "flutter-maven/arm64_v8a_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.pom",
@@ -253,12 +256,9 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             "flutter-maven/flutter_embedding_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.pom",
             "flutter-maven/x86_64_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.jar",
             "flutter-maven/x86_64_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.pom",
-        )
-        if names not in (android_build, flutter_candidate):
-            fail(
-                "the seven-entry manifest is neither the exact Android toolchain "
-                "nor the exact Flutter candidate SDK/Maven source"
-            )
+            "gradle-8.14.7-bin.zip",
+        ):
+            fail("the eight-entry manifest is not the exact Flutter candidate SDK/Maven/Gradle source")
         return
     if len(specs) == 14:
         if any(
@@ -338,6 +338,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         "an admitted two-entry Dart-audit or Android-emulator source, "
         "three Flutter model-test toolchain entries, "
         "an admitted six-entry Android-emulator or WiX source, seven Android build entries, "
+        "eight Flutter candidate SDK/Maven/Gradle entries, "
         "an admitted ten-entry Linux full-peer source, "
         "14 toolchain entries, "
         "or 33 vcpkg distfile entries, "
@@ -1571,7 +1572,7 @@ def test_flutter_candidate_archive_specs() -> tuple[ArchiveSpec, ...]:
         f"flutter-maven/{artifact}-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.{extension}"
         for artifact in ("arm64_v8a_release", "flutter_embedding_release", "x86_64_release")
         for extension in ("jar", "pom")
-    ]
+    ] + ["gradle-8.14.7-bin.zip"]
     for name in names:
         payload = f"{name}-fixture".encode("ascii")
         records.append(
@@ -1954,8 +1955,8 @@ def self_test() -> None:
             fail("Android emulator self-test lost its exact runtime/Maven manifest")
         if len(android_build_specs) != 7:
             fail("Android build self-test lost its exact toolchain manifest")
-        if len(flutter_candidate_specs) != 7:
-            fail("Flutter candidate self-test lost its exact SDK/Maven manifest")
+        if len(flutter_candidate_specs) != 8:
+            fail("Flutter candidate self-test lost its exact SDK/Maven/Gradle manifest")
         substituted_candidate_specs = [
             [
                 spec.name,
@@ -1977,12 +1978,17 @@ def self_test() -> None:
                 pass
             else:
                 fail("Flutter candidate self-test accepted a substituted Maven artifact")
-        try:
-            parse_specs(substituted_candidate_specs[:1])
-        except ContractError:
-            pass
-        else:
-            fail("Flutter candidate self-test accepted an incomplete SDK-only manifest")
+        for length in (1, 7):
+            incomplete_specs = [
+                [spec.name, spec.url, str(spec.size), spec.sha256, ",".join(spec.redirect_hosts)]
+                for spec in flutter_candidate_specs[:length]
+            ]
+            try:
+                parse_specs(incomplete_specs)
+            except ContractError:
+                pass
+            else:
+                fail("Flutter candidate self-test accepted an incomplete input manifest")
         substituted_emulator_specs = [
             [
                 spec.name,

@@ -147172,3 +147172,11 @@ https://developer.android.com/build/releases/agp-8-13-0-release-notes
 https://kotlinlang.org/docs/gradle-configure-project.html
 Apple project/Pod alignment, other native platforms, canonical input promotion and
 release acceptance remain OPEN. Count the revised ledger once after this update.
+
+Fresh count at bdae6f37/XPUkDclN8h/tool71402 passes: 407,852 tokens/1,861,514 bytes,
+SHA-256 c146dc9877e56d6ac9d76218f7c7a5aef31abd03a3f236602541ab44e6d69b8f.
+The fixed tokenizer, seven controls and byte round trip pass. Eight files/115,551
+bytes in plugin-app-ledger-bdae6f37.json match both hosts. QEMU 4071848 joins zero
+after 30.272 seconds, peak scratch 403,025,920 bytes, zero listener deltas and exact
+private/RAM cleanup. The approximate 400,000-token compression remains OPEN.
+This append does not change the measured ledger.

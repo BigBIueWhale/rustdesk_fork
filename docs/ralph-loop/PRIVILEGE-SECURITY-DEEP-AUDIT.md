@@ -125319,6 +125319,40 @@ The original outer byte stream is preserved exactly; an initial newline-normaliz
 evidence copy was replaced after checking its hash. Rerun the same application
 with the missing retirement wait and its actual pending-inventory observation.
 
+## 2026-11-11 — packaged first-desktop credential bootstrap accepted
+
+TUF 4NR7YRm1L2 at e716fa8c exits zero (tool12939), reusing accepted app6429f3cb
+and the same package SHA-256 f5ef3a923a04af375f8d40f548313c847e3c4b3d61ee9e5d426e62ddf9423718.
+Normal offline APT installs the authenticated dependencies and actual vendor unit.
+Root provisioning while sessionless reports Applied in 0.166 seconds. Real PAM/
+logind X11 session c1 causes supervisor7354 to create exact child7446/start6540,
+generation9cc4fdff-e3ba-4c0b-9ec9-826b514882ac. Two mutual CPace exchanges use the
+preexisting credential around one receiver-confirmed wrong-password refusal, on
+the same retained listener. Product mappings/environment exclude the private
+X11 runtime. Closing PAM reaps the exact child and retires its record; the same
+supervisor remains, with the complete root credential file unchanged and no
+session/child/record remaining. Ordinary-user refusal and same-version reinstall,
+removal, purge, final APT check and dpkg audit all pass afterward.
+
+The new pending observation finds exactly three loopback probe TIME_WAIT rows,
+timer03/inode0, with no removed baseline row. The existing helper waits 56.740
+seconds until exact baseline equality. Both guest and outer completion receipts
+pass. Four host listener deltas are zero; QEMU3934432 joins zero after 138.535
+seconds and private/RAM roots are absent. Peak RAM scratch is 4,134,526,976 bytes
+under the unchanged admitted limits. Under the free shared lock, independently
+reconcile observations, process/RAM/socket absence, clean source and evidence
+hashes. package-bootstrap-e716fa8c.json and nine files/141,147 bytes match CTE/TUF.
+No new full application build or host installation occurs.
+
+The selected first-desktop credential-bootstrap condition is now accepted for
+the named package and seatless X11/PAM scenario. It does not establish actual
+pixel presentation/input, physical-seat switching, package graphical settings,
+upgrades or administrator unit-state preservation. Continue the same package
+milestone with administrator masks, primary-unit links, replacement units and
+drop-ins through install/remove/purge under R-S11by; broader release acceptance
+and canonical Flutter input promotion remain OPEN. Update the current ledger
+and perform its required fresh isolated count before ending this checkpoint.
+
 ## 2026-10-31 — user pivot; native Linux clipboard text transfer
 
 The user directs work to another aspect. Network-impairment/recovery diagnostics

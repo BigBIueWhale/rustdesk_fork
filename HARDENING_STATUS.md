@@ -137,10 +137,11 @@ terminal result was not retained. Its exact pending capsule was independently
 revalidated and recovered with the existing no-clobber publisher after joined
 VM/RAM retirement; `sessionless-build-recovered-6429f3cb.json` records that scope.
 This artifact passes normal dependency-complete Debian install/reinstall/remove/
-purge, sessionless password completion and ordinary-user refusal. The same app
+purge, sessionless password completion, first-desktop credential bootstrap and
+ordinary-user refusal. The same app
 also passes the installed-layout graphical authorization/concurrent-change and
 queued-change normal-stop/restart regressions. The package and service sections
-below retain the three native receipts and remaining acceptance boundaries.
+below retain the native receipts and remaining acceptance boundaries.
 Earlier app `83fa8494` separately passes GUI Applied/Denied/Failed/restart
 (`linux-sigpipe-settings-a3c017a6.json`) and actual ten-minute Uncertain reporting,
 same-child recovery and credential persistence (`linux-sigpipe-recovery-a3c017a6.json`).
@@ -386,8 +387,21 @@ protected state. Final APT/dpkg checks pass. `sessionless-install-6429f3cb.json`
 binds the package, observations and joined cleanup. The earlier `74b64685` app's
 20-second password timeout/45-second stop timeout remain in
 `debian-install-sessionless-844f49df.json`; its durable outcome was unobserved.
-Actual-package desktop bootstrap/settings, upgrades, administrator masks/links/
-replacement units/drop-ins and the complete release matrix remain **OPEN**.
+Actual-package first-desktop credential bootstrap also passes at `e716fa8c`
+(`package-bootstrap-e716fa8c.json`). A real PAM/logind X11 session starts the
+exact installed child; two mutual CPace exchanges and receiver-confirmed wrong-
+password refusal establish use of the already-provisioned credential. Session
+closure reaps that child and retires its record while preserving the supervisor
+and complete root credential file. The subsequent reinstall/remove/purge passes.
+Private X11 fixture libraries never enter product mappings or environment; normal
+APT dependencies remain in use. Three completed loopback TIME_WAIT records drain
+in 56.740 seconds to exact baseline equality before joined VM/RAM retirement.
+The initial fixture omitted that existing wait and failed outer network equality;
+its native observations remain in `package-bootstrap-af9e5595.json`, without an
+overall acceptance claim. Actual-package graphical settings, upgrades,
+administrator masks/links/replacement units/drop-ins and the complete release
+matrix remain **OPEN**. This bootstrap check does not establish rendered pixels,
+input, physical-seat switching or a complete desktop session workload.
 Canonical input promotion also remains open: the Debian recipe selects stock
 Flutter 3.24.5 while the accepted app uses the 3.47.5 candidate and patched engine.
 
@@ -5057,9 +5071,13 @@ stale-password refusal pass (`sessionless-graphical-6429f3cb.json`). A separate
 35-second stopped-child barrier preserves two admitted changes through normal
 systemd stop; both finish, a later request is refused, the exact generation exits
 cleanly and restart retains the final credential (`sessionless-stop-6429f3cb.json`).
-These desktop runs install the retained app layout directly. Actual-package
-desktop startup after sessionless provisioning, current handoff coverage and the
-broader authority/release matrix remain OPEN.
+Those graphical and stop regressions install the retained app layout directly.
+The dependency-complete package now separately passes first-desktop startup after
+sessionless provisioning, including real PAM/logind selection, exact child proof,
+mutual CPace, wrong-password refusal and child retirement with unchanged supervisor
+and root credential (`package-bootstrap-e716fa8c.json`). Actual-package graphical
+settings, current handoff coverage and the broader authority/release matrix remain
+OPEN.
 
 **Still OPEN:** exact current release packages and upgrades; installed privileged
 action/settings authorization; genuine-image incumbents, non-root actors and

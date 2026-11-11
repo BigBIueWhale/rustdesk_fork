@@ -145930,3 +145930,43 @@ product mappings/environment against fixture libraries throughout. The existing
 package preparation/lifecycle and joined retirement; the package subprocess gets
 840 seconds. Normal restart, live UID-4002 refusal, reinstall/removal/purge and
 final APT/dpkg checks follow. No product correction is selected before execution.
+
+## 2026-11-11 — normal-package prolonged uncertainty accepted
+
+Preparation 9cbc1f427d0104e925c7148a50b574c5717baadc passes Python AST/shell
+syntax and diff checks. TUF 2clTspYcWU exits zero (tool49191); the unchanged
+app6429f3cb/manifest676bd6fa runs through the ordinary package, SHA-256
+5765a5d021666550e3590f99321b3b6c631588f350e29c084a5adc1c34c8b8a2.
+
+GUI7823 obtains actual pkttyagent/polkit/PAM authorization; root commits the
+credential at 11.362 seconds while all eighteen child7726 threads remain stopped.
+Supervisor7601, child start6955, generation f33ac270-d3e4-49aa-afd6-29ff751c0c52
+and listener26839 remain exact. All twenty-one pending UI checks pass, last at
+596.985 seconds. The actual GUI reports Uncertain at 602.280 seconds with protected
+credential committed and user-profile credential unchanged. After pidfd SIGCONT,
+that same child/listener/generation accepts the new password and refuses the old
+one. The GUI preserves its uncertainty message, permits cancel/reopen and reports
+Denied for a fresh unauthorized change. All thirty UI stages pass.
+
+Normal service restart creates supervisor14936/child14949/start68394, generation
+3ebb3f84-d2d1-421f-a81c-f59af6628e93; the stored credential survives and its new/
+old password controls pass again. All five mutual CPace exchanges and both
+receiver-confirmed stale-password refusals bind exact native listeners/children.
+The six completed loopback TIME_WAIT rows drain in 59.663 seconds to exact
+preinstallation baseline equality. Desktop/helpers/GUI retire normally.
+
+Normal package restart15057 and reinstall15175 preserve the credential and all
+72 payloads; live UID4002 is refused unchanged. Reinstall reaps its predecessor,
+removal stops its replacement while preserving state and purge removes protected
+state. All sixteen package commands and final APT/dpkg checks pass. QEMU3954290
+joins zero after 759.266 seconds, peak RAM scratch 4,252,725,248 bytes under the
+unchanged limits. All four host listener deltas are zero. Under the free shared
+lock, reconcile raw observations, clean exact source and absent QEMU/private/RAM/
+Unix endpoints; package-uncertain-9cbc1f42.json and nine bounded files / 167,589
+bytes match CTE/TUF. No product defect, correction or rebuild was needed.
+
+These three normal-package scenarios are accepted. Update the current ledger,
+removing the superseded earlier-app result references and sharing common package
+observations; exact historical evidence remains in the audit and retained files.
+Version upgrades, other package/authority workflows and complete cross-platform
+release acceptance remain OPEN. Obtain a fresh isolated ledger count.

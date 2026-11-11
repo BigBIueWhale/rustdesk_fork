@@ -141,12 +141,11 @@ purge, sessionless password completion, first-desktop credential bootstrap,
 ordinary-user refusal and preservation of administrator unit state across all
 four package operations. Its normal package now passes the five graphical
 authorization/concurrent-change scenarios and eight settings scenarios, including
-Failed reporting during service absence and same-GUI recovery. The queued-change normal-stop/restart
+Failed reporting during service absence and same-GUI recovery. Three prolonged-
+uncertainty scenarios also pass the actual ten-minute deadline, same-child recovery
+and restart persistence. The queued-change normal-stop/restart
 regression uses the installed layout. The package and service sections
 below retain the native receipts and remaining acceptance boundaries.
-Earlier app `83fa8494` separately passes GUI Applied/Denied/Failed/restart
-(`linux-sigpipe-settings-a3c017a6.json`) and actual ten-minute Uncertain reporting,
-same-child recovery and credential persistence (`linux-sigpipe-recovery-a3c017a6.json`).
 The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
 Flutter 3.47.5 remains a candidate. Complete installed/package, other-platform, final-release
@@ -417,24 +416,27 @@ same archive bytes (`package-graphical-34a45928.json`). Nineteen actual UI stage
 cover cancellation at administrator selection and partial password entry, fresh
 polkit/PAM authorization, concurrent GUI/root-CLI changes held until child
 convergence, and fresh no-agent refusal. Five mutual CPace exchanges and receiver-
-confirmed stale-password refusal establish credential use. The application uses
-APT libraries and the package vendor unit/policy; the desktop agent and accessibility
-support are installed from their authenticated packages. User-profile credentials
-stay unchanged; helpers, GUI, agent and desktop retire. Restart/reinstall preserve
-the new credential, a live service refuses UID 4002, and removal/purge pass.
-The run joins QEMU/private/RAM cleanup with four zero host listener deltas.
-Normal-package settings failure/recovery also passes at `c98b202d`
-(`package-failure-c98b202d.json`). Sixteen initial and seven restarted-UI stages
-cover cancellation, fresh polkit/PAM authorization, no-agent refusal, Applied
-persistence, service absence with truthful Failed reporting and same-GUI recovery.
-Seven mutual CPace exchanges and three receiver-confirmed stale-password refusals
-establish credential use across three service generations. Protected and profile
-credentials remain unchanged during failure. Normal restart/reinstall preserve
-the authorized value; live UID-4002 refusal, removal/purge and final APT/dpkg checks
-pass. Package libraries/unit/policy remain in use, all four host listener deltas
-are zero and QEMU/private/RAM cleanup is joined.
-Actual-package Uncertain reporting/recovery, version upgrades and the complete
-release matrix remain **OPEN**. These scenarios do not establish remote rendered
+confirmed stale-password refusal establish credential use.
+The eight failure/recovery scenarios pass at `c98b202d`
+(`package-failure-c98b202d.json`): sixteen initial and seven restarted-UI stages
+cover cancellation, authorization/refusal, Applied persistence, truthful Failed
+reporting during service absence and same-GUI recovery. Seven mutual CPace
+exchanges and three stale-password refusals cover three service generations;
+protected/profile credentials remain unchanged during failure.
+The three prolonged-uncertainty scenarios pass at `9cbc1f42`
+(`package-uncertain-9cbc1f42.json`). Thirty actual UI stages include twenty-one
+pending checks through 596.985 seconds and truthful Uncertain at 602.280 seconds.
+The authorized value is already durable; resuming the same child preserves its
+generation/listener and makes that value usable. Five mutual CPace exchanges and
+two stale-password refusals prove recovery and subsequent restart persistence.
+The GUI preserves its uncertainty message, remains usable and refuses a fresh
+unauthorized change; the user-profile credential stays unchanged.
+All three workflows use APT libraries and package-owned unit/policy, with pinned
+desktop/accessibility inputs. Normal restart/reinstall preserve the credential;
+live UID-4002 refusal, removal/purge and final APT/dpkg checks pass. Each run retires
+its helpers/GUI/desktop, joins QEMU/private/RAM cleanup and records four zero host
+listener deltas. Version upgrades and the complete release matrix remain **OPEN**.
+These scenarios do not establish remote rendered
 pixels/input, physical-seat switching or a complete desktop session workload.
 Canonical input promotion also remains open: the Debian recipe selects stock
 Flutter 3.24.5 while the accepted app uses the 3.47.5 candidate and patched engine.
@@ -5116,8 +5118,10 @@ pass the same nineteen UI stages with APT libraries and package-owned unit/polic
 The eight normal-package settings scenarios also pass actual Failed reporting,
 same-GUI recovery/refusal and credential persistence across service/GUI restarts
 (`package-failure-c98b202d.json`), with seven mutual CPace exchanges and three
-receiver-confirmed stale-password refusals. Actual-package Uncertain reporting/
-recovery, current handoff coverage and the broader
+receiver-confirmed stale-password refusals. Three normal-package uncertainty
+scenarios also pass the actual ten-minute deadline, same-child credential recovery
+and restart persistence with five CPace exchanges and two stale-password refusals
+(`package-uncertain-9cbc1f42.json`). Current handoff coverage and the broader
 authority/release matrix remain OPEN.
 
 **Still OPEN:** exact current release packages and upgrades; installed privileged

@@ -146585,3 +146585,13 @@ directories and the three absences above; Gradle may select other versions, so
 only real isolated resolution can establish the remaining closure. Canonical
 inputs, APK and cross-platform promotion remain OPEN. Update the selected ledger
 entry and obtain its fresh isolated count.
+
+Fresh count Fw1ohuC36E at 6316d5ab/tool67609 exits zero: 406,543 tokens /
+1,856,299 bytes, SHA-256 ed14ea90753cbb9534fd2b30267b32b7e42710ad7cdd5b2c023a594fff571465.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and byte round trip. flutter-candidate-stage-ledger-6316d5ab.json and eight files /
+115,703 bytes match CTE/TUF. QEMU3999501 joins zero after 30.336 seconds, scratch
+peak403,062,784 bytes, three zero listener deltas and absent private/RAM roots.
+The approximate 400,000-token compression obligation remains OPEN. This audit-
+only append preserves the measured ledger; continue the matched Gradle/build
+prerequisite next, without repeating these passed input-acquisition checks.

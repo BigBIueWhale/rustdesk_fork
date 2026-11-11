@@ -488,8 +488,17 @@ inventory and final file authority pass; existing SDK and Maven identities are
 unchanged. `android-gradle-stage-55f04f1d.json` binds receipt and joined cleanup;
 `android-gradle-archive-tests-55f04f1d.json` retains the shared publisher's native
 transaction/refusal tests. Gradle has not executed. Next complete the matching
-plugin/compiler dependency closure and Build Tools 35, then run isolated Gradle
-resolution and the APK build. Cached plugins declare compile SDK 31–34; Flutter's
+plugin/compiler dependency closure and candidate build integration, then run
+isolated Gradle resolution and the APK build. Build Tools 35.0.0 staging passes at
+`a14ea712`, TUF `lDfd553GVQ`: Google's exact Linux package size/SHA-1 and F-Droid's
+independent SHA-256 agree with all 61,958,799 downloaded bytes. Eleven metadata
+refusals, the nine-input publisher tests, ZIP CRC, 168-entry inventory and package
+version pass. `android-build-tools-stage-a14ea712.json` and
+`android-build-tools-archive-tests-a14ea712.json` bind unchanged prior inputs and
+joined cleanup. The archive is not yet composed into a candidate SDK or executed.
+The shared Gradle cache validator also needs explicit support for the candidate
+binary distribution; it currently requires an `-all` ZIP. Cached plugins declare
+compile SDK 31–34; Flutter's
 default SDK 36 alone does not require changing the fork's compile/target SDK.
 SDK/lock/engine promotion, canonical build integration and cross-platform release
 acceptance remain **OPEN**.

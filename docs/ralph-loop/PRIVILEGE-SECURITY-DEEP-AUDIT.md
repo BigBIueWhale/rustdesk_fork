@@ -146704,3 +146704,30 @@ independent SHA-256 remains the content pin. Candidate manifest grows to nine
 entries, preserves the existing no-clobber publication and reuses cached inputs.
 Offline metadata refusals and actual archive tests/acquisition are pending.
 No SDK/target policy, canonical input or product behavior changes in this slice.
+
+At a14ea712, TUF qszCszvEN2/tool10055 passes the shared fixed-archive transaction
+and refusal tests, including the nine-entry manifest and 22 base-metadata cases.
+QEMU4010710 joins zero after 15.526 monitor seconds, scratch peaks at 411,299,840
+bytes, and three host listener deltas are zero. Private/RAM roots and Unix
+endpoints are absent; android-build-tools-archive-tests-a14ea712.json and eight
+files/76,713 bytes match both hosts.
+
+Actual acquisition lDfd553GVQ/tool19205 passes one positive and eleven negative
+metadata controls, then cross-checks live Google and F-Droid records. The final
+61,958,799-byte archive matches both recorded hashes; all 168 ZIP entries are
+regular files below android-15, with 153,245,182 expanded bytes, valid CRCs and
+Pkg.Revision=35.0.0. Final UID/GID1000/mode0400/single-link/no-xattr authority
+passes. Existing SDK, six Maven files and Gradle distribution retain identity.
+The exact source/tree and serial/stdout/stderr bind to the success-v5 receipt.
+QEMU4011442 joins zero, outer63seconds/monitor96.510seconds, RAM scratch peak
+3,536,683,008 bytes; private/RAM roots and Unix endpoints are absent and no host
+listener is added. android-build-tools-stage-a14ea712.json and nine files/100,430
+bytes match CTE/TUF. The bounded capsule retains selected metadata and response
+hashes, not complete remote documents. No downloaded tool executes here.
+
+Remaining integration includes a private SDK projection with Build Tools35 and
+matching Gradle/plugin inputs. online-gradle-output.py currently insists on an
+-all distribution path; candidate support must account for the reviewed -bin
+archive. The canonical warmer also builds against the old SDK/lock and replaces
+canonical cache state, so it is not yet a candidate producer. Keep the actual APK
+and coherent promotion OPEN; update the existing ledger and obtain its count.

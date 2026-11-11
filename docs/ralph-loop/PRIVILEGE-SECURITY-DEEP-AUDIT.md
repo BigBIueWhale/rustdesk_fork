@@ -145924,6 +145924,15 @@ distinct historical binaries during concurrent mutation, other shutdown failures
 cross-platform and final-release evidence remain OPEN. Update the current ledger
 and obtain its fresh isolated count; no product code or application build changed.
 
+Fresh count mvOXpoHfxw at b141bbed exits zero (tool56038): 405,949 tokens /
+1,853,703 bytes, SHA-256 ccf2f9152db5c0441d773ddb2de9d0018945e95076ec985fe090612258f0cd5a.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and byte round trip. package-stop-ledger-b141bbed.json and eight files / 115,479
+bytes match both hosts. QEMU3975673 joins zero after 30.765 seconds; three host
+listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.
+
 ## 2026-11-11 — normal-package settings failure and recovery preparation
 
 The preceding turn is progress: normal-package graphical cancellation/concurrency

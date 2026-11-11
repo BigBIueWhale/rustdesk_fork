@@ -2426,7 +2426,7 @@ def verify_linux_credential_replica_bootstrap(rust: Mapping[str, RustSource]) ->
             (("SERVICE_OWNED_SERVER_GENERATION_ENV", ",", "&", "runtime", ".", "generation"), "runtime generation environment"),
             (("SERVICE_OWNED_SERVER_BOOTSTRAP_FD_ENV", ",", "bootstrap_fd", ".", "to_string", "(", ")"), "bootstrap descriptor environment"),
             (("configure_service_child_pre_exec", "("), "pre-exec hardening"),
-            (("command", ".", "spawn", "(", ")"), "child exec"),
+            (("spawn", "(", "&", "mut", "command", ")"), "tracked child exec"),
             (("bootstrap", ".", "prepare_stopped", "(", "child_pid", ")"), "nondumpable stopped child"),
             (("service_child_record_for_process", "(", "pid", ",", "expected_child_uid", ",", "&", "runtime", ".", "generation", ")"), "exact stopped-child record"),
             (("runtime", ".", "publish_record", "(", "&", "record", ")"), "durable generation publication"),

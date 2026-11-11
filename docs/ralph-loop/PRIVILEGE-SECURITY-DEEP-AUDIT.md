@@ -145393,3 +145393,11 @@ waits, failed exec/pre_exec, a pre-exec launch barrier and lost wait ownership.
 The package observer now records session/child absence, credential fingerprint,
 command elapsed time and bounded convergence diagnostics. Native correction,
 full application and complete package lifecycle acceptance remain pending.
+
+First focused run G9Sg8NTVoN at a815d684 exits one before Rust compilation:
+the supplementary launch-order predicate still names the old direct spawn call.
+Update that one call-site pattern to the tracked spawn, preserving all surrounding
+image, nondumpability, bootstrap and publication ordering checks. No behavioral
+result is credited. child-process-precheck-a815d684.json retains nine files/81,607
+bytes matching CTE/TUF, QEMU3890145 joined zero, four zero listener deltas and exact
+private/RAM retirement after 34.241 seconds.

@@ -5,6 +5,8 @@ This maintenance helper never publishes build inputs.  It downloads each
 closed Google Storage object twice into private temporary storage, requires the
 two observations to agree, validates the Maven coordinates and archive
 structure, and prints a bounded receipt whose pins can be reviewed separately.
+An absent publisher checksum is recorded as missing provenance, never as a
+verified checksum or permission to publish canonical inputs.
 """
 
 from __future__ import annotations
@@ -45,6 +47,10 @@ class DiscoveryError(RuntimeError):
     """An upstream response or artifact violated the closed contract."""
 
 
+class ChecksumAbsent(DiscoveryError):
+    """The publisher returned 404 for the exact checksum sidecar."""
+
+
 @dataclass(frozen=True)
 class ArtifactReceipt:
     artifact: str
@@ -54,6 +60,7 @@ class ArtifactReceipt:
     sha1: str
     sha256: str
     publisher_sha1_url: str
+    publisher_sha1: str | None
     zip_entries: int | None
     zip_uncompressed_bytes: int | None
     dependencies: list[dict[str, str]] | None
@@ -116,8 +123,13 @@ def download(
     )
     try:
         response = opener.open(request, timeout=120)
+    except urllib.error.HTTPError as error:
+        error.close()
+        if error.code == 404 and url.endswith(".sha1"):
+            raise ChecksumAbsent(f"publisher checksum absent: {url}") from error
+        fail(f"cannot open Flutter Maven input {url}: {error}")
     except (OSError, urllib.error.URLError) as error:
-        fail(f"cannot open Flutter Maven input: {error}")
+        fail(f"cannot open Flutter Maven input {url}: {error}")
     descriptor = -1
     identity: tuple[int, int] | None = None
     try:
@@ -327,6 +339,7 @@ def inspect_download(
     path: Path,
     observation: tuple[int, str, str],
     maven_version: str,
+    publisher_sha1: str | None,
 ) -> ArtifactReceipt:
     size, sha1, sha256 = observation
     if extension == "pom":
@@ -344,6 +357,7 @@ def inspect_download(
         sha1=sha1,
         sha256=sha256,
         publisher_sha1_url=url + ".sha1",
+        publisher_sha1=publisher_sha1,
         zip_entries=entries,
         zip_uncompressed_bytes=expanded,
         dependencies=dependencies,
@@ -369,21 +383,25 @@ def discover(maven_version: str) -> list[ArtifactReceipt]:
                     first_path = first_root / filename
                     second_path = second_root / filename
                     checksum_path = first_root / (filename + ".sha1")
-                    download(opener, url + ".sha1", checksum_path, allowed_urls)
-                    publisher_sha1 = checksum_path.read_text(encoding="ascii").strip()
-                    if re.fullmatch(r"[0-9a-f]{40}", publisher_sha1) is None:
-                        fail("publisher SHA-1 sidecar is not one exact checksum")
+                    try:
+                        download(opener, url + ".sha1", checksum_path, allowed_urls)
+                    except ChecksumAbsent:
+                        publisher_sha1 = None
+                    else:
+                        publisher_sha1 = checksum_path.read_text(encoding="ascii").strip()
+                        if re.fullmatch(r"[0-9a-f]{40}", publisher_sha1) is None:
+                            fail("publisher SHA-1 sidecar is not one exact checksum")
                     first = download(opener, url, first_path, allowed_urls)
                     second = download(opener, url, second_path, allowed_urls)
                     if first != second:
                         fail("independent Flutter Maven downloads disagree")
-                    if first[1] != publisher_sha1:
+                    if publisher_sha1 is not None and first[1] != publisher_sha1:
                         fail("Flutter Maven bytes differ from the publisher SHA-1")
                     first_receipt = inspect_download(
-                        artifact, extension, url, first_path, first, maven_version
+                        artifact, extension, url, first_path, first, maven_version, publisher_sha1
                     )
                     second_receipt = inspect_download(
-                        artifact, extension, url, second_path, second, maven_version
+                        artifact, extension, url, second_path, second, maven_version, publisher_sha1
                     )
                     if first_receipt != second_receipt:
                         fail("independent Flutter Maven validations disagree")
@@ -391,7 +409,8 @@ def discover(maven_version: str) -> list[ArtifactReceipt]:
                     # Retain at most one independently checked pair in bounded scratch.
                     first_path.unlink()
                     second_path.unlink()
-                    checksum_path.unlink()
+                    if publisher_sha1 is not None:
+                        checksum_path.unlink()
             return receipts
 
 
@@ -522,6 +541,9 @@ def main() -> int:
                 "engine_revision": arguments.engine_revision,
                 "maven_version": maven_version,
                 "observations": 2,
+                "publisher_checksums_complete": all(receipt.publisher_sha1 is not None
+                                                    for receipt in receipts),
+                "canonical_inputs_published": False,
                 "artifacts": [asdict(receipt) for receipt in receipts],
             }
             print(

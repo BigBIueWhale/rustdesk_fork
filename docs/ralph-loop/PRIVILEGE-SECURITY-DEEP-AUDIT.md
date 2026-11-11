@@ -146405,3 +146405,26 @@ uses at most128MiB plus a1KiB checksum; the existing256MiB tmpfs suffices. Use t
 4GiB/300-second acquisition VM admission instead of the generic20GiB/12-hour
 profile. Native discovery is pending. This does not acquire canonical inputs,
 promote SDK/lock pins, execute downloaded code or establish APK acceptance.
+
+At599f1b6f, TUF K4aOOeNyYE/tool28255 exits1: the new offline parser controls
+pass, then the first embedding-JAR SHA-1 sidecar returns404. No artifact receipt
+or canonical input is published. QEMU3981546 joins0 in82.071seconds; RAM peak
+3,066,028,032bytes, all three listener inventories equal, all exporters report
+disconnection and private Unix/RAM state retires. Under the free shared and
+acquisition locks, preserve raw output/serial/listeners and retire exactly30
+diagnostic leaves plus their directories by retained descriptors. Capsule
+flutter-candidate-maven-599f1b6f.json and13files/106,908bytes match CTE/TUF.
+
+Read the independently rehashed1,576,266,884-byte SDK archive inertly: engine.stamp
+and internal/engine.version both equal af7e796e, engine.realm is empty, and the
+version manifest reports3.47.5/Dart3.13.4. The exact framework Gradle plugin reads
+those stamp/realm files to construct this same Maven location:
+https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/packages/flutter_tools/gradle/src/main/kotlin/FlutterPlugin.kt
+The URL is therefore SDK-derived. Correct discovery to distinguish an absent
+checksum sidecar from an unavailable artifact: only exact sidecar404 records
+publisher_sha1=null and publisher_checksums_complete=false. Other HTTP errors,
+wrong checksums, disagreeing downloads and malformed artifacts still fail.
+The result explicitly says canonical_inputs_published=false. This exploratory
+receipt cannot close R-B12 when publisher checksum provenance is missing; no
+release gate or canonical-input publisher is relaxed. A fresh run must establish
+the actual object availability/contents before choosing the next migration step.

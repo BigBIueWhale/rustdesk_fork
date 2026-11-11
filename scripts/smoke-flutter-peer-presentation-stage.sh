@@ -1964,13 +1964,17 @@ PY
       emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
-    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = language-restart ] || [ "$PEER_SCENARIO" = language-direction ] || [ "$PEER_SCENARIO" = quality-restart ] || [ "$PEER_SCENARIO" = keyboard-restart ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
+    if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = language-restart ] || [ "$PEER_SCENARIO" = language-direction ] || [ "$PEER_SCENARIO" = quality-restart ] || [ "$PEER_SCENARIO" = keyboard-restart ] || [ "$PEER_SCENARIO" = recording-directory ] || [ "$viewer_generation" -eq 1 ] || { [ "$ROTATE_CREDENTIAL" -eq 1 ] && [ "$viewer_generation" -eq 2 ]; }; then
     grep -q '^FLUTTER_PEER_PASSWORD_INPUT_OK characters=22 observed_without_value=true$' \
       <<<"$controller_output" || fail 'complete count-only password input verdict is missing'
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
-    if [ "$PEER_SCENARIO" = keyboard-restart ]; then
+    if [ "$PEER_SCENARIO" = recording-directory ]; then
+      grep -Eq "^FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=$viewer_generation cancel=unchanged path=exact fresh_pixels=4 maximum_age_ms=[0-9]+ stable_connection=true$" \
+        <<<"$controller_output" || fail 'native recording directory result is absent'
+      viewer_result='viewer=joined xvfb=joined recording_directory=passed generations=2 cancel=unchanged path=exact storage=verified pixels=fresh'
+    elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
       keyboard_before=(legacy map translate legacy)
       keyboard_after=(map translate legacy legacy)
       keyboard_observations=1
@@ -2215,10 +2219,6 @@ PY
       [ "$(grep -Ec '^FLUTTER_PEER_VIEW_SCALE_INPUT_POINT_OK sequence=7 point=1 .* entry_click=1$' <<<"$controller_output")" -eq 1 ] \
         || fail 'first click after entering the smaller viewer is absent or duplicated'
       viewer_result='viewer=joined xvfb=joined view_scaling=9 input_points=45 pixels=fresh stable_connection=true resources=bounded'
-    elif [ "$PEER_SCENARIO" = recording-directory ]; then
-      grep -Eq "^FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=$viewer_generation cancel=unchanged path=exact fresh_pixels=4 maximum_age_ms=[0-9]+ stable_connection=true$" \
-        <<<"$controller_output" || fail 'native recording directory result is absent'
-      viewer_result='viewer=joined xvfb=joined recording_directory=passed generations=2 cancel=unchanged path=exact storage=verified pixels=fresh'
     elif [ "$PEER_SCENARIO" = screenshot-save ]; then
       grep -Fxq 'FLUTTER_PEER_SCREENSHOT_SAVE_OK cases=2 cancel=empty save=png source_frame=verified stable_connection=true' \
         <<<"$controller_output" || fail 'native screenshot save/cancel result is absent'

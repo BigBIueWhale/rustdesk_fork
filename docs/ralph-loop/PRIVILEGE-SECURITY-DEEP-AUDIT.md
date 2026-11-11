@@ -144740,3 +144740,30 @@ The next actionable GUI acceptance gap is failure/cancellation during actual
 administrator authorization, preserving the credential and permitting a fresh
 authorized operation on this same retained app. The completed recovery and ordinary
 outcome scenarios need no repetition without a relevant change or concern.
+
+## 2026-11-11 — Installed GUI incorrect-administrator-password acceptance
+
+Previous turn answered the user's completion question; it was a status assessment,
+not implementation progress. Resume R-S0/R-S11ie with the existing verified
+`83fa8494` application. TUF SSH is available, the source is clean at `861a4f55`
+before preparation, and available memory is 41,697,034,240 bytes. This focused
+workflow takes priority over another component check: the earlier incorrect-PAM
+password result used the CLI, leaving the actual GUI outcome/retry unproved.
+
+The new `--installed-settings-admin-failure` scenario enters an incorrect admin
+password in the real PID/start-bound pkttyagent/PAM challenge, observes exact
+service-owned pkcheck exit/reaping and the root-held refusal, and requires the
+GUI's Denied outcome without protected or user-profile credential changes.
+It reuses the same GUI and registered agent for a fresh correct PAM approval,
+requires Applied, then retires the agent and requires a fresh no-agent Denied.
+Baseline credential use after refusal and new acceptance/old refusal after grant
+are real CPace exchanges. Existing bounded RAM admission, manifest authentication,
+actual controls and exact joined cleanup remain; no product change or rebuild.
+
+Primary sources: the [pkcheck return-value contract](https://polkit.pages.freedesktop.org/polkit/pkcheck.1.html)
+distinguishes authentication refusal (1), unavailable agent (2) and user dismissal
+(3). The [pinned polkit 122 text listener](https://raw.githubusercontent.com/polkit-org/polkit/122/src/polkitagent/polkitagenttextlistener.c)
+aborts on terminal EOF at its password prompt. Therefore EOF/agent death is not
+used as evidence for user dismissal; actual authentication-dialog cancellation
+and graphical OS-agent interaction remain separate open acceptance work.
+The new native scenario is prepared, not yet accepted.

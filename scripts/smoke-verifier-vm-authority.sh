@@ -748,6 +748,7 @@ case "$#:${1:-}" in
             case "${12}" in
                 --installed-settings) FLUTTER_INSTALLED_SETTINGS=1 ;;
                 --installed-settings-uncertain) FLUTTER_INSTALLED_SETTINGS=2 ;;
+                --installed-settings-admin-failure) FLUTTER_INSTALLED_SETTINGS=3 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -5544,7 +5545,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
+            guest_invocation+=' --installed-settings-admin-failure'
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
             guest_invocation+=' --installed-settings-uncertain'
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
             guest_invocation+=' --installed-settings'
@@ -9313,7 +9316,11 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent cpace=4 stale_refusals=1 cleanup=joined" \
+            'installed GUI incorrect administrator password and fresh authorized retry'
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
         require_exact_fixed_receipt \
             "LINUX_INSTALLED_SETTINGS_UNCERTAIN_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual authorization=polkit-pam child=kernel-stopped deadline=600 outcome=Uncertain durable=committed recovery=same-generation cpace=5 stale_refusals=2 restart=service cleanup=joined" \
             'installed GUI uncertain mutation and retained credential recovery'

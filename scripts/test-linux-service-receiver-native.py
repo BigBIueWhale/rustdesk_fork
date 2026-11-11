@@ -356,10 +356,10 @@ def change(uid, value, admitted):
         raise RuntimeError("denied password operation did not report failure")
 
 
-def pending_admin_helper(client, start, record):
+def pending_admin_helper(requester_pid, start, record):
     expected = [b"/usr/bin/pkcheck", b"--action-id",
                 b"com.carriez.RustDesk.set-unattended-password", b"--process",
-                f"{client.pid},{start},4001".encode(), b"--allow-user-interaction", b""]
+                f"{requester_pid},{start},4001".encode(), b"--allow-user-interaction", b""]
     helpers = []
     for proc in Path("/proc").iterdir():
         if not proc.name.isdecimal():
@@ -383,7 +383,7 @@ def pending_admin_helper(client, start, record):
 
 
 def observe_admin_authorization_timeout(client, agent, terminal, start, record, before, listener):
-    proc, helper_start = pending_admin_helper(client, start, record)
+    proc, helper_start = pending_admin_helper(client.pid, start, record)
     pidfd = os.pidfd_open(int(proc.name))
     faulted = False
     try:
@@ -510,7 +510,7 @@ def observe_admin_authorization_timeout(client, agent, terminal, start, record, 
 
 
 def observe_admin_requester_exit(client, agent, terminal, start, record, before, listener):
-    proc, helper_start = pending_admin_helper(client, start, record)
+    proc, helper_start = pending_admin_helper(client.pid, start, record)
     pidfd = os.pidfd_open(int(proc.name))
     try:
         fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
@@ -556,7 +556,7 @@ def observe_admin_requester_exit(client, agent, terminal, start, record, before,
 
 
 def observe_admin_agent_exit(client, agent, terminal, start, record, before, listener):
-    helper, helper_start = pending_admin_helper(client, start, record)
+    helper, helper_start = pending_admin_helper(client.pid, start, record)
     pidfd = os.pidfd_open(int(helper.name))
     try:
         fields = (helper / "stat").read_bytes().rsplit(b") ", 1)[1].split()
@@ -677,7 +677,7 @@ class ServiceUnitResultReference:
 
 
 def observe_admin_supervisor_shutdown(client, agent, terminal, start, record, before, listener):
-    helper, helper_start = pending_admin_helper(client, start, record)
+    helper, helper_start = pending_admin_helper(client.pid, start, record)
     supervisor = Path("/proc") / str(record["supervisor"])
     supervisor_start = int((supervisor / "stat").read_bytes().rsplit(b") ", 1)[1].split()[19])
     identities = {"supervisor": (supervisor, supervisor_start),
@@ -1399,7 +1399,7 @@ def admitted_password_shutdown(value, record, fail_convergence=False, unit_stop=
 def close_admin_requester_session(client, agent, start, record, actor):
     pam = pam_module()
     pam.properties(actor, "active")
-    helper, helper_start = pending_admin_helper(client, start, record)
+    helper, helper_start = pending_admin_helper(client.pid, start, record)
     invocation = run(["/usr/bin/systemctl", "show", "rustdesk.service",
                       "--property=InvocationID", "--value"]).stdout.strip()
     if re.fullmatch(r"[0-9a-f]{32}", invocation) is None:
@@ -1607,7 +1607,7 @@ def admin_change(value, record, phase="apply", actor=None):
                     if phase == "session-close":
                         denial = close_admin_requester_session(client, agent, start, record, actor)
                     if phase == "bad-password":
-                        helper, helper_start = pending_admin_helper(client, start, record)
+                        helper, helper_start = pending_admin_helper(client.pid, start, record)
                         denial_pidfd = os.pidfd_open(int(helper.name))
                         fields = (helper / "stat").read_bytes().rsplit(b") ", 1)[1].split()
                         if (int(fields[19]) != helper_start or fields[0] in (b"Z", b"X")

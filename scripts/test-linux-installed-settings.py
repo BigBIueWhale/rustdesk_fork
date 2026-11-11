@@ -34,6 +34,8 @@ STAGES = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'sub
 RESTART_STAGES = ('open', 'fill', 'submit', 'failed', 'reopen', 'submit', 'denied')
 UNCERTAIN_STAGES = (('open', 'fill', 'submit-approved') + ('pending',) * 21
                     + ('uncertain', 'uncertain-preserved', 'cancel', 'reopen', 'submit', 'denied'))
+ADMIN_FAILURE_STAGES = ('open', 'fill', 'submit', 'denied', 'reopen', 'fill',
+                        'submit-approved', 'applied', 'reopen', 'submit', 'denied')
 
 
 def run(argv, *, env=ENV, timeout=30, output_limit=131072):
@@ -278,7 +280,7 @@ def retire_children():
         time.sleep(0.05)
 
 
-def session(restarted=False, uncertain=False):
+def session(restarted=False, uncertain=False, admin_failure=False):
     guard(4001)
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), 'cannot retain GUI descendants')
@@ -304,7 +306,8 @@ def session(restarted=False, uncertain=False):
         environment['DBUS_SESSION_BUS_ADDRESS'] = address
         app = subprocess.Popen(['/usr/share/rustdesk/rustdesk'], env=environment,
                                stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
-        stages = UNCERTAIN_STAGES if uncertain else RESTART_STAGES if restarted else STAGES
+        stages = (ADMIN_FAILURE_STAGES if admin_failure else UNCERTAIN_STAGES if uncertain
+                  else RESTART_STAGES if restarted else STAGES)
         for stage in stages:
             output = run([str(WORK / 'settings-driver'), str(app.pid), stage], env=environment,
                          timeout=40, output_limit=524288)
@@ -378,12 +381,12 @@ def owned_log(directory, pid, uid):
     return path, data
 
 
-def service_refusals(record, requester, start, count):
+def service_refusals(record, requester, start, count, exit_status=2):
     path, data = owned_log(Path('/root/.local/share/logs/RustDesk/service'), record['supervisor'], 0)
     messages = data.decode().splitlines()
     prefix = ('polkit denied action=com.carriez.RustDesk.set-unattended-password, '
               f'subject={requester},{start},4001, status=exit status: ')
-    refusals = [line for line in messages if line.endswith(prefix + '2')]
+    refusals = [line for line in messages if line.endswith(prefix + str(exit_status))]
     print('LINUX_INSTALLED_SETTINGS_SERVICE_LOG=' + json.dumps(
         {'path': str(path), 'supervisor': record['supervisor'], 'bytes': len(data),
          'sha256': hashlib.sha256(data).hexdigest(), 'refusals': refusals}, sort_keys=True), flush=True)
@@ -454,40 +457,74 @@ def administrator(receiver, requester):
                     os.close(fd)
 
 
-def authenticate(receiver, authority, requester, record, before, password_delay=0):
+def authenticate(receiver, authority, requester, record, before, password_delay=0, incorrect_password=False):
     agent, terminal_fd = authority
     terminal = bytearray()
     chosen = sent = False
     deadline = time.monotonic() + 20
-    while b'AUTHENTICATION COMPLETE' not in terminal:
-        if agent.poll() is not None or time.monotonic() >= deadline:
-            raise RuntimeError(f'GUI administrator authorization did not complete: {terminal[-4096:]!r}')
-        if select.select([terminal_fd], [], [], 0.1)[0]:
-            data = os.read(terminal_fd, 4096)
-            if not data or len(terminal) + len(data) > 32768:
-                raise RuntimeError('administrator terminal closed or exceeded its bound')
-            terminal.extend(data)
-        if not chosen and b'Choose identity to authenticate as' in terminal:
-            matches = re.findall(rb'(?m)^\s*([1-9][0-9]*)\.\s+[^\r\n]*\brdreceiver4003\b[^\r\n]*', terminal)
-            if len(matches) != 1:
-                raise RuntimeError('administrator identity menu differs')
-            os.write(terminal_fd, matches[0] + b'\n')
-            chosen = True
-        if not sent and b'Password:' in terminal and not termios.tcgetattr(terminal_fd)[3] & termios.ECHO:
-            if (b'com.carriez.RustDesk.set-unattended-password' not in terminal
-                    or b'rdreceiver4003' not in terminal or receiver.credential() != before
-                    or receiver.child_record() != record):
-                raise RuntimeError('GUI authorization challenge or pre-approval state differs')
-            # Model time spent answering the real prompt, without changing product deadlines.
-            time.sleep(password_delay)
-            os.write(terminal_fd, (receiver.ADMIN_PASSWORD + '\n').encode())
-            sent = True
-    if (not sent or terminal.count(b'AUTHENTICATION COMPLETE') != 1
-            or receiver.ADMIN_PASSWORD.encode() in terminal):
-        raise RuntimeError('GUI administrator proof is incomplete or exposed its password')
-    print('LINUX_INSTALLED_SETTINGS_ADMIN=' + json.dumps(
-        {'requester_pid': requester[0], 'requester_start': requester[1], 'requester_uid': 4001,
-         'administrator_uid': 4003, 'agent_pid': agent.pid, 'terminal': terminal.decode()}, sort_keys=True), flush=True)
+    completion = b'AUTHENTICATION FAILED' if incorrect_password else b'AUTHENTICATION COMPLETE'
+    observation = {'requester_pid': requester[0], 'requester_start': requester[1], 'requester_uid': 4001,
+                   'administrator_uid': 4003, 'agent_pid': agent.pid}
+    with ExitStack() as retained:
+        while completion not in terminal:
+            if agent.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError(f'GUI administrator authorization did not complete: {terminal[-4096:]!r}')
+            if select.select([terminal_fd], [], [], 0.1)[0]:
+                data = os.read(terminal_fd, 4096)
+                if not data or len(terminal) + len(data) > 32768:
+                    raise RuntimeError('administrator terminal closed or exceeded its bound')
+                terminal.extend(data)
+            if not chosen and b'Choose identity to authenticate as' in terminal:
+                matches = re.findall(rb'(?m)^\s*([1-9][0-9]*)\.\s+[^\r\n]*\brdreceiver4003\b[^\r\n]*', terminal)
+                if len(matches) != 1:
+                    raise RuntimeError('administrator identity menu differs')
+                os.write(terminal_fd, matches[0] + b'\n')
+                chosen = True
+            if not sent and b'Password:' in terminal and not termios.tcgetattr(terminal_fd)[3] & termios.ECHO:
+                if (b'com.carriez.RustDesk.set-unattended-password' not in terminal
+                        or b'rdreceiver4003' not in terminal or receiver.credential() != before
+                        or receiver.child_record() != record):
+                    raise RuntimeError('GUI authorization challenge or pre-approval state differs')
+                if incorrect_password:
+                    helper, helper_start = receiver.pending_admin_helper(*requester, record)
+                    helper_fd = os.pidfd_open(int(helper.name))
+                    retained.callback(os.close, helper_fd)
+                    fields = (helper / 'stat').read_bytes().rsplit(b') ', 1)[1].split()
+                    if (int(fields[19]) != helper_start or fields[0] in (b'Z', b'X')
+                            or select.select([helper_fd], [], [], 0)[0]):
+                        raise RuntimeError('GUI authorization helper changed before incorrect password submission')
+                    observation.update(helper_pid=int(helper.name), helper_start=helper_start)
+                # Model time spent answering the real prompt, without changing product deadlines.
+                time.sleep(password_delay)
+                password = receiver.INVALID_ADMIN_PASSWORD if incorrect_password else receiver.ADMIN_PASSWORD
+                answered_at = time.monotonic()
+                os.write(terminal_fd, (password + '\n').encode())
+                sent = True
+        other = b'AUTHENTICATION COMPLETE' if incorrect_password else b'AUTHENTICATION FAILED'
+        if (not sent or terminal.count(completion) != 1 or other in terminal
+                or terminal.count(b'Password:') != 1 or receiver.ADMIN_PASSWORD.encode() in terminal
+                or receiver.INVALID_ADMIN_PASSWORD.encode() in terminal):
+            raise RuntimeError('GUI administrator proof is incomplete or exposed its password')
+        if incorrect_password:
+            deadline = time.monotonic() + 5
+            while True:
+                exited = bool(select.select([helper_fd], [], [], 0.02)[0])
+                try:
+                    fields = (helper / 'stat').read_bytes().rsplit(b') ', 1)[1].split()
+                    reaped = int(fields[19]) != helper_start
+                except (FileNotFoundError, ProcessLookupError):
+                    reaped = True
+                if exited and reaped:
+                    break
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('failed GUI authorization did not retire its exact helper')
+            if agent.poll() is not None or receiver.credential() != before or receiver.child_record() != record:
+                raise RuntimeError('incorrect administrator password changed the credential, service or agent')
+            observation.update(helper_exited=exited, helper_reaped=reaped, agent_alive=True,
+                               seconds=time.monotonic() - answered_at, protected_unchanged=True)
+    name = 'ADMIN_FAILURE' if incorrect_password else 'ADMIN'
+    print('LINUX_INSTALLED_SETTINGS_' + name + '=' + json.dumps(
+        {**observation, 'terminal': terminal.decode()}, sort_keys=True), flush=True)
 
 
 def credential_network(receiver, record, probe_sha, phase):
@@ -770,6 +807,96 @@ def scenario(receiver, probe_sha):
                 wait_network_retirement(network_before)
 
 
+def admin_failure_scenario(receiver, probe_sha):
+    unit = Path('/etc/systemd/system/rustdesk.service')
+    if unit.exists():
+        raise RuntimeError('administrator failure scenario requires absent initial service state')
+    install(MEDIA / 'repo/res/rustdesk.service', unit)
+    run(['/usr/bin/systemctl', 'daemon-reload'])
+    network_before = network_state()
+    authorization = ExitStack()
+    process = None
+    requester = committed = profile_before = authority = None
+    try:
+        run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+        record = receiver.ready()
+        receiver.change(0, BASELINE_PASSWORD, True)
+        before = receiver.credential()
+        listener = receiver.direct_listener(record)
+        receiver.keyed(BASELINE_PASSWORD, 'gui-admin-failure-baseline', record, probe_sha)
+        process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
+                                    str(SCRIPT), '--session-admin-failure'],
+                                   env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        for index, stage in enumerate(ADMIN_FAILURE_STAGES):
+            if not select.select([process.stdout], [], [], 45)[0]:
+                raise RuntimeError('administrator failure GUI stage timed out')
+            raw = process.stdout.readline(4096)
+            if not raw or not raw.endswith(b'\n'):
+                raise RuntimeError(f'administrator failure GUI ended before {stage}')
+            event = json.loads(raw)
+            proc = Path(f'/proc/{event["pid"]}')
+            identity = (event['pid'], int((proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]))
+            status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+            if (event.get('stage') != stage or (requester is not None and requester != identity)
+                    or status['Uid'].split() != ['4001'] * 4 or status['NoNewPrivs'].strip() != '1'
+                    or any(int(status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))
+                    or not (proc / 'exe').samefile('/usr/share/rustdesk/rustdesk')
+                    or receiver.child_record() != record or receiver.direct_listener(record) != listener):
+                raise RuntimeError('administrator failure lost the ordinary GUI or exact service generation')
+            requester = identity
+            if stage == 'applied':
+                committed = receiver.credential()
+                if committed == before:
+                    raise RuntimeError('GUI reported authorized success without changing the credential')
+            if receiver.credential() != (committed if committed is not None else before):
+                raise RuntimeError('administrator failure changed the credential without authorized GUI success')
+            if profile_before is not None and user_credential() != profile_before:
+                raise RuntimeError('administrator failure or retry wrote a user-profile credential')
+            if index == 1:
+                profile_before = user_credential()
+                authority = authorization.enter_context(administrator(receiver, requester))
+            elif index == 2:
+                authenticate(receiver, authority, requester, record, before, incorrect_password=True)
+            elif index == 3:
+                service_refusals(record, *requester, 1, exit_status=1)
+                receiver.keyed(BASELINE_PASSWORD, 'gui-admin-failure-preserved', record, probe_sha)
+            elif stage == 'submit-approved':
+                # Reuse the registered agent: this must produce a fresh actual PAM challenge.
+                authenticate(receiver, authority, requester, record, before)
+            elif stage == 'applied':
+                authorization.close()
+            elif index == 10:
+                service_refusals(record, *requester, 1, exit_status=1)
+                service_refusals(record, *requester, 1)
+            print('LINUX_INSTALLED_SETTINGS_ADMIN_STAGE=' + json.dumps({**event, 'index': index,
+                  'requester_start': requester[1], 'service_generation': record['generation'],
+                  'credential': 'committed' if committed is not None else 'baseline',
+                  'profile_unchanged': user_credential() == profile_before if profile_before is not None else None},
+                  sort_keys=True), flush=True)
+            process.stdin.write(b'continue\n')
+            process.stdin.flush()
+        if process.wait(timeout=15) != 0 or committed is None or receiver.credential() != committed:
+            raise RuntimeError('administrator failure workflow did not retire with its committed credential')
+        credential_network(receiver, record, probe_sha, 'gui-admin-failure-retry')
+    finally:
+        try:
+            authorization.close()
+        finally:
+            try:
+                if process is not None:
+                    if process.poll() is None:
+                        process.stdin.close()
+                        process.wait(timeout=50)
+                    for pipe in (process.stdin, process.stdout):
+                        if not pipe.closed:
+                            pipe.close()
+            finally:
+                run(['/usr/bin/systemctl', 'stop', 'rustdesk.service'], timeout=40)
+                if Path('/sys/fs/cgroup/system.slice/rustdesk.service').exists():
+                    raise RuntimeError('administrator failure left the installed service cgroup')
+                wait_network_retirement(network_before)
+
+
 @contextmanager
 def stopped_child(receiver, record):
     fd = os.pidfd_open(record['pid'])
@@ -934,7 +1061,7 @@ def uncertain_scenario(receiver, probe_sha):
                     wait_network_retirement(network_before)
 
 
-def main(arguments, uncertain=False):
+def main(arguments, uncertain=False, admin_failure=False):
     guard()
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
@@ -996,7 +1123,7 @@ def main(arguments, uncertain=False):
         raise RuntimeError('fixture administrator UID already exists')
     try:
         receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
-        scenario_function = uncertain_scenario if uncertain else scenario
+        scenario_function = admin_failure_scenario if admin_failure else uncertain_scenario if uncertain else scenario
         receiver.installed_desktop(lambda: scenario_function(receiver, probe_sha), settings=True)
     finally:
         run(['/usr/sbin/userdel', 'rdreceiver4003'])
@@ -1005,7 +1132,12 @@ def main(arguments, uncertain=False):
             raise RuntimeError('installed application changed during execution')
     if digest(receiver.PROBE) != probe_sha:
         raise RuntimeError('CPace probe changed during the installed workflow')
-    if uncertain:
+    if admin_failure:
+        print(f'LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
+              'ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam '
+              'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
+              'cpace=4 stale_refusals=1 cleanup=joined', flush=True)
+    elif uncertain:
         print(f'LINUX_INSTALLED_SETTINGS_UNCERTAIN_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'ui=actual service=actual authorization=polkit-pam child=kernel-stopped deadline=600 '
               'outcome=Uncertain durable=committed recovery=same-generation cpace=5 stale_refusals=2 '
@@ -1025,7 +1157,10 @@ if __name__ == '__main__':
         session(restarted=True)
     elif sys.argv[1:] == ['--session-uncertain']:
         session(uncertain=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain'):
-        main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain')
+    elif sys.argv[1:] == ['--session-admin-failure']:
+        session(admin_failure=True)
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure'):
+        main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
+             admin_failure=sys.argv[1] == '--run-admin-failure')
     else:
         raise SystemExit('closed installed-settings arguments required')

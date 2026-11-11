@@ -328,6 +328,7 @@ case "$#:${8:-}" in
             case "${19}" in
                 --installed-settings) FLUTTER_INSTALLED_SETTINGS=1 ;;
                 --installed-settings-uncertain) FLUTTER_INSTALLED_SETTINGS=2 ;;
+                --installed-settings-admin-failure) FLUTTER_INSTALLED_SETTINGS=3 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -14788,6 +14789,7 @@ run_flutter_peer_presentation() {
     if [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
         settings_mode=--run
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 2 ] || settings_mode=--run-uncertain
+        [ "$FLUTTER_INSTALLED_SETTINGS" -ne 3 ] || settings_mode=--run-admin-failure
         set +e
         /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/test-linux-installed-settings.py" \
             "$settings_mode" "$source_root" "$app_input/linux-x86_64-flutter-app" \

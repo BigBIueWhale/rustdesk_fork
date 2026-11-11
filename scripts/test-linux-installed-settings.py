@@ -538,6 +538,7 @@ def scenario(receiver, probe_sha):
     process = None
     authorization = ExitStack()
     network_before = network_state()
+    record = before = None
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
         record = receiver.ready()
@@ -581,7 +582,9 @@ def scenario(receiver, probe_sha):
                 authority = authorization.enter_context(administrator(receiver, requester))
             if stage == 'submit-approved':
                 authenticate(receiver, authority, requester, record, before)
+            if stage == 'applied':
                 authorization.close()
+                print('LINUX_INSTALLED_SETTINGS_AGENT=pass lifetime=through-applied cleanup=joined', flush=True)
             print('LINUX_INSTALLED_SETTINGS_OBSERVED=' + json.dumps({**event, 'index': index,
                   'credential': 'committed' if committed is not None else 'baseline',
                   'service_generation': record['generation']}, sort_keys=True), flush=True)
@@ -616,6 +619,18 @@ def scenario(receiver, probe_sha):
             process.stdin.flush()
         if process.wait(timeout=15) != 0:
             raise RuntimeError('restarted GUI did not retire')
+    except Exception:
+        if record is not None:
+            try:
+                path, data = owned_log(Path('/root/.local/share/logs/RustDesk/service'), record['supervisor'], 0)
+                print('LINUX_INSTALLED_SETTINGS_FAILURE_STATE=' + json.dumps({
+                    'credential_matches_baseline': receiver.credential() == before,
+                    'child': receiver.child_record(), 'service_log': str(path),
+                    'log_sha256': hashlib.sha256(data).hexdigest(),
+                    'log_tail': data.decode().splitlines()[-20:]}, sort_keys=True), flush=True)
+            except Exception as diagnostic_error:
+                print(f'LINUX_INSTALLED_SETTINGS_FAILURE_OBSERVATION={diagnostic_error}', flush=True)
+        raise
     finally:
         try:
             authorization.close()

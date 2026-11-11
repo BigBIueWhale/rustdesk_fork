@@ -9271,6 +9271,9 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
     require_exact_fixed_receipt \
+        'LINUX_INSTALLED_SETTINGS_AGENT=pass lifetime=through-applied cleanup=joined' \
+        'installed GUI authentication-agent retirement'
+    require_exact_fixed_receipt \
         "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=6 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam cpace=5 stale_refusals=2 restart=service-and-gui cleanup=joined" \
         'installed Flutter password settings result'
     require_exact_fixed_receipt \

@@ -144263,3 +144263,34 @@ peak RAM scratch, four zero endpoint deltas and exact QEMU/private/RAM retiremen
 Its scope initially misdiagnosed a local macro; the bound `.correction.json` records
 the actual missing-import diagnostic. Ten files / 143,647 bytes match CTE/TUF.
 The failure precedes full native acceptance; rebuild the corrected application.
+
+## 2026-11-11 — typed password native build and installed GUI continuation
+
+The preceding continuation polled live session11679: verified wait. Re-polling
+that same handle now returns exit0. `SVoK2UEeoN` at `53f66299` passes the full
+Rust/Flutter build, fresh bridge, thirteen widget/two native command controls and
+all 73 payload hashes. Manifest `8d9110ffbd3558542c451d18a26a8744c1d318611e010eb4b9da4a98d319df83`
+binds 70,340,628 payload bytes. `password-outcome-build-53f66299.json` records
+1,042.931 seconds, 11,899,645,952-byte peak RAM scratch, four zero endpoint deltas,
+joined QEMU and absent private/RAM state. Eleven files / 321,557 bytes match both
+hosts. Both source trees remained frozen through terminal inspection and copying.
+
+Installed replay `nabvoeYyLq` uses that unchanged bundle. Actual entered-text
+cancellation and two no-agent refusals pass with unchanged protected credential;
+the new Denied text matches two exact root-supervisor polkit refusals. UID4003 PAM
+reports authentication complete, but the expected Applied stage sees Denied.
+The protected credential after this failure and its service-side reason were not
+retained. Do not infer them or claim authorized success. The fixture terminates
+its agent immediately after the terminal message, before observing the operation.
+The [pkttyagent contract](https://polkit.pages.freedesktop.org/polkit/pkttyagent.1.html)
+keeps the agent running while needed; [pkcheck](https://polkit.pages.freedesktop.org/polkit/pkcheck.1.html)
+separately reports the actual authorization decision through its exit status.
+Retain the agent through observed Applied, then join its retirement before the
+fresh no-agent refusal. Add bounded failure-time service-log and protected-state
+observations. This is a fixture lifetime correction and a hypothesis about the
+failed run, not an established product diagnosis. Reuse the exact app for the replay.
+
+`password-outcome-gui-53f66299.json` binds the rejected run and screenshot:
+127.151 seconds, 3,839,115,264-byte peak RAM scratch, four zero endpoint deltas,
+exact QEMU/private/RAM retirement and guest network restored to baseline.
+Ten files / 283,500 bytes match CTE/TUF. Complete installed acceptance remains OPEN.

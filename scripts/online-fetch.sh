@@ -2933,6 +2933,30 @@ maintenance_discover_android_gradle() {
             --sha256 "$SHA256_ANDROID_CANDIDATE_GRADLE_BIN"
 }
 
+maintenance_probe_android_candidate_gradle() {
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
+    local sdk="$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-$FLUTTER_PRESENTATION_CANDIDATE_VERSION.tar.xz"
+    local gradle="$FLUTTER_PRESENTATION_CANDIDATE_ROOT/gradle-$ANDROID_CANDIDATE_GRADLE_VERSION-bin.zip"
+    local helper="$SCRIPT_DIR/probe-android-candidate-gradle.sh"
+    verify_or_load_online_fetch_builder_image android-builder "$builder"
+    require_online_fetch_builder_image android-builder "$builder"
+    verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
+    verify_sha256 "$gradle" "$SHA256_ANDROID_CANDIDATE_GRADLE_BIN"
+    online_docker run --rm --pull=never --network=bridge --read-only \
+        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
+        --cap-drop=ALL --security-opt=no-new-privileges \
+        --pids-limit=512 --memory=8g --memory-swap=8g --cpus=4 \
+        --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g \
+        --mount "type=bind,source=$sdk,target=/inputs/flutter-sdk.tar.xz,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$gradle,target=/inputs/gradle.zip,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$helper,target=/authority/probe.sh,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$SCRIPT_DIR/pins.env,target=/authority/pins.env,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /bin/bash --noprofile --norc /authority/probe.sh
+    verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
+    verify_sha256 "$gradle" "$SHA256_ANDROID_CANDIDATE_GRADLE_BIN"
+}
+
 stage_vcpkg_fixed_archives() {
     load_vcpkg_fixed_archive_manifest
     stage_archive_bundle vcpkg "$ONLINE_DIR" .rustdesk-vcpkg-fixed-archives \
@@ -8854,6 +8878,12 @@ main() {
             [ "$#" -eq 1 ] \
                 || die "--maintenance-discover-android-gradle takes no arguments"
             maintenance_discover_android_gradle
+            return 0
+            ;;
+        --maintenance-probe-android-candidate-gradle)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-probe-android-candidate-gradle takes no arguments"
+            maintenance_probe_android_candidate_gradle
             return 0
             ;;
         --maintenance-stage-android-emulator-inputs)

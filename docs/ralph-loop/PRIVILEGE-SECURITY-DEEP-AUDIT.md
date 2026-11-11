@@ -146740,3 +146740,33 @@ and byte round trip. android-build-tools-ledger-7384e3e3.json and eight files /
 scratch peaks at 403,005,440 bytes, three host listener deltas are zero and
 private/RAM roots are absent. The approximate 400,000-token compression obligation
 remains OPEN; this audit-only append preserves the measured ledger.
+
+## 2026-11-11 — execute the candidate Android Gradle toolchain prerequisite
+
+Previous turn progressed: Build Tools35 is staged with native provenance and
+cleanup. Continue release SDK alignment before repeating covered package tests.
+The current warmer's canonical SDK/cache coupling requires integration work;
+first obtain actual compiler/plugin-resolution evidence rather than launching
+the complete Rust/APK build with an unproved Gradle toolchain. Reuse the pinned
+3.47.5 SDK and 8.14.7 binary distribution in one bounded acquisition-VM probe.
+Compile the SDK's unchanged real Gradle plugin with its jar task, then resolve a
+minimal composite consumer's Flutter/AGP8.11.1/KGP2.2.21 plugins. The latter is a
+build-plugin fixture, not the RustDesk application. Kotlin's official table
+supports 2.2.20–2.2.21 with Gradle8.14/AGP8.11.1; select its corrective patch for
+the consumer while preserving the SDK's own 2.2.20 declaration:
+https://kotlinlang.org/docs/gradle-configure-project.html
+https://github.com/JetBrains/kotlin/releases/tag/v2.2.21
+Gradle documents included plugin builds and single-use daemons:
+https://docs.gradle.org/current/userguide/composite_builds.html
+https://docs.gradle.org/current/userguide/gradle_daemon.html
+
+The 12 GiB guest admits the standard bounded RAM workspace; its immutable
+numeric-nonroot container has 8 GiB memory/no swap expansion, 4 GiB private tmpfs,
+512 PIDs and four CPUs, no writable input or output mount, and two five-minute
+Gradle deadlines within the 900-second VM ceiling. Only the two authenticated
+archives and exact source-owned script/pins enter. Retain bounded logs, actual
+stage exit statuses, compiled-plugin identity when present, and downloaded Maven
+file identities; all cache/build bulk retires with the container and VM. An outer
+diagnostic completion is not compiler success. Observed dependency hashes are not
+independent first-pin authentication; no cache or APK is published. Native results
+remain pending. Shell syntax, embedded Python parsing and diff hygiene pass.

@@ -27,6 +27,7 @@ case "$#:${1:-}" in
     1:--flutter-peer-archives)
         REQUEST=$1
         ;;
+    1:--maintenance-probe-android-candidate-gradle|\
     1:--maintenance-discover-android-gradle|1:--fixed-archives|\
     1:--rust-test-inputs|1:--flutter-test-inputs|1:--flutter-peer-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|1:--maintenance-discover-osv-pub-database|1:--maintenance-discover-android-emulator-inputs|1:--maintenance-discover-rust-android-x86-input|1:--maintenance-discover-flutter-android-maven|1:--maintenance-stage-android-emulator-inputs|1:--maintenance-stage-rust-android-x86-input|1:--maintenance-stage-vcpkg-x64-android|1:--maintenance-stage-flutter-presentation-candidate|1:--maintenance-discover-flutter-presentation-pub|\
     1:--maintenance-build-deb-builder-bootstrap-candidate|\
@@ -127,6 +128,10 @@ elif [ "$REQUEST" = --maintenance-stage-polkit-runtime-candidate ] \
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=4096
+elif [ "$REQUEST" = --maintenance-probe-android-candidate-gradle ]; then
+    readonly VM_TIMEOUT_SECONDS=900
+    readonly OVERLAY_SIZE=8G
+    readonly VM_MEMORY=12288
 elif [ "$REQUEST" = --maintenance-stage-pa-runtime-candidate ]; then
     readonly VM_TIMEOUT_SECONDS=900
     readonly OVERLAY_SIZE=8G

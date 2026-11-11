@@ -7427,7 +7427,20 @@ Both GTK cancellation controls and fresh no-agent refusal pass on this artifact.
 bind the application, five cases/nineteen stages, five CPace exchanges and joined
 cleanup with four zero endpoint deltas per run. The audit retains both failed runs.
 The exact GUI/root-CLI overlap is closed; other concurrent principals/schedules,
-shutdown drain, identity races, final packages and complete R-S0 remain OPEN.
+remaining shutdown schedules, identity races, final packages and complete R-S0 remain OPEN.
+
+**Two admitted changes through normal service stop accepted.** TUF `NqFbF3JFP5`,
+harness `440b2caf`, reuses app `74b64685`. Two actual root CLIs remain pending with
+only the first value persisted while the exact child is held. Ordinary systemctl
+stop keeps the same supervisor/child alive for 35.046 seconds, beyond the shipped
+30-second deadline; a fresh root request fails before readiness without mutation.
+After release, both CLIs report Applied and the service exits cleanly/reaps within
+0.770 seconds. Explicit restart retains the final value in a fresh generation;
+three mutual CPace exchanges and one child-confirmed superseded-value refusal pass.
+`linux-queued-stop-440b2caf.json` retains exact identities, unit outcomes, root log,
+unchanged user profile and joined private/RAM/VM cleanup with four zero endpoint
+deltas. This covers two root CLI owners and the named normal stop/restart schedule;
+other principals, error/identity schedules and final-package acceptance remain OPEN.
 
 `d9fc6405`/`53f66299` replace the Boolean native/Flutter password result with
 Applied/Denied/Failed/Uncertain, retain bounded-recovery expiry as Uncertain,

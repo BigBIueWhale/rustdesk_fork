@@ -145140,3 +145140,28 @@ https://raw.githubusercontent.com/systemd/systemd/v252/man/systemd.kill.xml
 https://raw.githubusercontent.com/systemd/systemd/v252/man/systemd.service.xml
 The new closed replay selector retains the existing RAM admission, isolated topology
 and joined cleanup. Native acceptance remains pending.
+
+Accepted TUF `NqFbF3JFP5` at `440b2caf` exits zero (tool96238), reusing app
+74b64685 / manifest46bf7e2d without rebuilding. Root CLIs9154/start5638 and
+9160/start5649 remain pending behind eighteen exact child threads. Only the first
+value persists during the hold. After systemctl stop, fresh root CLI9266/start5852
+exits one with readiness timeout and no mutation; the two original clients remain
+pending for 35.045845 seconds. The same supervisor9066 and child9075/start5515,
+generation 2e17702f-f214-4415-adb0-0a75d36ff4d4, remain deactivating with zero
+restarts past TimeoutStopUSec=30s. After detach, both report Done; successful unit
+exit, exact process reaping, record/cgroup/endpoint retirement complete within
+0.769593 seconds. The retained complete 6,320-byte root log ends in normal Exit.
+Explicit restart creates supervisor9934/child9943/start9440 and generation
+71db6da2-daa9-4446-b58f-c02f532d07f0, preserving the final credential. All three
+mutual CPace exchanges and one child-confirmed refusal of the superseded value pass;
+the ordinary user profile is unchanged.
+
+`linux-queued-stop-440b2caf.json` is 14,504 bytes, SHA-256
+93760ac4ba1c3b04b472eb08c63c7c271a6b0977f99969a9987ebdd13a4f57b7.
+Its nine-file 114,732-byte evidence set matches CTE/TUF. Storage records 167.890
+seconds and RAM peak 3,837,513,728 bytes. QEMU3871862 joins zero, private/RAM roots
+retire and four endpoint deltas are zero. The two-root-request stop schedule closes
+without another product correction. Other principals, failure/identity schedules,
+final-package/platform acceptance and complete R-S0 remain open. This is a checkpoint
+for reassessing release priorities; do not repeat the passed overlap/drain scenarios
+without a relevant change or unresolved concern.

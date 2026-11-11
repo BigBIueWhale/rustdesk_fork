@@ -145856,3 +145856,39 @@ library override. The outer preinstallation network baseline owns cleanup. After
 the scenario, check normal restart and live unauthorized-user refusal, then
 reinstall/removal/purge. The previous direct-layout path for this ordinary mode is
 removed. No product change is selected before the normal-package result.
+
+## 2026-11-11 — normal-package settings failure and recovery accepted
+
+Preparation c98b202dd1ac8135c0660d197a0232334228b274 passes Python AST/shell
+syntax and diff checks, then TUF m8UlNv8yKV exits zero (tool22892). The exact
+retained app6429f3cb/manifest676bd6fa uses package SHA-256
+5765a5d021666550e3590f99321b3b6c631588f350e29c084a5adc1c34c8b8a2.
+All 72 installed payloads, package vendor unit/policy and ordinary APT dependencies
+are observed; no fixture library or loader override enters product execution.
+
+All sixteen initial GUI stages pass cancellation, no-agent denial and actual
+pkttyagent/polkit/PAM authorization with durable Applied outcome. Seven restarted-
+GUI stages pass persistence, then submission while the exact service is stopped:
+the GUI reports Failed, protected and user-profile credentials stay unchanged,
+and all three protected IPC endpoints are unavailable. GUI8230 remains usable
+after service recovery and reports Denied for a fresh unauthorized request.
+Seven mutual CPace controls and three receiver-confirmed stale-password refusals
+bind the intended credential to the actual listener/child across three service
+generations. Native receipt records all eight required scenarios passing.
+
+The ten completed loopback TIME_WAIT rows drain in 61.295 seconds to the exact
+preinstallation network baseline. Subsequent normal restart and live UID-4002
+refusal preserve the authorized credential. Reinstall reaps the old supervisor
+and preserves that credential; removal retires the replacement and preserves it;
+purge retires protected state. All sixteen package commands and final APT/dpkg
+checks pass. QEMU3949974 joins zero after 177.503 seconds, peak RAM scratch
+4,249,198,592 bytes, under unchanged admission/monitor/ceiling limits.
+
+Under the free shared lock, independently reconcile clean exact source, the raw
+native observations, four zero listener deltas, absent QEMU/Unix endpoints and
+retired private/RAM roots. package-failure-c98b202d.json and nine bounded files /
+169,853 bytes match CTE/TUF. This closes the eight named normal-package scenarios;
+no product defect was observed and no product edit or rebuild was needed.
+Actual-package ten-minute Uncertain reporting/recovery, upgrades and complete
+release acceptance remain OPEN. Update the ledger and obtain its fresh isolated
+count; keep the measured ledger unchanged afterward.

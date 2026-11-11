@@ -19,6 +19,7 @@ ulimit -f 524288
 export FLUTTER_ROOT="$work/toolchain/flutter" PUB_CACHE="$work/pub-cache"
 export PUB_HOSTED_URL=https://pub.dev CI=true FLUTTER_SUPPRESS_ANALYTICS=true
 export DART_SUPPRESS_ANALYTICS=true
+export ANALYZER_STATE_LOCATION_OVERRIDE=/tmp/analyzer-state
 export GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_OPTIONAL_LOCKS=0
 export PATH="$FLUTTER_ROOT/bin/cache/dart-sdk/bin:/usr/bin:/bin"
 

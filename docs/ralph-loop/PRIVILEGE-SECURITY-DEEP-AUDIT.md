@@ -146850,3 +146850,23 @@ The only writable mount is a freshly owned VM-private workspace. Exact source,
 SDK and prior lock remain read-only; neither canonical nor candidate cache is
 published. Retain the bounded discovered manifest/lock and true stage outcomes;
 independent package authentication and application migration remain required.
+
+At 051a3dec, TUF aYPiJWTfZ5/tool26478 resolves the complete candidate project
+and replays it offline successfully. Pub adds the selector and federated SQLite
+packages, removes file_picker and the now-unused lifecycle package, and changes
+only sqflite_common/synchronized among other retained versions. API analysis then
+fails because its default /.dartServer state path is on the read-only container
+root. Use the SDK's explicit ANALYZER_STATE_LOCATION_OVERRIDE=/tmp/analyzer-state;
+the SDK3.13.4 PhysicalResourceProvider documents and implements that setting:
+https://raw.githubusercontent.com/dart-lang/sdk/3.13.4/pkg/analyzer/lib/file_system/physical_file_system.dart
+No HOME override or writable container root is needed. Retry is necessary because
+the exploratory cache correctly retired with the failed VM.
+
+QEMU4026292 joins zero after149.954 monitor seconds; scratch peak6,519,664,640
+bytes is within the16GiB workspace. The virtual disk is12GiB; its actual file
+ceiling remains the shared8GiB bound. Before/during/after listener inventories
+match exactly. Under both free run locks, preserve bounded stdout/stderr, source
+identity, serial/capture and listener evidence, then retire only the validated
+private root66306:78296783. RAM/private roots and its Unix endpoints are absent.
+flutter-plugin-migration-051a3dec.json and15files/104,753bytes match both hosts.
+This failed diagnostic is not API, Android compiler or application acceptance.

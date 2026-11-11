@@ -2933,6 +2933,23 @@ maintenance_discover_android_gradle() {
             --sha256 "$SHA256_ANDROID_CANDIDATE_GRADLE_BIN"
 }
 
+maintenance_discover_flutter_plugin_archives() {
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
+    local helper="$SCRIPT_DIR/discover-flutter-plugin-archives.py"
+    verify_or_load_online_fetch_builder_image android-builder "$builder"
+    require_online_fetch_builder_image android-builder "$builder"
+    [ -f "$helper" ] && [ ! -L "$helper" ] \
+        || die "Flutter plugin archive discovery helper is absent or ambiguous"
+    online_docker_run_offline \
+        --mount "type=bind,source=$helper,target=/authority/discover.py,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/python3 -I -S /authority/discover.py --self-test
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$helper,target=/authority/discover.py,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/python3 -I -S /authority/discover.py
+}
+
 maintenance_probe_flutter_plugin_migration() {
     local builder="$DEB_BUILDER_CONFIG_ID" work work_identity phase network
     local sdk="$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-$FLUTTER_PRESENTATION_CANDIDATE_VERSION.tar.xz"
@@ -8917,6 +8934,12 @@ main() {
             [ "$#" -eq 1 ] \
                 || die "--maintenance-discover-android-gradle takes no arguments"
             maintenance_discover_android_gradle
+            return 0
+            ;;
+        --maintenance-discover-flutter-plugin-archives)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-discover-flutter-plugin-archives takes no arguments"
+            maintenance_discover_flutter_plugin_archives
             return 0
             ;;
         --maintenance-probe-flutter-plugin-migration)

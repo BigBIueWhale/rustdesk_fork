@@ -28,7 +28,7 @@ case "$#:${1:-}" in
         REQUEST=$1
         ;;
     1:--maintenance-probe-flutter-plugin-migration|1:--maintenance-probe-android-candidate-gradle|\
-    1:--maintenance-discover-android-gradle|1:--fixed-archives|\
+    1:--maintenance-discover-flutter-plugin-archives|1:--maintenance-discover-android-gradle|1:--fixed-archives|\
     1:--rust-test-inputs|1:--flutter-test-inputs|1:--flutter-peer-inputs|1:--android-build-inputs|1:--libvpx-distfiles|1:--wix-nuget-packages|1:--dart-audit-inputs|1:--maintenance-discover-osv-pub-database|1:--maintenance-discover-android-emulator-inputs|1:--maintenance-discover-rust-android-x86-input|1:--maintenance-discover-flutter-android-maven|1:--maintenance-stage-android-emulator-inputs|1:--maintenance-stage-rust-android-x86-input|1:--maintenance-stage-vcpkg-x64-android|1:--maintenance-stage-flutter-presentation-candidate|1:--maintenance-discover-flutter-presentation-pub|\
     1:--maintenance-build-deb-builder-bootstrap-candidate|\
     1:--maintenance-discover-flutter-linux-engine-bootstrap|\
@@ -119,6 +119,7 @@ elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
 elif [ "$REQUEST" = --maintenance-stage-polkit-runtime-candidate ] \
      || [ "$REQUEST" = --maintenance-discover-flutter-android-maven ] \
      || [ "$REQUEST" = --maintenance-discover-android-gradle ] \
+     || [ "$REQUEST" = --maintenance-discover-flutter-plugin-archives ] \
      || [ "$REQUEST" = --maintenance-stage-flutter-presentation-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-debian-runtime-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-polkit-agent-candidate ] \

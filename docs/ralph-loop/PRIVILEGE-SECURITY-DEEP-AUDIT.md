@@ -145782,3 +145782,38 @@ Keep the four-case administrator matrix in its existing focused mode. The packag
 branch supplies its preinstallation network baseline because package startup owns
 the listener before the graphical callback. Retain normal limits and joined cleanup.
 No product change or new complete-application build is selected before execution.
+
+TUF ldu6129VTF at 34a45928 exits zero (tool65772), using the same package SHA-256
+5765a5d021666550e3590f99321b3b6c631588f350e29c084a5adc1c34c8b8a2
+and accepted app6429f3cb. All nineteen graphical stages pass in real session c1.
+GUI7855 and agent7854 retain their exact identities. Cancellation at administrator
+selection reaps helper7981 in 1.525 seconds; cancellation after partial password
+entry reaps helper8069 and PAM helper8075 in 1.476 seconds. Both preserve protected
+and user-profile state. A fresh real PAM challenge authorizes the GUI change.
+The child7753/start7489 in supervisor7602's generation454c0c57-d11f-4fed-b5f7-3605fa14e7df
+is held with all seventeen threads stopped. For 2.004 seconds the GUI and root
+CLI8196 remain pending, with only the first durable commit observed. After child
+resume both report Applied in 0.800 seconds, the second credential is durable,
+and a fresh request after agent retirement is refused. Five mutual CPace exchanges
+use the same listener/generation; the final credential succeeds around one
+receiver-confirmed stale-password refusal. The user credential profile is unchanged.
+
+The package owns the vendor unit and polkit policy. Normal APT libraries supply
+the application, including its renderer; each UI stage checks GUI/supervisor/child
+maps and environments against private fixture-runtime contamination. Desktop
+agent/accessibility packages are normally configured. The exact GUI, agent, PAM
+session and service retire; six loopback TIME_WAIT entries drain in 60.975 seconds
+to the preinstallation baseline. Restart creates supervisor8501 with the same
+credential and a live unauthorized-user refusal. Reinstall reaps it and starts
+8619 with all 72 payloads and credential preserved. Removal retires that supervisor
+and preserves credential state; purge removes it. Final APT/dpkg checks pass.
+
+QEMU3945718 joins zero after 174.301 seconds, with 4,234,805,248-byte peak RAM
+scratch under unchanged limits. All four host listener deltas are zero. Under
+the free shared lock, independently reconcile native observations, clean source,
+process/Unix-endpoint absence and retired private/RAM roots; copy bounded evidence.
+package-graphical-34a45928.json and nine files/171,820 bytes match CTE/TUF.
+This closes the five named normal-package graphical scenarios. No product defect
+was observed or product edit needed. Package Failed/Uncertain workflows, version
+upgrades, physical-seat/complete remote desktop behavior and final release evidence
+remain OPEN. Update the ledger and obtain its fresh isolated count.

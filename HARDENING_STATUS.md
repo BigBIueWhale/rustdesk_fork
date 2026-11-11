@@ -139,9 +139,9 @@ VM/RAM retirement; `sessionless-build-recovered-6429f3cb.json` records that scop
 This artifact passes normal dependency-complete Debian install/reinstall/remove/
 purge, sessionless password completion, first-desktop credential bootstrap,
 ordinary-user refusal and preservation of administrator unit state across all
-four package operations. The same app
-also passes the installed-layout graphical authorization/concurrent-change and
-queued-change normal-stop/restart regressions. The package and service sections
+four package operations. Its normal package now passes the five graphical
+authorization/concurrent-change scenarios; the queued-change normal-stop/restart
+regression uses the installed layout. The package and service sections
 below retain the native receipts and remaining acceptance boundaries.
 Earlier app `83fa8494` separately passes GUI Applied/Denied/Failed/restart
 (`linux-sigpipe-settings-a3c017a6.json`) and actual ten-minute Uncertain reporting,
@@ -410,9 +410,21 @@ inactive; other cases run the intended unit with its administrator environment,
 reap predecessors on reinstall and retire fully on removal. The ordinary package/
 bootstrap workflow and final APT/dpkg checks also pass. Evidence and joined cleanup:
 `package-admin-units-eb8377f7.json`; the initial failure is retained in
-`package-admin-units-51181057.json`. Actual-package graphical settings, upgrades
-and the complete release matrix remain **OPEN**. These checks do not establish rendered pixels,
-input, physical-seat switching or a complete desktop session workload.
+`package-admin-units-51181057.json`.
+Normal-package graphical authorization now passes at `34a45928`, retaining the
+same archive bytes (`package-graphical-34a45928.json`). Nineteen actual UI stages
+cover cancellation at administrator selection and partial password entry, fresh
+polkit/PAM authorization, concurrent GUI/root-CLI changes held until child
+convergence, and fresh no-agent refusal. Five mutual CPace exchanges and receiver-
+confirmed stale-password refusal establish credential use. The application uses
+APT libraries and the package vendor unit/policy; the desktop agent and accessibility
+support are installed from their authenticated packages. User-profile credentials
+stay unchanged; helpers, GUI, agent and desktop retire. Restart/reinstall preserve
+the new credential, a live service refuses UID 4002, and removal/purge pass.
+The run joins QEMU/private/RAM cleanup with four zero host listener deltas.
+Actual-package Failed/Uncertain workflows, version upgrades and the complete
+release matrix remain **OPEN**. These scenarios do not establish remote rendered
+pixels/input, physical-seat switching or a complete desktop session workload.
 Canonical input promotion also remains open: the Debian recipe selects stock
 Flutter 3.24.5 while the accepted app uses the 3.47.5 candidate and patched engine.
 
@@ -5086,9 +5098,12 @@ Those graphical and stop regressions install the retained app layout directly.
 The dependency-complete package now separately passes first-desktop startup after
 sessionless provisioning, including real PAM/logind selection, exact child proof,
 mutual CPace, wrong-password refusal and child retirement with unchanged supervisor
-and root credential (`package-bootstrap-e716fa8c.json`). Actual-package graphical
-settings, current handoff coverage and the broader authority/release matrix remain
-OPEN.
+and root credential (`package-bootstrap-e716fa8c.json`). Normal-package graphical
+cancellation, fresh authorization, concurrent changes and no-agent refusal now
+pass the same nineteen UI stages with APT libraries and package-owned unit/policy
+(`package-graphical-34a45928.json`), followed by restart/reinstall/removal/purge.
+Actual-package Failed/Uncertain workflows, current handoff coverage and the broader
+authority/release matrix remain OPEN.
 
 **Still OPEN:** exact current release packages and upgrades; installed privileged
 action/settings authorization; genuine-image incumbents, non-root actors and
@@ -11280,7 +11295,7 @@ sandbox implementation and checker-repair history remain in Git.
   remain in Git history and do not substitute for these native observations.
 
   This verifies the named candidate's install, same-version reinstall, removal and
-  purge on systemd. Version upgrades, other init systems, graphical settings, final
+  purge on systemd. Version upgrades, other init systems, remaining graphical workflows, final
   clean cold application/package A==B and complete R-B2 acceptance remain OPEN.
   Debian Policy §9.3/§10.7 and systemd.unit(5) govern vendor/admin precedence;
   the audit retains primary-source research and exact helper-package identities.

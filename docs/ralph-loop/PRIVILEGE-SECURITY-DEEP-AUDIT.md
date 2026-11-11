@@ -145173,3 +145173,11 @@ pass with three zero endpoint deltas. `queued-stop-ledger-f7311bdd.json` and its
 eight-file 115,003-byte evidence set match CTE/TUF. Final current-verdict review
 found its build summary still labeled 83fa8494 current; update that summary to
 74b64685 while retaining earlier artifact scopes. Recount the changed final ledger.
+
+Final count `j5SBTG8h2O` at `f625b6f2` passes (tool60544): 404,294 tokens /
+1,845,395 bytes, SHA-256
+400fd0a1aebed7e928f9ff09170c1e34222f6474aa97b84491fa5f95e386c3f5.
+The fixed method/seven controls/round trip pass; QEMU3875973 joins zero,
+private/RAM roots retire and three endpoint deltas are zero.
+`queued-stop-final-ledger-f625b6f2.json` and eight files/115,211 bytes match CTE/TUF.
+The approximate 400,000-token compression obligation remains open. No test remains live.

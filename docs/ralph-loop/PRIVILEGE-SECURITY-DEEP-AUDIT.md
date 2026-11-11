@@ -146062,3 +146062,12 @@ private/RAM/Unix endpoints. package-upgrade-328c3d5d.json and nine bounded files
 with current packaging; historical release/script transitions, older conffile
 handling, cross-base upgrades and final release acceptance remain OPEN. Update
 the current ledger and obtain its fresh isolated token count.
+
+Fresh count ld5LbHObXd at 1a8edaf3 exits zero (tool53373): 405,594 tokens /
+1,852,041 bytes, SHA-256 60add272d57e5dcc2afa63e487a73d8a535034716fe391267733435b6d6973a3.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and its byte round trip. package-upgrade-ledger-1a8edaf3.json and eight files /
+116,463 bytes match CTE/TUF. QEMU3962218 joins zero after 30.809 seconds; three
+host listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.

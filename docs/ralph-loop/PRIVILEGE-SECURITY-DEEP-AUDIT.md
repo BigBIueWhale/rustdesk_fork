@@ -146498,3 +146498,29 @@ Native controls add actual temporary-file downloader digest checks, malformed
 metadata refusal and publisher/mirror disagreement; existing POM/JAR cases remain.
 AST parsing and diff hygiene pass; isolated execution is pending. No canonical
 pin, requirement, input cache, release build or product behavior is changed.
+
+Native TUF YlFxrmrMzM at 8ebb6205 exits zero (tool 17215). Metadata/refusal and
+actual downloader digest controls pass, followed by all six publisher-generation
+and CFUG content comparisons. Complete metadata remains identical before/after;
+both streams match publisher size/MD5 and each other's SHA-256. POM coordinates,
+eleven embedding dependencies, JAR CRC/inventory and ARM64/x86_64 ELF checks pass.
+Every content size/hash/dependency record also equals the prior 2fad6b89 direct
+Google discovery. This closes first-pin provenance for these six candidate
+objects under R-B12's publisher-checksum/independent-path model. It does not
+establish a publisher signature, uncompromised upstream code, independent engine
+reproduction, the transitive Gradle closure or an Android application build.
+
+Reconcile under both free locks against clean source/tree and success-v5 receipt;
+recover exact stdout from the outer stream and match its receipt hash, compare
+all partial metadata against final object records, and copy bounded evidence.
+QEMU 3989240 joins zero; outer elapsed 79 seconds, storage monitor 112.493 seconds,
+scratch peak 3,070,230,528 bytes. Private/RAM roots and Unix endpoints are absent;
+listener additions are zero. flutter-maven-provenance-8ebb6205.json and eight
+files / 178,247 bytes match CTE/TUF. No downloaded object or bulk image remains.
+
+Record the reviewed size/SHA-256/generation for each candidate in pins.env with
+per-object publisher MD5 and the complete provenance capsule reference. These
+are candidate pins only; canonical Flutter 3.24.5 and release consumers are
+unchanged. The next necessary step is their matched offline Android dependency
+closure and build integration, followed by coherent cross-platform promotion.
+Update the existing ledger entry, then obtain its fresh isolated token count.

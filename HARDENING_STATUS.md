@@ -460,16 +460,19 @@ pixels/input, physical-seat switching or a complete desktop session workload.
 Canonical input promotion also remains open: the Debian recipe selects stock
 Flutter 3.24.5 while the accepted app uses the 3.47.5 candidate and patched engine.
 The candidate lock requires Dart >=3.11.0-0, so this needs coherent Android/Windows
-input migration as well. Candidate Android discovery at `2fad6b89` passes in TUF
-`yqCl41Hb9Q`: two matching downloads of all six embedding/ARM64/x86_64 JAR/POM
-objects, native ELF architecture and archive validation, exact Maven coordinates,
-and eleven embedding dependency coordinates. All six publisher SHA-1 sidecars
-return 404; the receipt explicitly retains incomplete checksum provenance and
-publishes no canonical inputs. `flutter-candidate-maven-2fad6b89.json` binds the
-raw output, successful outer receipt and joined VM/RAM cleanup. The preceding
-sidecar-only failure and exact diagnostic cleanup are in the audit. Next obtain
-publisher provenance and an independent content cross-check before first pins,
-then prepare the matched offline closure. SDK/lock/engine promotion, canonical
+input migration as well. Candidate Android first-pin provenance now passes at
+`8ebb6205`, TUF `YlFxrmrMzM`: all six embedding/ARM64/x86_64 JAR/POM objects match
+the exact Google object generations, publisher metadata size/MD5, and SHA-256 of
+the separately operated CFUG mirror. Metadata remains stable, POM coordinates,
+eleven embedding dependencies, archive CRC/inventory and ELF architecture pass.
+The hashes also equal the earlier direct Google discovery at `2fad6b89`.
+The publisher's SHA-1 sidecars are absent; the accepted provenance uses object
+metadata plus the independent content path. MD5 is an integrity observation,
+not a signature. Candidate size/SHA-256/generation pins are in `scripts/pins.env`;
+`flutter-maven-provenance-8ebb6205.json` retains per-object metadata and both URLs,
+native controls, exact source/output binding and joined VM/RAM cleanup. No
+downloaded Maven object or canonical input was published by discovery. Next
+prepare the matched offline Android closure. SDK/lock/engine promotion, canonical
 build integration and cross-platform release acceptance remain **OPEN**.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**

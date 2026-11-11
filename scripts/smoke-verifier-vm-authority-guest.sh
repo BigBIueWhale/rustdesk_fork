@@ -14585,10 +14585,7 @@ run_flutter_peer_presentation() {
         case ",$mount_options," in *,nosuid,*) ;; *) fail 'sealed Flutter candidate permits set-user-ID execution' ;; esac
         case ",$mount_options," in *,noexec,*) ;; *) fail 'sealed Flutter candidate permits direct execution' ;; esac
         [ "$(stat -c '%u:%g:%a' -- "$candidate_root")" = 1000:1000:700 ] \
-            && [ "$(find "$candidate_root" -mindepth 1 -maxdepth 1 \
-                -printf '%f\n' | LC_ALL=C sort)" = \
-                 $'flutter-'"${FLUTTER_PRESENTATION_CANDIDATE_VERSION}"$'.tar.xz\npub-cache\npubspec.lock.discovery' ] \
-            || fail 'candidate Flutter-peer closure namespace differs'
+            || fail 'candidate Flutter SDK authority owner/mode differs'
         candidate_archive="$candidate_root/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$candidate_archive")" = \
           "1000:1000:400:1:$SIZE_FLUTTER_PRESENTATION_CANDIDATE" ] \

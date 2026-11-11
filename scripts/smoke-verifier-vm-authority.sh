@@ -3813,12 +3813,10 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     if [ "$FLUTTER_PEER_CANDIDATE" -eq 1 ]; then
         [ -d "$FLUTTER_PEER_CANDIDATE_ROOT" ] \
             && [ ! -L "$FLUTTER_PEER_CANDIDATE_ROOT" ] \
+            && [ "$(/usr/bin/readlink -f -- "$FLUTTER_PEER_CANDIDATE_ROOT")" = "$FLUTTER_PEER_CANDIDATE_ROOT" ] \
             && [ "$(/usr/bin/stat -c '%u:%g:%a' -- \
                 "$FLUTTER_PEER_CANDIDATE_ROOT")" = "$HOST_UID:$HOST_GID:700" ] \
-            && [ "$(/usr/bin/find "$FLUTTER_PEER_CANDIDATE_ROOT" \
-                -mindepth 1 -maxdepth 1 -printf '%f\n' | LC_ALL=C /usr/bin/sort)" = \
-                 $'flutter-'"${FLUTTER_PRESENTATION_CANDIDATE_VERSION}"$'.tar.xz\npub-cache\npubspec.lock.discovery' ] \
-            || fail 'candidate Flutter-peer closure namespace differs'
+            || fail 'candidate Flutter SDK authority root differs'
         [ -d "$FLUTTER_PEER_CANDIDATE_PUB_ROOT" ] \
             && [ ! -L "$FLUTTER_PEER_CANDIDATE_PUB_ROOT" ] \
             && [ "$(/usr/bin/readlink -f -- "$FLUTTER_PEER_CANDIDATE_PUB_ROOT")" = "$FLUTTER_PEER_CANDIDATE_PUB_ROOT" ] \

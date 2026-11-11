@@ -2602,7 +2602,7 @@ maintenance_discover_flutter_presentation_pub() {
         "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
     [ "$(/usr/bin/sha256sum "$GRADLE_SOURCE_AUTHORITY/scripts/flutter-presentation-candidate-pubspec.lock" \
           | /usr/bin/awk '{print $1}')" = \
-      "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ] \
+      "$SHA256_FLUTTER_PRESENTATION_SEED_PROJECT_LOCK" ] \
         || die "committed Flutter presentation candidate lock differs from its pin"
     recover_flutter_presentation_pub_staging
     mapfile -d '' candidate_provenance < <(flutter_presentation_pub_provenance_args)
@@ -2616,7 +2616,7 @@ maintenance_discover_flutter_presentation_pub() {
         [[ "$current_receipt" =~ ^sha256=([0-9a-f]{64})$ ]] \
             || die "existing Flutter presentation Pub-cache receipt is malformed"
         current_digest="${BASH_REMATCH[1]}"
-        [ "$current_digest" = "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
+        [ "$current_digest" = "$SHA256_FLUTTER_PRESENTATION_SEED_PUB_CACHE" ] \
             || die "existing Flutter presentation Pub cache differs from its pin"
         current=1
     else
@@ -2650,7 +2650,7 @@ maintenance_discover_flutter_presentation_pub() {
             lock_sha256="$(
                 /usr/bin/sha256sum "$first_lock/pubspec.lock" | /usr/bin/awk '{print $1}'
             )"
-            if [ "$lock_sha256" != "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ]; then
+            if [ "$lock_sha256" != "$SHA256_FLUTTER_PRESENTATION_SEED_PROJECT_LOCK" ]; then
                 pin_status=1
             fi
         fi
@@ -2689,8 +2689,8 @@ maintenance_discover_flutter_presentation_pub() {
         else
             second_output_status=1
         fi
-        if [ "$first_digest" != "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
-           || [ "$second_digest" != "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ]; then
+        if [ "$first_digest" != "$SHA256_FLUTTER_PRESENTATION_SEED_PUB_CACHE" ] \
+           || [ "$second_digest" != "$SHA256_FLUTTER_PRESENTATION_SEED_PUB_CACHE" ]; then
             pin_status=1
         fi
     fi
@@ -2964,14 +2964,14 @@ maintenance_stage_flutter_plugin_cache() {
     prepare_gradle_source
     verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
     verify_sha256 "$GRADLE_SOURCE_AUTHORITY/flutter/pubspec.lock" \
-        "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK"
+        "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK"
     exec {lock_fd}<"$FLUTTER_PRESENTATION_CANDIDATE_ROOT"
     "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
         || die 'another transaction owns the Flutter presentation cache'
     seed_receipt="$(pub_cache_output_tool check-complete \
         --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
         --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
-    [ "$seed_receipt" = "sha256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
+    [ "$seed_receipt" = "sha256=$SHA256_FLUTTER_PRESENTATION_SEED_PUB_CACHE" ] \
         || die 'plugin cache seed differs from its authenticated pin'
     if [ ! -e "$publication_root" ] && [ ! -L "$publication_root" ]; then
         /usr/bin/install -d -m 0700 "$publication_root"
@@ -2992,7 +2992,7 @@ maintenance_stage_flutter_plugin_cache() {
     if [ -e "$publication_root/pub-cache" ] || [ -L "$publication_root/pub-cache" ]; then
         cache_receipt="$(pub_cache_output_tool check-complete --online "$publication_root" \
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
-        [ "$cache_receipt" = "sha256=$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" ] \
+        [ "$cache_receipt" = "sha256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
             || die 'existing plugin cache differs from its pin'
         publication=existing
         initial_phase=prepare
@@ -3021,7 +3021,7 @@ maintenance_stage_flutter_plugin_cache() {
                 cache_receipt="$(pub_cache_output_tool verify-reproduction \
                     --cache "$cache" --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
             fi
-            [ "$cache_receipt" = "sha256=$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" ] \
+            [ "$cache_receipt" = "sha256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
                 || die 'reproduced plugin cache differs from its reviewed pin'
             /usr/bin/install -d -m 0700 "$work/replay-cache" \
                 "$work/replay-cache/hosted" "$work/replay-cache/hosted-hashes" "$work/replay-cache/git"
@@ -3095,7 +3095,7 @@ PY
             || die 'plugin cache publication copy differs'
         pub_cache_output_tool publish --online "$publication_root" --staging "$staging" \
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}" \
-            --expected-digest "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE"
+            --expected-digest "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE"
         retire_flutter_presentation_pub_staging "$staging" "$staging_id" "$publication_root"
     fi
     [ "$(pub_cache_output_tool check-complete --online "$publication_root" \
@@ -3113,8 +3113,8 @@ PY
     "$FLOCK_BIN" --unlock "$lock_fd"
     exec {lock_fd}<&-
     printf 'FLUTTER_PLUGIN_CACHE_STAGE=pass %s lock_sha256=%s seed_sha256=%s publication=%s\n' \
-        "$cache_receipt" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK" \
-        "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$publication"
+        "$cache_receipt" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" \
+        "$SHA256_FLUTTER_PRESENTATION_SEED_PUB_CACHE" "$publication"
 }
 
 maintenance_probe_android_candidate_gradle() {

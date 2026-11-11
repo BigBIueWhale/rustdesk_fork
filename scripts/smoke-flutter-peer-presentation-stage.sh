@@ -904,13 +904,10 @@ PY
         [ "$RUSTDESK_FLUTTER_TOOLS_MODE" = offline-resolved ] \
           && [[ "${RUSTDESK_PROJECT_LOCK_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] \
           || fail 'candidate project lock identity is missing or paired with the wrong Flutter mode'
-        verify_regular "$BUILD_SOURCE/scripts/flutter-presentation-candidate-pubspec.lock"
-        [ "$(sha256sum "$BUILD_SOURCE/scripts/flutter-presentation-candidate-pubspec.lock" \
+        verify_regular "$BUILD_SOURCE/flutter/pubspec.lock"
+        [ "$(sha256sum "$BUILD_SOURCE/flutter/pubspec.lock" \
               | awk '{print $1}')" = "$RUSTDESK_PROJECT_LOCK_SHA256" ] \
-          || fail 'committed candidate project lock differs from its pin'
-        install -m 0600 \
-          "$BUILD_SOURCE/scripts/flutter-presentation-candidate-pubspec.lock" \
-          "$BUILD_SOURCE/flutter/pubspec.lock"
+          || fail 'committed application project lock differs from its pin'
         ;;
       *) fail 'project Pub lock mode differs' ;;
     esac

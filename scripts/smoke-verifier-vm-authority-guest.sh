@@ -606,6 +606,7 @@ ANDROID_RUNTIME_FAILURE_MOUNTED=0
 FLUTTER_PEER_SOURCE_MOUNTED=0
 FLUTTER_PEER_ONLINE_MOUNTED=0
 FLUTTER_PEER_CANDIDATE_MOUNTED=0
+FLUTTER_PEER_PUB_MOUNTED=0
 FLUTTER_PEER_FAILURE_MOUNTED=0
 FLUTTER_APP_OUTPUT_MOUNTED=0
 FLUTTER_APP_INPUT_MOUNTED=0
@@ -12871,7 +12872,7 @@ run_flutter_model_tests() {
                 check-complete --online "$pub_root" --uid 1000 --gid 1000
     )" || fail 'sealed Pub-cache closure validation failed'
     [ "$pub_receipt" = \
-      "sha256=$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" ] \
+      "sha256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
         || fail "sealed Pub-cache closure receipt differs: $pub_receipt"
     [ "$(stat -c '%u:%g:%a:%h:%s' -- "$builder_archive")" = \
       "1000:1000:400:1:$DEB_BUILDER_IMAGE_ARCHIVE_SIZE" ] \
@@ -14170,7 +14171,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/latest_frame_queue_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_FRAME_QUEUE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=26 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' queue=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-queue-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$queue_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$queue_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = direct-address ]; then
         address_sha256="$(sha256sum "$source_root/flutter/lib/common/formatter/direct_address.dart" | awk '{print $1}')"
@@ -14180,7 +14181,7 @@ run_flutter_model_tests() {
         vectors_sha256="$(sha256sum "$source_root/flutter/test/fixtures/direct_address.json" | awk '{print $1}')"
         printf 'FLUTTER_DIRECT_ADDRESS_TESTS_VM=pass commit=%s tree=%s suites=2 tests=45 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' validator=%s port_formatter=%s rdp_field=%s tests_source=%s vectors=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-address-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$address_sha256" "$port_formatter_sha256" "$rdp_field_sha256" "$tests_sha256" "$vectors_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$address_sha256" "$port_formatter_sha256" "$rdp_field_sha256" "$tests_sha256" "$vectors_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = file-metadata ]; then
         printf 'FLUTTER_FILE_METADATA_TESTS_VM=pass commit=%s tree=%s suites=1 tests=16 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' bridge=absent source=readonly network=none cleanup=joined\n' \
@@ -14194,7 +14195,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test_probes/fixed_width_button_layout_cases.dart.inc" | awk '{print $1}')"
         printf 'FLUTTER_HELP_BUTTON_TESTS_VM=pass commit=%s tree=%s suites=2 tests=14 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-help-button-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = menu-button ]; then
         local widget_sha256
@@ -14202,7 +14203,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/menu_button_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_MENU_BUTTON_TESTS_VM=pass commit=%s tree=%s suites=6 tests=61 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-menu-button-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = draggable-divider ]; then
         local widget_sha256
@@ -14210,7 +14211,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/draggable_divider_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_DRAGGABLE_DIVIDER_TESTS_VM=pass commit=%s tree=%s suites=1 tests=22 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-draggable-divider-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = hold-drag ]; then
         local widget_sha256
@@ -14218,7 +14219,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/hold_tap_move_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_HOLD_DRAG_TESTS_VM=pass commit=%s tree=%s suites=1 tests=17 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-hold-drag-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = locales ]; then
         local widget_sha256
@@ -14226,7 +14227,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/locales_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_LOCALE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=16 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-locale-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = path-labels ]; then
         local widget_sha256
@@ -14234,7 +14235,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/start_ellipsis_text_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_PATH_LABEL_TESTS_VM=pass commit=%s tree=%s suites=1 tests=16 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-path-label-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = setting-checkbox ]; then
         local widget_sha256
@@ -14242,7 +14243,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/setting_checkbox_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_SETTING_CHECKBOX_TESTS_VM=pass commit=%s tree=%s suites=1 tests=8 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-setting-checkbox-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = list-search ]; then
         local widget_sha256
@@ -14250,7 +14251,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/list_search_action_listener_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_LIST_SEARCH_TESTS_VM=pass commit=%s tree=%s suites=1 tests=11 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-list-search-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = credential-badge ]; then
         local widget_sha256
@@ -14258,7 +14259,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/peer_credential_badge_accessibility_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_CREDENTIAL_BADGE_TESTS_VM=pass commit=%s tree=%s suites=2 tests=14 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-credential-badge-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = peer-search ]; then
         local widget_sha256
@@ -14266,7 +14267,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test_probes/peer_search_cases.dart.inc" | awk '{print $1}')"
         printf 'FLUTTER_PEER_SEARCH_TESTS_VM=pass commit=%s tree=%s suites=1 tests=36 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=peer-page-construction-and-rendered-search-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = tab-selection ]; then
         local widget_sha256
@@ -14274,7 +14275,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test_probes/tab_selection_cases.dart.inc" | awk '{print $1}')"
         printf 'FLUTTER_TAB_SELECTION_TESTS_VM=pass commit=%s tree=%s suites=2 tests=31 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-tab-selection-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$widget_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = connection-page ]; then
         local widget_sha256 widget_tests_sha256
@@ -14290,7 +14291,7 @@ run_flutter_model_tests() {
         widget_tests_sha256="$(sha256sum "$source_root/flutter/test_probes/listener_status_cases.dart.inc" | awk '{print $1}')"
         printf 'FLUTTER_STATUS_REFRESH_TESTS_VM=pass commit=%s tree=%s suites=2 tests=23 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' lifecycle=%s tests_source=%s widget=%s widget_tests=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-status-refresh-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$lifecycle_sha256" "$tests_sha256" "$widget_sha256" "$widget_tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$lifecycle_sha256" "$tests_sha256" "$widget_sha256" "$widget_tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = share-rdp ]; then
         local lifecycle_sha256
@@ -14298,7 +14299,7 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/share_rdp_change_lifecycle_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_SHARE_RDP_TESTS_VM=pass commit=%s tree=%s suites=1 tests=4 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' lifecycle=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-rdp-sharing-lifecycle-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$lifecycle_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$lifecycle_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = password-fields ]; then
         local password_sha256
@@ -14306,17 +14307,17 @@ run_flutter_model_tests() {
         tests_sha256="$(sha256sum "$source_root/flutter/test/password_text_field_test.dart" | awk '{print $1}')"
         printf 'FLUTTER_PASSWORD_FIELD_TESTS_VM=pass commit=%s tree=%s suites=3 tests=25 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' widget=%s tests_source=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-password-field-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$password_sha256" "$tests_sha256" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$password_sha256" "$tests_sha256" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = cm-duration ]; then
         printf 'FLUTTER_CM_DURATION_TESTS_VM=pass commit=%s tree=%s suites=1 tests=9 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-cm-duration-native-doubles cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
-            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [[ "$FLUTTER_TEST_PROFILE" = settings-navigation || "$FLUTTER_TEST_PROFILE" = recording-directory || "$FLUTTER_TEST_PROFILE" = settings-sidebar || "$FLUTTER_TEST_PROFILE" = mobile-build-date || "$FLUTTER_TEST_PROFILE" = desktop-theme ]]; then
         printf 'FLUTTER_SETTINGS_NAVIGATION_TESTS_VM=pass commit=%s tree=%s suites=1 tests=%s flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=rendered-settings-native-doubles cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$FLUTTER_SETTINGS_TEST_COUNT" \
-            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = terminal-output ]; then
         local decoder_sha256
@@ -14325,37 +14326,37 @@ run_flutter_model_tests() {
         printf 'FLUTTER_TERMINAL_OUTPUT_TESTS_VM=pass commit=%s tree=%s suites=2 tests=37 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' decoder=%s tests_source=%s frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-terminal-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$decoder_sha256" "$tests_sha256" \
-            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = window-dispatch ]; then
         printf 'FLUTTER_WINDOW_DISPATCH_TESTS_VM=pass commit=%s tree=%s suites=1 tests=8 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-and-linux-native-channel-tests cleanup=joined\n' \
-            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = modifier-release ]; then
         printf 'FLUTTER_MODIFIER_RELEASE_TESTS_VM=pass commit=%s tree=%s suites=5 tests=126 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-modifier-release-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = combo-box ]; then
         printf 'FLUTTER_COMBO_BOX_TESTS_VM=pass commit=%s tree=%s suites=2 tests=12 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-combo-box-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = image-quality ]; then
         printf 'FLUTTER_IMAGE_QUALITY_TESTS_VM=pass commit=%s tree=%s suites=2 tests=33 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-image-quality-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = auto-disconnect ]; then
         printf 'FLUTTER_AUTO_DISCONNECT_TESTS_VM=pass commit=%s tree=%s suites=13 tests=348 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-auto-disconnect-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = directory-ordering ]; then
         printf 'FLUTTER_DIRECTORY_ORDERING_TESTS_VM=pass commit=%s tree=%s suites=1 tests=10 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-directory-ordering-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = file-navigation ]; then
         [ "$(grep -Ec '^FLUTTER_FILE_NAVIGATION_GENERATED=pass mode=filtered-freezed seconds=[0-9]+ rust_sha256=[0-9a-f]{64} io_sha256=[0-9a-f]{64} dart_sha256=[0-9a-f]{64} freezed_sha256=[0-9a-f]{64}$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'FLUTTER_FILE_NAVIGATION_GENERATED=' "$output")" -eq 1 ] \
@@ -14366,93 +14367,93 @@ run_flutter_model_tests() {
         printf 'FLUTTER_FILE_NAVIGATION_TESTS_VM=pass commit=%s tree=%s suites=7 tests=125 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-navigation-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = peer-data ]; then
         printf 'FLUTTER_PEER_DATA_TESTS_VM=pass commit=%s tree=%s suites=7 tests=113 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-peer-decode-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = file-columns ]; then
         printf 'FLUTTER_FILE_COLUMNS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=13 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-columns-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = file-search ]; then
         printf 'FLUTTER_FILE_SEARCH_TESTS_VM=pass commit=%s tree=%s suites=1 tests=12 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-search-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = screenshot-save ]; then
         printf 'FLUTTER_SCREENSHOT_SAVE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=12 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-screenshot-save-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = clipboard-keystrokes ]; then
         printf 'FLUTTER_CLIPBOARD_KEYSTROKES_TESTS_VM=pass commit=%s tree=%s suites=1 tests=12 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-clipboard-keystrokes-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = virtual-mouse-buttons ]; then
         printf 'FLUTTER_VIRTUAL_MOUSE_BUTTONS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=17 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-virtual-mouse-buttons-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = virtual-joystick ]; then
         printf 'FLUTTER_VIRTUAL_JOYSTICK_TESTS_VM=pass commit=%s tree=%s suites=1 tests=8 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-virtual-joystick-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = floating-position ]; then
         printf 'FLUTTER_FLOATING_POSITION_TESTS_VM=pass commit=%s tree=%s suites=2 tests=23 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-floating-position-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = restart-dialog ]; then
         printf 'FLUTTER_RESTART_DIALOG_TESTS_VM=pass commit=%s tree=%s suites=1 tests=9 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-restart-dialog-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = custom-scale ]; then
         printf 'FLUTTER_CUSTOM_SCALE_TESTS_VM=pass commit=%s tree=%s suites=1 tests=49 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-custom-scale-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = trackpad-speed ]; then
         printf 'FLUTTER_TRACKPAD_SPEED_TESTS_VM=pass commit=%s tree=%s suites=2 tests=16 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-trackpad-speed-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = audio-input ]; then
         printf 'FLUTTER_AUDIO_INPUT_TESTS_VM=pass commit=%s tree=%s suites=4 tests=49 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-audio-input-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = reconnect ]; then
         printf 'FLUTTER_RECONNECT_TESTS_VM=pass commit=%s tree=%s suites=2 tests=15 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-reconnect-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = file-progress ]; then
         printf 'FLUTTER_FILE_PROGRESS_TESTS_VM=pass commit=%s tree=%s suites=1 tests=52 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-file-progress-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = connect-password ]; then
         printf 'FLUTTER_CONNECT_PASSWORD_TESTS_VM=pass commit=%s tree=%s suites=1 tests=14 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-connect-password-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     elif [ "$FLUTTER_TEST_PROFILE" = credential-dialog ]; then
         printf 'FLUTTER_CREDENTIAL_DIALOG_TESTS_VM=pass commit=%s tree=%s suites=10 tests=120 flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly root=readonly caps=none nnp=on apparmor=docker-default evidence=production-dart-credential-dialog-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     else
         printf 'FLUTTER_MODEL_TESTS_VM=pass commit=%s tree=%s suites=26 tests=%s flutter='"$FLUTTER_PRESENTATION_CANDIDATE_VERSION"' rust=1.75.0 llvm=15.0.6 frb=%s cargo_vendor=%s pub_cache=%s builder_index=%s builder_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none root=readonly caps=none nnp=on apparmor=docker-default evidence=generated-bridge-model-tests cleanup=joined\n' \
             "$FLUTTER_SOURCE_COMMIT" "$FLUTTER_SOURCE_TREE" "$model_test_count" \
             "$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
             "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
-            "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" \
+            "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" \
             "$DEB_BUILDER_IMAGE_ID" "$DEB_BUILDER_CONFIG_ID"
     fi
 }
@@ -14473,6 +14474,8 @@ flutter_peer_provider_docker() {
 run_flutter_peer_presentation() {
     local sealed_root=/mnt/rustdesk-sealed-inputs
     local candidate_root=/mnt/rustdesk-flutter-candidate-input
+    local candidate_pub_root=/mnt/rustdesk-flutter-pub-input
+    local candidate_pub_cache=$candidate_pub_root/pub-cache
     local failure_root=/mnt/rustdesk-flutter-peer-failure
     local app_output=/mnt/rustdesk-linux-flutter-app-output
     local app_input=/mnt/rustdesk-linux-flutter-app-input
@@ -14587,19 +14590,22 @@ run_flutter_peer_presentation() {
                  $'flutter-'"${FLUTTER_PRESENTATION_CANDIDATE_VERSION}"$'.tar.xz\npub-cache\npubspec.lock.discovery' ] \
             || fail 'candidate Flutter-peer closure namespace differs'
         candidate_archive="$candidate_root/flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
-        candidate_lock="$candidate_root/pubspec.lock.discovery"
-        candidate_pub_cache="$candidate_root/pub-cache"
         [ "$(stat -c '%u:%g:%a:%h:%s' -- "$candidate_archive")" = \
           "1000:1000:400:1:$SIZE_FLUTTER_PRESENTATION_CANDIDATE" ] \
             && [ "$(sha256sum "$candidate_archive" | awk '{ print $1 }')" = \
                  "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" ] \
             || fail 'candidate Flutter SDK archive differs'
-        [ -f "$candidate_lock" ] && [ ! -L "$candidate_lock" ] \
-            && [ "$(stat -c '%u:%g:%a:%h' -- "$candidate_lock")" = \
-                 1000:1000:400:1 ] \
-            && [ "$(sha256sum "$candidate_lock" | awk '{ print $1 }')" = \
-                 "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ] \
-            || fail 'candidate Flutter project lock differs'
+        mkdir "$candidate_pub_root"
+        mount -t virtiofs -o ro,nodev,nosuid,noexec \
+            rustdesk-flutter-pub-input "$candidate_pub_root" \
+            || fail 'cannot mount the sealed Flutter Pub authority'
+        FLUTTER_PEER_PUB_MOUNTED=1
+        mount_options="$(findmnt -n -o OPTIONS --target "$candidate_pub_root")"
+        for option in ro nodev nosuid noexec; do
+            case ",$mount_options," in *,$option,*) ;; *) fail "Flutter Pub input lacks $option" ;; esac
+        done
+        [ "$(stat -c '%u:%g:%a' -- "$candidate_pub_root")" = 1000:1000:700 ] \
+            || fail 'candidate Flutter Pub authority owner/mode differs'
         [ -d "$candidate_pub_cache" ] && [ ! -L "$candidate_pub_cache" ] \
             && [ "$(stat -c '%u:%g:%a' -- "$candidate_pub_cache")" = \
                  1000:1000:500 ] \
@@ -15110,9 +15116,7 @@ run_flutter_peer_presentation() {
             && [ "$(sha256sum "$candidate_archive" | awk '{ print $1 }')" = \
                  "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" ] \
             || fail 'candidate Flutter SDK archive changed during execution'
-        [ "$(stat -c '%u:%g:%a:%h' -- "$candidate_lock")" = 1000:1000:400:1 ] \
-            && [ "$(sha256sum "$candidate_lock" | awk '{ print $1 }')" = \
-                 "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ] \
+        [ "$(stat -c '%u:%g:%a' -- "$candidate_pub_root")" = 1000:1000:700 ] \
             && [ "$(stat -c '%u:%g:%a' -- "$candidate_pub_cache")" = \
                  1000:1000:500 ] \
             || fail 'candidate Flutter dependency closure changed during execution'
@@ -15124,6 +15128,10 @@ run_flutter_peer_presentation() {
     FLUTTER_PEER_ONLINE_MOUNTED=0
     umount "$source_root" || fail 'cannot retire the read-only Flutter-peer source mount'
     FLUTTER_PEER_SOURCE_MOUNTED=0
+    if [ "$FLUTTER_PEER_PUB_MOUNTED" -eq 1 ]; then
+        umount "$candidate_pub_root" || fail 'cannot retire the sealed Flutter Pub mount'
+        FLUTTER_PEER_PUB_MOUNTED=0
+    fi
     if [ "$FLUTTER_PEER_CANDIDATE_MOUNTED" -eq 1 ]; then
         umount "$candidate_root" || fail 'cannot retire the sealed Flutter candidate mount'
         FLUTTER_PEER_CANDIDATE_MOUNTED=0
@@ -15187,6 +15195,10 @@ cleanup() {
     if [ "$FLUTTER_PEER_SOURCE_MOUNTED" -eq 1 ]; then
         umount "$ROOT/flutter-peer-source" 2>/dev/null || status=1
         FLUTTER_PEER_SOURCE_MOUNTED=0
+    fi
+    if [ "$FLUTTER_PEER_PUB_MOUNTED" -eq 1 ]; then
+        umount /mnt/rustdesk-flutter-pub-input 2>/dev/null || status=1
+        FLUTTER_PEER_PUB_MOUNTED=0
     fi
     if [ "$FLUTTER_PEER_CANDIDATE_MOUNTED" -eq 1 ]; then
         umount /mnt/rustdesk-flutter-candidate-input 2>/dev/null || status=1

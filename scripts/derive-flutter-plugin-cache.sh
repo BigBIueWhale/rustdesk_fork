@@ -13,7 +13,7 @@ readonly work=/work
 [ "$(sha256sum /inputs/flutter.tar.xz | awk '{print $1}')" = \
     "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" ]
 [ "$(sha256sum /authority/pubspec.lock | awk '{print $1}')" = \
-    "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK" ]
+    "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ]
 ulimit -f 524288
 export FLUTTER_ROOT="$work/toolchain/flutter" PUB_CACHE="$work/pub-cache"
 export PUB_HOSTED_URL=https://pub.dev CI=true FLUTTER_SUPPRESS_ANALYTICS=true
@@ -67,7 +67,7 @@ if [ "$1" != replay ]; then
         rm -f -- "$bare/FETCH_HEAD" "$bare/ORIG_HEAD"
     done < <(find "$PUB_CACHE/git/cache" -mindepth 1 -maxdepth 1 -type d -print0 | LC_ALL=C sort -z)
     printf 'FLUTTER_PLUGIN_CACHE_DERIVE=pass lock_sha256=%s\n' \
-        "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK"
+        "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK"
 else
     # Both the workspace and the completed cache subtrees must be read-only.
     export PUB_CACHE=/tmp/pub-cache
@@ -86,5 +86,5 @@ PY
         dart pub get --offline --enforce-lockfile --no-example
     sha256sum --check --status "$work/resolved.sha256"
     printf 'FLUTTER_PLUGIN_CACHE_REPLAY=pass lock_sha256=%s cache=readonly network=none\n' \
-        "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK"
+        "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK"
 fi

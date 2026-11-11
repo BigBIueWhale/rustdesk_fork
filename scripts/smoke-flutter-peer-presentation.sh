@@ -587,19 +587,12 @@ if [ "$BUILD_APP_ONLY" -eq 1 ]; then
   [ "$(sha256sum "$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE" | awk '{print $1}')" = \
     "$SHA256_FLUTTER_PRESENTATION_CANDIDATE" ] \
     || die 'Flutter presentation candidate digest differs'
-  candidate_discovery_lock="${SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE%/*}/pubspec.lock.discovery"
-  [ -f "$candidate_discovery_lock" ] && [ ! -L "$candidate_discovery_lock" ] \
-    && [ "$(stat -c '%u:%g:%a:%h' -- "$candidate_discovery_lock")" = \
-      "$HOST_UID:$HOST_GID:400:1" ] \
-    && [ "$(sha256sum "$candidate_discovery_lock" | awk '{print $1}')" = \
-      "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK" ] \
-    || die 'Flutter presentation candidate project lock differs'
   BUILD_FLUTTER_VERSION=$FLUTTER_PRESENTATION_CANDIDATE_VERSION
   BUILD_FLUTTER_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE
   BUILD_FLUTTER_SIZE=$SIZE_FLUTTER_PRESENTATION_CANDIDATE
   BUILD_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_TOOLS_LOCK
   BUILD_FLUTTER_ARCHIVE=$SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE
-  EVIDENCE_PUB_CACHE="${SUPPLIED_FLUTTER_CANDIDATE_ARCHIVE%/*}/pub-cache"
+  EVIDENCE_PUB_CACHE=/mnt/rustdesk-flutter-pub-input/pub-cache
   EVIDENCE_PUB_CACHE_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE
   BUILD_PROJECT_LOCK_MODE=candidate-pinned
   BUILD_PROJECT_LOCK_SHA256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PROJECT_LOCK

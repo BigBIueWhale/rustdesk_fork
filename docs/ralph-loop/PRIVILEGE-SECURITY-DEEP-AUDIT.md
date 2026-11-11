@@ -144396,3 +144396,28 @@ The fixed method's seven controls, round trip and outer acceptance pass. Exact
 QEMU/private/RAM retirement and three zero endpoint deltas are reconciled;
 `password-failure-ledger-5ecb871f.json` binds eight matching CTE/TUF files totaling
 115,430 bytes. The ledger remains above 400,000 tokens; compression stays open.
+
+## 2026-11-11 — installed GUI uncertainty at the production recovery deadline
+
+Previous goal turn: progress; unavailable-service Failed and same-GUI recovery
+have accepted native evidence. Continue R-S0 outcome correctness on the retained
+`53f66299` app before unrelated component work. The Unix requester starts its
+600-second deadline before administrator approval; root's child-convergence deadline
+starts after durable persistence (`src/ipc.rs` completion paths). Hold only the exact
+supervised child with a retained pidfd and require every thread kernel-stopped.
+The [Linux signal contract](https://man7.org/linux/man-pages/man7/signal.7.html)
+provides process stop/continue semantics; no product clock, binary or timeout is changed.
+
+The separate `--installed-settings-uncertain` integration option keeps the same
+admitted replay memory/scratch profile and has a 900-second VM bound: 600 seconds
+for actual recovery, plus setup and joined cleanup. A ten-second delay answering
+the real PAM prompt leaves room to release the child after the requester's expiry
+and before root's later deadline. Observe the committed protected credential and
+unchanged user-profile fields; 21 actual GUI observations must retain a pending
+dialog through the final pre-expiry window. At expiry require the exact Uncertain
+message, then release the child and prove the new credential through CPace on the
+same service generation. Require the warning to remain until explicit cancellation,
+a fresh same-GUI no-agent refusal and persistence across a later service restart.
+The earlier Applied/Denied/Failed artifact evidence remains valid. This is test
+preparation; native uncertainty, other failure/restart/concurrency schedules and
+complete R-S0 remain open until authoritative execution.

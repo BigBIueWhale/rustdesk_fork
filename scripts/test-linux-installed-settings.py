@@ -32,6 +32,8 @@ GUI_PASSWORD = 'InstalledGui2026'
 STAGES = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied',
           'reopen', 'fill', 'submit-approved', 'applied', 'reopen', 'submit', 'denied')
 RESTART_STAGES = ('open', 'fill', 'submit', 'failed', 'reopen', 'submit', 'denied')
+UNCERTAIN_STAGES = (('open', 'fill', 'submit-approved') + ('pending',) * 21
+                    + ('uncertain', 'uncertain-preserved', 'cancel', 'reopen', 'submit', 'denied'))
 
 
 def run(argv, *, env=ENV, timeout=30, output_limit=131072):
@@ -274,7 +276,7 @@ def retire_children():
         time.sleep(0.05)
 
 
-def session(restarted=False):
+def session(restarted=False, uncertain=False):
     guard(4001)
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), 'cannot retain GUI descendants')
@@ -300,7 +302,7 @@ def session(restarted=False):
         environment['DBUS_SESSION_BUS_ADDRESS'] = address
         app = subprocess.Popen(['/usr/share/rustdesk/rustdesk'], env=environment,
                                stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
-        stages = RESTART_STAGES if restarted else STAGES
+        stages = UNCERTAIN_STAGES if uncertain else RESTART_STAGES if restarted else STAGES
         for stage in stages:
             output = run([str(WORK / 'settings-driver'), str(app.pid), stage], env=environment,
                          timeout=40, output_limit=524288)
@@ -433,7 +435,7 @@ def administrator(receiver, requester):
                     os.close(fd)
 
 
-def authenticate(receiver, authority, requester, record, before):
+def authenticate(receiver, authority, requester, record, before, password_delay=0):
     agent, terminal_fd = authority
     terminal = bytearray()
     chosen = sent = False
@@ -457,6 +459,8 @@ def authenticate(receiver, authority, requester, record, before):
                     or b'rdreceiver4003' not in terminal or receiver.credential() != before
                     or receiver.child_record() != record):
                 raise RuntimeError('GUI authorization challenge or pre-approval state differs')
+            # Model time spent answering the real prompt, without changing product deadlines.
+            time.sleep(password_delay)
             os.write(terminal_fd, (receiver.ADMIN_PASSWORD + '\n').encode())
             sent = True
     if (not sent or terminal.count(b'AUTHENTICATION COMPLETE') != 1
@@ -747,7 +751,154 @@ def scenario(receiver, probe_sha):
                 wait_network_retirement(network_before)
 
 
-def main(arguments):
+@contextmanager
+def stopped_child(receiver, record):
+    fd = os.pidfd_open(record['pid'])
+    stopped = False
+    try:
+        if receiver.child_record() != record or select.select([fd], [], [], 0)[0]:
+            raise RuntimeError('uncertainty fixture lost its exact service child')
+        signal.pidfd_send_signal(fd, signal.SIGSTOP)
+        stopped = True
+        deadline = time.monotonic() + 3
+        while (threads := receiver.stopped_receiver_threads(record)) is None:
+            if time.monotonic() >= deadline:
+                raise RuntimeError('uncertainty child never reached the kernel stop barrier')
+            time.sleep(0.01)
+        yield threads
+    finally:
+        try:
+            if stopped and not select.select([fd], [], [], 0)[0]:
+                signal.pidfd_send_signal(fd, signal.SIGCONT)
+        finally:
+            os.close(fd)
+
+
+def uncertain_scenario(receiver, probe_sha):
+    unit = Path('/etc/systemd/system/rustdesk.service')
+    if unit.exists():
+        raise RuntimeError('uncertainty scenario requires absent initial service state')
+    install(MEDIA / 'repo/res/rustdesk.service', unit)
+    run(['/usr/bin/systemctl', 'daemon-reload'])
+    network_before = network_state()
+    authorization, barrier = ExitStack(), ExitStack()
+    process = None
+    record = committed = requester = profile_before = submitted_at = authority = None
+    pending = 0
+    try:
+        run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+        record = receiver.ready()
+        receiver.change(0, BASELINE_PASSWORD, True)
+        before = receiver.credential()
+        receiver.keyed(BASELINE_PASSWORD, 'gui-uncertain-baseline', record, probe_sha)
+        process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
+                                    str(SCRIPT), '--session-uncertain'],
+                                   env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        for index, stage in enumerate(UNCERTAIN_STAGES):
+            if not select.select([process.stdout], [], [], 45)[0]:
+                raise RuntimeError('uncertainty GUI stage timed out')
+            raw = process.stdout.readline(4096)
+            if not raw or not raw.endswith(b'\n'):
+                raise RuntimeError(f'uncertainty GUI ended before {stage}')
+            event = json.loads(raw)
+            proc = Path(f'/proc/{event["pid"]}')
+            identity = (event['pid'], int((proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]))
+            status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+            if (event.get('stage') != stage or (requester is not None and requester != identity)
+                    or status['Uid'].split() != ['4001'] * 4 or status['NoNewPrivs'].strip() != '1'
+                    or any(int(status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))
+                    or not (proc / 'exe').samefile('/usr/share/rustdesk/rustdesk')
+                    or receiver.child_record() != record
+                    or receiver.credential() != (committed if committed is not None else before)):
+                raise RuntimeError('uncertainty GUI, service generation or credential changed unexpectedly')
+            requester = identity
+            if stage == 'fill':
+                profile_before = user_credential()
+                threads = barrier.enter_context(stopped_child(receiver, record))
+                authority = authorization.enter_context(administrator(receiver, requester))
+                submitted_at = time.monotonic()
+            elif stage == 'submit-approved':
+                authenticate(receiver, authority, requester, record, before, password_delay=10)
+                deadline = time.monotonic() + 5
+                while (changed := receiver.credential()) == before:
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError('administrator-approved GUI mutation did not commit')
+                    time.sleep(0.01)
+                committed = changed
+                if receiver.stopped_receiver_threads(record) != threads or user_credential() != profile_before:
+                    raise RuntimeError('durable commit lost its stopped-child or user-profile boundary')
+                print('LINUX_INSTALLED_SETTINGS_COMMITTED=' + json.dumps({**record,
+                      'gui_pid': requester[0], 'child_threads': threads,
+                      'seconds': time.monotonic() - submitted_at, 'protected_changed': True,
+                      'profile_unchanged': True}, sort_keys=True), flush=True)
+            elif stage == 'pending':
+                pending += 1
+                if receiver.stopped_receiver_threads(record) != threads or user_credential() != profile_before:
+                    raise RuntimeError('pending GUI mutation escaped the controlled barrier')
+                elapsed = time.monotonic() - submitted_at
+                if elapsed >= 600 or (pending == 21 and elapsed < 595):
+                    raise RuntimeError('pending GUI observation missed its pre-expiry window')
+                print(f'LINUX_INSTALLED_SETTINGS_UNCERTAIN_WAIT index={pending} seconds={elapsed:.3f} '
+                      'gui=pending child=kernel-stopped protected=committed', flush=True)
+                target = submitted_at + (pending * 30 if pending < 20 else 596 if pending == 20 else 601)
+                while time.monotonic() < target:
+                    fields = Path(f'/proc/{record["pid"]}/stat').read_bytes().rsplit(b') ', 1)[1].split()
+                    if (process.poll() is not None or fields[0] != b'T' or int(fields[19]) != record['start']
+                            or receiver.credential() != committed):
+                        raise RuntimeError('pending mutation lost its owner, held child or committed credential')
+                    time.sleep(0.1)
+            elif stage == 'uncertain':
+                elapsed = time.monotonic() - submitted_at
+                if not 600 <= elapsed <= 625 or pending != 21 or receiver.stopped_receiver_threads(record) != threads:
+                    raise RuntimeError('uncertain GUI result lacks its real recovery-deadline boundary')
+                print('LINUX_INSTALLED_SETTINGS_UNCERTAIN=' + json.dumps({**record,
+                      'gui_pid': requester[0], 'seconds': elapsed, 'pending_checks': pending,
+                      'protected_changed': receiver.credential() != before,
+                      'profile_unchanged': user_credential() == profile_before,
+                      'outcome': 'Uncertain'}, sort_keys=True), flush=True)
+                barrier.close()
+                authorization.close()
+                # Allow the existing one-second replica retry; CPace below proves convergence.
+                time.sleep(2)
+                if receiver.child_record() != record or receiver.credential() != committed:
+                    raise RuntimeError('uncertain mutation did not retain its original service generation')
+                credential_network(receiver, record, probe_sha, 'gui-uncertain-resumed')
+            elif stage == 'denied':
+                service_refusals(record, *requester, 1)
+            print('LINUX_INSTALLED_SETTINGS_UNCERTAIN_STAGE=' + json.dumps({**event, 'index': index,
+                  'credential': 'committed' if committed is not None else 'baseline',
+                  'service_generation': record['generation']}, sort_keys=True), flush=True)
+            process.stdin.write(b'continue\n')
+            process.stdin.flush()
+        if process.wait(timeout=15) != 0 or receiver.credential() != committed or user_credential() != profile_before:
+            raise RuntimeError('uncertainty GUI did not retire with the expected credential state')
+        run(['/usr/bin/systemctl', 'restart', 'rustdesk.service'], timeout=40)
+        restarted = receiver.ready(record)
+        credential_network(receiver, restarted, probe_sha, 'gui-uncertain-restarted')
+        if receiver.credential() != committed:
+            raise RuntimeError('unconfirmed GUI mutation did not survive service restart')
+    finally:
+        try:
+            barrier.close()
+        finally:
+            try:
+                authorization.close()
+            finally:
+                try:
+                    if process is not None:
+                        if process.poll() is None:
+                            process.stdin.close()
+                            process.wait(timeout=50)
+                        for pipe in (process.stdin, process.stdout):
+                            if pipe is not None and not pipe.closed:
+                                pipe.close()
+                finally:
+                    run(['/usr/bin/systemctl', 'stop', 'rustdesk.service'], timeout=40)
+                    service_absent()
+                    wait_network_retirement(network_before)
+
+
+def main(arguments, uncertain=False):
     guard()
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
@@ -809,7 +960,8 @@ def main(arguments):
         raise RuntimeError('fixture administrator UID already exists')
     try:
         receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
-        receiver.installed_desktop(lambda: scenario(receiver, probe_sha), settings=True)
+        scenario_function = uncertain_scenario if uncertain else scenario
+        receiver.installed_desktop(lambda: scenario_function(receiver, probe_sha), settings=True)
     finally:
         run(['/usr/sbin/userdel', 'rdreceiver4003'])
     for name, record in manifest['files'].items():
@@ -817,9 +969,15 @@ def main(arguments):
             raise RuntimeError('installed application changed during execution')
     if digest(receiver.PROBE) != probe_sha:
         raise RuntimeError('CPace probe changed during the installed workflow')
-    print(f'LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=8 app_commit={commit} manifest_sha256={manifest_sha} '
-          'ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam '
-          'cpace=7 stale_refusals=3 restart=service-and-gui failure=service-unavailable cleanup=joined', flush=True)
+    if uncertain:
+        print(f'LINUX_INSTALLED_SETTINGS_UNCERTAIN_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
+              'ui=actual service=actual authorization=polkit-pam child=kernel-stopped deadline=600 '
+              'outcome=Uncertain durable=committed recovery=same-generation cpace=5 stale_refusals=2 '
+              'restart=service cleanup=joined', flush=True)
+    else:
+        print(f'LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=8 app_commit={commit} manifest_sha256={manifest_sha} '
+              'ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam '
+              'cpace=7 stale_refusals=3 restart=service-and-gui failure=service-unavailable cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':
@@ -829,7 +987,9 @@ if __name__ == '__main__':
         session()
     elif sys.argv[1:] == ['--session-restart']:
         session(restarted=True)
-    elif len(sys.argv) == 18 and sys.argv[1] == '--run':
-        main(sys.argv[2:])
+    elif sys.argv[1:] == ['--session-uncertain']:
+        session(uncertain=True)
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain'):
+        main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain')
     else:
         raise SystemExit('closed installed-settings arguments required')

@@ -324,6 +324,7 @@ case "$#:${8:-}" in
         if [ "$#" -eq 19 ]; then
             case "${19}" in
                 --installed-settings) FLUTTER_INSTALLED_SETTINGS=1 ;;
+                --installed-settings-uncertain) FLUTTER_INSTALLED_SETTINGS=2 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -14762,10 +14763,12 @@ run_flutter_peer_presentation() {
             "$provider_sha" "$provider_bytes" "$FLUTTER_PEER_SOURCE_COMMIT" "$provider_source_sha"
     fi
 
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
+        settings_mode=--run
+        [ "$FLUTTER_INSTALLED_SETTINGS" -ne 2 ] || settings_mode=--run-uncertain
         set +e
         /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/test-linux-installed-settings.py" \
-            --run "$source_root" "$app_input/linux-x86_64-flutter-app" \
+            "$settings_mode" "$source_root" "$app_input/linux-x86_64-flutter-app" \
             "$FLUTTER_APP_BUILD_CONTEXT" "$FLUTTER_APP_MANIFEST_SHA256" "$FLUTTER_APP_COMMIT" \
             "$provider_installed" "$DEV_CHECK_IMAGE_CONFIG_ID" "$CLIENT" "$SOCK" "$CONFIG_ROOT" \
             "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" \
@@ -15097,7 +15100,7 @@ run_flutter_peer_presentation() {
         printf 'LINUX_FLUTTER_APP_BUILD_VM=pass commit=%s tree=%s archive=%s flutter=%s epoch=%s builder=%s root=refused foreign=refused caller=refused network=none inputs=readonly-landlocked drivers=excluded cleanup=joined\n' \
             "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_PEER_SOURCE_TREE" "$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256" \
             "$FLUTTER_PEER_RUNTIME_VERSION" "$SOURCE_DATE_EPOCH_PIN" "$DEB_BUILDER_CONFIG_ID"
-    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
         printf 'LINUX_INSTALLED_SETTINGS_VM=pass harness=%s manifest=%s network=none root=disposable-guest-only app_build=absent cleanup=joined\n' \
             "$FLUTTER_PEER_SOURCE_COMMIT" "$FLUTTER_APP_MANIFEST_SHA256"
     else

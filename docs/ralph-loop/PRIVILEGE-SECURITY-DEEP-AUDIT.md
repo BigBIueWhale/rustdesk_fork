@@ -145077,3 +145077,32 @@ inventory and owner/modes before descriptor-owned retirement. This frees
 Preserve 83fa8494 as the reproduced concurrency baseline, 7e6f6459 and the
 intentional 0ccb2a7e pending bundle. The three `concurrent-retired-53f66299*`
 records (14,370 bytes) match CTE/TUF; no source or canonical offline input is removed.
+
+Corrected application build `kz2xxNctS5` at `74b64685` exits zero (tool48209).
+Thirteen widget and two native controls pass; all 73 payload hashes verify against
+manifest 46bf7e2d3d47f6df0ef48ecfc766f672dd1424df5d8ef6a430efcdaa6738b6be.
+Compiler peak is 10,718,822,400 bytes, below its 10-GiB limit, with no swap/OOM.
+The 1,208.045-second run peaks at 11,900,624,896 RAM-workspace bytes; QEMU3865221
+joins zero, private/RAM roots retire and four endpoint deltas are zero.
+`linux-concurrent-build-74b64685.json` and its ten-file 323,383-byte evidence set
+match CTE/TUF. Source and refs stayed fixed through reconciliation.
+
+Installed replay `T7QtgGWCrB` at the same commit/application exits zero
+(tool98690). GUI9182/start5998 and GTK agent9181/start5998 retain PAM session c1.
+With all seventeen child threads stopped for 2.004892 seconds, only the GUI value
+persists; administrator CLI9521/start7478 remains pending. After resume, GUI Applied
+and CLI exit0/Done complete within 0.803912 seconds. Supervisor9091, child9100/
+start5878, generation 163f6d8e-f55b-4db1-9b83-06369f46dd6a and listener26795 remain
+identical across five mutual CPace exchanges. Final CLI-value authentication works
+and the superseded GUI value receives child-confirmed refusal. Both actual GTK
+cancellations and fresh no-agent refusal pass without user-profile fallback.
+
+`linux-concurrent-accepted-74b64685.json` is 19,617 bytes, SHA-256
+0a234987d7b96223c8b587a126beebc3c5b81be8be2febb63c46cab453c03b06.
+Its nine-file 133,308-byte evidence set matches CTE/TUF. Storage records 152.221
+seconds and RAM peak 3,842,568,192 bytes. QEMU3867720 joins zero; private/RAM roots
+retire and four endpoint deltas are zero. This closes the reproduced GUI/root-CLI
+schedule against its two failed predecessors. It does not establish all concurrent
+principals, shutdown drain, identity races, other desktops/platforms or final-package
+acceptance. The next useful installed-settings check is shutdown while two admitted
+changes are queued, preserving finality and truthful outcomes through service drain.

@@ -2882,6 +2882,27 @@ maintenance_discover_flutter_android_maven() {
             --flutter-version "$FLUTTER_PRESENTATION_CANDIDATE_VERSION"
 }
 
+maintenance_discover_android_gradle() {
+    local builder="$ANDROID_BUILDER_CONFIG_ID"
+    local helper="$SCRIPT_DIR/discover-android-gradle.py"
+    verify_or_load_online_fetch_builder_image android-builder "$builder"
+    require_online_fetch_builder_image android-builder "$builder"
+    [ -f "$helper" ] && [ ! -L "$helper" ] \
+        || die "Android Gradle discovery helper is absent or ambiguous"
+    online_docker_run_offline \
+        --mount "type=bind,source=$helper,target=/authority/discover-android-gradle.py,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/python3 -I -S /authority/discover-android-gradle.py \
+            --version "$ANDROID_CANDIDATE_GRADLE_VERSION" \
+            --sha256 "$SHA256_ANDROID_CANDIDATE_GRADLE_BIN" --self-test
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$helper,target=/authority/discover-android-gradle.py,readonly,bind-recursive=disabled" \
+        "$(online_fetch_builder_runtime_ref "$builder")" \
+        /usr/bin/python3 -I -S /authority/discover-android-gradle.py \
+            --version "$ANDROID_CANDIDATE_GRADLE_VERSION" \
+            --sha256 "$SHA256_ANDROID_CANDIDATE_GRADLE_BIN"
+}
+
 stage_vcpkg_fixed_archives() {
     load_vcpkg_fixed_archive_manifest
     stage_archive_bundle vcpkg "$ONLINE_DIR" .rustdesk-vcpkg-fixed-archives \
@@ -8797,6 +8818,12 @@ main() {
             [ "$#" -eq 1 ] \
                 || die "--maintenance-discover-flutter-android-maven takes no arguments"
             maintenance_discover_flutter_android_maven
+            return 0
+            ;;
+        --maintenance-discover-android-gradle)
+            [ "$#" -eq 1 ] \
+                || die "--maintenance-discover-android-gradle takes no arguments"
+            maintenance_discover_android_gradle
             return 0
             ;;
         --maintenance-stage-android-emulator-inputs)

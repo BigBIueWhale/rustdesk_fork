@@ -146595,3 +146595,40 @@ peak403,062,784 bytes, three zero listener deltas and absent private/RAM roots.
 The approximate 400,000-token compression obligation remains OPEN. This audit-
 only append preserves the measured ledger; continue the matched Gradle/build
 prerequisite next, without repeating these passed input-acquisition checks.
+
+## 2026-11-11 — candidate Android Gradle toolchain compatibility
+
+The preceding turn made progress: authenticated candidate engine files are staged.
+Continue the release SDK alignment. CTE/TUF are clean at b4a59ed1; TUF has 43 GiB
+available memory through the existing password master. Inert inspection of the
+pinned 3.47.5 SDK changes the next action: its DependencyVersionChecker requires
+Gradle >=8.14.0, AGP >=8.11.1 and KGP >=2.2.20. Current 8.7/8.5.2/2.0.21 is below
+all three, independently of the three missing runtime dependency directories.
+Its included Gradle build compiles with Kotlin 2.2.20 and against AGP8.11.1;
+FlutterExtension defaults compile/target SDK36 and NDK28.2.13676358. These defaults
+do not authorize changing the fork's target SDK or bypassing version checks.
+The exact upstream source confirms the archive observations:
+https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/packages/flutter_tools/gradle/src/main/kotlin/DependencyVersionChecker.kt
+https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/packages/flutter_tools/gradle/build.gradle.kts
+AGP8.11 requires Gradle8.13+, Build Tools35.0.0 and JDK17, supports API36;
+Kotlin2.2.20/2.2.21 lists compatibility through Gradle8.14 and AGP8.11.1:
+https://developer.android.com/build/releases/agp-8-11-0-release-notes
+https://kotlinlang.org/docs/gradle-configure-project.html
+
+Prepare the compatible inputs before an isolated Gradle run. Select the fixed
+Gradle8.14.7 patch, released today, whose tagged notes include three security
+corrections and the earlier 8.14.6 fixes; do not select an older unpatched minimum:
+https://raw.githubusercontent.com/gradle/gradle/v8.14.7/platforms/documentation/docs/src/docs/release/notes.md
+The publisher checksum reference and separately hosted GitHub release-asset digest
+agree on the binary ZIP's SHA-256 903bfc4bc7622323124054c10f509246212a1902948bdaf26c379cca8735e856:
+https://gradle.org/release-checksums/
+https://github.com/gradle/gradle-distributions/releases/expanded_assets/v8.14.7
+Use binary-only distribution because the build needs no bundled sources/docs.
+Record candidate version/hash; canonical pins and consumers remain unchanged.
+The new narrow acquisition entry reads bounded, redirect-free public GitHub asset
+metadata, requiring the exact stable tag, uploaded filename/URL, reviewed hash,
+unique record and bounded integer size. Offline controls cover one accepted and
+eleven rejected metadata records. No downloaded code executes or publishes here;
+the existing 4 GiB/five-minute VM profile and container restrictions apply. Exact
+byte-size discovery and subsequent fixed-archive staging are pending. A compiler
+version mismatch is not a product vulnerability or native APK result.

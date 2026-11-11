@@ -752,6 +752,7 @@ case "$#:${1:-}" in
                 --installed-settings-graphical) FLUTTER_INSTALLED_SETTINGS=4 ;;
                 --installed-settings-concurrent-stop) FLUTTER_INSTALLED_SETTINGS=5 ;;
                 --debian-candidate-package) FLUTTER_INSTALLED_SETTINGS=6 ;;
+                --debian-candidate-install) FLUTTER_INSTALLED_SETTINGS=7 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -1769,6 +1770,20 @@ installed_settings_input_inventory() {
              "$HOST_UID:$HOST_GID:400:1:$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
         || fail 'installed settings runtime archive authority differs'
     verify_sha256 "$archive" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
+        local runtime=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz
+        [ -d "${runtime%/*}" ] && [ ! -L "${runtime%/*}" ] \
+            && [ "$(/usr/bin/readlink -f -- "${runtime%/*}")" = "${runtime%/*}" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "${runtime%/*}")" = "$HOST_UID:$HOST_GID:700" ] \
+            && [ -f "$runtime" ] && [ ! -L "$runtime" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$runtime")" = "$HOST_UID:$HOST_GID:400:1:$DEBIAN_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
+            || fail 'Debian installation input authority differs'
+        verify_sha256 "$runtime" "$DEBIAN_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+        /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$runtime"
+        /usr/bin/sha256sum -- "$runtime"
+        verify_committed_test_source "$SCRIPT_DIR/test-linux-debian-install.py"
+        /usr/bin/sha256sum -- "$SCRIPT_DIR/test-linux-debian-install.py"
+    fi
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
         local agent=$REPO_ROOT/online/candidates/polkit-agent/polkit-agent-candidate.tar.gz
         [ -d "${agent%/*}" ] && [ ! -L "${agent%/*}" ] \
@@ -5226,6 +5241,12 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_PEER_SOURCE_ARCHIVE")
     if [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
+            lifecycle_payload_grafts+=(
+                "debian-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz"
+                "repo/scripts/test-linux-debian-install.py=$SCRIPT_DIR/test-linux-debian-install.py"
+            )
+        fi
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             lifecycle_payload_grafts+=("polkit-agent-candidate.tar.gz=$REPO_ROOT/online/candidates/polkit-agent/polkit-agent-candidate.tar.gz")
         fi
@@ -5565,7 +5586,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
+            guest_invocation+=' --debian-candidate-install'
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ]; then
             guest_invocation+=' --debian-candidate-package'
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
             guest_invocation+=' --installed-settings-concurrent-stop'
@@ -9342,7 +9365,11 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_DEBIAN_INSTALL_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg reinstall=same-version service=actual credential=preserved remove=preserved purge=retired desktop=unexecuted cleanup=joined" \
+            'dependency-complete Debian package lifecycle'
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ]; then
         require_exact_fixed_receipt \
             "LINUX_DEBIAN_CANDIDATE_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 packages=2 equality=bytes constructor=production archive=validated payloads=unchanged install=unexecuted app_build=absent cleanup=joined" \
             'retained Linux application packaged by the production Debian constructor'

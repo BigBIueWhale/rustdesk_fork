@@ -145280,3 +145280,45 @@ acquisition VM runs this producer, as required by R-S11cj/R-B10/R-B12.
 https://manpages.debian.org/bookworm/apt/apt-get.8.en.html
 https://manpages.debian.org/bookworm/apt/apt-secure.8.en.html
 Candidate review/pinning and offline installed acceptance remain pending.
+
+## 2026-11-11 — authenticated dependencies and normal Debian lifecycle
+
+The preceding user-requested status turn changed no authoritative state; it was
+no progress toward acceptance, not a permission or environment block. Continue
+the existing installation milestone rather than repeat the accepted package pair
+or credential concurrency scenarios.
+
+Acquisition zIIJxLZcXZ at 863e2507 exits zero (tool48937). Independent streaming
+inspection under the shared run lock verifies all 330 packages/189,973,592 bytes
+against the signed APT URI plan and manifest, all four pinned metadata members,
+the unchanged production generator/control, and the 190,031,397-byte archive
+SHA-256 328a7bd89d7710c022c62f0981d879c0b62c9fef802b08982c7c238e81268a7e.
+The trusted Debian keyring comes from the previously pinned verifier image;
+the exact snapshot's signed metadata authenticates each package checksum.
+No package was installed during acquisition. Storage reports 115.178 seconds,
+4,307,308,544 bytes peak RAM workspace and joined QEMU3881375 exit zero.
+Private/RAM paths are absent; the success receipt records no added listener.
+debian-runtime-863e2507.json and its eight-file 212,980-byte evidence set match
+CTE/TUF. Full acquisition stdout is not retained; its receipt binds the hash/size.
+The intentional candidate archive stays on TUF only.
+
+Pin that reviewed test input and extend the existing no-NIC retained-app replay
+with normal dependency-complete installation. Construct the actual package once
+with the shared production constructor; require its exact control bytes to match
+the resolved closure. APT receives only the authenticated local packages with
+downloads/removals disabled, then checks actual dependency and dpkg state. No
+manually installed runtime libraries or dependency override may satisfy this test.
+Observe package-owned payload/link/vendor unit, real service startup, authorized
+root credential mutation and ordinary-user refusal; reinstall the same version
+through dpkg's upgrade hooks with exact old-supervisor retirement and credential
+preservation; then check removal preservation and purge retirement. This first
+normal-package scenario has no desktop session. Cross-version upgrades, graphical
+workflows, canonical SDK promotion and final release acceptance remain open.
+
+Primary research: apt-get(8) defines no-download, dependency checking and reinstall;
+Debian Policy chapter 6 specifies actual old/new maintainer-script sequencing.
+https://manpages.debian.org/bookworm/apt/apt-get.8.en.html
+https://www.debian.org/doc/debian-policy/ch-maintainerscripts.html
+The closed --debian-candidate-install selector retains source/input freezes,
+bounded RAM admission, no-NIC isolation and joined cleanup. Native execution is
+pending; the new fixture itself does not establish installed correctness.

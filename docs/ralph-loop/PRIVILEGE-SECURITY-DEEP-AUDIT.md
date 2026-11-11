@@ -144728,3 +144728,15 @@ nine files / 123,630 bytes match CTE/TUF. The reproduced SIGPIPE recovery failur
 is closed for this exact installed Linux schedule. Other authorization/cancellation/
 concurrency schedules, graphical OS agents, final packages, other platforms,
 complete R-S0/R-F5 and independent release acceptance remain OPEN.
+
+Fresh `ZPH2UVYEsM` at `56ffe75d` counts the updated ledger: 403,126 tokens /
+1,840,027 bytes, SHA-256
+`91f61b18660bcb7a8c57179436a75e1fb53394a2f6d54b5e67bed7d39053e2ff`.
+All seven controls and the whole-input round trip pass; QEMU3838245 joins with
+zero, private/RAM state retire and three endpoint deltas are zero.
+`sigpipe-recovery-ledger-56ffe75d.json` binds eight matching CTE/TUF files /
+115,562 bytes. The 400,000-token compression obligation remains open.
+The next actionable GUI acceptance gap is failure/cancellation during actual
+administrator authorization, preserving the credential and permitting a fresh
+authorized operation on this same retained app. The completed recovery and ordinary
+outcome scenarios need no repetition without a relevant change or concern.

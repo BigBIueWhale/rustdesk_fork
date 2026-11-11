@@ -6,11 +6,12 @@ import desktop_multi_window
 
 import desktop_drop
 import device_info_plus
+import file_selector_macos
 import flutter_custom_cursor
 import package_info_plus
 import path_provider_foundation
 import screen_retriever
-import sqflite
+import sqflite_darwin
 // import tray_manager
 import uni_links_desktop
 import url_launcher_macos
@@ -59,6 +60,7 @@ class MainFlutterWindow: NSWindow {
             self.setMethodHandler(registrar: controller.registrar(forPlugin: "RustDeskPlugin"))
             DesktopDropPlugin.register(with: controller.registrar(forPlugin: "DesktopDropPlugin"))
             DeviceInfoPlusMacosPlugin.register(with: controller.registrar(forPlugin: "DeviceInfoPlusMacosPlugin"))
+            FileSelectorPlugin.register(with: controller.registrar(forPlugin: "FileSelectorPlugin"))
             FlutterCustomCursorPlugin.register(with: controller.registrar(forPlugin: "FlutterCustomCursorPlugin"))
             FPPPackageInfoPlusPlugin.register(with: controller.registrar(forPlugin: "FPPPackageInfoPlusPlugin"))
             PathProviderPlugin.register(with: controller.registrar(forPlugin: "PathProviderPlugin"))

@@ -38,17 +38,6 @@ if [ "$1" != replay ]; then
     cp -a /project-source/. "$work/project/"
     chmod -R u+rwX "$work/project"
     cp /authority/pubspec.lock "$work/project/pubspec.lock"
-    python3 -I -S - <<'PY'
-import pathlib
-p=pathlib.Path('/work/project/pubspec.yaml');text=p.read_text()
-for old,new in [('  file_picker: ^5.1.0\n','  file_selector: 1.1.0\n'),
-                ('  sqflite: 2.2.8+4\n','  sqflite: 2.4.6\n'),
-                ('  flutter_plugin_android_lifecycle: 2.0.17\n','')]:
-    if text.count(old)!=1:
-        raise ValueError('candidate manifest precondition differs: '+old.strip())
-    text=text.replace(old,new)
-p.write_text(text)
-PY
     cd "$work/project"
     [ "$(sha256sum pubspec.yaml | awk '{print $1}')" = \
         "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_MANIFEST" ]

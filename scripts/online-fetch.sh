@@ -2963,7 +2963,7 @@ maintenance_stage_flutter_plugin_cache() {
     assert_online_fetch_source_tools
     prepare_gradle_source
     verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
-    verify_sha256 "$GRADLE_SOURCE_AUTHORITY/scripts/flutter-plugin-migration-pubspec.lock" \
+    verify_sha256 "$GRADLE_SOURCE_AUTHORITY/flutter/pubspec.lock" \
         "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK"
     exec {lock_fd}<"$FLUTTER_PRESENTATION_CANDIDATE_ROOT"
     "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
@@ -3009,7 +3009,7 @@ maintenance_stage_flutter_plugin_cache() {
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/flutter,target=/project-source,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/derive-flutter-plugin-cache.sh,target=/authority/derive.sh,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/pins.env,target=/authority/pins.env,readonly,bind-recursive=disabled"
-        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/flutter-plugin-migration-pubspec.lock,target=/authority/pubspec.lock,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/flutter/pubspec.lock,target=/authority/pubspec.lock,readonly,bind-recursive=disabled"
     )
     for phase in "$initial_phase" replay; do
         network=none

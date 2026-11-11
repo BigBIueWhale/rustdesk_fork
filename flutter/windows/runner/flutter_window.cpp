@@ -1,6 +1,7 @@
 #include "flutter_window.h"
 
 #include <desktop_multi_window/desktop_multi_window_plugin.h>
+#include <file_selector_windows/file_selector_windows.h>
 #include <texture_rgba_renderer/texture_rgba_renderer_plugin_c_api.h>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -85,6 +86,8 @@ bool FlutterWindow::OnCreate() {
     auto *flutter_view_controller =
         reinterpret_cast<flutter::FlutterViewController *>(controller);
     auto *registry = flutter_view_controller->engine();
+    FileSelectorWindowsRegisterWithRegistrar(
+        registry->GetRegistrarForPlugin("FileSelectorWindows"));
     TextureRgbaRendererPluginCApiRegisterWithRegistrar(
         registry->GetRegistrarForPlugin("TextureRgbaRendererPlugin"));
   });

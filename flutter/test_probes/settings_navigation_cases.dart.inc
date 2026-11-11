@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:dbus/dbus.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector_platform_interface/file_selector_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -236,17 +236,13 @@ class _NativeSettings implements RustdeskImpl {
   }
 }
 
-class _DirectoryPicker extends FilePicker {
+class _DirectoryPicker extends FileSelectorPlatform {
   final requests = <(String?, Completer<String?>)>[];
 
   @override
-  Future<String?> getDirectoryPath({
-    String? dialogTitle,
-    bool lockParentWindow = false,
-    String? initialDirectory,
-  }) {
+  Future<String?> getDirectoryPathWithOptions(FileDialogOptions options) {
     final result = Completer<String?>();
-    requests.add((initialDirectory, result));
+    requests.add((options.initialDirectory, result));
     return result.future;
   }
 
@@ -465,7 +461,7 @@ void main() {
   late _NativeSettings native;
   late _SettingsParent parent;
   late _Tabs tabs;
-  late FilePicker previousPicker;
+  late FileSelectorPlatform previousPicker;
   late _DirectoryPicker picker;
 
   List<String> macOSWindowChannel(WidgetTester tester,
@@ -493,9 +489,9 @@ void main() {
     native = _NativeSettings();
     parent = _SettingsParent();
     tabs = _Tabs();
-    previousPicker = FilePicker.platform;
+    previousPicker = FileSelectorPlatform.instance;
     picker = _DirectoryPicker();
-    FilePicker.platform = picker;
+    FileSelectorPlatform.instance = picker;
     installSettingsProbeBinding(native);
     installSettingsProbeParent(parent);
     Get.put<DesktopTabController>(tabs);
@@ -504,7 +500,7 @@ void main() {
   tearDown(() {
     installSettingsProbeAndroid(false);
     picker.cancelPending();
-    FilePicker.platform = previousPicker;
+    FileSelectorPlatform.instance = previousPicker;
     parent.serverModel.serverPasswd.dispose();
     parent.serverModel.tabController.state.value.pageController.dispose();
     parent.serverModel.tabController.state.value.scrollController.dispose();

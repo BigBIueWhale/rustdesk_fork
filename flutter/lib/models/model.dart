@@ -29,7 +29,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:vector_math/vector_math.dart' show Vector2;
 
 import '../common.dart';
@@ -787,21 +787,27 @@ class FfiModel with ChangeNotifier {
         Future<void>.delayed(Duration.zero, () async {
           if (!_isCurrentSession(sessionId)) return;
           final ts = DateTime.now().millisecondsSinceEpoch ~/ 1000;
-          String? outputFile = await FilePicker.platform.saveFile(
-            dialogTitle: '${translate('Save as')}...',
-            fileName: 'screenshot_$ts.png',
-            allowedExtensions: ['png'],
-            type: FileType.custom,
+          final output = await getSaveLocation(
+            suggestedName: 'screenshot_$ts.png',
+            confirmButtonText: translate('Save'),
+            acceptedTypeGroups: const [
+              XTypeGroup(
+                label: 'PNG',
+                extensions: ['png'],
+                mimeTypes: ['image/png'],
+                uniformTypeIdentifiers: ['public.png'],
+              ),
+            ],
           );
           if (!_isCurrentSession(sessionId)) return;
-          if (outputFile == null) {
+          if (output == null) {
             bind.sessionHandleScreenshot(
                 sessionId: sessionId, screenshotId: screenshotId, action: '2');
           } else {
             final res = await bind.sessionHandleScreenshot(
                 sessionId: sessionId,
                 screenshotId: screenshotId,
-                action: '0:$outputFile');
+                action: '0:${output.path}');
             if (!_isCurrentSession(sessionId)) return;
             if (res.isNotEmpty) {
               msgBox(sessionId, 'custom-nook-nocancel-hasclose-error',

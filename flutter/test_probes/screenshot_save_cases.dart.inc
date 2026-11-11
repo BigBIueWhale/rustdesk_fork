@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector_platform_interface/file_selector_platform_interface.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:flutter_hbb/common/widgets/overlay.dart';
@@ -31,17 +31,17 @@ class _Binding implements RustdeskImpl {
   }
 }
 
-class _Picker extends FilePicker {
+class _Picker extends FileSelectorPlatform {
   final requests = <Map<String, Object?>>[];
   int get calls => requests.length;
   Future<String?> Function() choose = () async => '/selected/screen:one.png';
   @override
-  Future<String?> saveFile({String? dialogTitle, String? fileName,
-      String? initialDirectory, FileType type = FileType.any,
-      List<String>? allowedExtensions, bool lockParentWindow = false}) {
-    requests.add({'title': dialogTitle, 'name': fileName,
-        'type': type, 'extensions': allowedExtensions});
-    return choose();
+  Future<FileSaveLocation?> getSaveLocation({
+      List<XTypeGroup>? acceptedTypeGroups,
+      SaveDialogOptions options = const SaveDialogOptions()}) async {
+    requests.add({'options': options, 'types': acceptedTypeGroups});
+    final path = await choose();
+    return path == null ? null : FileSaveLocation(path);
   }
 }
 
@@ -70,9 +70,9 @@ class _Fixture {
 
   Future<void> open(WidgetTester tester) async {
     installScreenshotSaveProbeBinding(binding);
-    final previousPicker = FilePicker.platform;
-    FilePicker.platform = picker;
-    addTearDown(() => FilePicker.platform = previousPicker);
+    final previousPicker = FileSelectorPlatform.instance;
+    FileSelectorPlatform.instance = picker;
+    addTearDown(() => FileSelectorPlatform.instance = previousPicker);
     final overlay = BlockableOverlayState();
     session.dialogManager.setOverlayState(overlay);
     await tester.pumpWidget(MaterialApp(
@@ -100,10 +100,14 @@ class _Fixture {
     await tester.pumpAndSettle();
     expect(picker.requests, hasLength(1));
     final request = picker.requests.single;
-    expect(request['title'], 'Save as...');
-    expect(request['name'], matches(r'^screenshot_\d+\.png$'));
-    expect(request['type'], FileType.custom);
-    expect(request['extensions'], ['png']);
+    final options = request['options'] as SaveDialogOptions;
+    expect(options.confirmButtonText, 'Save');
+    expect(options.suggestedName, matches(r'^screenshot_\d+\.png$'));
+    final types = request['types'] as List<XTypeGroup>;
+    expect(types, hasLength(1));
+    expect(types.single.extensions, ['png']);
+    expect(types.single.mimeTypes, ['image/png']);
+    expect(types.single.uniformTypeIdentifiers, ['public.png']);
   }
 
   void expectCall(String action) => expect(binding.calls,

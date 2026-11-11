@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:file_picker/file_picker.dart';
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/common.dart';
@@ -602,7 +602,7 @@ class _RecordingState extends State<_Recording>
     try {
       final exists = await Directory(currentDirectory).exists();
       if (!mounted) return;
-      final selectedDirectory = await FilePicker.platform.getDirectoryPath(
+      final selectedDirectory = await getDirectoryPath(
           initialDirectory: exists ? currentDirectory : null);
       if (!mounted ||
           selectedDirectory == null ||

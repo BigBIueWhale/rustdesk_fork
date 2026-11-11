@@ -125265,103 +125265,6 @@ RAM/run roots absent and three zero listener deltas. All fourteen checkpoint
 files (308,594 bytes) match on CTE/TUF. This audit-only receipt preserves the
 counted ledger bytes.
 
-## 2026-11-11 — Debian first-desktop credential bootstrap preparation
-
-Continue the package milestone after the user-requested progress assessment.
-TUF's existing password-authenticated SSH master works; the shared VM run lock
-is free and available memory is 44 GiB. The preceding status answer made no
-implementation/acceptance progress. Select the package's first desktop startup
-after sessionless password provisioning before administrator-mask/upgrade cases:
-it directly decides the remaining bootstrap condition of the accepted credential
-correction, using the retained 6429f3cb application without a new full build.
-
-Extend the existing dependency-complete package scenario. Prepare authenticated
-Xvfb inputs in its bounded ordinary-user guest container and take XKB data from
-the pinned image. Guest-only Xvfb/xkbcomp wrappers select a private library path;
-do not install the settings fixture's global libraries or change loader config.
-The actual package must retain its APT dependencies. The native scenario opens
-a real PAM/logind X11 session, proves the exact service child and unchanged
-supervisor/credential, completes CPace with the preexisting password, observes
-receiver-confirmed wrong-password refusal and successful recovery, then closes
-PAM and waits for exact child exit/reap and record retirement. Existing ordinary
-user refusal and reinstall/remove/purge follow. Probe input provenance checks
-are shared unchanged with the installed-settings path. Product maps/environment
-must exclude the private fixture runtime. This prepares evidence; no new product
-behavior or native acceptance is claimed before execution.
-
-Primary research: Debian's Xvfb(1) documents the hardware-independent X server
-and memory framebuffer; pam_systemd(8) establishes actual logind session/scope
-registration and closing semantics; ld.so(8) documents direct loader invocation
-and per-invocation library search. Those support reusing the real session fixture
-while keeping private X11 dependencies out of product loading:
-https://manpages.debian.org/bookworm/xvfb/Xvfb.1.en.html
-https://manpages.debian.org/bookworm/libpam-systemd/pam_systemd.8.en.html
-https://manpages.debian.org/bookworm/manpages/ld.so.8.en.html
-
-EtHL48kttJ at af9e5595 completes the native package scenario, including the new
-desktop bootstrap, two mutual CPace exchanges, receiver-confirmed wrong-password
-refusal, child7464 exit/reap, unchanged supervisor7372 and credential, ordinary
-user refusal and reinstall/remove/purge. The outer guest network comparison then
-fails; overall acceptance is not claimed. Its residual records were not retained,
-so TIME_WAIT is a hypothesis rather than an observed diagnosis. Code inspection
-finds this newly network-active package scenario omits the existing installed-
-settings network-retirement wait. Reuse that exact bounded helper: only inode-zero
-loopback probe TIME_WAIT rows with the expected kernel timer may drain, and exact
-baseline equality remains mandatory. No listener or live socket is exempted.
-
-Tool71510 exits 1. QEMU3932789 joins zero after 80.382 seconds; RAM peak is
-4,079,534,080 bytes and workspace is absent. All four host listener deltas are
-zero. Under the free shared lock, verify diagnostic identity66306:80656079,
-capture hashes, no owned handles/Unix sockets and clean pushed source, then retire
-that exact private tree with the existing descriptor-owned remover. Capsule
-package-bootstrap-af9e5595.json plus nine files/167,945 bytes match CTE/TUF.
-The original outer byte stream is preserved exactly; an initial newline-normalized
-evidence copy was replaced after checking its hash. Rerun the same application
-with the missing retirement wait and its actual pending-inventory observation.
-
-## 2026-11-11 — packaged first-desktop credential bootstrap accepted
-
-TUF 4NR7YRm1L2 at e716fa8c exits zero (tool12939), reusing accepted app6429f3cb
-and the same package SHA-256 f5ef3a923a04af375f8d40f548313c847e3c4b3d61ee9e5d426e62ddf9423718.
-Normal offline APT installs the authenticated dependencies and actual vendor unit.
-Root provisioning while sessionless reports Applied in 0.166 seconds. Real PAM/
-logind X11 session c1 causes supervisor7354 to create exact child7446/start6540,
-generation9cc4fdff-e3ba-4c0b-9ec9-826b514882ac. Two mutual CPace exchanges use the
-preexisting credential around one receiver-confirmed wrong-password refusal, on
-the same retained listener. Product mappings/environment exclude the private
-X11 runtime. Closing PAM reaps the exact child and retires its record; the same
-supervisor remains, with the complete root credential file unchanged and no
-session/child/record remaining. Ordinary-user refusal and same-version reinstall,
-removal, purge, final APT check and dpkg audit all pass afterward.
-
-The new pending observation finds exactly three loopback probe TIME_WAIT rows,
-timer03/inode0, with no removed baseline row. The existing helper waits 56.740
-seconds until exact baseline equality. Both guest and outer completion receipts
-pass. Four host listener deltas are zero; QEMU3934432 joins zero after 138.535
-seconds and private/RAM roots are absent. Peak RAM scratch is 4,134,526,976 bytes
-under the unchanged admitted limits. Under the free shared lock, independently
-reconcile observations, process/RAM/socket absence, clean source and evidence
-hashes. package-bootstrap-e716fa8c.json and nine files/141,147 bytes match CTE/TUF.
-No new full application build or host installation occurs.
-
-The selected first-desktop credential-bootstrap condition is now accepted for
-the named package and seatless X11/PAM scenario. It does not establish actual
-pixel presentation/input, physical-seat switching, package graphical settings,
-upgrades or administrator unit-state preservation. Continue the same package
-milestone with administrator masks, primary-unit links, replacement units and
-drop-ins through install/remove/purge under R-S11by; broader release acceptance
-and canonical Flutter input promotion remain OPEN. Update the current ledger
-and perform its required fresh isolated count before ending this checkpoint.
-
-Fresh isolated count 7lR64kiuKw at cc493861 exits zero (tool46252): 405,364 tokens /
-1,850,547 bytes, SHA-256 f889beee657cd87acacab0496705c2ccc4db3a386695d39151748857048d985e.
-The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes all seven
-controls and the byte round trip. package-bootstrap-ledger-cc493861.json and
-eight files/115,811 bytes match CTE/TUF. QEMU3936806 joins zero after 30.532
-seconds; three host listener deltas are zero, and private/RAM roots retire.
-Whole-ledger compression to the approximate 400,000-token target remains OPEN.
-This audit-only append preserves the counted ledger bytes.
-
 ## 2026-10-31 — user pivot; native Linux clipboard text transfer
 
 The user directs work to another aspect. Network-impairment/recovery diagnostics
@@ -145605,3 +145508,100 @@ CTE/TUF. QEMU3928548 joins zero after 30.482 seconds, three listener deltas are
 zero and private/RAM roots retire. The approximate 400,000-token ledger
 compression obligation remains OPEN. This audit-only append does not change the
 counted ledger bytes.
+
+## 2026-11-11 — Debian first-desktop credential bootstrap preparation
+
+Continue the package milestone after the user-requested progress assessment.
+TUF's existing password-authenticated SSH master works; the shared VM run lock
+is free and available memory is 44 GiB. The preceding status answer made no
+implementation/acceptance progress. Select the package's first desktop startup
+after sessionless password provisioning before administrator-mask/upgrade cases:
+it directly decides the remaining bootstrap condition of the accepted credential
+correction, using the retained 6429f3cb application without a new full build.
+
+Extend the existing dependency-complete package scenario. Prepare authenticated
+Xvfb inputs in its bounded ordinary-user guest container and take XKB data from
+the pinned image. Guest-only Xvfb/xkbcomp wrappers select a private library path;
+do not install the settings fixture's global libraries or change loader config.
+The actual package must retain its APT dependencies. The native scenario opens
+a real PAM/logind X11 session, proves the exact service child and unchanged
+supervisor/credential, completes CPace with the preexisting password, observes
+receiver-confirmed wrong-password refusal and successful recovery, then closes
+PAM and waits for exact child exit/reap and record retirement. Existing ordinary
+user refusal and reinstall/remove/purge follow. Probe input provenance checks
+are shared unchanged with the installed-settings path. Product maps/environment
+must exclude the private fixture runtime. This prepares evidence; no new product
+behavior or native acceptance is claimed before execution.
+
+Primary research: Debian's Xvfb(1) documents the hardware-independent X server
+and memory framebuffer; pam_systemd(8) establishes actual logind session/scope
+registration and closing semantics; ld.so(8) documents direct loader invocation
+and per-invocation library search. Those support reusing the real session fixture
+while keeping private X11 dependencies out of product loading:
+https://manpages.debian.org/bookworm/xvfb/Xvfb.1.en.html
+https://manpages.debian.org/bookworm/libpam-systemd/pam_systemd.8.en.html
+https://manpages.debian.org/bookworm/manpages/ld.so.8.en.html
+
+EtHL48kttJ at af9e5595 completes the native package scenario, including the new
+desktop bootstrap, two mutual CPace exchanges, receiver-confirmed wrong-password
+refusal, child7464 exit/reap, unchanged supervisor7372 and credential, ordinary
+user refusal and reinstall/remove/purge. The outer guest network comparison then
+fails; overall acceptance is not claimed. Its residual records were not retained,
+so TIME_WAIT is a hypothesis rather than an observed diagnosis. Code inspection
+finds this newly network-active package scenario omits the existing installed-
+settings network-retirement wait. Reuse that exact bounded helper: only inode-zero
+loopback probe TIME_WAIT rows with the expected kernel timer may drain, and exact
+baseline equality remains mandatory. No listener or live socket is exempted.
+
+Tool71510 exits 1. QEMU3932789 joins zero after 80.382 seconds; RAM peak is
+4,079,534,080 bytes and workspace is absent. All four host listener deltas are
+zero. Under the free shared lock, verify diagnostic identity66306:80656079,
+capture hashes, no owned handles/Unix sockets and clean pushed source, then retire
+that exact private tree with the existing descriptor-owned remover. Capsule
+package-bootstrap-af9e5595.json plus nine files/167,945 bytes match CTE/TUF.
+The original outer byte stream is preserved exactly; an initial newline-normalized
+evidence copy was replaced after checking its hash. Rerun the same application
+with the missing retirement wait and its actual pending-inventory observation.
+
+## 2026-11-11 — packaged first-desktop credential bootstrap accepted
+
+TUF 4NR7YRm1L2 at e716fa8c exits zero (tool12939), reusing accepted app6429f3cb
+and the same package SHA-256 f5ef3a923a04af375f8d40f548313c847e3c4b3d61ee9e5d426e62ddf9423718.
+Normal offline APT installs the authenticated dependencies and actual vendor unit.
+Root provisioning while sessionless reports Applied in 0.166 seconds. Real PAM/
+logind X11 session c1 causes supervisor7354 to create exact child7446/start6540,
+generation9cc4fdff-e3ba-4c0b-9ec9-826b514882ac. Two mutual CPace exchanges use the
+preexisting credential around one receiver-confirmed wrong-password refusal, on
+the same retained listener. Product mappings/environment exclude the private
+X11 runtime. Closing PAM reaps the exact child and retires its record; the same
+supervisor remains, with the complete root credential file unchanged and no
+session/child/record remaining. Ordinary-user refusal and same-version reinstall,
+removal, purge, final APT check and dpkg audit all pass afterward.
+
+The new pending observation finds exactly three loopback probe TIME_WAIT rows,
+timer03/inode0, with no removed baseline row. The existing helper waits 56.740
+seconds until exact baseline equality. Both guest and outer completion receipts
+pass. Four host listener deltas are zero; QEMU3934432 joins zero after 138.535
+seconds and private/RAM roots are absent. Peak RAM scratch is 4,134,526,976 bytes
+under the unchanged admitted limits. Under the free shared lock, independently
+reconcile observations, process/RAM/socket absence, clean source and evidence
+hashes. package-bootstrap-e716fa8c.json and nine files/141,147 bytes match CTE/TUF.
+No new full application build or host installation occurs.
+
+The selected first-desktop credential-bootstrap condition is now accepted for
+the named package and seatless X11/PAM scenario. It does not establish actual
+pixel presentation/input, physical-seat switching, package graphical settings,
+upgrades or administrator unit-state preservation. Continue the same package
+milestone with administrator masks, primary-unit links, replacement units and
+drop-ins through install/remove/purge under R-S11by; broader release acceptance
+and canonical Flutter input promotion remain OPEN. Update the current ledger
+and perform its required fresh isolated count before ending this checkpoint.
+
+Fresh isolated count 7lR64kiuKw at cc493861 exits zero (tool46252): 405,364 tokens /
+1,850,547 bytes, SHA-256 f889beee657cd87acacab0496705c2ccc4db3a386695d39151748857048d985e.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes all seven
+controls and the byte round trip. package-bootstrap-ledger-cc493861.json and
+eight files/115,811 bytes match CTE/TUF. QEMU3936806 joins zero after 30.532
+seconds; three host listener deltas are zero, and private/RAM roots retire.
+Whole-ledger compression to the approximate 400,000-token target remains OPEN.
+This audit-only append preserves the counted ledger bytes.

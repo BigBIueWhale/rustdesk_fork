@@ -7389,24 +7389,28 @@ dialog dismissal and retry are accepted below; other failure/concurrency
 schedules, final packages and complete R-S0 remain OPEN.
 
 **Graphical OS authentication cancellation and retry accepted.** TUF
-`AQZqLhZzIT`, harness `4abb8134`, reuses the unchanged `83fa8494` application.
+`22FynCzYst`, harness `dbefe4a3`, reuses the unchanged `83fa8494` application.
 The packaged Debian GTK agent `0.105-8` and GUI share real PAM/logind session `c1`;
 kernel identities, common session cgroup, GUI no-new-privileges and agent principal
-are checked. Eleven actual GUI stages cover Cancel in the OS dialog before
-administrator selection, Denied with protected/user-profile credentials unchanged,
-fresh correct PAM authentication through the same agent and GUI, Applied, and
-fresh no-agent Denied after agent retirement. The cancellation's root-held status3
-binds the exact GUI requester; its retained pkcheck exits/reaps within 1.528 seconds.
-Four mutual CPace exchanges and one old-password refusal preserve the exact service
-child/generation/listener. GTK's password PNG decodes before both agent actions.
+are checked. Fifteen Flutter stages and three agent stages cover Cancel before
+administrator selection and after five masked password characters, both Denied
+with protected/user-profile credentials unchanged, fresh correct PAM through the
+same agent/GUI, Applied, and no-agent Denied after agent retirement. Before partial
+entry, the exact packaged PAM helper is observed waiting in read(0); it remains
+pending afterward. Both cancellations have root-held status3 for the exact GUI.
+Retained pkcheck identities exit/reap within 1.445 seconds of controller dispatch;
+the password-entry cancellation also reaps its retained PAM helper. Five mutual
+CPace exchanges and one old-password refusal preserve the exact service child,
+generation and listener. GTK's password PNG decodes before all five agent actions.
 
-`linux-graphical-authorization-4abb8134.json` binds source, immutable app, all
+`linux-graphical-password-cancel-dbefe4a3.json` binds source, immutable app, all
 outcomes and joined cleanup. QEMU/private/RAM state retire and all four endpoint
-deltas are zero. The audit retains the initial passing authorization run, MIME
-runtime correction and helper-readiness fixture failure. Provider AccountsService/
+deltas are zero. Earlier selection-only acceptance is retained in
+`linux-graphical-authorization-4abb8134.json`; the audit retains fixture repairs.
+Provider AccountsService/
 ATK warnings remain in raw output; account avatars are outside this fixture.
-This closes the named Debian GTK/X11 cancellation/retry workflow. Cancellation
-during administrator password entry, other agents/desktops, concurrent requests,
+This closes the two named Debian GTK/X11 cancellation/retry workflows.
+Other agents/desktops, concurrent requests,
 remaining identity/failure schedules, final packages and complete R-S0 stay OPEN.
 
 `d9fc6405`/`53f66299` replace the Boolean native/Flutter password result with

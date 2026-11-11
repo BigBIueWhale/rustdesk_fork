@@ -144957,3 +144957,30 @@ three agent stages, and a fifth CPace exchange. Product binaries, authorization
 rules, resource admission and cleanup are unchanged. Native execution is pending;
 syntax inspection is not acceptance. TUF is clean at 800f79a6, with no live run
 or RAM workspace and 40,599,532 KiB available before admission.
+
+Accepted TUF run `22FynCzYst` at `dbefe4a3` exits zero (tool session78909).
+All four cases/eighteen stages pass using the unchanged 83fa8494 app and
+15ce8bb5 manifest. Same agent9172/start6085 and GUI9173/start6085 remain in
+session c1. First Cancel reaps pkcheck9298/start6540 within 1.444485 seconds;
+partial-password Cancel reaps pkcheck9385/start6960 and packaged PAM helper
+9392/start6964 within 1.443471 seconds. These are controller-dispatch upper
+bounds including driver startup/observation, not measured click timestamps.
+The helper is waiting on stdin before and after the five-character entry;
+the field count is rechecked before actual GTK Cancel. Root refusal records,
+unchanged protected/profile credentials and baseline CPace agree. Fresh correct
+PAM yields Applied in the same window, followed by no-agent Denied. All five
+mutual CPace exchanges and one old-password refusal retain supervisor9082,
+child9091/start5963, generation b183d9fc-2628-4b35-97c4-b5479be8307e and
+listener25225. Provider account/avatar/ATK warnings remain unclassified.
+
+Storage records 152.664 seconds and a 3,842,342,912-byte RAM-workspace peak.
+QEMU3858296 joins with zero; private/RAM roots are absent and four endpoint
+deltas are zero. `linux-graphical-password-cancel-dbefe4a3.json` is 17,603 bytes,
+SHA-256 5ed8181dbe5358983e35354448cedca9219f7cfcba87e3c568e3b733bc8316ab.
+Its nine-file 129,775-byte evidence set matches on CTE/TUF. The named password-
+entry cancellation gap closes without a product patch or app rebuild. Concurrent
+requests, other desktops/agents/platforms, remaining failure/identity schedules
+and final-package/complete R-S0 acceptance remain open. The next decisive installed
+settings check is concurrent authorized requests with truthful per-request outcomes
+and final durable/runtime credential agreement. Do not repeat these passed
+cancellation cases without a relevant change or concern.

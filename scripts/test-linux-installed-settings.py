@@ -1537,15 +1537,15 @@ def uncertain_scenario(receiver, probe_sha, network_before):
                     wait_network_retirement(network_before)
 
 
-def concurrent_stop_scenario(receiver, probe_sha):
-    unit = Path('/etc/systemd/system/rustdesk.service')
-    if unit.exists():
-        raise RuntimeError('concurrent stop requires absent initial service state')
-    install(MEDIA / 'repo/res/rustdesk.service', unit)
-    run(['/usr/bin/systemctl', 'daemon-reload'])
-    network_before = network_state()
+def concurrent_stop_scenario(receiver, probe_sha, archive, network_before):
+    package_unit()
+    package_env = {**ENV, 'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'DEBIAN_FRONTEND': 'noninteractive'}
     clients, retained_logs, pidfds = [], [], {}
-    trace = reference = None
+    trace = reference = replacement = None
+
+    def payload_identity():
+        return {str(path): {'device': path.stat().st_dev, 'inode': path.stat().st_ino}
+                for path in (receiver.PRIMARY, receiver.CHILD, Path('/usr/share/rustdesk/lib/librustdesk.so'))}
 
     def properties():
         return dict(line.split('=', 1) for line in run([
@@ -1593,6 +1593,8 @@ def concurrent_stop_scenario(receiver, probe_sha):
                 or receiver.child_record() != record or receiver.credential() != first_value
                 or user_credential() != profile):
             raise RuntimeError('queued changes lost pending ownership, durable ordering or profile isolation')
+        if replacement is not None and (replacement.poll() is not None or payload_identity() != payload_before):
+            raise RuntimeError('package replacement advanced before admitted credential changes drained')
         for tid in trace.attached:
             proc = Path(f'/proc/{record["pid"]}/task/{tid}')
             status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
@@ -1603,6 +1605,9 @@ def concurrent_stop_scenario(receiver, probe_sha):
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
         record = receiver.ready()
+        for pid in (record['supervisor'], record['pid']):
+            package_process(pid)
+        payload_before = payload_identity()
         receiver.change(0, BASELINE_PASSWORD, True)
         baseline, profile = receiver.credential(), user_credential()
         receiver.keyed(BASELINE_PASSWORD, 'concurrent-stop-baseline', record, probe_sha)
@@ -1633,7 +1638,11 @@ def concurrent_stop_scenario(receiver, probe_sha):
             while time.monotonic() - began < 2:
                 held()
                 time.sleep(0.02)
-            run(['/usr/bin/systemctl', 'stop', '--no-block', 'rustdesk.service'], timeout=5)
+            # Dpkg's real prerm must wait for the service drain before unpacking.
+            # Separate configuration exposes the stopped state without a fixture restart.
+            replacement = subprocess.Popen(['/usr/bin/dpkg', '--unpack', str(archive)], env=package_env,
+                                           stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                           stderr=subprocess.STDOUT, text=True)
             stopping_at = time.monotonic()
             while True:
                 held()
@@ -1643,7 +1652,7 @@ def concurrent_stop_scenario(receiver, probe_sha):
                         and root_log.count(b'R-T9: graceful shutdown initiated') == 1):
                     break
                 if time.monotonic() - stopping_at > 3:
-                    raise RuntimeError('normal stop did not initiate actual service shutdown')
+                    raise RuntimeError('package replacement did not initiate actual service shutdown')
                 time.sleep(0.05)
             # A fresh caller must not enter the closed admission queue.
             late, late_identity = launch('Post-stop-must-not-apply-2026!')
@@ -1663,7 +1672,9 @@ def concurrent_stop_scenario(receiver, probe_sha):
             print('LINUX_INSTALLED_SETTINGS_STOP_PENDING=' + json.dumps({**record,
                   'requesters': [first_identity, second_identity], 'threads': sorted(trace.attached),
                   'seconds_after_stop': time.monotonic() - stopping_at, 'unit': current,
-                  'durable': first_value, 'profile_unchanged': True}, sort_keys=True), flush=True)
+                  'durable': first_value, 'profile_unchanged': True,
+                  'package': {'pid': replacement.pid, 'archive_sha256': digest(archive),
+                              'payload_before': payload_before}}, sort_keys=True), flush=True)
             resumed_at = time.monotonic()
             trace.release()
             results = []
@@ -1673,6 +1684,18 @@ def concurrent_stop_scenario(receiver, probe_sha):
                     raise RuntimeError('admitted change lacked Applied after the shutdown barrier: '
                                        + repr((client.returncode, stdout[-4096:], stderr[-4096:])))
                 results.append({**identity, 'exit': client.returncode, 'stdout': stdout})
+        output, _ = replacement.communicate(timeout=20)
+        if replacement.returncode != 0 or len(output) > 131072:
+            raise RuntimeError('package unpack did not complete after credential drain: ' + output[-8192:])
+        package_status = run(['/usr/bin/dpkg-query', '--show', '--showformat=${Status}', 'rustdesk'])
+        payload_after = payload_identity()
+        if package_status != 'install ok unpacked' or any(
+                payload_after[path] == identity for path, identity in payload_before.items()):
+            raise RuntimeError('package did not replace every executable payload after draining')
+        print('LINUX_DEBIAN_STOP_UNPACK=' + json.dumps({
+            'pid': replacement.pid, 'exit': replacement.returncode, 'output': output,
+            'status': package_status, 'payload_before': payload_before, 'payload_after': payload_after,
+        }, sort_keys=True), flush=True)
         deadline = resumed_at + 20
         while (any(not select.select([fd], [], [], 0)[0] for fd in pidfds.values())
                or Path('/sys/fs/cgroup/system.slice/rustdesk.service').exists()):
@@ -1686,7 +1709,8 @@ def concurrent_stop_scenario(receiver, probe_sha):
         service_absent()
         outcome = properties()
         final_value = receiver.credential()
-        if (outcome['ExecMainCode'] != '1' or outcome['NRestarts'] != initial['NRestarts']
+        if (outcome['ExecMainCode'] != '1' or outcome['ExecMainStatus'] != '0' or outcome['Result'] != 'success'
+                or outcome['NRestarts'] != initial['NRestarts']
                 or final_value in (baseline, first_value) or user_credential() != profile):
             raise RuntimeError('concurrent drain lost its final credential or clean service outcome')
         root_log, log_snapshot = root_snapshot()
@@ -1698,8 +1722,15 @@ def concurrent_stop_scenario(receiver, probe_sha):
               'durable': final_value, 'processes_reaped': identities, 'profile_unchanged': True,
               'root_log': log_snapshot}, sort_keys=True), flush=True)
         reference.close()
-        run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+        output = run(['/usr/bin/dpkg', '--configure', 'rustdesk'], env=package_env, timeout=45)
+        print('LINUX_DEBIAN_STOP_CONFIGURE=' + json.dumps({'exit': 0, 'output': output}, sort_keys=True), flush=True)
+        package_unit()
+        if (run(['/usr/bin/dpkg-query', '--show', '--showformat=${Status}', 'rustdesk']) != 'install ok installed'
+                or run(['/usr/bin/dpkg', '--verify', 'rustdesk'])):
+            raise RuntimeError('drained package replacement is not configured and intact')
         recovered = receiver.ready()
+        for pid in (recovered['supervisor'], recovered['pid']):
+            package_process(pid)
         if (recovered['generation'] == record['generation'] or receiver.credential() != final_value):
             raise RuntimeError('restart did not retain the final queued credential in a fresh generation')
         credential_network(receiver, recovered, probe_sha, 'concurrent-stop-restart',
@@ -1719,6 +1750,9 @@ def concurrent_stop_scenario(receiver, probe_sha):
                     trace.release()
         finally:
             try:
+                if replacement is not None:
+                    replacement.communicate(timeout=45)
+                    replacement.stdout.close()
                 for client in clients:
                     if client.poll() is None:
                         client.kill()
@@ -1744,7 +1778,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     agent_archive_sha = None
     if graphical:
         arguments, agent_archive_sha = arguments[:-1], arguments[-1]
-    if graphical or settings or uncertain or upgrade or conffiles:
+    if graphical or settings or uncertain or concurrent_stop or upgrade or conffiles:
         package_install = True
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
@@ -1783,7 +1817,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-conffiles' if conffiles else '--run-upgrade' if upgrade else '--run-uncertain' if uncertain
+                        '--run-concurrent-stop' if concurrent_stop else '--run-conffiles' if conffiles
+                        else '--run-upgrade' if upgrade else '--run-uncertain' if uncertain
                         else '--run-settings' if settings else '--run', str(source),
                         str(prepared), str(app_input), manifest_sha, commit, probe_sha,
                         *([agent_archive_sha] if graphical else [])],
@@ -1823,8 +1858,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
         raise RuntimeError('fixture administrator UID already exists')
     try:
         receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
-        scenario_function = concurrent_stop_scenario if concurrent_stop else admin_failure_scenario
-        receiver.installed_desktop(lambda: scenario_function(receiver, probe_sha), settings=True)
+        receiver.installed_desktop(lambda: admin_failure_scenario(receiver, probe_sha), settings=True)
     finally:
         run(['/usr/sbin/userdel', 'rdreceiver4003'])
     for name, record in manifest['files'].items():
@@ -1832,12 +1866,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
             raise RuntimeError('installed application changed during execution')
     if digest(receiver.PROBE) != probe_sha:
         raise RuntimeError('CPace probe changed during the installed workflow')
-    if concurrent_stop:
-        print(f'LINUX_INSTALLED_SETTINGS_CONCURRENT_STOP_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
-              'clients=actual-root-cli service=actual queued=2 shutdown=systemctl barrier=ptrace '
-              'stop_deadline=extended outcomes=Applied post_stop=refused restart=retained '
-              'cpace=3 stale_refusals=1 cleanup=joined', flush=True)
-    elif admin_failure:
+    if admin_failure:
         print(f'LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam '
               'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '

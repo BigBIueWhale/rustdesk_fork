@@ -145827,6 +145827,36 @@ host listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
 
+## 2026-11-11 — actual package replacement during admitted credential changes
+
+Select the remaining mode-5 installed-package shutdown gap under R-S0/R-S11/R-S11i
+and R-S11by. The direct-layout 35-second drain already passes; replacing the actual
+package while two credential changes are admitted is unproved. It takes priority
+over another ordinary reinstall because prerm must not advance to executable
+replacement before irreversible work and its owning service generation drain.
+
+Debian Policy chapter 6 orders old-prerm upgrade before new payload unpacking;
+dpkg(1) provides separate --unpack and --configure operations. Bookworm's
+systemd.service(5) allows Type=notify services to extend the stop deadline with
+timely repeated EXTEND_TIMEOUT_USEC. Sources:
+https://www.debian.org/doc/debian-policy/ch-maintainerscripts.html
+https://manpages.debian.org/bookworm/dpkg/dpkg.1.en.html
+https://manpages.debian.org/bookworm/systemd/systemd.service.5.en.html
+The shipped prerm uses checked deb-systemd-invoke stop. Linux drains its retained
+IPC thread before child retirement and extends systemd's deadline during drain.
+
+Move mode 5 to the existing dependency-complete package installation path. Retain
+its two real root CLI requesters, exact-child tracing barrier, late-request refusal,
+clean process retirement, final-credential CPace and profile-preservation checks.
+Invoke actual dpkg --unpack while pending; require dpkg to remain alive and all
+three executable payload objects unchanged beyond 30 seconds. After release,
+require both Applied results, clean service exit, successful unpack with replaced
+file objects, then real configure/start and final-credential authentication.
+Ordinary-user refusal, subsequent reinstall/remove/purge and joined cleanup remain.
+No product change or app rebuild; retained app6429f3cb executes unchanged. This
+tests same-package replacement, not a distinct historical binary under concurrent
+mutation. Native acceptance is pending; broader release obligations remain OPEN.
+
 ## 2026-11-11 — normal-package settings failure and recovery preparation
 
 The preceding turn is progress: normal-package graphical cancellation/concurrency

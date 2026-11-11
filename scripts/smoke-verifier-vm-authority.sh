@@ -1804,7 +1804,7 @@ installed_settings_input_inventory() {
     fi
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
         local runtime=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz
         [ -d "${runtime%/*}" ] && [ ! -L "${runtime%/*}" ] \
             && [ "$(/usr/bin/readlink -f -- "${runtime%/*}")" = "${runtime%/*}" ] \
@@ -1835,7 +1835,7 @@ installed_settings_input_inventory() {
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
         # These four scripts are consumed by the current package constructor,
         # not compiled into the retained app. The archive validator exact-matches them.
         for file in preinst postinst prerm postrm; do
@@ -5314,7 +5314,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         fi
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] \
-           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
+           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
             lifecycle_payload_grafts+=(
                 "debian-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz"
                 "repo/scripts/test-linux-debian-install.py=$SCRIPT_DIR/test-linux-debian-install.py"
@@ -9460,8 +9460,8 @@ elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
             'retained Linux application packaged by the production Debian constructor'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
         require_exact_fixed_receipt \
-            "LINUX_INSTALLED_SETTINGS_CONCURRENT_STOP_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 clients=actual-root-cli service=actual queued=2 shutdown=systemctl barrier=ptrace stop_deadline=extended outcomes=Applied post_stop=refused restart=retained cpace=3 stale_refusals=1 cleanup=joined" \
-            'installed concurrent credential changes through normal service stop'
+            "LINUX_DEBIAN_CONCURRENT_STOP_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg replace=unpack-configure clients=actual-root-cli service=actual queued=2 shutdown=package-prerm barrier=ptrace stop_deadline=extended outcomes=Applied post_stop=refused restart=retained cpace=3 stale_refusals=1 reinstall=same-version remove=preserved purge=retired cleanup=joined" \
+            'dependency-complete package replacement drains concurrent credential changes'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
         require_exact_fixed_receipt \
             "LINUX_DEBIAN_SETTINGS_NATIVE=pass cases=5 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired ui=actual service=actual cancellation=gtk-selection-and-password authorization=polkit-pam helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent concurrent=gui-and-cli cpace=5 stale_refusals=1 cleanup=joined" \

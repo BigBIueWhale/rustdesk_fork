@@ -567,7 +567,17 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                 'processes': observations, **record}, sort_keys=True), flush=True)
 
         first = installed_state('installed', previous if upgrade else manifest, initial_archive)
-        if agent_archive_sha is not None or settings_mode is not None:
+        if settings_mode == 'concurrent-stop':
+            desktop_runtime(settings, prepared)
+            receiver.installed_desktop(lambda: settings.concurrent_stop_scenario(
+                receiver, probe_sha, archive, network_before), settings=True)
+            require(select.select([first], [], [], 0)[0] == [first],
+                    'package replacement did not retire the original supervisor')
+            credential = receiver.credential()
+            settings.run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+            installed_state('after-concurrent-stop')
+            require(receiver.credential() == credential, 'drained credential did not survive restart')
+        elif agent_archive_sha is not None or settings_mode is not None:
             settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before,
                               uncertain=settings_mode == 'uncertain')
             require(select.select([first], [], [], 0)[0] == [first],
@@ -729,6 +739,12 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
               'upgrade=distinct-core-same-base service=actual old_processes=retired credential=preserved '
               'cpace=4 wrong_password=refused profile=unchanged reinstall=same-version remove=preserved '
               'purge=retired cleanup=joined', flush=True)
+    elif settings_mode == 'concurrent-stop':
+        print(f'LINUX_DEBIAN_CONCURRENT_STOP_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked install=dpkg replace=unpack-configure clients=actual-root-cli '
+              'service=actual queued=2 shutdown=package-prerm barrier=ptrace stop_deadline=extended '
+              'outcomes=Applied post_stop=refused restart=retained cpace=3 stale_refusals=1 '
+              'reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
     elif settings_mode == 'uncertain':
         print(f'LINUX_DEBIAN_SETTINGS_UNCERTAIN_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired '
@@ -755,10 +771,12 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 
 if __name__ == '__main__':
     require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
-            or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-upgrade', '--run-conffiles')),
+            or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-concurrent-stop',
+                                                     '--run-upgrade', '--run-conffiles')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
          sys.argv[8] if len(sys.argv) == 9 else None,
-         settings_mode={'--run-settings': 'failure', '--run-uncertain': 'uncertain'}.get(sys.argv[1]),
+         settings_mode={'--run-settings': 'failure', '--run-uncertain': 'uncertain',
+                        '--run-concurrent-stop': 'concurrent-stop'}.get(sys.argv[1]),
          upgrade=sys.argv[1] == '--run-upgrade', conffiles=sys.argv[1] == '--run-conffiles')

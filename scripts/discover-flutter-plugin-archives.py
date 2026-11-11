@@ -72,8 +72,11 @@ def metadata(data, origin, name, version, sha256):
     require(isinstance(pubspec, dict) and pubspec.get("name") == name
             and pubspec.get("version") == version, "package identity differs")
     url = value.get("archive_url")
-    require(isinstance(url, str) and urllib.parse.unquote(url)
-            == f"{origin}/api/archives/{name}-{version}.tar.gz", "archive URL differs")
+    require(isinstance(url, str) and len(url) <= 2048, "archive URL is not bounded text")
+    location = urllib.parse.urlsplit(url)
+    require(location.scheme == "https" and location.netloc == urllib.parse.urlsplit(origin).netloc
+            and location.path.startswith("/") and not location.fragment,
+            f"{name}: archive URL leaves {origin}: {url!r}")
     return value
 
 

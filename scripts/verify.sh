@@ -4698,7 +4698,7 @@ if [ -z "$working_directory_line" ] || [ -z "$global_init_line" ] || [ -z "$cust
 fi
 grep -qF '.current_dir("/")' <<<"$service_child_launch"                           || r_s11e27="$r_s11e27 child-working-directory-bind-missing"
 child_cwd_line=$(grep -nF '.current_dir("/")' <<<"$service_child_launch" | cut -d: -f1)
-child_spawn_line=$(grep -nF 'let spawn_result = command.spawn();' <<<"$service_child_launch" | cut -d: -f1)
+child_spawn_line=$(grep -nF '.spawn(&mut command);' <<<"$service_child_launch" | cut -d: -f1)
 if [ -z "$child_cwd_line" ] || [ -z "$child_spawn_line" ] || [ "$child_cwd_line" -ge "$child_spawn_line" ]; then
   r_s11e27="$r_s11e27 child-working-directory-bind-too-late"
 fi

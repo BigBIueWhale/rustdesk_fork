@@ -13,6 +13,7 @@ import stat
 import subprocess
 import sys
 import tarfile
+import time
 
 MEDIA = Path('/mnt/rustdesk-verifier-inputs')
 SCRIPT = MEDIA / 'repo/scripts/test-linux-debian-install.py'
@@ -147,6 +148,21 @@ def main(source, prepared, app_input, manifest_sha, commit):
            '--no-download', '--no-install-recommends', '--no-remove', '--yes']
     user_created = False
     pidfds = []
+    supervisors = []
+
+    def sessionless_snapshot(phase):
+        pid = supervisors[-1]
+        children = Path(f'/proc/{pid}/task/{pid}/children').read_text().split()
+        record = Path('/run/rustdesk/service-child.record')
+        sessions = settings.run(['/usr/bin/loginctl', 'list-sessions', '--no-legend', '--no-pager']).strip()
+        observed = {'phase': phase, 'supervisor': pid, 'children': children,
+                    'child_record_present': os.path.lexists(record), 'sessions': sessions,
+                    'credential_file_sha256': digest('/root/.config/rustdesk/RustDesk.toml')
+                    if Path('/root/.config/rustdesk/RustDesk.toml').exists() else None}
+        print('LINUX_DEBIAN_INSTALL_SESSIONLESS=' + json.dumps(observed, sort_keys=True), flush=True)
+        require(not children and not observed['child_record_present'] and not sessions,
+                'sessionless package fixture has a session or child')
+
     try:
         command([*apt, 'install', *(str(runtime / 'packages' / name) for name in sorted(records)),
                  str(cached_application)], 'install', timeout=240)
@@ -190,6 +206,7 @@ def main(source, prepared, app_input, manifest_sha, commit):
                     and Path(props['FragmentPath']).samefile('/usr/lib/systemd/system/rustdesk.service')
                     and props['NRestarts'] == '0', 'package did not start the vendor service normally')
             pid = int(props['MainPID'])
+            supervisors.append(pid)
             fd = os.pidfd_open(pid)
             pidfds.append(fd)
             require(pid > 1 and Path(f'/proc/{pid}/exe').samefile(receiver.PRIMARY)
@@ -200,7 +217,11 @@ def main(source, prepared, app_input, manifest_sha, commit):
             return fd
 
         first = installed_state('installed')
+        sessionless_snapshot('before-password')
+        started = time.monotonic()
         receiver.change(0, settings.BASELINE_PASSWORD, True)
+        print('LINUX_DEBIAN_INSTALL_PASSWORD_SECONDS=' + str(time.monotonic() - started), flush=True)
+        sessionless_snapshot('after-password')
         credential = receiver.credential()
         command(['/usr/sbin/useradd', '--uid', '4002', '--user-group', '--create-home',
                  '--shell', '/usr/sbin/nologin', 'rdreceiver4002'], 'ordinary-user')
@@ -227,6 +248,18 @@ def main(source, prepared, app_input, manifest_sha, commit):
               'administrator': 'Applied', 'ordinary_user': 'refused', 'reinstall': 'preserved',
               'remove': 'preserved', 'purge': 'absent'}, sort_keys=True), flush=True)
     except BaseException:
+        if supervisors:
+            try:
+                sessionless_snapshot('failure')
+                path, data = settings.owned_log(Path('/root/.local/share/logs/RustDesk/service'), supervisors[-1], 0)
+                messages = [line.decode('utf-8', errors='replace') for line in data.splitlines()
+                            if b'Retrying admitted password mutation after child identity failure' in line
+                            or b'Linux durable credential changed but its runtime replica' in line]
+                print('LINUX_DEBIAN_INSTALL_RECOVERY=' + json.dumps({
+                    'path': str(path), 'messages': messages[-10:], 'count': len(messages)},
+                    sort_keys=True), flush=True)
+            except Exception as diagnostic_error:
+                print('LINUX_DEBIAN_INSTALL_DIAGNOSTIC_ERROR=' + str(diagnostic_error), flush=True)
         print(settings.run(['/usr/bin/journalctl', '--unit=rustdesk.service', '--no-pager', '-n', '40']), flush=True)
         raise
     finally:

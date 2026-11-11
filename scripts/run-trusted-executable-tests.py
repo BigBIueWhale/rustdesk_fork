@@ -80,7 +80,7 @@ def main():
     for path in ("scripts/test-linux-service-uid-policy.rs", "scripts/test-trusted-executable.rs",
                  "scripts/run-trusted-executable-tests.py", "src/ipc/uid_policy.rs",
                  "scripts/test-linux-process-identity.rs", "scripts/test-linux-process-peer.c",
-                 "src/ipc/auth.rs", "src/common.rs"):
+                 "src/ipc/auth.rs", "src/common.rs", "src/platform/linux/service_child_process.rs"):
         inputs[path] = (repo / path).read_bytes()
     identity_source = inputs["src/ipc/auth.rs"].decode("utf-8")
     structure_start = identity_source.index("pub struct LinuxProcessIdentity {")
@@ -146,7 +146,7 @@ def main():
     subprocess.run(["rustc", "--edition=2021", "--test", str(source), "-o", str(artifact)],
                    check=True, timeout=30)
     identity = digest(artifact.read_bytes())
-    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity} tests=20", flush=True)
+    print(f"TRUSTED_EXECUTABLE_BUILD=sha256={identity}", flush=True)
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith("LINUX_IDENTITY_")}
     environment["LINUX_IDENTITY_PEER_PROBE"] = str(peer)

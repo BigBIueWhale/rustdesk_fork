@@ -1,5 +1,6 @@
 use super::{CursorData, ResultType};
 mod native_context;
+mod service_child_process;
 mod systemd;
 mod xrandr_query;
 mod xrandr_command;
@@ -7,6 +8,7 @@ mod window_focus;
 mod x11_context;
 mod x11_cursor;
 use desktop::Desktop;
+use service_child_process::{ServiceChildProcess, ServiceChildProcesses};
 pub use hbb_common::platform::linux::*;
 use hbb_common::{
     allow_err,
@@ -34,13 +36,15 @@ use std::{
         },
     },
     path::{Path, PathBuf},
-    process::{Child, Command},
+    process::Command,
     string::String,
     sync::atomic::{AtomicBool, Ordering},
     sync::{mpsc, Arc, OnceLock},
     time::{Duration, Instant},
 };
 use wallpaper;
+#[cfg(test)]
+use std::process::Child;
 
 pub const PA_SAMPLE_RATE: u32 = 48000;
 static mut UNMODIFIED: bool = true;
@@ -85,6 +89,7 @@ const X11_SOCKET_DISCOVERY_TIMEOUT: Duration = Duration::from_millis(500);
 const LINUX_SO_PEERPIDFD: c_int = 77;
 
 static SERVICE_RUNTIME_GENERATION: OnceLock<String> = OnceLock::new();
+static SERVICE_CHILD_PROCESSES: OnceLock<ServiceChildProcesses> = OnceLock::new();
 static SERVICE_CHILD_EXECUTABLE_IDENTITY: OnceLock<std::sync::RwLock<Option<(u64, u64)>>> =
     OnceLock::new();
 
@@ -786,6 +791,13 @@ pub(crate) fn service_runtime_generation_matches(candidate: &str) -> bool {
         .is_some_and(|generation| generation == candidate)
 }
 
+pub(crate) fn service_owned_children_are_absent() -> ResultType<bool> {
+    Ok(SERVICE_CHILD_PROCESSES
+        .get()
+        .ok_or_else(|| anyhow!("Linux service child ownership is unavailable"))?
+        .is_empty()?)
+}
+
 fn set_service_child_executable_identity(metadata: &fs::Metadata) -> ResultType<()> {
     let identity = (metadata.dev(), metadata.ino());
     let mut expected = SERVICE_CHILD_EXECUTABLE_IDENTITY
@@ -940,7 +952,7 @@ fn read_kernel_uuid(path: &str, label: &str) -> ResultType<String> {
 }
 
 struct OwnedServiceChild {
-    process: Child,
+    process: ServiceChildProcess,
     record: ServiceChildRecord,
 }
 
@@ -1993,7 +2005,10 @@ fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<
         executable_fd,
         Some(bootstrap_fd),
     )?;
-    let spawn_result = command.spawn();
+    let spawn_result = SERVICE_CHILD_PROCESSES
+        .get()
+        .ok_or_else(|| anyhow!("Linux service child ownership is unavailable"))?
+        .spawn(&mut command);
     drop(child_executable);
     drop(bootstrap_child);
     let mut process = spawn_result?;
@@ -2041,7 +2056,7 @@ fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<
     Ok(OwnedServiceChild { process, record })
 }
 
-fn stop_unregistered_service_child(process: &mut Child, pid: u32) {
+fn stop_unregistered_service_child(process: &mut ServiceChildProcess, pid: u32) {
     if let Err(err) = process.kill() {
         log::error!("Failed to force-stop unregistered Linux service child pid {pid}: {err}");
     }
@@ -2461,6 +2476,9 @@ pub fn start_os_service() -> ResultType<()> {
 
     let runtime = ServiceRuntime::acquire()?;
     runtime.recover_previous_child()?;
+    SERVICE_CHILD_PROCESSES
+        .set(ServiceChildProcesses::default())
+        .map_err(|_| anyhow!("Linux service child ownership was initialized twice"))?;
     // R-X13: the dormant uinput IPC listener is NOT stood up — on the pinned-X11
     // fork XTEST/enigo is the sole injection backend, so the world-mode _uinput_*
     // cross-uid sockets the X11 --server never connects to are absent (shrinking
@@ -3832,7 +3850,7 @@ mod process_cleanup_tests {
             record.pid = pid;
             let mut owner = ServiceChildTerminationTestOwner {
                 child: Some(OwnedServiceChild {
-                    process,
+                    process: ServiceChildProcess::for_test(process),
                     record: record.clone(),
                 }),
             };
@@ -3991,7 +4009,10 @@ mod process_cleanup_tests {
                 .unwrap();
                 runtime.publish_record(&record).unwrap();
                 let _owner = ServiceChildTerminationTestOwner {
-                    child: Some(OwnedServiceChild { process, record }),
+                    child: Some(OwnedServiceChild {
+                        process: ServiceChildProcess::for_test(process),
+                        record,
+                    }),
                 };
                 loop {
                     std::thread::sleep(Duration::from_secs(60));

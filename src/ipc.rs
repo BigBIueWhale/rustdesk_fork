@@ -8492,6 +8492,12 @@ async fn complete_main_password_mutation(
     let mut recovery_required = service_owned;
     let recovery_deadline = tokio::time::Instant::now() + PASSWORD_MUTATION_RECOVERY_TIMEOUT;
     loop {
+        #[cfg(target_os = "linux")]
+        if service_owned && crate::platform::linux::service_owned_children_are_absent()? {
+            // The supervisor counted every launch before fork and joined every child.
+            // Persistence precedes this observation; a later launch bootstraps that state.
+            return Ok(PasswordMutationOutcome::Applied);
+        }
         if recovery_required && tokio::time::Instant::now() >= recovery_deadline {
             return Ok(PasswordMutationOutcome::Uncertain);
         }

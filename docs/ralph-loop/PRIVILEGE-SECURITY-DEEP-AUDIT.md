@@ -145353,3 +145353,43 @@ debian-install-unit-2a491d01.json and nine files/106,141 bytes match CTE/TUF.
 QEMU3886895 joins zero after 76.742 seconds, peak RAM scratch 4,170,743,808 bytes;
 all four listener deltas are zero and private/RAM roots retire. Credential,
 reinstall, removal and purge acceptance remain unexecuted in this failed run.
+
+## 2026-11-11 — sessionless installed credential completion
+
+The preceding status turn also completed and reconciled bvrMolSDnR at 844f49df
+(tool31092 exit one), so it produced terminal evidence and retired owned state.
+Normal APT installation, all 330 dependency versions, 72 payloads, package
+ownership and actual vendor service active/running/NRestarts=0 pass. With no
+desktop session, the root password CLI has no final outcome within 20 seconds;
+ordinary systemctl stop then exceeds its 45-second observation. The guest later
+powers down, and QEMU3888381 joins zero after 672.667 seconds. Four listener
+deltas are zero. RAM peak is 4,177,166,336 bytes; exact private/RAM paths retire.
+debian-install-sessionless-844f49df.json and its nine-file 259,957-byte evidence
+set match CTE/TUF. The run did not observe durable credential state after the
+timeout or execute refusal/reinstall/remove/purge. Do not infer those outcomes.
+
+Continue this concrete R-S0/R-S11i/package blocker. Source persists the root
+credential, then unconditionally enters up to 600 seconds of child convergence;
+the service supervisor deliberately launches no child without a desktop. Missing
+IPC cannot establish absence. The correction counts each supervisor child before
+Command::spawn and retains that obligation until its exact Child::wait/try_wait
+observes exit. Failed spawn releases only after std's failed-exec cleanup; lost
+wait ownership or poisoned accounting cannot report absence. Initialize the
+observer only after previous-generation recovery and before IPC admission. After
+durable commit and typed PRS reread, empty accounting means no runtime replica is
+left to update. Any later launch begins after that observation and bootstraps the
+already committed root state. Existing children and in-flight launches retain
+authenticated same-operation convergence. No credential/requester authority,
+wire protocol, shutdown cancellation or deadline is relaxed.
+
+Primary research: Rust 1.75's Unix Command::spawn waits for a failed pre_exec/exec
+child before returning an error; Child itself does not reap merely on drop.
+https://raw.githubusercontent.com/rust-lang/rust/1.75.0/library/std/src/sys/unix/process/process_unix.rs
+https://doc.rust-lang.org/std/process/struct.Child.html
+Mutex guards serialize only short accounting operations, never spawn/wait/await.
+https://doc.rust-lang.org/std/sync/struct.Mutex.html
+Focused native cases will cover live/terminated/reaped children, cached repeated
+waits, failed exec/pre_exec, a pre-exec launch barrier and lost wait ownership.
+The package observer now records session/child absence, credential fingerprint,
+command elapsed time and bounded convergence diagnostics. Native correction,
+full application and complete package lifecycle acceptance remain pending.

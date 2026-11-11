@@ -4694,6 +4694,7 @@ run_focused_rust_tests() {
             src/ipc/auth.rs
             src/ipc/uid_policy.rs
             scripts/test-linux-service-uid-policy.rs
+            src/platform/linux/service_child_process.rs
             scripts/test-linux-process-identity.rs
             scripts/test-linux-process-peer.c
             src/common.rs
@@ -4705,6 +4706,10 @@ run_focused_rust_tests() {
         )
         required_tests=(
             uid_policy::tests::test_service_peer_uid_policy
+            service_child_process::tests::live_and_signalled_children_require_a_join
+            service_child_process::tests::failed_exec_and_pre_exec_preserve_absence
+            service_child_process::tests::launch_is_counted_before_the_child_can_exec
+            service_child_process::tests::lost_wait_ownership_cannot_establish_absence
             uid_policy::tests::r_s11e60_linux_service_root_skips_both_uid_lookups
             uid_policy::tests::r_s11e60_linux_service_cached_negative_skips_fresh_uid_lookup
             uid_policy::tests::r_s11e60_linux_service_cache_match_requires_fresh_uid_authority
@@ -9295,7 +9300,7 @@ PY
     elif [ "$MODE" = linux-service-uid-tests ]; then
         [ "$tests_passed" -eq "${#required_tests[@]}" ] \
             || fail "Linux UID-policy test count differs: $tests_passed"
-        printf 'LINUX_SERVICE_UID_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s target=linux-x86_64 scope=production-uid-policy-and-extracted-helper-selectors-and-kernel-identity rust=1.75.0 edition=2021 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+        printf 'LINUX_SERVICE_UID_VM=pass commit=%s tree=%s tests=%s artifact_sha256=%s target=linux-x86_64 scope=production-uid-policy-and-extracted-helper-selectors-and-kernel-identity-and-service-child-lifetime rust=1.75.0 edition=2021 devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
             "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$tests_passed" \
             "$uid_test_artifact_sha" "$image_index" "$image_config"
     else

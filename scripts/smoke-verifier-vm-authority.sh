@@ -7399,7 +7399,7 @@ elif [ "$MODE" = linux-systemd-notification-tests ]; then
 elif [ "$MODE" = linux-service-uid-tests ]; then
     mapfile -t uid_policy_artifacts < <(
         /usr/bin/grep -Eo \
-            "LINUX_SERVICE_UID_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=20 artifact_sha256=[0-9a-f]{64}" \
+            "LINUX_SERVICE_UID_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=[1-9][0-9]* artifact_sha256=[0-9a-f]{64}" \
             "$SERIAL_LOG" || true
     )
     [ "${#uid_policy_artifacts[@]}" -eq 1 ] \
@@ -7407,7 +7407,7 @@ elif [ "$MODE" = linux-service-uid-tests ]; then
         || fail 'Linux UID-policy artifact receipt is absent, malformed or duplicated'
     UID_POLICY_ARTIFACT_SHA256=${uid_policy_artifacts[0]##*=}
     require_exact_fixed_receipt \
-        "${uid_policy_artifacts[0]} target=linux-x86_64 scope=production-uid-policy-and-extracted-helper-selectors-and-kernel-identity rust=1.75.0 edition=2021 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "${uid_policy_artifacts[0]} target=linux-x86_64 scope=production-uid-policy-and-extracted-helper-selectors-and-kernel-identity-and-service-child-lifetime rust=1.75.0 edition=2021 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'focused Linux UID-policy receipt'
     require_exact_fixed_receipt 'LINUX_KERNEL_UID=pass cases=2 children=joined principal=effective' \
         'Linux nondumpable process principal'

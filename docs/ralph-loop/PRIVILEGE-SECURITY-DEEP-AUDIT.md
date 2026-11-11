@@ -145674,3 +145674,22 @@ capture hashes, no owned handles or Unix endpoints and clean pushed source, then
 retire the exact private tree. package-admin-units-51181057.json and nine files /
 194,278 bytes match CTE/TUF. The outer transcript is retained as exact bytes,
 including its non-UTF8 terminal fragments; no overall acceptance is claimed.
+
+OWHYP8PdrT at 9d1d1af7 refuses input admission before VM creation: the broad
+installed-settings app source comparison includes res/DEBIAN/postinst. Review
+confirms the four Debian maintainer scripts are not compiled/embedded by the
+Rust/Flutter build; build.py reads them from current source during package
+construction, and verify-debian-package-authority.py independently exact-matches
+all four emitted control members against current source. Scope the two package
+modes' retained-app comparison accordingly: preserve every existing app source
+and resource check, excluding precisely those four package-only script paths;
+separately authenticate and fingerprint each current committed script in the
+input inventory. Non-package settings modes retain the original complete source
+comparison. This separates app and package provenance without accepting stale
+emitted scripts or requiring an unrelated full application rebuild.
+
+Tool79285 exits 1; storage monitoring completes after 3.213 seconds with no QEMU,
+zero overlay allocation and 69,632-byte RAM peak. Verify the free run lock,
+exact diagnostic identity66306:80656079, clean source, absent RAM/workspace Unix
+endpoints and no owned descriptor references before descriptor-owned removal.
+package-admin-units-9d1d1af7.json and three files/5,164 bytes match CTE/TUF.

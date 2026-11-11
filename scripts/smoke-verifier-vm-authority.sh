@@ -1759,6 +1759,7 @@ installed_settings_input_inventory() {
     local archive=$REPO_ROOT/online/candidates/polkit-runtime/polkit-runtime-candidate.tar.gz
     local probe_root=$REPO_ROOT/.harness-state/android-peer-artifacts/$INSTALLED_SETTINGS_PROBE_COMMIT/linux-x86_64-peer
     local file
+    local -a app_sources=(src libs flutter Cargo.toml Cargo.lock build.rs .cargo res)
     for file in "$REPO_ROOT/online/candidates" "${archive%/*}"; do
         [ -d "$file" ] && [ ! -L "$file" ] \
             && [ "$(/usr/bin/readlink -f -- "$file")" = "$file" ] \
@@ -1798,8 +1799,17 @@ installed_settings_input_inventory() {
         verify_committed_test_source "$SCRIPT_DIR/linux-polkit-dialog-x11.c"
         /usr/bin/sha256sum -- "$SCRIPT_DIR/linux-polkit-dialog-x11.c"
     fi
-    git_closed -C "$REPO_ROOT" diff --quiet "$FLUTTER_APP_COMMIT" HEAD -- \
-        src libs flutter Cargo.toml Cargo.lock build.rs .cargo res \
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
+        # These four scripts are consumed by the current package constructor,
+        # not compiled into the retained app. The archive validator exact-matches them.
+        for file in preinst postinst prerm postrm; do
+            app_sources+=(":(exclude)res/DEBIAN/$file")
+            verify_committed_test_source "$REPO_ROOT/res/DEBIAN/$file"
+            /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$REPO_ROOT/res/DEBIAN/$file"
+            /usr/bin/sha256sum -- "$REPO_ROOT/res/DEBIAN/$file"
+        done
+    fi
+    git_closed -C "$REPO_ROOT" diff --quiet "$FLUTTER_APP_COMMIT" HEAD -- "${app_sources[@]}" \
         || fail 'installed settings app production sources differ from the current source'
     /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$archive"
     /usr/bin/sha256sum -- "$archive"

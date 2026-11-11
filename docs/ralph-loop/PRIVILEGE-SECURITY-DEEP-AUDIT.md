@@ -144802,3 +144802,14 @@ The accepted scope is incorrect-password handling through the actual installed
 GUI with a textual OS agent, including same-agent recovery. User dismissal of
 authentication, graphical OS-agent interaction, other authorization/concurrency
 schedules, final packages, cross-platform and complete R-S0 remain OPEN.
+
+Fresh ledger check `KPc1Gb7AO9` at `919ce9e7` exits zero: 403,368 tokens /
+1,841,133 bytes, SHA-256
+`63375d369e031b0098984221018f20a7442e60c9e506d34413024a1667588eb3`.
+The fixed tokenizer method, seven controls and whole-input round trip pass.
+QEMU3843987 joins with zero; private/RAM state retire and three endpoint deltas
+are zero. `gui-admin-failure-ledger-919ce9e7.json` binds eight matching CTE/TUF
+files / 115,077 bytes. The approximate 400,000-token compression obligation
+remains open. This completed installed workflow needs no repetition absent a
+relevant change; actual OS authentication-dialog dismissal remains the next
+unproved GUI authorization outcome.

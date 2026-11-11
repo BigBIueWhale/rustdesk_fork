@@ -147011,3 +147011,12 @@ has 479,707,324 regular-file bytes/549,171,200 allocated bytes, excluding direct
 blocks. No canonical cache replacement, application migration, APK or native
 dialog acceptance is claimed. Those are the next integration work; record a fresh
 count after the concise current-ledger update.
+
+Fresh count at 52acb5c4/lhP1n8IQUt/tool40897 passes: 407,616 tokens/1,860,360 bytes,
+SHA-256 495281a287902e349a037aca90231e891c7da64f16b73546fdd8e32c0a0910b6.
+The fixed tokenizer, seven controls and byte round trip pass. Eight files/117,608
+bytes under flutter-plugin-cache-ledger-52acb5c4.json match both hosts. QEMU 4060499
+exits 0 after 30.045 seconds, peak scratch 402,956,288 bytes; all three listener
+snapshots have zero additions/removals and exact private/RAM cleanup passes.
+The approximate 400,000-token compression obligation remains OPEN. This append
+does not change the measured ledger.

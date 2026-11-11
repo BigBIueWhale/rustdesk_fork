@@ -960,7 +960,7 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                 if graphical is None:
                     authenticate(receiver, authority, requester, record, before, incorrect_password=True)
                 else:
-                    helper, helper_start = receiver.pending_admin_helper(*requester, record)
+                    helper, helper_start = receiver.pending_admin_helper(*requester, record, wait_seconds=5)
                     helper_fd = os.pidfd_open(int(helper.name))
                     if (int((helper / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]) != helper_start
                             or select.select([helper_fd], [], [], 0)[0]):
@@ -983,7 +983,7 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                 if graphical is None:
                     authenticate(receiver, authority, requester, record, before)
                 else:
-                    receiver.pending_admin_helper(*requester, record)
+                    receiver.pending_admin_helper(*requester, record, wait_seconds=5)
                     command = b'authenticate\n'
             elif stage == 'applied':
                 authorization.close()

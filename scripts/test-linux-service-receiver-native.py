@@ -356,24 +356,29 @@ def change(uid, value, admitted):
         raise RuntimeError("denied password operation did not report failure")
 
 
-def pending_admin_helper(requester_pid, start, record):
+def pending_admin_helper(requester_pid, start, record, wait_seconds=0):
     expected = [b"/usr/bin/pkcheck", b"--action-id",
                 b"com.carriez.RustDesk.set-unattended-password", b"--process",
                 f"{requester_pid},{start},4001".encode(), b"--allow-user-interaction", b""]
-    helpers = []
-    for proc in Path("/proc").iterdir():
-        if not proc.name.isdecimal():
-            continue
-        try:
-            fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
-            if int(fields[1]) != record["supervisor"]:
+    deadline = time.monotonic() + wait_seconds
+    while True:
+        helpers = []
+        for proc in Path("/proc").iterdir():
+            if not proc.name.isdecimal():
                 continue
-            if (proc / "cmdline").read_bytes().split(b"\0") == expected:
-                helpers.append((proc, int(fields[19])))
-        except (FileNotFoundError, ProcessLookupError):
-            continue
+            try:
+                fields = (proc / "stat").read_bytes().rsplit(b") ", 1)[1].split()
+                if int(fields[1]) != record["supervisor"]:
+                    continue
+                if (proc / "cmdline").read_bytes().split(b"\0") == expected:
+                    helpers.append((proc, int(fields[19])))
+            except (FileNotFoundError, ProcessLookupError):
+                continue
+        if helpers or time.monotonic() >= deadline:
+            break
+        time.sleep(0.01)
     if len(helpers) != 1:
-        raise RuntimeError("pending administrator request has no unique service-owned pkcheck")
+        raise RuntimeError(f"pending administrator request has {len(helpers)} matching service-owned pkcheck processes")
     proc, helper_start = helpers[0]
     status = dict(line.split(":", 1) for line in (proc / "status").read_text().splitlines() if ":" in line)
     if (status["Uid"].split() != ["0"] * 4

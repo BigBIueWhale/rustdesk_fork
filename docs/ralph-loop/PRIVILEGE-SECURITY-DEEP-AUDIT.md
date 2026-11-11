@@ -144889,3 +144889,15 @@ PNG before each agent action. Failed-run evidence is preserved under
 CTE/TUF. QEMU3851012 joins with zero; private/RAM state retire and all four
 endpoint deltas are zero. The first authorization acceptance remains valid;
 the corrected graphical runtime requires a fresh focused replay.
+
+`iesfi3ahQ7` at `6c1047ac` decodes the GTK resource and repeats successful
+Cancel/status3/Denied with unchanged credentials. It stops before sending the
+fresh approval command: the immediate post-Submit helper enumeration reports no
+unique match. That check did not record cardinality, so the original count is
+unknown. The GUI submission and OS-helper spawn are asynchronous; the new optional
+five-second readiness wait retries only zero matches and immediately refuses
+duplicates or wrong authority. Existing callers retain their immediate check.
+Full failed-run evidence is in `linux-graphical-helper-readiness-6c1047ac.json`.
+QEMU3852518 joins with zero; private/RAM state retire and four endpoint deltas are
+zero. Provider AccountsService/ATK warnings remain in the raw logs; this fixture
+does not exercise account avatars or every OS-agent presentation behavior.

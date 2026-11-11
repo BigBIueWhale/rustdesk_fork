@@ -643,6 +643,12 @@ PY
     ;;
 
   build-app)
+    [ "$(cat /sys/fs/cgroup/memory.max)" = 10737418240 ] \
+      && [ "$(cat /sys/fs/cgroup/memory.swap.max)" = 0 ] \
+      || fail 'full-app compiler memory/swap limit differs'
+    export CARGO_BUILD_JOBS=2
+    readonly CARGO_BUILD_JOBS
+    printf 'FLUTTER_APP_BUILD_LIMITS=pass cargo_jobs=2 memory_bytes=10737418240 swap_bytes=0\n'
     [[ "${SOURCE_DATE_EPOCH:-}" =~ ^(0|[1-9][0-9]{0,18})$ ]] \
       || fail 'app producer requires an explicit canonical build epoch'
     for variable in \
@@ -1101,6 +1107,18 @@ PY
       || fail 'build output contains a setuid or setgid file'
     find /out -xdev -type f -exec chmod 0400 {} +
     find /out -xdev -type d -exec chmod 0500 {} +
+    /usr/bin/python3 -B -I -S - <<'PY'
+from pathlib import Path
+root = Path('/sys/fs/cgroup')
+limit = int((root / 'memory.max').read_text())
+peak = int((root / 'memory.peak').read_text())
+events = dict(line.split() for line in (root / 'memory.events').read_text().splitlines())
+assert limit == 10737418240 and 0 < peak <= limit
+assert int((root / 'memory.swap.max').read_text()) == 0
+assert events['oom'] == events['oom_kill'] == '0'
+print(f'FLUTTER_APP_BUILD_RESOURCES=pass cargo_jobs=2 memory_bytes={limit} '
+      f'peak_bytes={peak} swap_bytes=0 oom=0 oom_kill=0', flush=True)
+PY
     printf 'LINUX_FLUTTER_APP_COMPILED=pass rust=%s flutter=%s epoch=%s files=%s drivers=excluded exact_runner=true exact_core=true\n' \
       "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" "$SOURCE_DATE_EPOCH" \
       "$(find /out -xdev -type f | wc -l)"

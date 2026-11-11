@@ -144587,3 +144587,41 @@ QEMU3815449 joins with zero; private/RAM state disappear and three endpoint delt
 are zero. `launcher-native-ledger-bde42ba6.json` binds eight matching CTE/TUF
 files / 115,645 bytes. The approximate 400,000-token target remains exceeded;
 compression stays open. No complete-app recovery acceptance is added by this count.
+
+## 2026-11-11 — Bound full-app compiler concurrency for installed recovery
+
+Previous turn made progress: actual launcher comparison passes. Continue to the
+complete corrected application; further component repetitions cannot close the
+installed same-child recovery failure. TUF has 41,884,872,704 available bytes and
+CTE 28,218,773,504; neither has a retained verifier run. The unchanged 43-GiB build
+admission cannot fit. Git comparison with accepted app `53f66299` finds only
+`flutter/linux/main.cc` changed among product files, but the artifact producer
+has no validated executable-only rebuild/provenance path. Keep the established
+complete build instead of introducing a hybrid artifact format for this fix.
+
+The full compiler previously allowed 16 GiB without an explicit Cargo job limit.
+Set two Cargo jobs and a 10-GiB, swap-disabled compiler cgroup inside a 14-GiB
+guest. This retains the existing 4-GiB guest allowance, 16-GiB RAM scratch,
+12-GiB overlay ceiling, 6-GiB host headroom and 1-GiB overhead: admission is now
+37 GiB, not a bypass of admission or monitoring. The complete source, bridge
+generation, tests, Rust/Flutter build, engine/payload verification and publication
+remain required. A failed or OOM build cannot publish. The stage verifies the
+actual cgroup limits before work and records its kernel peak plus zero OOM events
+before success; outer acceptance requires that observation. Sufficiency of the
+new compiler limit is unproved until the actual full build passes.
+
+Primary references: [Cargo job configuration](https://doc.rust-lang.org/cargo/reference/environment-variables.html)
+defines CARGO_BUILD_JOBS; [Docker resource limits](https://docs.docker.com/engine/containers/resource_constraints/)
+specifies a hard memory ceiling and no container swap when memory and memory-swap
+are equal; [kernel cgroup v2 documentation](https://docs.kernel.org/admin-guide/cgroup-v2.html)
+defines memory.peak and memory.events for the cgroup and descendants. CPU quota
+alone does not explicitly limit the number of compiler jobs. No host service,
+memory settings, unrelated workload or canonical input is changed.
+
+Retire superseded TUF app `d1bf0877` under the shared run lock after validating
+its exact manifest, all 73 payload hashes, closed inventory and metadata. Its
+70,553,600 allocated file bytes are removed with the descriptor-owned cleanup
+helper; `sigpipe-retired-d1bf0877*` retains manifest/intent/completion in three
+files / 14,280 bytes on both hosts. Preserve failing current baseline `53f66299`,
+designated `7e6f6459`, unfinished `0ccb2a7e` and the four-generation cap. This
+cache retirement enables the new artifact slot; it is not the RAM correction.

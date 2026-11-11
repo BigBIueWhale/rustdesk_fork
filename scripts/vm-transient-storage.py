@@ -100,8 +100,8 @@ def storage_limits(profile, memory_mib):
         require(memory_mib == 6144, 'parent library storage profile requires its 6 GiB guest')
         return 7 * GIB, 6 * GIB
     if profile == 'linux-flutter-build':
-        require(memory_mib == 20480, 'Flutter app build requires its 20 GiB guest')
-        # The sequential build container is capped at 16 GiB; retain 4 GiB for the guest.
+        require(memory_mib == 14336, 'Flutter app build requires its 14 GiB guest')
+        # The two-job compiler is capped at 10 GiB; retain 4 GiB for the guest.
         return 16 * GIB, 12 * GIB
     if profile in ('linux-flutter-engine-prepare', 'linux-flutter-engine-build'):
         expected_memory = 4096 if profile == 'linux-flutter-engine-prepare' else 16384

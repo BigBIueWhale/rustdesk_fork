@@ -1235,7 +1235,7 @@ run_owned_container "$WORKSPACE/build.cid" \
   --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
-  --pids-limit=1024 --memory=16g --memory-swap=16g --cpus=4 \
+  --pids-limit=1024 --memory=10g --memory-swap=10g --cpus=4 --cgroupns=private \
   --ulimit nofile=8192:8192 --ulimit fsize=4294967296:4294967296 \
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \

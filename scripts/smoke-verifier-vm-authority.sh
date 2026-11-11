@@ -1452,7 +1452,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
         readonly VM_TIMEOUT_SECONDS=7200
         readonly OVERLAY_SIZE=48G
-        readonly VM_MEMORY=20480
+        readonly VM_MEMORY=14336
     else
         readonly VM_TIMEOUT_SECONDS=7200
         readonly OVERLAY_SIZE=48G
@@ -9301,6 +9301,12 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     FLUTTER_APP_PENDING=${BASH_REMATCH[1]}
     FLUTTER_APP_MANIFEST_SHA256=${BASH_REMATCH[2]}
     require_exact_fixed_receipt "${app_artifact_receipts[0]}" 'actual Linux Flutter app preparation receipt'
+    require_exact_fixed_receipt 'FLUTTER_APP_BUILD_LIMITS=pass cargo_jobs=2 memory_bytes=10737418240 swap_bytes=0' 'full-app compiler limits'
+    mapfile -t app_resource_receipts < <(/usr/bin/grep '^FLUTTER_APP_BUILD_RESOURCES=' "$SERIAL_LOG" || true)
+    [ "${#app_resource_receipts[@]}" -eq 1 ] \
+        && [[ "${app_resource_receipts[0]}" =~ ^FLUTTER_APP_BUILD_RESOURCES=pass\ cargo_jobs=2\ memory_bytes=10737418240\ peak_bytes=([1-9][0-9]{0,10})\ swap_bytes=0\ oom=0\ oom_kill=0$ ]] \
+        && [ "${BASH_REMATCH[1]}" -le 10737418240 ] \
+        || fail 'full-app compiler resource observation differs'
     require_exact_fixed_receipt \
         "LINUX_FLUTTER_APP_BUILD_VM=pass commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_FLUTTER_VERSION epoch=$SOURCE_DATE_EPOCH_PIN builder=$DEB_BUILDER_CONFIG_ID root=refused foreign=refused caller=refused network=none inputs=readonly-landlocked drivers=excluded cleanup=joined" \
         'Linux Flutter app build VM receipt'

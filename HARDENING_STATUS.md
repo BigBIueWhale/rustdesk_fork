@@ -7372,9 +7372,16 @@ All 120 rendered cases, including seven password-dialog cases, and three selecte
 parser controls pass at `750883af`; an intermediate stale count rejects that outer
 run. `d365011d` corrects the remaining count, whose fresh outer acceptance is OPEN.
 The full bundle above proves native Applied/Denied and pre-admission unavailable-service
-Failed through the actual UI. Other failure paths, native Uncertain and mutation
-recovery across receiver restart remain unproved by controlled widget results.
-Those scenarios, native macOS outcome classification, graphical OS-agent interaction,
+Failed through the actual UI. TUF `h74xYQsLKD` at `17553c34` observes the actual
+Uncertain warning after 602.369 seconds, following 21 pending-dialog checks with
+the exact child kernel-stopped, protected credential committed and user-profile
+fields unchanged. After child resume, the combined generation/credential check
+fails before network or restart validation; the differing state was not retained.
+The overall scenario fails and same-generation recovery remains OPEN. Capsule:
+`password-outcome-uncertain-17553c34.json`. The next run must distinguish the two
+conditions and retain bounded service logs before cleanup; no product cause is inferred.
+Other failure paths, mutation recovery across receiver restart, native macOS
+outcome classification, graphical OS-agent interaction,
 cancellation during authorization, concurrency, other platforms, final packages
 and complete R-S0 remain OPEN.
 

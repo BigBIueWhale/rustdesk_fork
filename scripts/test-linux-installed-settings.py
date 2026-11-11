@@ -860,8 +860,25 @@ def uncertain_scenario(receiver, probe_sha):
                 authorization.close()
                 # Allow the existing one-second replica retry; CPace below proves convergence.
                 time.sleep(2)
-                if receiver.child_record() != record or receiver.credential() != committed:
-                    raise RuntimeError('uncertain mutation did not retain its original service generation')
+                resumed_record = receiver.child_record()
+                credential_preserved = receiver.credential() == committed
+                if resumed_record != record or not credential_preserved:
+                    diagnostic = {'expected': record, 'observed': resumed_record,
+                                  'credential_preserved': credential_preserved,
+                                  'seconds': time.monotonic() - submitted_at, 'logs': {}}
+                    for label, directory, pid, uid in (
+                            ('supervisor', '/root/.local/share/logs/RustDesk/service', record['supervisor'], 0),
+                            ('original-child', '/home/rdreceiver4001/.local/share/logs/RustDesk/server', record['pid'], 4001),
+                            ('current-child', '/home/rdreceiver4001/.local/share/logs/RustDesk/server', resumed_record['pid'], 4001)):
+                        try:
+                            path, data = owned_log(Path(directory), pid, uid)
+                            diagnostic['logs'][label] = {'path': str(path), 'bytes': len(data),
+                                'sha256': hashlib.sha256(data).hexdigest(),
+                                'tail': data[-8192:].decode('utf-8', errors='replace')}
+                        except (OSError, RuntimeError) as error:
+                            diagnostic['logs'][label] = {'unavailable': str(error)}
+                    print('LINUX_INSTALLED_SETTINGS_RESUME_DIAGNOSTIC=' + json.dumps(diagnostic, sort_keys=True), flush=True)
+                    raise RuntimeError('uncertain mutation changed its service child or protected credential after resume')
                 credential_network(receiver, record, probe_sha, 'gui-uncertain-resumed')
             elif stage == 'denied':
                 service_refusals(record, *requester, 1)

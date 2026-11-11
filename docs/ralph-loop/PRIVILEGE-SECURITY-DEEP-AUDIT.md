@@ -144421,3 +144421,26 @@ a fresh same-GUI no-agent refusal and persistence across a later service restart
 The earlier Applied/Denied/Failed artifact evidence remains valid. This is test
 preparation; native uncertainty, other failure/restart/concurrency schedules and
 complete R-S0 remain open until authoritative execution.
+
+**Timeout warning observed; recovery check failed.** TUF `h74xYQsLKD` at
+`17553c34` exits one on the unchanged app. The actual GUI retains its pending
+dialog for all 21 observations, including 597.082 seconds, then displays the exact
+Uncertain warning at 602.369 seconds. Its protected credential has committed and
+user-profile fields remain unchanged while all exact-child threads are stopped.
+After SIGCONT, agent retirement and the existing two-second convergence allowance,
+the combined child-record/credential-preservation assertion fails. The fixture did
+not retain the differing state or service logs, so this establishes neither a
+product cause nor same-generation recovery. No post-resume CPace or restart case ran.
+Guest network returns to baseline; no overall acceptance is claimed.
+
+`password-outcome-uncertain-17553c34.json` is 9,964 bytes, SHA-256
+`84adc7b4c0c4a57c03902172204e2ac36de2d842889febcbf3bd8e5daca90d1f`.
+Ten retained files / 116,694 bytes match CTE/TUF. The 672.903-second transaction
+peaks at 3,840,503,808 RAM-scratch bytes; four endpoint deltas are zero. Exact QEMU
+3801555 joins with zero, and RAM/private state retire before either tree changes.
+The diagnostic-only follow-up splits the observed child record from credential
+preservation and retains at most 8 KiB from each identity-checked supervisor,
+original-child and current-child log on this failure. Missing logs are explicit.
+It changes no application, deadline, stop/resume schedule or acceptance condition.
+Next: replay this same artifact with that diagnostic before deciding whether the
+fixture expectation or product recovery requires correction. Complete R-S0 stays open.

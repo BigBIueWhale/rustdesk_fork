@@ -129,7 +129,13 @@ OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
 below retains the required authorized behavior.
 
-**Current Linux build verified (2026-11-11).** Build `SVoK2UEeoN` at `53f66299`
+**Current Linux build verified (2026-11-11).** Build `Bk1AusTf8r` at `83fa8494`
+includes the corrected SIGPIPE launcher and passes the complete Rust/Flutter build,
+thirteen widget/two native command controls and all 73 payload hashes. Two Cargo
+jobs and a 10-GiB compiler limit fit the admitted 14-GiB guest with zero OOM events;
+scratch/headroom limits remain unchanged. `linux-sigpipe-build-83fa8494.json`
+binds the artifact and joined cleanup. Installed recovery and Applied/Denied/Failed
+replays on this corrected bundle remain OPEN. The prior `SVoK2UEeoN` at `53f66299`
 passes fresh bridges, the complete Rust/Flutter build, thirteen widget/two native
 command controls and all 73 payload hashes. `password-outcome-build-53f66299.json`
 binds exact cleanup and four zero listener deltas. That full bundle now passes
@@ -7391,10 +7397,14 @@ healthy controls pass. Production main/header compile against pinned GTK, but th
 loaded core and unused GUI entry are fixtures. `linux-launcher-native-ff3aac3b.json`
 binds source/executable identities and joined cleanup. The affected Debian archive
 lane also passes unchanged (`launcher-debian-regression-ff3aac3b.json`). Complete
-application recovery remains unverified: the full-app build refuses before VM launch,
-requiring 44,032 MiB with only 39,824 MiB available. No corrected complete app exists.
-`linux-sigpipe-build-refusal-b7b0569b.json` retains that dependency. Build and replay
-the same recovery case plus Applied/Denied/Failed controls when resources admit it.
+application recovery remains unverified. After the retained admission refusal,
+`83fa8494` bounds compilation to two Cargo jobs and 10 GiB inside a 14-GiB guest,
+preserving scratch, overlay and host-headroom bounds. Full build `Bk1AusTf8r`
+passes fresh bridges, thirteen widget/two native controls and all 73 payload hashes,
+with zero compiler OOM events. `linux-sigpipe-build-83fa8494.json` binds manifest
+`15ce8bb5`, exact QEMU/private/RAM retirement and four zero endpoint deltas.
+The corrected complete app is now available. Replay the original same-child
+recovery case plus Applied/Denied/Failed controls against this bundle.
 Other failure paths, mutation recovery across receiver restart, native macOS
 outcome classification, graphical OS-agent interaction,
 cancellation during authorization, concurrency, other platforms, final packages

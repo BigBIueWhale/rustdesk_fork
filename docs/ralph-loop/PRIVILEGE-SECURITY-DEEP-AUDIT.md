@@ -144625,3 +144625,32 @@ helper; `sigpipe-retired-d1bf0877*` retains manifest/intent/completion in three
 files / 14,280 bytes on both hosts. Preserve failing current baseline `53f66299`,
 designated `7e6f6459`, unfinished `0ccb2a7e` and the four-generation cap. This
 cache retirement enables the new artifact slot; it is not the RAM correction.
+
+**Bounded build accepted.** The prerequisite profile/count run `J1fwKqFlzA`
+at `83fa8494` exits zero, including the revised full-app storage profile and its
+refusals. The unchanged ledger is 403,024 tokens / 1,839,562 bytes with seven
+controls and round trip. QEMU3817479, private state and RAM retire; three endpoint
+deltas are zero. `bounded-build-profile-83fa8494.json` binds eight matching
+CTE/TUF files / 116,210 bytes.
+
+Full app `Bk1AusTf8r`, tool session44243, exits zero at `83fa8494` after
+1,211.351 seconds. Fresh bridges, thirteen widget/two native command controls,
+optimized Rust library, Flutter application and all 73 payload hashes pass.
+The compiler cgroup reaches its 10,737,418,240-byte limit with zero OOM/kill
+events and no container swap. The RAM workspace peaks at 11,900,174,336 bytes;
+overlay allocation peaks at 11,694,444,544 bytes under the unchanged 12-GiB
+ceiling. Minimum observed host available memory is 13,977,735,168 bytes.
+QEMU3818343 joins with zero and 4,096 accounted disk-write bytes; its private
+directory and RAM workspace disappear. All four endpoint deltas are zero.
+
+The source-bound artifact contains 70,340,788 payload bytes. Its manifest is
+`15ce8bb55104bb8e8c7d24c0e25dbe7953b672537af3f525cc4fc68f00f67d95`.
+`linux-sigpipe-build-83fa8494.json` is 9,479 bytes, SHA-256
+`befecc04b6dfb68f47283d35fb4b2ff8589e58eeaf5575225631afb0c4ddbf2b`.
+Eleven retained evidence files / 325,505 bytes match CTE/TUF. This closes the
+corrected full-app build prerequisite. The next decisive step remains the original
+installed uncertainty/same-child recovery scenario and Applied/Denied/Failed
+controls using this exact app. Neither installed recovery nor broad release
+acceptance is inferred from successful compilation. The user requested a candid
+completion assessment; outstanding cross-platform, R-S0/R-F5, final-artifact,
+reproduction and independent-review obligations remain open.

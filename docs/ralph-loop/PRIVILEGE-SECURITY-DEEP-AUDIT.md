@@ -145253,3 +145253,30 @@ transaction joins QEMU3880267 and retires private/RAM state, with three zero
 endpoint deltas. debian-candidate-ledger-5d16d326.json and its eight-file
 115,352-byte evidence set match CTE/TUF. The approximate 400,000-token cleanup
 obligation remains open. No job is live and no package binary is retained on disk.
+
+## 2026-11-11 — dependency-complete Debian installation inputs
+
+Previous goal turn was progress: the real retained application passes the shared
+production Debian constructor and independent archive admission. Continue the
+selected installation/upgrade milestone by acquiring its actual dependency closure;
+the old fixture's --force-depends path cannot establish normal package installation.
+
+The new closed online-fetch maintenance selector resolves the production-generated
+Depends and direct Recommends fields against the existing authenticated Debian
+bookworm snapshot, using an empty private dpkg status file. APT's download-only
+satisfy operation preserves alternatives and version expressions without inventing
+a second dependency list. Signed repository metadata, the pinned image's Debian
+keyring and explicit secure-APT settings supply authenticity. Before downloading,
+the SHA-256 URI plan must fit 512 packages/512 MiB total/64 MiB per package; every
+download must match that exact inventory, size and hash. The retained candidate
+contains control, request/URI plan, manifest, provenance and inert packages only.
+It cannot install packages or write canonical inputs. Source/master freezes,
+bounded RAM admission, outward-only VM networking and joined cleanup remain.
+
+Primary references: apt-get(8) defines satisfy for complete dependency expressions
+and download-only as retrieval without unpack/configuration; apt-secure(8) explains
+the signed Release -> Packages -> package-checksum chain. Only the explicit
+acquisition VM runs this producer, as required by R-S11cj/R-B10/R-B12.
+https://manpages.debian.org/bookworm/apt/apt-get.8.en.html
+https://manpages.debian.org/bookworm/apt/apt-secure.8.en.html
+Candidate review/pinning and offline installed acceptance remain pending.

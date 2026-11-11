@@ -3368,6 +3368,64 @@ maintenance_stage_ledger_tokenizer() {
         "$archive_size" "$archive_sha" "$candidate"
 }
 
+maintenance_stage_debian_runtime_candidate() {
+    require_devcheck_image_pins
+    local output="$ONLINE_FETCH_TMP/debian-runtime-output"
+    local parent="$ONLINE_CANDIDATE_ROOT/debian-runtime"
+    local part="$parent/.debian-runtime-candidate.tar.gz.part"
+    local candidate="$parent/debian-runtime-candidate.tar.gz"
+    local archive_size archive_sha package_count directory
+    for directory in "$ONLINE_CANDIDATE_ROOT" "$parent"; do
+        if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
+            /usr/bin/install -d -m 0700 -- "$directory"
+        fi
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' "$directory")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "Debian runtime candidate directory authority differs: $directory"
+    done
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        && [ ! -e "$part" ] && [ ! -L "$part" ] \
+        || die 'Debian runtime candidate already exists; inspect it before another acquisition'
+    /usr/bin/install -d -m 0700 -- "$output"
+    verify_or_load_devcheck_image
+    online_docker_run_archive_acquisition \
+        --mount "type=bind,source=$SCRIPT_DIR/stage-debian-runtime-candidate.py,target=/stage-debian-runtime-candidate.py,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$REPO_ROOT/build.py,target=/source/build.py,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$REPO_ROOT/Cargo.toml,target=/source/Cargo.toml,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$output,target=/outputs,bind-recursive=disabled" \
+        --env "RUNTIME_UID=$ONLINE_FETCH_UID" --env "RUNTIME_GID=$ONLINE_FETCH_GID" \
+        --env "RUNTIME_BASE=$DEV_CHECK_IMAGE_ID" \
+        --env "RUNTIME_DEBIAN_SNAPSHOT=$DEV_CHECK_DEBIAN_SNAPSHOT" \
+        --env "RUNTIME_SECURITY_SNAPSHOT=$DEV_CHECK_SECURITY_SNAPSHOT" \
+        "$DEV_CHECK_IMAGE_ID" \
+        /usr/bin/python3 -B -I -S /stage-debian-runtime-candidate.py /outputs \
+        || die 'signed Debian runtime dependency acquisition failed'
+    for name in contract control manifest.tsv plan.json; do
+        [ -f "$output/$name" ] && [ ! -L "$output/$name" ] \
+            || die 'Debian runtime candidate metadata is absent or ambiguous'
+    done
+    [ -d "$output/packages" ] && [ ! -L "$output/packages" ] \
+        || die 'Debian runtime candidate package directory differs'
+    package_count="$(/usr/bin/find "$output/packages" -maxdepth 1 -type f -name '*.deb' | /usr/bin/wc -l)"
+    [ "$package_count" -gt 0 ] && [ "$package_count" -le 512 ] \
+        && [ "$package_count" -eq "$(/usr/bin/wc -l < "$output/manifest.tsv")" ] \
+        || die 'Debian runtime candidate cardinality differs'
+    (
+        cd "$output"
+        /usr/bin/tar --sort=name --format=gnu --mtime="@$DEV_CHECK_SOURCE_DATE_EPOCH" \
+            --owner=0 --group=0 --numeric-owner -cf - contract control manifest.tsv plan.json packages/*.deb
+    ) | /usr/bin/gzip -n >"$part" || die 'Debian runtime candidate archive creation failed'
+    archive_size="$(/usr/bin/stat -c '%s' "$part")"
+    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le 536870912 ] \
+        || die 'Debian runtime candidate archive exceeds 512 MiB'
+    archive_sha="$(/usr/bin/sha256sum "$part" | /usr/bin/cut -d ' ' -f 1)"
+    /usr/bin/chmod 0400 -- "$part"
+    online_image_provenance maintenance-rename-noreplace --source "$part" --destination "$candidate" \
+        || die 'Debian runtime candidate publication failed'
+    printf 'DEBIAN_RUNTIME_CANDIDATE=staged base=%s packages=%s bytes=%s sha256=%s path=%s\n' \
+        "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
+}
+
 maintenance_stage_polkit_runtime_candidate() {
     require_devcheck_image_pins
     local kind=${1:-runtime} package version size sha limit receipt=POLKIT_RUNTIME_CANDIDATE
@@ -8654,6 +8712,11 @@ main() {
         --maintenance-stage-pa-runtime-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-stage-pa-runtime-candidate takes no arguments"
             maintenance_stage_pa_runtime_candidate
+            return 0
+            ;;
+        --maintenance-stage-debian-runtime-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-stage-debian-runtime-candidate takes no arguments"
+            maintenance_stage_debian_runtime_candidate
             return 0
             ;;
         --maintenance-stage-polkit-runtime-candidate)

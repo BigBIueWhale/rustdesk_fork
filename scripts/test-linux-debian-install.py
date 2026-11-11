@@ -107,7 +107,33 @@ def runtime_inputs(source):
     return destination, records, metadata['control']
 
 
-def main(source, prepared, app_input, manifest_sha, commit):
+def desktop_runtime(settings, prepared):
+    # Only X11 fixture processes see these libraries. The package keeps the
+    # dependency set APT installed, with no loader configuration changes.
+    fixture = WORK / 'debian-x11'
+    fixture.mkdir(mode=0o755)
+    fixture.chmod(0o755)
+    for tool in ('Xvfb', 'xkbcomp'):
+        settings.install(WORK / 'xvfb-root/usr/bin' / tool, fixture / tool, 0o755)
+    libraries = fixture / 'lib'
+    for path in (WORK / 'xvfb-root/usr/lib').rglob('*.so*'):
+        if path.is_file():
+            settings.install(path, libraries / path.name)
+    for path in (prepared / 'xkb').rglob('*'):
+        if path.is_file():
+            settings.install(path, WORK / 'xkb' / path.relative_to(prepared / 'xkb'))
+    for tool, wrapper in (('Xvfb', WORK / 'Xvfb'), ('xkbcomp', Path('/usr/bin/xkbcomp'))):
+        require(not os.path.lexists(wrapper), 'desktop fixture command is already occupied')
+        wrapper.write_text('#!/bin/sh\nexec /lib64/ld-linux-x86-64.so.2 --library-path '
+                           + str(libraries) + ' ' + str(fixture / tool) + ' "$@"\n')
+        wrapper.chmod(0o755)
+        listing = settings.run(['/lib64/ld-linux-x86-64.so.2', '--library-path',
+                                str(libraries), '--list', str(fixture / tool)])
+        require('not found' not in listing, 'desktop fixture dependency is missing')
+    print('LINUX_DEBIAN_DESKTOP_RUNTIME=private product_libraries=apt loader_configuration=unchanged', flush=True)
+
+
+def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
     require(Path(__file__).resolve() == SCRIPT, 'package test entry differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
@@ -223,6 +249,51 @@ def main(source, prepared, app_input, manifest_sha, commit):
         print('LINUX_DEBIAN_INSTALL_PASSWORD_SECONDS=' + str(time.monotonic() - started), flush=True)
         sessionless_snapshot('after-password')
         credential = receiver.credential()
+        require(digest(receiver.PROBE) == probe_sha, 'installed CPace probe differs')
+        desktop_runtime(settings, prepared)
+
+        def desktop_bootstrap(actor, session, pam):
+            record = receiver.ready()
+            child_fd = os.pidfd_open(record['pid'])
+            try:
+                require(receiver.child_record() == record and record['supervisor'] == supervisors[0]
+                        and not select.select([first, child_fd], [], [], 0)[0]
+                        and receiver.credential() == credential, 'desktop bootstrap changed its owner or credential')
+                for pid in (record['supervisor'], record['pid']):
+                    proc = Path('/proc') / str(pid)
+                    require(str(WORK / 'debian-x11') not in (proc / 'maps').read_text()
+                            and not any(value.startswith((b'LD_LIBRARY_PATH=', b'LD_PRELOAD='))
+                                        for value in (proc / 'environ').read_bytes().split(b'\0')),
+                            'product loaded or inherited the private desktop runtime')
+                settings.credential_network(receiver, record, probe_sha, 'package-desktop-bootstrap',
+                                            new=settings.BASELINE_PASSWORD, old='Wrong-bootstrap-password-2026!')
+                actor.stdin.write(b'close\n')
+                actor.stdin.flush()
+                require(pam.reply(actor) == {'session': session, 'phase': 'closed'},
+                        'desktop did not close its actual PAM session')
+                require(select.select([child_fd], [], [], 25)[0] == [child_fd],
+                        'service child survived desktop session closure')
+                deadline = time.monotonic() + 5
+                while (Path(f'/proc/{record["pid"]}').exists()
+                       or os.path.lexists('/run/rustdesk/service-child.record')):
+                    require(time.monotonic() < deadline, 'desktop child or record was not retired')
+                    time.sleep(0.05)
+                require(not select.select([first], [], [], 0)[0] and receiver.credential() == credential,
+                        'desktop retirement changed the supervisor or credential')
+                print('LINUX_DEBIAN_DESKTOP_BOOTSTRAP=' + json.dumps({
+                    **record, 'session': session, 'credential_sha256': credential,
+                    'authentication': 'mutual-cpace', 'wrong_password': 'receiver-confirmed-refusal',
+                    'child': 'exited-and-reaped',
+                }, sort_keys=True), flush=True)
+            finally:
+                os.close(child_fd)
+
+        receiver.installed_desktop(desktop_bootstrap, close_session=True)
+        sessionless_snapshot('after-desktop')
+        require(settings.run(['/usr/bin/systemctl', 'show', 'rustdesk.service',
+                '--property=MainPID', '--value']).strip() == str(supervisors[0]),
+                'package supervisor changed during desktop lifecycle')
+        require(digest(receiver.PROBE) == probe_sha, 'desktop workflow changed the CPace probe')
         command(['/usr/sbin/useradd', '--uid', '4002', '--user-group', '--create-home',
                  '--shell', '/usr/sbin/nologin', 'rdreceiver4002'], 'ordinary-user')
         user_created = True
@@ -276,9 +347,9 @@ def main(source, prepared, app_input, manifest_sha, commit):
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     print(f'LINUX_DEBIAN_INSTALL_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
           'dependencies=apt-checked install=dpkg reinstall=same-version service=actual credential=preserved '
-          'remove=preserved purge=retired desktop=unexecuted cleanup=joined', flush=True)
+          'remove=preserved purge=retired desktop=credential-bootstrap cpace=2 wrong_password=refused cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':
-    require(len(sys.argv) == 7 and sys.argv[1] == '--run', 'closed Debian installation arguments required')
-    main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6])
+    require(len(sys.argv) == 8 and sys.argv[1] == '--run', 'closed Debian installation arguments required')
+    main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7])

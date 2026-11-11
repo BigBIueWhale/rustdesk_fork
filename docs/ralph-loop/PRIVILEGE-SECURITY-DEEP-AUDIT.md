@@ -125265,6 +125265,39 @@ RAM/run roots absent and three zero listener deltas. All fourteen checkpoint
 files (308,594 bytes) match on CTE/TUF. This audit-only receipt preserves the
 counted ledger bytes.
 
+## 2026-11-11 — Debian first-desktop credential bootstrap preparation
+
+Continue the package milestone after the user-requested progress assessment.
+TUF's existing password-authenticated SSH master works; the shared VM run lock
+is free and available memory is 44 GiB. The preceding status answer made no
+implementation/acceptance progress. Select the package's first desktop startup
+after sessionless password provisioning before administrator-mask/upgrade cases:
+it directly decides the remaining bootstrap condition of the accepted credential
+correction, using the retained 6429f3cb application without a new full build.
+
+Extend the existing dependency-complete package scenario. Prepare authenticated
+Xvfb inputs in its bounded ordinary-user guest container and take XKB data from
+the pinned image. Guest-only Xvfb/xkbcomp wrappers select a private library path;
+do not install the settings fixture's global libraries or change loader config.
+The actual package must retain its APT dependencies. The native scenario opens
+a real PAM/logind X11 session, proves the exact service child and unchanged
+supervisor/credential, completes CPace with the preexisting password, observes
+receiver-confirmed wrong-password refusal and successful recovery, then closes
+PAM and waits for exact child exit/reap and record retirement. Existing ordinary
+user refusal and reinstall/remove/purge follow. Probe input provenance checks
+are shared unchanged with the installed-settings path. Product maps/environment
+must exclude the private fixture runtime. This prepares evidence; no new product
+behavior or native acceptance is claimed before execution.
+
+Primary research: Debian's Xvfb(1) documents the hardware-independent X server
+and memory framebuffer; pam_systemd(8) establishes actual logind session/scope
+registration and closing semantics; ld.so(8) documents direct loader invocation
+and per-invocation library search. Those support reusing the real session fixture
+while keeping private X11 dependencies out of product loading:
+https://manpages.debian.org/bookworm/xvfb/Xvfb.1.en.html
+https://manpages.debian.org/bookworm/libpam-systemd/pam_systemd.8.en.html
+https://manpages.debian.org/bookworm/manpages/ld.so.8.en.html
+
 ## 2026-10-31 — user pivot; native Linux clipboard text transfer
 
 The user directs work to another aspect. Network-impairment/recovery diagnostics

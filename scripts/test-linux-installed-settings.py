@@ -217,8 +217,11 @@ def prepare_package(single=False):
         'dpkg_deb_sha256': digest('/usr/bin/dpkg-deb'),
         'scope': 'retained-application-packaging-only', 'builds': len(archives),
     }, sort_keys=True), flush=True)
+    if single:
+        print(run(['/bin/bash', '/work/scripts/smoke-xvfb-prepare.sh'], timeout=60), end='', flush=True)
+        shutil.copytree('/usr/share/X11/xkb', '/out/xkb')
     records = {str(p.relative_to('/out')): {'sha256': digest(p), 'bytes': p.stat().st_size}
-               for p in Path('/out').iterdir() if p.is_file()}
+               for p in Path('/out').rglob('*') if p.is_file()}
     if sum(r['bytes'] for r in records.values()) > 268435456:
         raise RuntimeError('candidate packages exceed 256 MiB')
     Path('/out/manifest.json').write_text(json.dumps(records, sort_keys=True))
@@ -230,7 +233,7 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
     os.chown(prepared, 1000, 1000)
     mounts = [(str(source), '/work', True), (str(execution), '/app', True),
               (str(prepared), '/out', False)]
-    for kind in (() if package else ('xvfb', 'atspi')):
+    for kind in (('xvfb',) if package_install else () if package else ('xvfb', 'atspi')):
         mounts.append((str(source / 'online/inputs' / (kind + '-debs')), f'/{kind}-inputs', True))
         for suffix in ('debs', 'root'):
             path = WORK / f'{kind}-{suffix}'
@@ -1637,10 +1640,21 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     execution = Path(execution)
     prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical,
                                package=package or package_install, package_install=package_install)
+    if not package:
+        probe_manifest = MEDIA / 'settings-probe/peer-manifest.json'
+        probe = MEDIA / 'settings-probe/probe_client'
+        if (digest(probe_manifest) != probe_manifest_sha or digest(probe) != probe_sha
+                or probe.stat().st_size != int(probe_size)):
+            raise RuntimeError('retained CPace probe input identity differs')
+        probe_record = json.loads(probe_manifest.read_text())
+        if (probe_record['context']['source_commit'] != probe_commit
+                or probe_record['files']['probe_client'] != {'bytes': int(probe_size), 'sha256': probe_sha}):
+            raise RuntimeError('retained CPace probe provenance differs')
+        install(probe, receiver.PROBE, 0o755)
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')), '--run', str(source),
-                        str(prepared), str(app_input), manifest_sha, commit],
+                        str(prepared), str(app_input), manifest_sha, commit, probe_sha],
                        env=ENV, check=True, timeout=600)
         return
     if package:
@@ -1670,16 +1684,6 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     Path('/usr/bin/rustdesk').symlink_to('../share/rustdesk/rustdesk')
     install(provider / 'libxdo.so.3', '/usr/lib/rustdesk-fork/libxdo.so.3')
     Path('/usr/lib/rustdesk-fork').chmod(0o755)
-    probe_manifest = MEDIA / 'settings-probe/peer-manifest.json'
-    probe = MEDIA / 'settings-probe/probe_client'
-    if (digest(probe_manifest) != probe_manifest_sha or digest(probe) != probe_sha
-            or probe.stat().st_size != int(probe_size)):
-        raise RuntimeError('retained CPace probe input identity differs')
-    probe_record = json.loads(probe_manifest.read_text())
-    if (probe_record['context']['source_commit'] != probe_commit
-            or probe_record['files']['probe_client'] != {'bytes': int(probe_size), 'sha256': probe_sha}):
-        raise RuntimeError('retained CPace probe provenance differs')
-    install(probe, receiver.PROBE, 0o755)
     try:
         pwd.getpwuid(4003)
     except KeyError:

@@ -20,6 +20,7 @@ import socket
 import stat
 import subprocess
 import sys
+import tarfile
 import termios
 import time
 
@@ -29,6 +30,8 @@ WORK = Path('/var/tmp/rustdesk-linux-service-receiver')
 ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 BASELINE_PASSWORD = 'Installed-baseline-2026!'
 GUI_PASSWORD = 'InstalledGui2026'
+GRAPHICAL_AGENT = Path('/usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1')
+GRAPHICAL_AGENT_SHA = '2a7cec811453d11b56cde55a4fba340767c7e996931179a474d4e5d5fcb70df0'
 STAGES = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied',
           'reopen', 'fill', 'submit-approved', 'applied', 'reopen', 'submit', 'denied')
 RESTART_STAGES = ('open', 'fill', 'submit', 'failed', 'reopen', 'submit', 'denied')
@@ -93,7 +96,7 @@ def install(source, target, mode=0o644):
         raise RuntimeError(f'installed copy differs: {target}')
 
 
-def prepare():
+def prepare(graphical=False):
     if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
         raise RuntimeError('settings runtime preparation requires the ordinary isolated container')
     print(run(['/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-installed-settings-log.py']),
@@ -107,6 +110,12 @@ def prepare():
              '/work/scripts/linux-installed-settings-x11.c', *flags, '-o', f'/out/driver-{copy}'], timeout=60)
     if digest('/out/driver-first') != digest('/out/driver-second'):
         raise RuntimeError('repeated settings driver builds differ')
+    if graphical:
+        for copy in ('first', 'second'):
+            run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
+                 '/work/scripts/linux-polkit-dialog-x11.c', *flags, '-o', f'/out/agent-driver-{copy}'], timeout=60)
+        if digest('/out/agent-driver-first') != digest('/out/agent-driver-second'):
+            raise RuntimeError('repeated graphical-agent driver builds differ')
     libraries = Path('/out/libraries')
     libraries.mkdir()
     roots = []
@@ -159,7 +168,7 @@ def prepare():
     print(f'LINUX_INSTALLED_SETTINGS_PREPARED=pass driver_builds=2 equality=bytes runtime_files={len(records)}', flush=True)
 
 
-def prepare_runtime(source, execution, image, client, sock, config):
+def prepare_runtime(source, execution, image, client, sock, config, graphical=False):
     prepared = WORK / 'prepared'
     prepared.mkdir(mode=0o700)
     os.chown(prepared, 1000, 1000)
@@ -185,7 +194,8 @@ def prepare_runtime(source, execution, image, client, sock, config):
             '--tmpfs=/tmp:rw,noexec,nosuid,nodev,size=128m,mode=700,uid=1000,gid=1000']
     for host, target, readonly in mounts:
         args += ['--mount', f'type=bind,source={host},target={target},bind-recursive=disabled' + (',readonly' if readonly else '')]
-    args += [image, '/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-linux-installed-settings.py', '--prepare']
+    args += [image, '/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-linux-installed-settings.py',
+             '--prepare-graphical' if graphical else '--prepare']
     container = docker(args).strip()
     if re.fullmatch('[0-9a-f]{64}', container) is None:
         raise RuntimeError('settings preparation container identity differs')
@@ -244,6 +254,8 @@ def install_runtime(prepared):
                 install(path, destination / path.relative_to(prepared / name))
     install(prepared / 'fc-match', WORK / 'fc-match', 0o755)
     install(prepared / 'driver-first', WORK / 'settings-driver', 0o755)
+    if (prepared / 'agent-driver-first').exists():
+        install(prepared / 'agent-driver-first', WORK / 'agent-driver', 0o755)
     install(prepared / '50_mesa.json', '/usr/share/glvnd/egl_vendor.d/50_mesa.json')
     # Xvfb starts with the receiver's closed environment, before the GUI environment.
     install(prepared / 'libraries/swrast_dri.so', '/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so')
@@ -280,7 +292,36 @@ def retire_children():
         time.sleep(0.05)
 
 
-def session(restarted=False, uncertain=False, admin_failure=False):
+def install_graphical_agent(archive_sha):
+    archive = MEDIA / 'polkit-agent-candidate.tar.gz'
+    if archive.stat().st_size != 65409 or digest(archive) != archive_sha:
+        raise RuntimeError('graphical agent archive identity differs')
+    filename = 'policykit-1-gnome_0.105-8_amd64.deb'
+    with tarfile.open(archive, 'r:gz') as tar:
+        members = tar.getmembers()
+        if (sorted(m.name for m in members) != ['contract', 'manifest.tsv', 'packages/' + filename]
+                or any(not m.isfile() or m.uid != 0 or m.gid != 0 or m.mode != 0o400
+                       or m.size > 65536 for m in members)):
+            raise RuntimeError('graphical agent archive inventory differs')
+        package = tar.extractfile('packages/' + filename).read()
+    if (len(package) != 64908 or hashlib.sha256(package).hexdigest() !=
+            'e6694d1c1ad3c81c4803882fe797497668adbc2f0735651f20a02ff656475fb5'):
+        raise RuntimeError('publisher-pinned graphical package differs')
+    path = WORK / filename
+    with path.open('xb') as stream:
+        stream.write(package)
+    extracted = WORK / 'graphical-agent-package'
+    run(['/usr/bin/dpkg-deb', '--extract', str(path), str(extracted)])
+    install(extracted / GRAPHICAL_AGENT.relative_to('/'), GRAPHICAL_AGENT, 0o755)
+    if digest(GRAPHICAL_AGENT) != GRAPHICAL_AGENT_SHA:
+        raise RuntimeError('packaged graphical agent executable differs')
+    listing = run([*ordinary(4001), '/usr/bin/ldd', str(GRAPHICAL_AGENT)])
+    if 'not found' in listing:
+        raise RuntimeError('installed graphical agent dependencies are incomplete: ' + listing)
+    print(f'LINUX_INSTALLED_GRAPHICAL_AGENT=pass package=0.105-8 sha256={GRAPHICAL_AGENT_SHA}', flush=True)
+
+
+def session(restarted=False, uncertain=False, admin_failure=False, graphical=False):
     guard(4001)
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), 'cannot retain GUI descendants')
@@ -289,7 +330,7 @@ def session(restarted=False, uncertain=False, admin_failure=False):
                    'XDG_RUNTIME_DIR': '/run/user/4001', 'XDG_SESSION_TYPE': 'x11',
                    'XDG_DATA_DIRS': '/usr/local/share:/usr/share', 'GDK_BACKEND': 'x11',
                    'LIBGL_ALWAYS_SOFTWARE': '1', 'LIBGL_DRIVERS_PATH': '/usr/local/lib/rustdesk-settings-fixture'}
-    bus = app = None
+    bus = app = agent = None
     try:
         font = run([str(WORK / 'fc-match'), '-f', '%{file}', 'sans-serif'], env=environment).strip()
         if not font.startswith('/usr/share/fonts/truetype/dejavu/') or not Path(font).is_file():
@@ -304,7 +345,13 @@ def session(restarted=False, uncertain=False, admin_failure=False):
         if not address.startswith('unix:'):
             raise RuntimeError('owned session bus is not local')
         environment['DBUS_SESSION_BUS_ADDRESS'] = address
-        app = subprocess.Popen(['/usr/share/rustdesk/rustdesk'], env=environment,
+        if graphical:
+            agent = subprocess.Popen([str(GRAPHICAL_AGENT)], env=environment,
+                                     stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
+        app_command = ['/usr/share/rustdesk/rustdesk']
+        if graphical:
+            app_command = ['/usr/bin/setpriv', '--no-new-privs', *app_command]
+        app = subprocess.Popen(app_command, env=environment,
                                stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
         stages = (ADMIN_FAILURE_STAGES if admin_failure else UNCERTAIN_STAGES if uncertain
                   else RESTART_STAGES if restarted else STAGES)
@@ -314,11 +361,22 @@ def session(restarted=False, uncertain=False, admin_failure=False):
             print(output, end='', file=sys.stderr, flush=True)
             if app.poll() is not None:
                 raise RuntimeError('GUI exited during the settings workflow')
-            print(json.dumps({'stage': stage, 'pid': app.pid}), flush=True)
-            if sys.stdin.readline() != 'continue\n':
+            print(json.dumps({'stage': stage, 'pid': app.pid,
+                              **({'agent_pid': agent.pid if agent is not None else None} if graphical else {})}), flush=True)
+            command = sys.stdin.readline()
+            if graphical and command in ('cancel\n', 'authenticate\n') and agent is not None:
+                if agent.poll() is not None:
+                    raise RuntimeError('graphical authentication agent exited before its dialog action')
+                print(run([str(WORK / 'agent-driver'), str(agent.pid), command.strip()], env=environment,
+                          timeout=40, output_limit=524288), end='', file=sys.stderr, flush=True)
+            elif graphical and command == 'retire-agent\n' and agent is not None:
+                agent.terminate()
+                agent.wait(timeout=8)
+                agent = None
+            elif command != 'continue\n':
                 raise RuntimeError('GUI scenario lost its owning controller')
     finally:
-        for process in (app, bus):
+        for process in (app, agent, bus):
             if process is not None:
                 if process.poll() is None:
                     process.terminate()
@@ -807,7 +865,7 @@ def scenario(receiver, probe_sha):
                 wait_network_retirement(network_before)
 
 
-def admin_failure_scenario(receiver, probe_sha):
+def admin_failure_scenario(receiver, probe_sha, graphical=None):
     unit = Path('/etc/systemd/system/rustdesk.service')
     if unit.exists():
         raise RuntimeError('administrator failure scenario requires absent initial service state')
@@ -817,6 +875,7 @@ def admin_failure_scenario(receiver, probe_sha):
     authorization = ExitStack()
     process = None
     requester = committed = profile_before = authority = None
+    helper_fd = helper = helper_start = cancelled_at = agent_identity = None
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
         record = receiver.ready()
@@ -826,9 +885,18 @@ def admin_failure_scenario(receiver, probe_sha):
         listener = receiver.direct_listener(record)
         if listener is None:
             raise RuntimeError('administrator failure baseline has no ready listener')
-        process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
-                                    str(SCRIPT), '--session-admin-failure'],
-                                   env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        if graphical is None:
+            process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
+                                        str(SCRIPT), '--session-admin-failure'],
+                                       env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        else:
+            process, session_id, pam = graphical
+            pam.properties({'process': process, 'session': session_id, 'uid': 4001, 'type': 'x11'}, 'active')
+            session_cgroup = Path(f'/proc/{process.pid}/cgroup').read_text()
+            if f'/session-{session_id}.scope\n' not in session_cgroup:
+                raise RuntimeError('graphical workflow is outside its real logind session')
+            process.stdin.write(b'application\n')
+            process.stdin.flush()
         for index, stage in enumerate(ADMIN_FAILURE_STAGES):
             if not select.select([process.stdout], [], [], 45)[0]:
                 raise RuntimeError('administrator failure GUI stage timed out')
@@ -852,6 +920,24 @@ def admin_failure_scenario(receiver, probe_sha):
                                                  'current_record': current_record, 'expected_listener': listener,
                                                  'current_listener': current_listener}, sort_keys=True))
             requester = identity
+            if graphical is not None:
+                if (proc / 'cgroup').read_text() != session_cgroup:
+                    raise RuntimeError('GUI left the native desktop session')
+                if index <= 7:
+                    agent_proc = Path(f'/proc/{event["agent_pid"]}')
+                    agent_start = int((agent_proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19])
+                    current_agent = (event['agent_pid'], agent_start)
+                    agent_status = dict(line.split(':', 1) for line in (agent_proc / 'status').read_text().splitlines() if ':' in line)
+                    if ((agent_identity is not None and agent_identity != current_agent)
+                            or not (agent_proc / 'exe').samefile(GRAPHICAL_AGENT)
+                            or (agent_proc / 'cgroup').read_text() != session_cgroup
+                            or agent_status['Uid'].split() != ['4001'] * 4
+                            or agent_status['NoNewPrivs'].strip() != '0'
+                            or any(int(agent_status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))):
+                        raise RuntimeError('graphical agent identity or session changed')
+                    agent_identity = current_agent
+                elif event['agent_pid'] is not None or Path(f'/proc/{agent_identity[0]}').exists():
+                    raise RuntimeError('graphical agent was not reaped before fresh no-agent refusal')
             if stage == 'applied':
                 committed = receiver.credential()
                 if committed == before:
@@ -860,38 +946,70 @@ def admin_failure_scenario(receiver, probe_sha):
                 raise RuntimeError('administrator failure changed the credential without authorized GUI success')
             if profile_before is not None and user_credential() != profile_before:
                 raise RuntimeError('administrator failure or retry wrote a user-profile credential')
+            command = b'continue\n'
             if index == 1:
                 profile_before = user_credential()
-                authority = authorization.enter_context(administrator(receiver, requester))
+                if graphical is None:
+                    authority = authorization.enter_context(administrator(receiver, requester))
             elif index == 2:
-                authenticate(receiver, authority, requester, record, before, incorrect_password=True)
+                if graphical is None:
+                    authenticate(receiver, authority, requester, record, before, incorrect_password=True)
+                else:
+                    helper, helper_start = receiver.pending_admin_helper(*requester, record)
+                    helper_fd = os.pidfd_open(int(helper.name))
+                    if (int((helper / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]) != helper_start
+                            or select.select([helper_fd], [], [], 0)[0]):
+                        raise RuntimeError('graphical cancellation lost the pending authorization helper')
+                    cancelled_at = time.monotonic()
+                    command = b'cancel\n'
             elif index == 3:
-                service_refusals(record, *requester, 1, exit_status=1)
+                service_refusals(record, *requester, 1, exit_status=3 if graphical is not None else 1)
+                if graphical is not None:
+                    if (not select.select([helper_fd], [], [], 0)[0] or helper.exists()
+                            or time.monotonic() - cancelled_at >= 10):
+                        raise RuntimeError('cancelled graphical authorization did not promptly reap its helper')
+                    print('LINUX_INSTALLED_SETTINGS_GRAPHICAL_CANCEL=' + json.dumps({
+                        'requester': requester, 'agent': agent_identity, 'helper': [int(helper.name), helper_start],
+                        'session': session_id, 'cgroup': session_cgroup, 'helper_reaped': True,
+                        'protected_unchanged': True, 'seconds': time.monotonic() - cancelled_at}, sort_keys=True), flush=True)
                 receiver.keyed(BASELINE_PASSWORD, 'gui-admin-failure-preserved', record, probe_sha)
             elif stage == 'submit-approved':
                 # Reuse the registered agent: this must produce a fresh actual PAM challenge.
-                authenticate(receiver, authority, requester, record, before)
+                if graphical is None:
+                    authenticate(receiver, authority, requester, record, before)
+                else:
+                    receiver.pending_admin_helper(*requester, record)
+                    command = b'authenticate\n'
             elif stage == 'applied':
                 authorization.close()
+                if graphical is not None:
+                    command = b'retire-agent\n'
             elif index == 10:
-                service_refusals(record, *requester, 1, exit_status=1)
+                service_refusals(record, *requester, 1, exit_status=3 if graphical is not None else 1)
                 service_refusals(record, *requester, 1)
             print('LINUX_INSTALLED_SETTINGS_ADMIN_STAGE=' + json.dumps({**event, 'index': index,
                   'requester_start': requester[1], 'service_generation': record['generation'],
                   'credential': 'committed' if committed is not None else 'baseline',
                   'profile_unchanged': user_credential() == profile_before if profile_before is not None else None},
                   sort_keys=True), flush=True)
-            process.stdin.write(b'continue\n')
+            process.stdin.write(command)
             process.stdin.flush()
-        if process.wait(timeout=15) != 0 or committed is None or receiver.credential() != committed:
+        if graphical is not None:
+            if pam.reply(process) != {'session': session_id, 'phase': 'application-closed'}:
+                raise RuntimeError('PAM-owned graphical application did not retire')
+        elif process.wait(timeout=15) != 0:
+            raise RuntimeError('administrator failure GUI did not retire')
+        if committed is None or receiver.credential() != committed:
             raise RuntimeError('administrator failure workflow did not retire with its committed credential')
         credential_network(receiver, record, probe_sha, 'gui-admin-failure-retry')
     finally:
         try:
             authorization.close()
+            if helper_fd is not None:
+                os.close(helper_fd)
         finally:
             try:
-                if process is not None:
+                if process is not None and graphical is None:
                     if process.poll() is None:
                         process.stdin.close()
                         process.wait(timeout=50)
@@ -1069,8 +1187,10 @@ def uncertain_scenario(receiver, probe_sha):
                     wait_network_retirement(network_before)
 
 
-def main(arguments, uncertain=False, admin_failure=False):
+def main(arguments, uncertain=False, admin_failure=False, graphical=False):
     guard()
+    if graphical:
+        arguments, agent_archive_sha = arguments[:-1], arguments[-1]
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
     source, app_input, provider = Path(source), Path(app_input), Path(provider)
@@ -1091,9 +1211,11 @@ def main(arguments, uncertain=False, admin_failure=False):
     if execution != str(parent / 'materialized-flutter-app'):
         raise RuntimeError('materialized app destination differs')
     execution = Path(execution)
-    prepared = prepare_runtime(source, execution, image, client, sock, config)
+    prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical)
     receiver.install_polkit(archive_sha, polkit_manifest)
     install_runtime(prepared)
+    if graphical:
+        install_graphical_agent(agent_archive_sha)
     manifest = json.loads((app_input / 'app-manifest.json').read_text())
     if digest(app_input / 'app-manifest.json') != manifest_sha or manifest['context'] != json.loads(context):
         raise RuntimeError('installed app manifest changed')
@@ -1132,7 +1254,11 @@ def main(arguments, uncertain=False, admin_failure=False):
     try:
         receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
         scenario_function = admin_failure_scenario if admin_failure else uncertain_scenario if uncertain else scenario
-        receiver.installed_desktop(lambda: scenario_function(receiver, probe_sha), settings=True)
+        if graphical:
+            receiver.installed_desktop(lambda actor, session, pam: admin_failure_scenario(
+                receiver, probe_sha, graphical=(actor, session, pam)), settings=True, session_controller=True)
+        else:
+            receiver.installed_desktop(lambda: scenario_function(receiver, probe_sha), settings=True)
     finally:
         run(['/usr/sbin/userdel', 'rdreceiver4003'])
     for name, record in manifest['files'].items():
@@ -1140,7 +1266,12 @@ def main(arguments, uncertain=False, admin_failure=False):
             raise RuntimeError('installed application changed during execution')
     if digest(receiver.PROBE) != probe_sha:
         raise RuntimeError('CPace probe changed during the installed workflow')
-    if admin_failure:
+    if graphical:
+        print(f'LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
+              'ui=actual service=actual cancellation=gtk-dialog authorization=polkit-pam '
+              'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
+              'cpace=4 stale_refusals=1 cleanup=joined', flush=True)
+    elif admin_failure:
         print(f'LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam '
               'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
@@ -1159,6 +1290,8 @@ def main(arguments, uncertain=False, admin_failure=False):
 if __name__ == '__main__':
     if sys.argv[1:] == ['--prepare']:
         prepare()
+    elif sys.argv[1:] == ['--prepare-graphical']:
+        prepare(graphical=True)
     elif sys.argv[1:] == ['--session']:
         session()
     elif sys.argv[1:] == ['--session-restart']:
@@ -1167,6 +1300,10 @@ if __name__ == '__main__':
         session(uncertain=True)
     elif sys.argv[1:] == ['--session-admin-failure']:
         session(admin_failure=True)
+    elif sys.argv[1:] == ['--session-graphical']:
+        session(admin_failure=True, graphical=True)
+    elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
+        main(sys.argv[2:], graphical=True)
     elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure')

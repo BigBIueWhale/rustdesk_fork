@@ -144839,3 +144839,25 @@ metadata must independently agree with the publisher pin before publication.
 The existing runtime closure, cached app and resource/isolation policy remain.
 Acquisition is prepared, not accepted; actual graphical dependency loading,
 session-agent registration, Cancel/Denied and fresh successful retry remain open.
+
+Acquisition `R0Pl9CJAP6` at `54fffa6d` subsequently exits zero in 53 seconds.
+Signed snapshot metadata matches the publisher's package bytes. The three-member
+archive is 65,409 bytes, SHA-256
+`eee72c754f3236838b1c1965b08f16c75b87774dac36bdebfda1a44ecfc42877`.
+The success receipt binds the source, guest/entry/buildx identities, captured output,
+no added host listeners and joined cleanup. The private run and RAM workspace
+are absent on reinspection. Receipt, complete serial and archive total 135,295
+bytes and match on CTE/TUF; this is acquisition acceptance, not GUI acceptance.
+
+The preceding user-facing turn was a completion assessment; it made no product
+progress. Resume the same unproved outcome. Upstream
+[polkit-gnome 0.105 source](https://download.gnome.org/sources/polkit-gnome/0.105/polkit-gnome-0.105.tar.xz)
+registers the agent for its actual Unix login session and maps dialog dismissal to
+authentication cancellation. The new fixture therefore launches GUI and packaged
+agent as descendants of the real PAM actor, verifies their common session cgroup,
+and drives GTK Cancel followed by a fresh PAM-authenticated change in the same
+GUI/agent. The GUI keeps no-new-privileges; the ordinary agent retains the packaged
+setuid PAM helper path inside the disposable VM. Root policy is unchanged.
+Preparation is unaccepted until the exact installed application completes the
+dialog, root-helper retirement, credential preservation, fresh grant, CPace and
+joined-cleanup observations. No product rebuild or host installation is needed.

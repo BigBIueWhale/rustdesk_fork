@@ -2435,7 +2435,7 @@ def network_shutdown(value, record, probe_sha):
             os.close(fd)
 
 
-def installed_desktop(scenario, close_session=False, settings=False):
+def installed_desktop(scenario, close_session=False, settings=False, session_controller=False):
     pam = pam_module()
     confdir = WORK / "pam"
     confdir.mkdir(mode=0o700)
@@ -2463,7 +2463,7 @@ def installed_desktop(scenario, close_session=False, settings=False):
             if actor.poll() is not None or time.monotonic() >= deadline:
                 raise RuntimeError("PAM-owned desktop did not start")
             time.sleep(0.05)
-        if close_session:
+        if close_session or session_controller:
             scenario(actor, session, pam)
         else:
             scenario()
@@ -4862,7 +4862,13 @@ def actor(uid=4001, display=77, settings=False):
     # command creates its authority file after that session is registered.
     command = ["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)),
                "--settings-desktop" if settings else "--desktop" if uid == 4001 else "--handoff-desktop"]
-    pam_module().pam_actor(f"rdreceiver{uid}", "x11", WORK / "pam", display=f":{display}", desktop_command=command)
+    application = None
+    if settings:
+        application = ["/usr/bin/setpriv", "--reuid=4001", "--regid=4001", "--clear-groups",
+                       "--inh-caps=-all", "--ambient-caps=-all", "/usr/bin/python3", "-B", "-I", "-S",
+                       str(MEDIA / "repo/scripts/test-linux-installed-settings.py"), "--session-graphical"]
+    pam_module().pam_actor(f"rdreceiver{uid}", "x11", WORK / "pam", display=f":{display}",
+                          desktop_command=command, application_command=application)
 
 
 def desktop(uid=4001, display=77, settings=False):

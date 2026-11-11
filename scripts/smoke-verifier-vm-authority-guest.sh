@@ -329,6 +329,7 @@ case "$#:${8:-}" in
                 --installed-settings) FLUTTER_INSTALLED_SETTINGS=1 ;;
                 --installed-settings-uncertain) FLUTTER_INSTALLED_SETTINGS=2 ;;
                 --installed-settings-admin-failure) FLUTTER_INSTALLED_SETTINGS=3 ;;
+                --installed-settings-graphical) FLUTTER_INSTALLED_SETTINGS=4 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -14790,6 +14791,11 @@ run_flutter_peer_presentation() {
         settings_mode=--run
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 2 ] || settings_mode=--run-uncertain
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 3 ] || settings_mode=--run-admin-failure
+        settings_extra=()
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
+            settings_mode=--run-graphical
+            settings_extra+=("$POLKIT_AGENT_ARCHIVE_SHA256")
+        fi
         set +e
         /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/test-linux-installed-settings.py" \
             "$settings_mode" "$source_root" "$app_input/linux-x86_64-flutter-app" \
@@ -14797,7 +14803,7 @@ run_flutter_peer_presentation() {
             "$provider_installed" "$DEV_CHECK_IMAGE_CONFIG_ID" "$CLIENT" "$SOCK" "$CONFIG_ROOT" \
             "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256" "$POLKIT_RUNTIME_CANDIDATE_MANIFEST_SHA256" \
             "$INSTALLED_SETTINGS_PROBE_COMMIT" "$INSTALLED_SETTINGS_PROBE_MANIFEST_SHA256" \
-            "$INSTALLED_SETTINGS_PROBE_SHA256" "$INSTALLED_SETTINGS_PROBE_SIZE" \
+            "$INSTALLED_SETTINGS_PROBE_SHA256" "$INSTALLED_SETTINGS_PROBE_SIZE" "${settings_extra[@]}" \
             2>&1 | tee "$output"
         peer_status=${PIPESTATUS[0]}
         set -e

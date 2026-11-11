@@ -39,7 +39,7 @@ def guard():
         raise RuntimeError("this fixture requires the owned zero-NIC systemd verifier VM")
 
 
-def pam_actor(username, session_type, confdir, display=None, desktop_command=None):
+def pam_actor(username, session_type, confdir, display=None, desktop_command=None, application_command=None):
     # Linux-PAM 1.5.2 pam_appl.h/_pam_types.h; one PAM session per retained process.
     # systemd v252 pam_systemd.c intentionally retains the FIFO until process exit.
     callback_type = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int,
@@ -70,7 +70,7 @@ def pam_actor(username, session_type, confdir, display=None, desktop_command=Non
                               ctypes.byref(conversation), os.fsencode(confdir),
                               ctypes.byref(handle)))
     opened = closed = False
-    desktop = None
+    desktop = application = None
     try:
         check(pam.pam_putenv(handle, f"XDG_SESSION_TYPE={session_type}".encode()))
         check(pam.pam_putenv(handle, b"XDG_SESSION_CLASS=user"))
@@ -91,7 +91,14 @@ def pam_actor(username, session_type, confdir, display=None, desktop_command=Non
             response["desktop_pid"] = desktop.pid
         print(json.dumps(response), flush=True)
         for line in sys.stdin:
-            if line == "close\n" and not closed:
+            if line == "application\n" and application_command is not None and application is None and not closed:
+                # The application inherits this actual PAM/logind session and the controller's pipes.
+                application = subprocess.Popen(application_command, env=ENV, stdin=sys.stdin,
+                                               stdout=sys.stdout, stderr=sys.stderr)
+                if application.wait(timeout=180) != 0:
+                    raise RuntimeError("PAM-owned application failed")
+                print(json.dumps({"session": session, "phase": "application-closed"}), flush=True)
+            elif line == "close\n" and not closed:
                 check(pam.pam_close_session(handle, 0))
                 closed = True
                 print(json.dumps({"session": session, "phase": "closed"}), flush=True)
@@ -103,6 +110,9 @@ def pam_actor(username, session_type, confdir, display=None, desktop_command=Non
             raise RuntimeError("PAM actor lost its owning controller")
     finally:
         try:
+            if application is not None and application.poll() is None:
+                application.terminate()
+                application.wait(timeout=10)
             if desktop is not None:
                 if desktop.poll() is None:
                     desktop.terminate()

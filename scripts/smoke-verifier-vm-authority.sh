@@ -749,6 +749,7 @@ case "$#:${1:-}" in
                 --installed-settings) FLUTTER_INSTALLED_SETTINGS=1 ;;
                 --installed-settings-uncertain) FLUTTER_INSTALLED_SETTINGS=2 ;;
                 --installed-settings-admin-failure) FLUTTER_INSTALLED_SETTINGS=3 ;;
+                --installed-settings-graphical) FLUTTER_INSTALLED_SETTINGS=4 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -1766,6 +1767,20 @@ installed_settings_input_inventory() {
              "$HOST_UID:$HOST_GID:400:1:$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
         || fail 'installed settings runtime archive authority differs'
     verify_sha256 "$archive" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
+        local agent=$REPO_ROOT/online/candidates/polkit-agent/polkit-agent-candidate.tar.gz
+        [ -d "${agent%/*}" ] && [ ! -L "${agent%/*}" ] \
+            && [ "$(/usr/bin/readlink -f -- "${agent%/*}")" = "${agent%/*}" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "${agent%/*}")" = "$HOST_UID:$HOST_GID:700" ] \
+            && [ -f "$agent" ] && [ ! -L "$agent" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$agent")" = "$HOST_UID:$HOST_GID:400:1:$POLKIT_AGENT_ARCHIVE_SIZE" ] \
+            || fail 'installed graphical agent input authority differs'
+        verify_sha256 "$agent" "$POLKIT_AGENT_ARCHIVE_SHA256"
+        /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$agent"
+        /usr/bin/sha256sum -- "$agent"
+        verify_committed_test_source "$SCRIPT_DIR/linux-polkit-dialog-x11.c"
+        /usr/bin/sha256sum -- "$SCRIPT_DIR/linux-polkit-dialog-x11.c"
+    fi
     git_closed -C "$REPO_ROOT" diff --quiet "$FLUTTER_APP_COMMIT" HEAD -- \
         src libs flutter Cargo.toml Cargo.lock build.rs .cargo res \
         || fail 'installed settings app production sources differ from the current source'
@@ -5209,6 +5224,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_PEER_SOURCE_ARCHIVE")
     if [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
+            lifecycle_payload_grafts+=("polkit-agent-candidate.tar.gz=$REPO_ROOT/online/candidates/polkit-agent/polkit-agent-candidate.tar.gz")
+        fi
         lifecycle_payload_grafts+=(
             "settings-probe/probe_client=$REPO_ROOT/.harness-state/android-peer-artifacts/$INSTALLED_SETTINGS_PROBE_COMMIT/linux-x86_64-peer/probe_client"
             "settings-probe/peer-manifest.json=$REPO_ROOT/.harness-state/android-peer-artifacts/$INSTALLED_SETTINGS_PROBE_COMMIT/linux-x86_64-peer/peer-manifest.json"
@@ -5545,7 +5563,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
+            guest_invocation+=' --installed-settings-graphical'
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
             guest_invocation+=' --installed-settings-admin-failure'
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
             guest_invocation+=' --installed-settings-uncertain'
@@ -9316,7 +9336,11 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=gtk-dialog authorization=polkit-pam helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent cpace=4 stale_refusals=1 cleanup=joined" \
+            'installed graphical cancellation and fresh authorized retry'
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
         require_exact_fixed_receipt \
             "LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent cpace=4 stale_refusals=1 cleanup=joined" \
             'installed GUI incorrect administrator password and fresh authorized retry'

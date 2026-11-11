@@ -751,6 +751,7 @@ case "$#:${1:-}" in
                 --installed-settings-admin-failure) FLUTTER_INSTALLED_SETTINGS=3 ;;
                 --installed-settings-graphical) FLUTTER_INSTALLED_SETTINGS=4 ;;
                 --installed-settings-concurrent-stop) FLUTTER_INSTALLED_SETTINGS=5 ;;
+                --debian-candidate-package) FLUTTER_INSTALLED_SETTINGS=6 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -5564,7 +5565,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ]; then
+            guest_invocation+=' --debian-candidate-package'
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
             guest_invocation+=' --installed-settings-concurrent-stop'
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             guest_invocation+=' --installed-settings-graphical'
@@ -9339,7 +9342,11 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_DEBIAN_CANDIDATE_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 packages=2 equality=bytes constructor=production archive=validated payloads=unchanged install=unexecuted app_build=absent cleanup=joined" \
+            'retained Linux application packaged by the production Debian constructor'
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
         require_exact_fixed_receipt \
             "LINUX_INSTALLED_SETTINGS_CONCURRENT_STOP_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 clients=actual-root-cli service=actual queued=2 shutdown=systemctl barrier=ptrace stop_deadline=extended outcomes=Applied post_stop=refused restart=retained cpace=3 stale_refusals=1 cleanup=joined" \
             'installed concurrent credential changes through normal service stop'

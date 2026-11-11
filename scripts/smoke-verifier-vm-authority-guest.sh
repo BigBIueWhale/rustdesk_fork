@@ -331,6 +331,7 @@ case "$#:${8:-}" in
                 --installed-settings-admin-failure) FLUTTER_INSTALLED_SETTINGS=3 ;;
                 --installed-settings-graphical) FLUTTER_INSTALLED_SETTINGS=4 ;;
                 --installed-settings-concurrent-stop) FLUTTER_INSTALLED_SETTINGS=5 ;;
+                --debian-candidate-package) FLUTTER_INSTALLED_SETTINGS=6 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -14793,6 +14794,7 @@ run_flutter_peer_presentation() {
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 2 ] || settings_mode=--run-uncertain
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 3 ] || settings_mode=--run-admin-failure
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 5 ] || settings_mode=--run-concurrent-stop
+        [ "$FLUTTER_INSTALLED_SETTINGS" -ne 6 ] || settings_mode=--run-package
         settings_extra=()
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             settings_mode=--run-graphical

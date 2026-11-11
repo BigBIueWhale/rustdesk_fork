@@ -13,6 +13,7 @@ from pathlib import Path
 import pty
 import pwd
 import re
+import runpy
 import select
 import shutil
 import signal
@@ -175,13 +176,61 @@ def prepare(graphical=False):
     print(f'LINUX_INSTALLED_SETTINGS_PREPARED=pass driver_builds=2 equality=bytes runtime_files={len(records)}', flush=True)
 
 
-def prepare_runtime(source, execution, image, client, sock, config, graphical=False):
+def prepare_package():
+    if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
+        raise RuntimeError('candidate packaging requires the ordinary isolated container')
+    os.chdir('/work')
+    epoch, = re.findall(r'^SOURCE_DATE_EPOCH_PIN="([0-9]+)"$', Path('scripts/pins.env').read_text(), re.M)
+    os.environ['SOURCE_DATE_EPOCH'] = epoch
+    os.environ['DPKG_DEB_THREADS_MAX'] = '2'
+    module = runpy.run_path('/work/build.py')
+    version = module['get_version']()
+    bundle = Path('/app/bundle')
+    original = {str(p.relative_to(bundle)): digest(p) for p in bundle.rglob('*') if p.is_file()}
+    archives = []
+    for name in ('first', 'second'):
+        stage = Path('/out') / (name + '-stage')
+        archive = Path('/out') / (name + '.deb')
+        module['package_flutter_deb'](version, bundle, stage, archive)
+        print(run(['/usr/bin/python3', '-B', '-I', '-S',
+                   '/work/scripts/verify-debian-package-authority.py', '--repo', '/work',
+                   '--deb', str(archive)], timeout=60), end='', flush=True)
+        extracted = Path('/out') / (name + '-extracted')
+        run(['/usr/bin/dpkg-deb', '--extract', str(archive), str(extracted)], timeout=60)
+        for relative, expected in original.items():
+            if digest(extracted / 'usr/share/rustdesk' / relative) != expected:
+                raise RuntimeError('candidate archive changed a retained application payload')
+        child = extracted / 'usr/share/rustdesk/rustdesk-service-child'
+        if digest(child) != original['rustdesk'] or stat.S_IMODE(child.stat().st_mode) != 0o711:
+            raise RuntimeError('candidate service-child image differs')
+        archives.append({'sha256': digest(archive), 'bytes': archive.stat().st_size})
+        shutil.rmtree(stage)
+        shutil.rmtree(extracted)
+    if archives[0] != archives[1]:
+        raise RuntimeError('independent packaging stages produced different archives')
+    if original != {str(p.relative_to(bundle)): digest(p) for p in bundle.rglob('*') if p.is_file()}:
+        raise RuntimeError('candidate packaging changed its retained application input')
+    print('LINUX_DEBIAN_CANDIDATE_PACKAGE=' + json.dumps({
+        'archive': archives[0], 'version': version, 'source_date_epoch': epoch,
+        'application_files': len(original), 'packager_sha256': digest('/work/build.py'),
+        'validator_sha256': digest('/work/scripts/verify-debian-package-authority.py'),
+        'dpkg_deb_sha256': digest('/usr/bin/dpkg-deb'),
+        'scope': 'retained-application-packaging-only', 'builds': 2,
+    }, sort_keys=True), flush=True)
+    records = {str(p.relative_to('/out')): {'sha256': digest(p), 'bytes': p.stat().st_size}
+               for p in Path('/out').iterdir() if p.is_file()}
+    if sum(r['bytes'] for r in records.values()) > 268435456:
+        raise RuntimeError('candidate packages exceed 256 MiB')
+    Path('/out/manifest.json').write_text(json.dumps(records, sort_keys=True))
+
+
+def prepare_runtime(source, execution, image, client, sock, config, graphical=False, package=False):
     prepared = WORK / 'prepared'
     prepared.mkdir(mode=0o700)
     os.chown(prepared, 1000, 1000)
     mounts = [(str(source), '/work', True), (str(execution), '/app', True),
               (str(prepared), '/out', False)]
-    for kind in ('xvfb', 'atspi'):
+    for kind in (() if package else ('xvfb', 'atspi')):
         mounts.append((str(source / 'online/inputs' / (kind + '-debs')), f'/{kind}-inputs', True))
         for suffix in ('debs', 'root'):
             path = WORK / f'{kind}-{suffix}'
@@ -202,7 +251,7 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
     for host, target, readonly in mounts:
         args += ['--mount', f'type=bind,source={host},target={target},bind-recursive=disabled' + (',readonly' if readonly else '')]
     args += [image, '/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-linux-installed-settings.py',
-             '--prepare-graphical' if graphical else '--prepare']
+             '--prepare-package' if package else '--prepare-graphical' if graphical else '--prepare']
     container = docker(args).strip()
     if re.fullmatch('[0-9a-f]{64}', container) is None:
         raise RuntimeError('settings preparation container identity differs')
@@ -1560,7 +1609,7 @@ def concurrent_stop_scenario(receiver, probe_sha):
                     os.close(fd)
 
 
-def main(arguments, uncertain=False, admin_failure=False, graphical=False, concurrent_stop=False):
+def main(arguments, uncertain=False, admin_failure=False, graphical=False, concurrent_stop=False, package=False):
     guard()
     if graphical:
         arguments, agent_archive_sha = arguments[:-1], arguments[-1]
@@ -1584,7 +1633,12 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if execution != str(parent / 'materialized-flutter-app'):
         raise RuntimeError('materialized app destination differs')
     execution = Path(execution)
-    prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical)
+    prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical, package=package)
+    if package:
+        print(f'LINUX_DEBIAN_CANDIDATE_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
+              'packages=2 equality=bytes constructor=production archive=validated payloads=unchanged '
+              'install=unexecuted app_build=absent cleanup=joined', flush=True)
+        return
     receiver.install_polkit(archive_sha, polkit_manifest)
     install_runtime(prepared)
     if graphical:
@@ -1671,6 +1725,8 @@ if __name__ == '__main__':
         prepare()
     elif sys.argv[1:] == ['--prepare-graphical']:
         prepare(graphical=True)
+    elif sys.argv[1:] == ['--prepare-package']:
+        prepare_package()
     elif sys.argv[1:] == ['--session']:
         session()
     elif sys.argv[1:] == ['--session-restart']:
@@ -1683,8 +1739,9 @@ if __name__ == '__main__':
         session(admin_failure=True, graphical=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop'):
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
-             admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop')
+             admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
+             package=sys.argv[1] == '--run-package')
     else:
         raise SystemExit('closed installed-settings arguments required')

@@ -145181,3 +145181,39 @@ The fixed method/seven controls/round trip pass; QEMU3875973 joins zero,
 private/RAM roots retire and three endpoint deltas are zero.
 `queued-stop-final-ledger-f625b6f2.json` and eight files/115,211 bytes match CTE/TUF.
 The approximate 400,000-token compression obligation remains open. No test remains live.
+
+## 2026-11-11 — actual application Debian packaging prerequisite
+
+The preceding user-requested status answer changes no implementation or acceptance.
+Resume the selected package milestone under R-B2/R-B7/R-B8 and R-S11by/bz/cf/dk.
+The complete accepted Linux application remains 74b64685. The production Debian
+recipe still selects stock Flutter 3.24.5, whereas the accepted producer uses the
+3.47.5 candidate and patched engine. Canonical SDK/input promotion is unfinished;
+do not call a package of the retained application a final release artifact.
+
+Separate the production build.py packaging step from its Flutter compilation so
+the exact same constructor can consume the retained complete application in the
+existing isolated replay. It must build the fork XDO library, stage the real unit,
+maintainer scripts, policy and manager integrations, finalize permissions and
+checksums, and produce an actual Debian archive. Two fresh private staging trees
+must yield identical package bytes; the independent archive validator and extracted
+payload hashes must establish exact app retention. This is packaging evidence,
+not independent application compilation, installed behavior or cold release A==B.
+It is a prerequisite for real package installation/upgrade, which takes priority
+over more permutations of the already-passing credential overlap/drain tests.
+
+Primary research: Debian bookworm dpkg-deb(1) distinguishes archive construction
+and extraction from installation, supports root-owner-group construction without
+root, and clamps archive timestamps through SOURCE_DATE_EPOCH. Debian Policy
+chapter 6 requires actual old/new maintainer-script sequencing during upgrades.
+https://manpages.debian.org/bookworm/dpkg/dpkg-deb.1.en.html
+https://www.debian.org/doc/debian-policy/ch-maintainerscripts.html
+The existing final-package lifecycle fixture force-admits dependencies against
+manually staged runtime libraries. That cannot establish dependency-complete
+installation; retain this limitation while preparing the authenticated dependency
+closure for the later install/upgrade scenario. No dependency bypass is added.
+
+The closed --debian-candidate-package replay selector uses the unchanged admitted
+RAM profile, immutable application/context, read-only source, confined UID-1000
+container and joined retirement. Package data remains disposable VM scratch;
+only bounded logs/digests are retained. Initial execution is pending.

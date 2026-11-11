@@ -540,51 +540,47 @@ def build_flutter_deb(version, features):
     system2('/bin/rm -rf build/linux')
     system2('flutter build linux --release')
     system2('/bin/rm -rf tmpdeb')
-    system2('mkdir -p tmpdeb/usr/share/rustdesk')
-    system2('mkdir -p tmpdeb/etc/init.d/')
-    system2('mkdir -p tmpdeb/usr/bin/')
-    system2('mkdir -p tmpdeb/usr/lib/systemd/system/')
-    native_xdo = Path(__file__).resolve().parent / "libs/libxdo-sys-stub/native"
-    native_output = Path("tmpdeb/usr/lib/rustdesk-fork/libxdo.so.3").absolute()
-    native_output.parent.mkdir(mode=0o755)
-    subprocess.run([sys.executable, "-I", "-S", str(native_xdo / "build.py"),
-                    "--output", str(native_output)], check=True)
-    system2('mkdir -p tmpdeb/usr/share/icons/hicolor/256x256/apps/')
-    system2('mkdir -p tmpdeb/usr/share/icons/hicolor/scalable/apps/')
-    system2('mkdir -p tmpdeb/usr/share/applications/')
-    system2('mkdir -p tmpdeb/usr/share/polkit-1/actions')
-    system2(
-        f'cp -r {flutter_build_dir}/* tmpdeb/usr/share/rustdesk/')
-    system2(
-        'cp ../res/rustdesk.service tmpdeb/usr/lib/systemd/system/rustdesk.service')
-    system2(
-        'cp -r ../res/service-managers/. tmpdeb/usr/share/rustdesk/files/')
-    for source, name in (("COPYRIGHT", "native-xdo-COPYRIGHT"),
-                         ("SOURCE.txt", "native-xdo-SOURCE.txt")):
-        shutil.copyfile(native_xdo / source, Path("tmpdeb/usr/share/rustdesk/files") / name)
-    system2('cp ../res/rustdesk.init tmpdeb/etc/init.d/rustdesk')
-    system2(
-        'cp ../res/128x128@2x.png tmpdeb/usr/share/icons/hicolor/256x256/apps/rustdesk.png')
-    system2(
-        'cp ../res/scalable.svg tmpdeb/usr/share/icons/hicolor/scalable/apps/rustdesk.svg')
-    system2(
-        'cp ../res/rustdesk.desktop tmpdeb/usr/share/applications/rustdesk.desktop')
-    system2(
-        'cp ../res/rustdesk-link.desktop tmpdeb/usr/share/applications/rustdesk-link.desktop')
-    system2(
-        'cp ../res/com.carriez.RustDesk.policy tmpdeb/usr/share/polkit-1/actions/')
-    shutil.copyfile(
-        'tmpdeb/usr/share/rustdesk/rustdesk',
-        'tmpdeb/usr/share/rustdesk/rustdesk-service-child',
-    )
-    os.symlink('../share/rustdesk/rustdesk', 'tmpdeb/usr/bin/rustdesk')
-    stage_debian_control_files(version, "../res/DEBIAN", "tmpdeb/DEBIAN")
-    finalize_debian_package_tree("tmpdeb")
-    build_debian_archive("tmpdeb", "rustdesk.deb")
-
+    package_flutter_deb(version, flutter_build_dir, 'tmpdeb', 'rustdesk.deb')
     system2('/bin/rm -rf tmpdeb/')
     os.rename('rustdesk.deb', '../rustdesk-%s.deb' % version)
     os.chdir("..")
+
+
+def package_flutter_deb(version, bundle, staging, destination):
+    """Package a complete Flutter bundle in the caller's private build workspace."""
+    staging = Path(staging)
+    staging.mkdir(mode=0o700)
+    resources = Path(__file__).resolve().parent / 'res'
+    application = staging / 'usr/share/rustdesk'
+    shutil.copytree(bundle, application, symlinks=True)
+    application.chmod(0o700)
+    for directory in ('etc/init.d', 'usr/bin', 'usr/lib/systemd/system',
+                      'usr/lib/rustdesk-fork', 'usr/share/icons/hicolor/256x256/apps',
+                      'usr/share/icons/hicolor/scalable/apps', 'usr/share/applications',
+                      'usr/share/polkit-1/actions'):
+        (staging / directory).mkdir(parents=True, mode=0o755)
+    native_xdo = Path(__file__).resolve().parent / "libs/libxdo-sys-stub/native"
+    native_output = (staging / 'usr/lib/rustdesk-fork/libxdo.so.3').absolute()
+    subprocess.run([sys.executable, "-I", "-S", str(native_xdo / "build.py"),
+                    "--output", str(native_output)], check=True)
+    shutil.copytree(resources / 'service-managers', application / 'files', symlinks=True)
+    for source, name in (("COPYRIGHT", "native-xdo-COPYRIGHT"),
+                         ("SOURCE.txt", "native-xdo-SOURCE.txt")):
+        shutil.copyfile(native_xdo / source, application / 'files' / name)
+    for source, target in (
+            ('rustdesk.service', 'usr/lib/systemd/system/rustdesk.service'),
+            ('rustdesk.init', 'etc/init.d/rustdesk'),
+            ('128x128@2x.png', 'usr/share/icons/hicolor/256x256/apps/rustdesk.png'),
+            ('scalable.svg', 'usr/share/icons/hicolor/scalable/apps/rustdesk.svg'),
+            ('rustdesk.desktop', 'usr/share/applications/rustdesk.desktop'),
+            ('rustdesk-link.desktop', 'usr/share/applications/rustdesk-link.desktop'),
+            ('com.carriez.RustDesk.policy', 'usr/share/polkit-1/actions/com.carriez.RustDesk.policy')):
+        shutil.copyfile(resources / source, staging / target)
+    shutil.copyfile(application / 'rustdesk', application / 'rustdesk-service-child')
+    os.symlink('../share/rustdesk/rustdesk', staging / 'usr/bin/rustdesk')
+    stage_debian_control_files(version, resources / 'DEBIAN', staging / 'DEBIAN')
+    finalize_debian_package_tree(staging)
+    build_debian_archive(staging, destination)
 
 
 def build_flutter_dmg(version, features):

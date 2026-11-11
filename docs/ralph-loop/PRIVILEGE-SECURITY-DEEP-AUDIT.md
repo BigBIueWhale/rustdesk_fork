@@ -144568,3 +144568,12 @@ This closes the launcher compilation/broken-pipe component prerequisite. The
 actual Rust core, full GTK application, original installed recovery and existing
 Applied/Denied/Failed schedules still require a corrected complete artifact.
 Do not repeat these passed component cases absent a relevant change or concern.
+
+The required ledger-count run `i310NcbJ9t` stops before counting: the newly added
+launcher mode was omitted from the storage selector's fixed mode inventory and
+expected-profile mapping. Add that mode to the existing expectation; retain every
+resource/refusal check. The native launcher and Debian passes are unaffected.
+The failed run's complete guest/console logs are retained; its outer tool excerpt
+was truncated and is labeled accordingly. `launcher-ledger-inventory-65ddb2d5.json`
+and the retirement record bind exact QEMU3813808/private/RAM closure and three
+zero endpoint deltas. Nine files / 88,946 bytes match both hosts before the repair.

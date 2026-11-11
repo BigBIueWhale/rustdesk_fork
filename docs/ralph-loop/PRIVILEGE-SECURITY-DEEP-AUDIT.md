@@ -147384,3 +147384,62 @@ owner inspection or mutation. Host IP socket creation remains kernel-denied for
 the harness. This count does not claim an unchanged global endpoint inventory.
 The approximate 400,000-token compression remains OPEN. This audit-only append
 leaves the measured ledger intact.
+
+## 2026-11-12 — Actual viewer recording decoded and preserved after shutdown
+
+Previous turn: progress, native folder selection/cancellation/restart accepted.
+Continue R-S0 with healthy output from the real toolbar on the retained app:
+a missing end-to-end recording check can be decided before broader dependency work.
+The existing recording-status failure remains OPEN; successful recording is the
+control that its correction must preserve.
+
+Research: WebM container guidelines and RFC 9559 specify the segment, track,
+timestamp scale, signed block offsets and keyframe/lacing fields:
+https://www.webmproject.org/docs/container/
+https://www.rfc-editor.org/rfc/rfc9559.html
+The native libvpx decoder example requires draining all returned images, honoring
+strides and checking VP8D_GET_FRAME_CORRUPTED as well as the decode result:
+https://chromium.googlesource.com/webm/libvpx/+/master/examples/simple_decoder.c
+Use the already authenticated devcheck libvpx, without acquiring dependencies.
+The fixture reader accepts only bounded finalized single-video VP8/VP9 output;
+it is an observer for this scenario, not a general player.
+
+0ed98bf73a35016f879abe4570e2d34bb5852b79 extends --recording-directory generation
+two after saved-folder restoration. Real native pointer clicks Start and Stop;
+twenty distinct fresh display frames delimit the recording interval. The observer
+requires a finite complete WebM, 640x480 track, first keyframe at zero,
+nondecreasing timestamps, every native packet decoded without corruption, at
+least sixteen decoded frames and twelve source-counter steps, 3–10 seconds of
+media, and at most 500 ms source/media interval deviation. Decoded luminance
+passes the existing complete-counter pixel oracle. A copy truncated by one byte
+must fail. Before viewer exit the observer records the file's identity and hash;
+after joined exit independent Python checks the same mode-0600 identity/bytes,
+then removes only that exact fixture output. The selected directory remains empty.
+The application and its dependencies are unchanged.
+
+Run X4Yt6i6Hke/tool95431 exits zero. App fd93151b, manifest
+f11a9eac46012a23627bb9d99a16d9cdf1ca692542b4c061d14a64af28e7834d,
+uses the same ddb1541d engine. Both driver compilations compare byte-for-byte.
+The actual output is VP9: 19 packets/19 decoded frames, source counters 108–126,
+last timestamp 4,543 ms, 39,373 bytes, SHA-256
+84a92eed6feb41a0b1f3b44449544ecdabcc965538a5638ff92d03d76c644275.
+The complete file passes before viewer exit and remains unchanged afterward;
+the truncated control refuses. Folder selection/cancellation/storage/restart,
+both real password prompts, same connections, fresh frames and clean engine/
+viewer/server/source/Xvfb retirement also pass. Final generation-two RSS is
+401,228 KiB, 54 threads and 45 descriptors, within the existing limits.
+
+native-recording-output-0ed98bf7.json binds nine files/108,093 bytes independently
+verified on CTE and TUF. Raw console SHA-256 is
+474308516c42cd81d2af77f13e86508fbaf92e1bd2a93bf661af897272a76fb9.
+Storage lasts 158.374 seconds; peak RAM scratch 3,025,498,112 bytes, QEMU
+451627 joins zero, four listener deltas are zero, and exact private/socket/RAM
+state is absent. The source stayed frozen through reconciliation and evidence copy.
+No app rebuild, new persistent cache or retained video was needed.
+
+This establishes the named short Linux VP9 recording and decoded content, not
+generic player/seek, VP8 UI, multi-monitor/codec changes, abrupt exit, long-session,
+failure/recovery, installed or other-platform acceptance. The known discarded
+recording errors and premature active-status publication remain OPEN; native
+failure/status/retry and exact recording-attempt ownership are the next decisive
+work. Update the current ledger, then measure it with the unchanged fixed tokenizer.

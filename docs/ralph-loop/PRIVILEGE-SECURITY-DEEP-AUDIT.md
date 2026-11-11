@@ -144508,3 +144508,11 @@ candidate artifact remains. A feasible focused launcher check may advance compon
 evidence while full-build capacity is unavailable, but cannot replace the required
 complete installed recovery replay. This resource constraint does not block the
 whole goal while other useful authorized work remains available.
+
+Fresh ledger count `kiue39CU6C` at `cfaf6104` exits zero: 402,897 tokens /
+1,838,977 bytes, SHA-256
+`0e7da5587f814b715cbf2be96720d716dc452556f1cd5ffe9bc3edb3cb4c57fd`.
+Seven controls, complete byte round trip and outer acceptance pass; three endpoint
+deltas are zero and exact QEMU/private/RAM retirement is reconciled.
+`linux-sigpipe-ledger-cfaf6104.json` binds eight matching files / 115,493 bytes on
+CTE/TUF. Compression below the approximate 400,000-token target remains open.

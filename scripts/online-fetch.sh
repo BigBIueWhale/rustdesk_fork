@@ -2489,9 +2489,10 @@ flutter_presentation_pub_provenance_args() {
 
 retire_flutter_presentation_pub_staging() {
     local staging="$1" staging_id="$2" disposition
+    local publication_root="${3:-$FLUTTER_PRESENTATION_CANDIDATE_ROOT}"
     disposition="$(
         pub_cache_output_tool recover \
-            --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" --staging "$staging" \
+            --online "$publication_root" --staging "$staging" \
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
     )" || die "cannot reconcile Flutter presentation Pub-cache staging"
     case "$disposition" in
@@ -2950,11 +2951,12 @@ maintenance_discover_flutter_plugin_archives() {
         /usr/bin/python3 -I -S /authority/discover.py
 }
 
-maintenance_discover_flutter_plugin_cache() {
+maintenance_stage_flutter_plugin_cache() {
     local builder="$DEB_BUILDER_CONFIG_ID" work work_identity phase network
-    local seed_receipt cache_receipt lock_fd
+    local seed_receipt cache_receipt lock_fd publication_fd staging staging_id
+    local publication_root="$ONLINE_CANDIDATE_ROOT/flutter-plugin-migration"
     local sdk="$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-$FLUTTER_PRESENTATION_CANDIDATE_VERSION.tar.xz"
-    local -a mounts phase_mounts
+    local -a mounts phase_mounts provenance
     verify_or_load_deb_builder_image
     require_online_fetch_builder_image deb-builder "$builder"
     assert_online_fetch_source_tools
@@ -2970,6 +2972,36 @@ maintenance_discover_flutter_plugin_cache() {
         --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
     [ "$seed_receipt" = "sha256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
         || die 'plugin cache seed differs from its authenticated pin'
+    if [ ! -e "$publication_root" ] && [ ! -L "$publication_root" ]; then
+        /usr/bin/install -d -m 0700 "$publication_root"
+    fi
+    [ -d "$publication_root" ] && [ ! -L "$publication_root" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a' "$publication_root")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        && [ "$(/usr/bin/stat -c '%d' "$publication_root")" = "$(/usr/bin/stat -c '%d' "$ONLINE_DIR")" ] \
+        || die 'plugin cache publication root is not one private directory on the input filesystem'
+    exec {publication_fd}<"$publication_root"
+    "$FLOCK_BIN" --exclusive --nonblock "$publication_fd" \
+        || die 'another transaction owns the plugin cache publication root'
+    for staging in "$publication_root"/.rustdesk-pub-cache.*; do
+        if [ -e "$staging" ] || [ -L "$staging" ]; then
+            staging_id="$(/usr/bin/stat -c '%d:%i' "$staging")"
+            retire_flutter_presentation_pub_staging "$staging" "$staging_id" "$publication_root"
+        fi
+    done
+    if [ -e "$publication_root/pub-cache" ] || [ -L "$publication_root/pub-cache" ]; then
+        cache_receipt="$(pub_cache_output_tool check-complete --online "$publication_root" \
+            --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
+        [ "$cache_receipt" = "sha256=$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" ] \
+            || die 'existing plugin cache differs from its pin'
+        verify_gradle_source_unchanged
+        retire_gradle_source_build
+        "$FLOCK_BIN" --unlock "$publication_fd"
+        exec {publication_fd}<&-
+        "$FLOCK_BIN" --unlock "$lock_fd"
+        exec {lock_fd}<&-
+        printf 'FLUTTER_PLUGIN_CACHE_STAGE=pass %s publication=existing\n' "$cache_receipt"
+        return 0
+    fi
     work="$(umask 077; /usr/bin/mktemp -d "$ONLINE_FETCH_TMP/flutter-plugin-cache.XXXXXXXXXX")"
     work_identity="$(/usr/bin/stat -c '%d:%i' "$work")"
     mounts=(
@@ -2991,6 +3023,8 @@ maintenance_discover_flutter_plugin_cache() {
                 --cache "$work/pub-cache" --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
             [[ "$cache_receipt" =~ ^sha256=[0-9a-f]{64}$ ]] \
                 || die 'derived plugin cache receipt is malformed'
+            [ "$cache_receipt" = "sha256=$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE" ] \
+                || die 'reproduced plugin cache differs from its reviewed pin'
             /usr/bin/install -d -m 0700 "$work/replay-cache" \
                 "$work/replay-cache/hosted" "$work/replay-cache/hosted-hashes" "$work/replay-cache/git"
             phase_mounts=(
@@ -3048,6 +3082,22 @@ PY
     verify_gradle_source_unchanged
     retire_gradle_source_build
     verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
+    mapfile -d '' provenance < <(flutter_presentation_pub_provenance_args)
+    staging="$(umask 077; /usr/bin/mktemp -d "$publication_root/.rustdesk-pub-cache.XXXXXXXXXX")"
+    staging_id="$(/usr/bin/stat -c '%d:%i' "$staging")"
+    pub_cache_output_tool prepare --online "$publication_root" --staging "$staging" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}"
+    /usr/bin/cp -a -- "$work/pub-cache/." "$staging/output/"
+    [ "$(pub_cache_output_tool verify --online "$publication_root" --staging "$staging" \
+          --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}")" = "$cache_receipt" ] \
+        || die 'plugin cache publication copy differs'
+    pub_cache_output_tool publish --online "$publication_root" --staging "$staging" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" "${provenance[@]}" \
+        --expected-digest "$SHA256_FLUTTER_PLUGIN_MIGRATION_PUB_CACHE"
+    retire_flutter_presentation_pub_staging "$staging" "$staging_id" "$publication_root"
+    [ "$(pub_cache_output_tool check-complete --online "$publication_root" \
+          --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")" = "$cache_receipt" ] \
+        || die 'published plugin cache differs'
     [ -d "$work" ] && [ ! -L "$work" ] \
         && [ "$(/usr/bin/stat -c '%d:%i' "$work")" = "$work_identity" ] \
         || die 'plugin cache workspace identity changed'
@@ -3055,9 +3105,11 @@ PY
         --root "$work" --expected-identity "$work_identity" \
         --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID"
     /usr/bin/rm -rf --one-file-system -- "$work"
+    "$FLOCK_BIN" --unlock "$publication_fd"
+    exec {publication_fd}<&-
     "$FLOCK_BIN" --unlock "$lock_fd"
     exec {lock_fd}<&-
-    printf 'FLUTTER_PLUGIN_CACHE_DISCOVERY=pass %s lock_sha256=%s seed_sha256=%s cache_published=false\n' \
+    printf 'FLUTTER_PLUGIN_CACHE_STAGE=pass %s lock_sha256=%s seed_sha256=%s publication=new\n' \
         "$cache_receipt" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK" \
         "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE"
 }
@@ -9015,10 +9067,10 @@ main() {
             maintenance_discover_flutter_plugin_archives
             return 0
             ;;
-        --maintenance-discover-flutter-plugin-cache)
+        --maintenance-stage-flutter-plugin-cache)
             [ "$#" -eq 1 ] \
-                || die "--maintenance-discover-flutter-plugin-cache takes no arguments"
-            maintenance_discover_flutter_plugin_cache
+                || die "--maintenance-stage-flutter-plugin-cache takes no arguments"
+            maintenance_stage_flutter_plugin_cache
             return 0
             ;;
         --maintenance-probe-android-candidate-gradle)

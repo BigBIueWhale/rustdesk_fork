@@ -117,6 +117,7 @@ elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
     readonly VM_MEMORY=4096
 elif [ "$REQUEST" = --maintenance-stage-polkit-runtime-candidate ] \
      || [ "$REQUEST" = --maintenance-discover-flutter-android-maven ] \
+     || [ "$REQUEST" = --maintenance-stage-flutter-presentation-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-debian-runtime-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-polkit-agent-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ] \

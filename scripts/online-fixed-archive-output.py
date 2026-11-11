@@ -203,7 +203,6 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             is_debian_systemd_image_name(names[0])
             or names[0] in (
                 "flutter-3.24.5.tar.xz",
-                "flutter-3.47.5.tar.xz",
                 "rust-1.75.tar.xz",
                 "rust-std-1.75-x86_64-linux-android.tar.xz",
             )
@@ -237,7 +236,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             )
         return
     if len(specs) == 7:
-        if names != (
+        android_build = (
             "android-cmdline-tools.zip",
             "android-ndk-r28c.zip",
             "flutter-3.24.5.tar.xz",
@@ -245,10 +244,20 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             "rust-1.75.tar.xz",
             "rust-std-1.75-aarch64-linux-android.tar.xz",
             "vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz",
-        ):
+        )
+        flutter_candidate = (
+            "flutter-3.47.5.tar.xz",
+            "flutter-maven/arm64_v8a_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.jar",
+            "flutter-maven/arm64_v8a_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.pom",
+            "flutter-maven/flutter_embedding_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.jar",
+            "flutter-maven/flutter_embedding_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.pom",
+            "flutter-maven/x86_64_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.jar",
+            "flutter-maven/x86_64_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.pom",
+        )
+        if names not in (android_build, flutter_candidate):
             fail(
-                "the Android build manifest is not the exact seven-archive "
-                "toolchain source"
+                "the seven-entry manifest is neither the exact Android toolchain "
+                "nor the exact Flutter candidate SDK/Maven source"
             )
         return
     if len(specs) == 14:
@@ -1557,10 +1566,15 @@ def test_flutter_archive_specs() -> tuple[ArchiveSpec, ...]:
 
 
 def test_flutter_candidate_archive_specs() -> tuple[ArchiveSpec, ...]:
-    name = "flutter-3.47.5.tar.xz"
-    payload = b"flutter-presentation-candidate-fixture"
-    return parse_specs(
-        [
+    records: list[list[str]] = []
+    names = ["flutter-3.47.5.tar.xz"] + [
+        f"flutter-maven/{artifact}-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.{extension}"
+        for artifact in ("arm64_v8a_release", "flutter_embedding_release", "x86_64_release")
+        for extension in ("jar", "pom")
+    ]
+    for name in names:
+        payload = f"{name}-fixture".encode("ascii")
+        records.append(
             [
                 name,
                 f"https://example.invalid/{name}",
@@ -1568,8 +1582,8 @@ def test_flutter_candidate_archive_specs() -> tuple[ArchiveSpec, ...]:
                 hashlib.sha256(payload).hexdigest(),
                 "example.invalid",
             ]
-        ]
-    )
+        )
+    return parse_specs(records)
 
 
 def test_flutter_model_archive_specs() -> tuple[ArchiveSpec, ...]:
@@ -1940,6 +1954,35 @@ def self_test() -> None:
             fail("Android emulator self-test lost its exact runtime/Maven manifest")
         if len(android_build_specs) != 7:
             fail("Android build self-test lost its exact toolchain manifest")
+        if len(flutter_candidate_specs) != 7:
+            fail("Flutter candidate self-test lost its exact SDK/Maven manifest")
+        substituted_candidate_specs = [
+            [
+                spec.name,
+                spec.url,
+                str(spec.size),
+                spec.sha256,
+                ",".join(spec.redirect_hosts),
+            ]
+            for spec in flutter_candidate_specs
+        ]
+        for replacement in (
+            "flutter-maven/x86_64_profile-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.jar",
+            "flutter-maven/x86_64_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.jar",
+        ):
+            substituted_candidate_specs[5][0] = replacement
+            try:
+                parse_specs(substituted_candidate_specs)
+            except ContractError:
+                pass
+            else:
+                fail("Flutter candidate self-test accepted a substituted Maven artifact")
+        try:
+            parse_specs(substituted_candidate_specs[:1])
+        except ContractError:
+            pass
+        else:
+            fail("Flutter candidate self-test accepted an incomplete SDK-only manifest")
         substituted_emulator_specs = [
             [
                 spec.name,

@@ -420,12 +420,49 @@ readonly -a FLUTTER_TEST_FIXED_ARCHIVE_ARGS=(
     "$SHA256_RUST_1_75"
     "static.rust-lang.org"
 )
+readonly FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION="1.0.0-${FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION}"
 readonly -a FLUTTER_PRESENTATION_CANDIDATE_FIXED_ARCHIVE_ARGS=(
     --entry
     "flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
     "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_PRESENTATION_CANDIDATE_VERSION}-stable.tar.xz"
     "$SIZE_FLUTTER_PRESENTATION_CANDIDATE"
     "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
+    "storage.googleapis.com"
+    --entry
+    "flutter-maven/arm64_v8a_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.jar"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/arm64_v8a_release/${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}/arm64_v8a_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.jar?generation=${GENERATION_FLUTTER_CANDIDATE_ANDROID_ARM64_RELEASE_JAR}"
+    "$SIZE_FLUTTER_CANDIDATE_ANDROID_ARM64_RELEASE_JAR"
+    "$SHA256_FLUTTER_CANDIDATE_ANDROID_ARM64_RELEASE_JAR"
+    "storage.googleapis.com"
+    --entry
+    "flutter-maven/arm64_v8a_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.pom"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/arm64_v8a_release/${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}/arm64_v8a_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.pom?generation=${GENERATION_FLUTTER_CANDIDATE_ANDROID_ARM64_RELEASE_POM}"
+    "$SIZE_FLUTTER_CANDIDATE_ANDROID_ARM64_RELEASE_POM"
+    "$SHA256_FLUTTER_CANDIDATE_ANDROID_ARM64_RELEASE_POM"
+    "storage.googleapis.com"
+    --entry
+    "flutter-maven/flutter_embedding_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.jar"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/flutter_embedding_release/${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}/flutter_embedding_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.jar?generation=${GENERATION_FLUTTER_CANDIDATE_ANDROID_EMBEDDING_RELEASE_JAR}"
+    "$SIZE_FLUTTER_CANDIDATE_ANDROID_EMBEDDING_RELEASE_JAR"
+    "$SHA256_FLUTTER_CANDIDATE_ANDROID_EMBEDDING_RELEASE_JAR"
+    "storage.googleapis.com"
+    --entry
+    "flutter-maven/flutter_embedding_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.pom"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/flutter_embedding_release/${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}/flutter_embedding_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.pom?generation=${GENERATION_FLUTTER_CANDIDATE_ANDROID_EMBEDDING_RELEASE_POM}"
+    "$SIZE_FLUTTER_CANDIDATE_ANDROID_EMBEDDING_RELEASE_POM"
+    "$SHA256_FLUTTER_CANDIDATE_ANDROID_EMBEDDING_RELEASE_POM"
+    "storage.googleapis.com"
+    --entry
+    "flutter-maven/x86_64_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.jar"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/x86_64_release/${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}/x86_64_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.jar?generation=${GENERATION_FLUTTER_CANDIDATE_ANDROID_X86_64_RELEASE_JAR}"
+    "$SIZE_FLUTTER_CANDIDATE_ANDROID_X86_64_RELEASE_JAR"
+    "$SHA256_FLUTTER_CANDIDATE_ANDROID_X86_64_RELEASE_JAR"
+    "storage.googleapis.com"
+    --entry
+    "flutter-maven/x86_64_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.pom"
+    "https://storage.googleapis.com/download.flutter.io/io/flutter/x86_64_release/${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}/x86_64_release-${FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION}.pom?generation=${GENERATION_FLUTTER_CANDIDATE_ANDROID_X86_64_RELEASE_POM}"
+    "$SIZE_FLUTTER_CANDIDATE_ANDROID_X86_64_RELEASE_POM"
+    "$SHA256_FLUTTER_CANDIDATE_ANDROID_X86_64_RELEASE_POM"
     "storage.googleapis.com"
 )
 readonly -a ANDROID_EMULATOR_FIXED_ARCHIVE_ARGS=(
@@ -2195,7 +2232,7 @@ stage_flutter_presentation_candidate() {
     stage_archive_bundle flutter-presentation-candidate \
         "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
         .rustdesk-flutter-presentation-candidate \
-        "pinned Flutter Linux presentation candidate archive" \
+        "pinned Flutter presentation candidate SDK/Maven inputs" \
         "$ANDROID_BUILDER_CONFIG_ID" android-builder
 }
 

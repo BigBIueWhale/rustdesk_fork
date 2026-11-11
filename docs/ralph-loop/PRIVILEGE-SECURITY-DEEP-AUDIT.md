@@ -146536,3 +146536,28 @@ and byte round trip. flutter-maven-provenance-ledger-368c66ba.json and eight fil
 host listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
+
+## 2026-11-11 — stage the authenticated candidate Android engine inputs
+
+Continue release SDK/build alignment after the six-object first-pin acceptance.
+This prerequisite enables a matched offline Android build before coherent shared
+SDK/lock/engine promotion; it takes priority over additional package scenarios
+already covered by the retained application. The user's existing password SSH
+master reaches TUF, with 43 GiB available memory. Read-only inventory of the actual
+online/inputs/gradle-home cache finds eight of eleven embedding dependency versions;
+annotation 1.8.1, relinker 1.4.5 and exifinterface 1.4.1 are absent. Directory
+presence does not authenticate cached content or establish transitive resolution.
+
+Extend the existing presentation-candidate fixed archive transaction to its SDK
+and six reviewed Maven objects, using the existing descriptor-owned/no-clobber
+publisher and size/SHA-256 checks. The SDK can be reused unchanged. Google's XML
+GET API explicitly selects a specific object version with the generation query:
+https://docs.cloud.google.com/storage/docs/xml-api/get-object-download
+Each Maven URL names its independently reviewed generation pin. The exact seven-
+entry manifest replaces the obsolete SDK-only candidate shape; canonical 3.24.5
+consumers remain separate. The shared publisher's focused native test gains wrong
+profile, old engine and incomplete-candidate refusals. Use the existing 4 GiB guest,
+8 GiB overlay/five-minute acquisition profile, bounded RAM scratch and joined
+cleanup. No new entry or execution authority is introduced. Shell syntax, Python
+AST parsing and diff hygiene pass; native fixed-archive and actual acquisition
+acceptance are pending. This does not establish a Gradle closure or APK build.

@@ -146961,3 +146961,12 @@ AGP8.13.1; the selector declares Kotlin2.3.0 and Java17. Actual project resoluti
 must include these inputs. The earlier AGP8.11.1/Kotlin2.2.21 fixture does not prove
 this plugin graph. No application migration, candidate cache publication, APK or
 native-dialog acceptance is claimed. Update the existing ledger and count it.
+
+Fresh count at c54105e5/2z32CgwEbs/tool1276 passes:407,407tokens/1,859,611bytes,
+SHA-256f5b649a2e1a6f24bbedec163dd426982085652a9b31f6d648f322d8e336cca8f.
+Fixed tiktoken0.12.0/cl100k_base/encode_ordinary, seven controls and byte round
+trip pass. flutter-plugin-archives-ledger-c54105e5.json and eight files/115,552
+bytes match both hosts. QEMU4049218 joins zero after30.492seconds; scratch peak
+403,013,632bytes, zero listener additions/removals and exact private/RAM absence.
+The approximate400,000-token compression obligation remains OPEN. This audit
+append leaves the measured ledger unchanged.

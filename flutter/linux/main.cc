@@ -1,4 +1,5 @@
 #include <dlfcn.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +36,15 @@ bool flutter_rustdesk_core_main(bool* should_start_ui) {
 }
 
 int main(int argc, char** argv) {
+  // The shared Rust core does not run Rust's executable startup. Broken pipes
+  // must reach its I/O error handling instead of terminating this process.
+  struct sigaction broken_pipe_action = {};
+  broken_pipe_action.sa_handler = SIG_IGN;
+  if (sigemptyset(&broken_pipe_action.sa_mask) != 0 ||
+      sigaction(SIGPIPE, &broken_pipe_action, nullptr) != 0) {
+    perror("Failed to initialize broken-pipe handling");
+    return EXIT_FAILURE;
+  }
   bool should_start_ui = false;
   if (!flutter_rustdesk_core_main(&should_start_ui)) {
       return EXIT_FAILURE;

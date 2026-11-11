@@ -144454,3 +144454,44 @@ endpoint deltas are zero and exact QEMU/private/RAM retirement is reconciled.
 115,948 bytes. The approximate 400,000-token target remains exceeded; compression
 is still open. The timeout/recovery scenario remains an overall failure, with its
 diagnostic follow-up prepared for the same retained application.
+
+## 2026-11-11 — Linux Flutter broken-pipe startup policy
+
+Previous goal turn: progress. Continue the installed R-S0 password-recovery case.
+Diagnostic replay `p5EnPeh5rh` at `9e5963d5` exits one on the unchanged `53f66299`
+app. The protected credential is preserved. Original child PID9073 exits from
+signal 13 (SIGPIPE); retained supervisor PID9064 starts PID16151 with the same
+service generation. Its exact held log records connection reset/refusal followed
+by `--server child exited with signal: 13 (SIGPIPE)`. This explains the child-record
+mismatch; the earlier run lacked this diagnostic and is not retrospectively treated
+as independently proving that cause. No post-resume CPace/restart acceptance ran.
+
+`password-uncertain-diagnostic-9e5963d5.json` is 9,958 bytes, SHA-256
+`7e577017248566847550b1a7d590c60ab4bd1d60407135f8a062ab70c70adc20`.
+Ten files / 120,399 bytes match CTE/TUF. Four endpoint deltas are zero; the
+672.536-second transaction peaks at 3,840,069,632 RAM bytes. Exact QEMU3805420
+joins with zero and private/RAM state retire before editing.
+
+`flutter/linux/main.cc` loads `librustdesk.so` and calls `rustdesk_core_main`;
+there is no Rust executable entry. The pinned [Rust 1.75 Unix startup source](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys/unix/mod.rs)
+ignores SIGPIPE but explicitly notes that initialization need not run for externally
+called Rust. The pinned [IPC adapter](https://github.com/rustdesk-org/parity-tokio-ipc/blob/d0ae39bffe5d5a3e8d82a1b6bcb1ca5a9b2f1c01/src/unix.rs)
+delegates writes to Tokio; Mio 1.0.3 delegates Unix-stream writes to std, whose
+[Rust 1.75 socket implementation](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys/unix/net.rs)
+uses its file-descriptor writer. `receive_request_unix` writes a readiness frame
+before reading the request. Closed queued peers therefore reach a write surface
+that depends on process SIGPIPE policy; the run did not capture a syscall backtrace.
+
+The correction establishes SIG_IGN with checked `sigemptyset`/`sigaction` at the
+Linux executable entry, before loading the core or starting UI/service work.
+[Linux send semantics](https://man7.org/linux/man-pages/man2/send.2.html) preserve
+EPIPE when SIGPIPE is ignored; existing transaction errors and authority checks
+remain in effect. Per-call MSG_NOSIGNAL would require replacing the dependency's
+write path and would leave other pipe writes dependent on the missing startup
+policy. The entry-point policy matches the Rust executable baseline and applies
+to every role of this Linux binary. Rust's [child execution source](https://github.com/rust-lang/rust/blob/1.75.0/library/std/src/sys/unix/process/process_unix.rs)
+resets SIGPIPE before exec, so each launched copy must initialize its own policy.
+No dependency, retry, timeout, authorization or process-replacement behavior changes.
+Next: build the exact corrected app, then repeat the original recovery scenario
+and the existing Applied/Denied/Failed GUI controls. Until execution, the product
+correction and complete installed acceptance remain unverified.

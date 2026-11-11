@@ -56,6 +56,14 @@ PY
     run_logged "$work/resolve.log" timeout --signal=TERM --kill-after=10s 300 \
         dart pub get --no-example
     sha256sum pubspec.yaml pubspec.lock >"$work/resolved.sha256"
+    python3 -I -S - <<'PY'
+import hashlib,json,pathlib
+lock=pathlib.Path('/work/project/pubspec.lock').read_bytes()
+if not 0<len(lock)<=128*1024:
+    raise ValueError('candidate lock exceeds evidence bound')
+print('FLUTTER_PLUGIN_MIGRATION_LOCK='+json.dumps({
+    'lock':lock.decode(),'sha256':hashlib.sha256(lock).hexdigest()},sort_keys=True))
+PY
     printf 'FLUTTER_PLUGIN_MIGRATION_RESOLVE=pass\n'
 else
     cd "$work/project"
@@ -110,8 +118,7 @@ for package in packages:
     if parsed.scheme!='file' or parsed.netloc:
         raise ValueError('selected package is not a local cache entry')
     path=pathlib.Path(urllib.parse.unquote(parsed.path)).resolve()
-    if not path.is_relative_to('/work/pub-cache/hosted/pub.dev'):
-        raise ValueError('selected package is outside the private hosted cache')
+    path.relative_to('/work/pub-cache/hosted/pub.dev')
     manifest=(path/'pubspec.yaml').read_bytes()
     if len(manifest)>64*1024:
         raise ValueError('package manifest exceeds evidence bound')

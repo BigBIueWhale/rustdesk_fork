@@ -146870,3 +146870,14 @@ identity, serial/capture and listener evidence, then retire only the validated
 private root66306:78296783. RAM/private roots and its Unix endpoints are absent.
 flutter-plugin-migration-051a3dec.json and15files/104,753bytes match both hosts.
 This failed diagnostic is not API, Android compiler or application acceptance.
+
+Retry ebed4bea/Hz1EXecqbO/tool8660 passes resolution, offline replay and actual
+Dart API analysis (No issues found). Receipt collection then fails on
+Path.is_relative_to, unavailable in the immutable Debian builder's Python3.6.
+Use the older relative_to operation, whose ValueError still rejects an escaping
+path, and emit the bounded discovered lock immediately after resolution so a
+later check cannot lose that prerequisite. The final receipt still requires all
+stages to pass. QEMU4029965 joins zero after149.775seconds, scratch peaks at
+6,535,671,808bytes, listener inventories match, and exact private/RAM state
+retires under the same checks. flutter-plugin-migration-ebed4bea.json and15files /
+107,499bytes match both hosts. Repeat only to complete the missing lock/receipt.

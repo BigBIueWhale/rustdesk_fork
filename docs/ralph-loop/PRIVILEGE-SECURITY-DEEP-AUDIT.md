@@ -145827,112 +145827,6 @@ host listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
 
-## 2026-11-11 — actual package replacement during admitted credential changes
-
-Select the remaining mode-5 installed-package shutdown gap under R-S0/R-S11/R-S11i
-and R-S11by. The direct-layout 35-second drain already passes; replacing the actual
-package while two credential changes are admitted is unproved. It takes priority
-over another ordinary reinstall because prerm must not advance to executable
-replacement before irreversible work and its owning service generation drain.
-
-Debian Policy chapter 6 orders old-prerm upgrade before new payload unpacking;
-dpkg(1) provides separate --unpack and --configure operations. Bookworm's
-systemd.service(5) allows Type=notify services to extend the stop deadline with
-timely repeated EXTEND_TIMEOUT_USEC. Sources:
-https://www.debian.org/doc/debian-policy/ch-maintainerscripts.html
-https://manpages.debian.org/bookworm/dpkg/dpkg.1.en.html
-https://manpages.debian.org/bookworm/systemd/systemd.service.5.en.html
-The shipped prerm uses checked deb-systemd-invoke stop. Linux drains its retained
-IPC thread before child retirement and extends systemd's deadline during drain.
-
-Move mode 5 to the existing dependency-complete package installation path. Retain
-its two real root CLI requesters, exact-child tracing barrier, late-request refusal,
-clean process retirement, final-credential CPace and profile-preservation checks.
-Invoke actual dpkg --unpack while pending; require dpkg to remain alive and all
-three executable payload objects unchanged beyond 30 seconds. After release,
-require both Applied results, clean service exit, successful unpack with replaced
-file objects, then real configure/start and final-credential authentication.
-Ordinary-user refusal, subsequent reinstall/remove/purge and joined cleanup remain.
-No product change or app rebuild; retained app6429f3cb executes unchanged. This
-tests same-package replacement, not a distinct historical binary under concurrent
-mutation. Native acceptance is pending; broader release obligations remain OPEN.
-
-TUF eWOI5wVWGH at e9247bac exits 1 (tool36633) before the selected scenario.
-Actual package installation, 72 payloads and dependency checks pass. The fixture
-captures a published child record while PAM's desktop is still creating its
-Xauthority file; journal child7463 cannot authorize X11, and replacement7525 is
-present before the initial CPace check. The strict retained-child check refuses.
-No package replacement, 35-second barrier or acceptance verdict is reached.
-QEMU3969979 joins zero in 75.407 seconds, RAM peak 4,205,998,080 bytes and four
-zero listener deltas. Reconcile the exact 29-leaf private diagnostic tree and raw
-captures under the free lock, retire it, and copy nine bounded files / 177,867
-bytes to CTE. package-stop-e9247bac.json matches both hosts.
-
-Add an explicit serving prerequisite to the receiver's existing bounded readiness
-wait and request it only for this scenario's baseline and configured replacement.
-It requires the exact child to own the real listener before choosing that record;
-the subsequent identity checks still reject any change. Other scenarios retain
-their existing record-only readiness semantics. No product restart, timeout change
-or post-baseline retry is introduced. This is a fixture correction for establishing
-the stable serving precondition; desktop startup/recovery acceptance is separate.
-
-The next run MnjUZoyTLB at c863e799 exits 1 (tool61233) during that prerequisite:
-the readiness wait precedes password provisioning, while direct_service.rs's
-R-S9 loop correctly parks the listener with an empty credential. This is a test
-ordering error, not evidence that the product failed to serve a provisioned
-credential. Move the existing root provisioning before serving readiness; retain
-the selected record unchanged throughout the subsequent drain assertions.
-No package replacement or concurrent-stop verdict ran. QEMU3971610 joins zero
-after 100.132 seconds; RAM peak 4,205,932,544 bytes, four zero listener deltas and
-exact 29-leaf diagnostic retirement are reconciled under the free lock.
-package-stop-c863e799.json and nine files / 178,205 bytes match CTE/TUF.
-
-## 2026-11-11 — package replacement drains admitted credentials; native acceptance
-
-At a2fe42909d288f5cf8858fa8c1ae786803ff3803, TUF p2fBdtuus5 exits zero
-(tool22865). The actual package remains 19,791,564 bytes, SHA-256
-19249a56142c98ccad41e9e50db93028dc9b00fc88b4812f4946c7b4b064aaf4; its
-independent archive validator and all 72 retained app6429f3cb payloads pass.
-The provisioned baseline completes mutual CPace on supervisor7394/child7466,
-start6580/generation85872d53-ace3-42de-b131-39f4b41d2746/listener26816.
-
-With all eighteen child threads held, real requesters7566/7572 remain pending.
-Actual dpkg7676 invokes prerm shutdown and stays alive for 35.018 seconds while
-the primary, service-child and Rust-library inode/device pairs remain unchanged.
-The original unit invocation remains deactivating with zero restarts beyond its
-shipped 30-second deadline. Later requester7689 exits 1 without success; its
-transport times out before admission. After barrier release, both admitted
-requesters report Done/exit0, the exact supervisor and child are reaped, and the
-unit/log report clean exit. Unpack exits zero and replaces all three file objects;
-the drained observation completes 2.218 seconds after release. Root credential
-advances to the second value and the user-profile credential remains unchanged.
-
-Real dpkg configure starts supervisor8447/child8456/start10667/generation
-f560ab62-52b9-4201-b035-5d1432a14172/listener32116. Two further mutual CPace
-controls surround a receiver-confirmed earlier-password refusal. Four loopback
-TIME_WAIT rows drain to exact baseline equality in 61.411 seconds. Desktop
-retirement, restart8556, live UID4002 refusal, reinstall8690, removal/purge and
-final APT/dpkg consistency pass. All twelve recorded ordinary package commands
-exit zero, as do the separately observed unpack/configure transactions.
-
-QEMU3973208 joins zero after 186.239 seconds; peak RAM scratch is 4,275,269,632
-bytes within admission. All four host listener deltas are zero. Reconcile raw
-observations, exact clean source, free shared lock and absent QEMU/private/RAM/
-Unix endpoints. package-stop-a2fe4290.json and nine bounded files / 160,747 bytes
-match CTE/TUF. This accepts the named actual same-package replacement scenario;
-distinct historical binaries during concurrent mutation, other shutdown failures,
-cross-platform and final-release evidence remain OPEN. Update the current ledger
-and obtain its fresh isolated count; no product code or application build changed.
-
-Fresh count mvOXpoHfxw at b141bbed exits zero (tool56038): 405,949 tokens /
-1,853,703 bytes, SHA-256 ccf2f9152db5c0441d773ddb2de9d0018945e95076ec985fe090612258f0cd5a.
-The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
-and byte round trip. package-stop-ledger-b141bbed.json and eight files / 115,479
-bytes match both hosts. QEMU3975673 joins zero after 30.765 seconds; three host
-listener deltas are zero and private/RAM roots are absent. The approximate
-400,000-token compression obligation remains OPEN. This audit-only append
-preserves the measured ledger.
-
 ## 2026-11-11 — normal-package settings failure and recovery preparation
 
 The preceding turn is progress: normal-package graphical cancellation/concurrency
@@ -146296,5 +146190,111 @@ The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven contro
 and its byte round trip. package-conffile-ledger-5de33807.json and eight files /
 115,638 bytes match CTE/TUF. QEMU3968146 joins zero after 30.266 seconds; three
 host listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.
+
+## 2026-11-11 — actual package replacement during admitted credential changes
+
+Select the remaining mode-5 installed-package shutdown gap under R-S0/R-S11/R-S11i
+and R-S11by. The direct-layout 35-second drain already passes; replacing the actual
+package while two credential changes are admitted is unproved. It takes priority
+over another ordinary reinstall because prerm must not advance to executable
+replacement before irreversible work and its owning service generation drain.
+
+Debian Policy chapter 6 orders old-prerm upgrade before new payload unpacking;
+dpkg(1) provides separate --unpack and --configure operations. Bookworm's
+systemd.service(5) allows Type=notify services to extend the stop deadline with
+timely repeated EXTEND_TIMEOUT_USEC. Sources:
+https://www.debian.org/doc/debian-policy/ch-maintainerscripts.html
+https://manpages.debian.org/bookworm/dpkg/dpkg.1.en.html
+https://manpages.debian.org/bookworm/systemd/systemd.service.5.en.html
+The shipped prerm uses checked deb-systemd-invoke stop. Linux drains its retained
+IPC thread before child retirement and extends systemd's deadline during drain.
+
+Move mode 5 to the existing dependency-complete package installation path. Retain
+its two real root CLI requesters, exact-child tracing barrier, late-request refusal,
+clean process retirement, final-credential CPace and profile-preservation checks.
+Invoke actual dpkg --unpack while pending; require dpkg to remain alive and all
+three executable payload objects unchanged beyond 30 seconds. After release,
+require both Applied results, clean service exit, successful unpack with replaced
+file objects, then real configure/start and final-credential authentication.
+Ordinary-user refusal, subsequent reinstall/remove/purge and joined cleanup remain.
+No product change or app rebuild; retained app6429f3cb executes unchanged. This
+tests same-package replacement, not a distinct historical binary under concurrent
+mutation. Native acceptance is pending; broader release obligations remain OPEN.
+
+TUF eWOI5wVWGH at e9247bac exits 1 (tool36633) before the selected scenario.
+Actual package installation, 72 payloads and dependency checks pass. The fixture
+captures a published child record while PAM's desktop is still creating its
+Xauthority file; journal child7463 cannot authorize X11, and replacement7525 is
+present before the initial CPace check. The strict retained-child check refuses.
+No package replacement, 35-second barrier or acceptance verdict is reached.
+QEMU3969979 joins zero in 75.407 seconds, RAM peak 4,205,998,080 bytes and four
+zero listener deltas. Reconcile the exact 29-leaf private diagnostic tree and raw
+captures under the free lock, retire it, and copy nine bounded files / 177,867
+bytes to CTE. package-stop-e9247bac.json matches both hosts.
+
+Add an explicit serving prerequisite to the receiver's existing bounded readiness
+wait and request it only for this scenario's baseline and configured replacement.
+It requires the exact child to own the real listener before choosing that record;
+the subsequent identity checks still reject any change. Other scenarios retain
+their existing record-only readiness semantics. No product restart, timeout change
+or post-baseline retry is introduced. This is a fixture correction for establishing
+the stable serving precondition; desktop startup/recovery acceptance is separate.
+
+The next run MnjUZoyTLB at c863e799 exits 1 (tool61233) during that prerequisite:
+the readiness wait precedes password provisioning, while direct_service.rs's
+R-S9 loop correctly parks the listener with an empty credential. This is a test
+ordering error, not evidence that the product failed to serve a provisioned
+credential. Move the existing root provisioning before serving readiness; retain
+the selected record unchanged throughout the subsequent drain assertions.
+No package replacement or concurrent-stop verdict ran. QEMU3971610 joins zero
+after 100.132 seconds; RAM peak 4,205,932,544 bytes, four zero listener deltas and
+exact 29-leaf diagnostic retirement are reconciled under the free lock.
+package-stop-c863e799.json and nine files / 178,205 bytes match CTE/TUF.
+
+## 2026-11-11 — package replacement drains admitted credentials; native acceptance
+
+At a2fe42909d288f5cf8858fa8c1ae786803ff3803, TUF p2fBdtuus5 exits zero
+(tool22865). The actual package remains 19,791,564 bytes, SHA-256
+19249a56142c98ccad41e9e50db93028dc9b00fc88b4812f4946c7b4b064aaf4; its
+independent archive validator and all 72 retained app6429f3cb payloads pass.
+The provisioned baseline completes mutual CPace on supervisor7394/child7466,
+start6580/generation85872d53-ace3-42de-b131-39f4b41d2746/listener26816.
+
+With all eighteen child threads held, real requesters7566/7572 remain pending.
+Actual dpkg7676 invokes prerm shutdown and stays alive for 35.018 seconds while
+the primary, service-child and Rust-library inode/device pairs remain unchanged.
+The original unit invocation remains deactivating with zero restarts beyond its
+shipped 30-second deadline. Later requester7689 exits 1 without success; its
+transport times out before admission. After barrier release, both admitted
+requesters report Done/exit0, the exact supervisor and child are reaped, and the
+unit/log report clean exit. Unpack exits zero and replaces all three file objects;
+the drained observation completes 2.218 seconds after release. Root credential
+advances to the second value and the user-profile credential remains unchanged.
+
+Real dpkg configure starts supervisor8447/child8456/start10667/generation
+f560ab62-52b9-4201-b035-5d1432a14172/listener32116. Two further mutual CPace
+controls surround a receiver-confirmed earlier-password refusal. Four loopback
+TIME_WAIT rows drain to exact baseline equality in 61.411 seconds. Desktop
+retirement, restart8556, live UID4002 refusal, reinstall8690, removal/purge and
+final APT/dpkg consistency pass. All twelve recorded ordinary package commands
+exit zero, as do the separately observed unpack/configure transactions.
+
+QEMU3973208 joins zero after 186.239 seconds; peak RAM scratch is 4,275,269,632
+bytes within admission. All four host listener deltas are zero. Reconcile raw
+observations, exact clean source, free shared lock and absent QEMU/private/RAM/
+Unix endpoints. package-stop-a2fe4290.json and nine bounded files / 160,747 bytes
+match CTE/TUF. This accepts the named actual same-package replacement scenario;
+distinct historical binaries during concurrent mutation, other shutdown failures,
+cross-platform and final-release evidence remain OPEN. Update the current ledger
+and obtain its fresh isolated count; no product code or application build changed.
+
+Fresh count mvOXpoHfxw at b141bbed exits zero (tool56038): 405,949 tokens /
+1,853,703 bytes, SHA-256 ccf2f9152db5c0441d773ddb2de9d0018945e95076ec985fe090612258f0cd5a.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and byte round trip. package-stop-ledger-b141bbed.json and eight files / 115,479
+bytes match both hosts. QEMU3975673 joins zero after 30.765 seconds; three host
+listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.

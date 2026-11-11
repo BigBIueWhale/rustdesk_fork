@@ -189,6 +189,79 @@ static int recording_control_visible(unsigned int pid, const char *name) {
     return -1;
 }
 
+static int recording_failure(Display *display, const ViewerWindow *viewer, SourceHistory *history) {
+    int directory = -1, changed = 0, result = -1;
+    unsigned int pid = (unsigned int)viewer->pid, files = 0U;
+    AtspiAccessible *error = NULL, *title = NULL, *active = NULL, *idle = NULL;
+    struct stat original = {0}, current = {0};
+    uint64_t fresh = 0U, age = 0U;
+    const char *phase = "refuse-write";
+    directory = open("/tmp/recording-selected-שלום", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0 || fstat(directory, &original) != 0 ||
+        original.st_uid != geteuid() || (original.st_mode & 07777U) != 0700U ||
+        fchmod(directory, 0500) != 0) goto out;
+    changed = 1;
+    errno = 0;
+    int probe = openat(directory, ".recording-probe", O_WRONLY | O_CREAT | O_EXCL |
+                       O_NOFOLLOW | O_CLOEXEC, 0600);
+    int denied = errno;
+    if (probe >= 0) {
+        if (close(probe) != 0 || unlinkat(directory, ".recording-probe", 0) != 0) goto out;
+        goto out;
+    }
+    if (denied != EACCES || quality_toolbar(pid) != 0 ||
+        click_main_control(display, viewer->window, pid, "Start session recording") != 0) goto out;
+    phase = "failure-feedback";
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline && error == NULL) {
+        if (query_accessible_with_focus(pid, "Failed", deadline, &error, 0, 0, NULL, 0, 1) != 0)
+            goto out;
+        if (error == NULL && sleep_millis(100U) != 0) goto out;
+    }
+    int error_visible = error != NULL;
+    g_clear_object(&error);
+    if (error_visible) {
+        deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+        if (query_named_accessible(pid, "Recording", deadline, &title, 0) != 0 ||
+            title == NULL || click_main_control(display, viewer->window, pid, "OK") != 0)
+            goto out;
+    }
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (query_named_accessible(pid, "Stop session recording", deadline, &active, 0) != 0 ||
+        query_named_accessible(pid, "Start session recording", deadline, &idle, 0) != 0)
+        goto out;
+    int still_active = active != NULL, can_retry = idle != NULL;
+    DIR *entries = fdopendir(dup(directory));
+    if (entries == NULL) goto out;
+    struct dirent *entry;
+    errno = 0;
+    while ((entry = readdir(entries)) != NULL)
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) ++files;
+    int read_error = errno;
+    if (closedir(entries) != 0 || read_error != 0) goto out;
+    phase = "session";
+    if (activate_named_control(pid, "Hide toolbar") != 0 ||
+        wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
+        fstat(directory, &current) != 0 || original.st_dev != current.st_dev ||
+        original.st_ino != current.st_ino || (current.st_mode & 07777U) != 0500U) goto out;
+    printf("FLUTTER_PEER_RECORDING_DENIED kernel=EACCES error_visible=%d active=%d "
+           "retry_available=%d files=%u fresh_pixels=4 maximum_age_ms=%llu\n",
+           error_visible, still_active, can_retry, files, (unsigned long long)age);
+    fflush(stdout);
+    if (!error_visible || still_active || !can_retry || files != 0U) goto out;
+    result = 0;
+out:
+    if (changed && fchmod(directory, 0700) != 0) result = -1;
+    if (directory >= 0 && close(directory) != 0) result = -1;
+    g_clear_object(&error);
+    g_clear_object(&title);
+    g_clear_object(&active);
+    g_clear_object(&idle);
+    if (result != 0) fprintf(stderr, "FLUTTER_PEER_RECORDING_FAILURE_CHECK_FAIL phase=%s\n", phase);
+    return result;
+}
+
+
 static int recording_output(Display *display, const ViewerWindow *viewer, SourceHistory *history) {
     static const char selected[] = "/tmp/recording-selected-שלום";
     DIR *directory = NULL;

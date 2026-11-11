@@ -1975,6 +1975,8 @@ PY
       grep -Eq "^FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=$viewer_generation cancel=unchanged path=exact fresh_pixels=4 maximum_age_ms=[0-9]+ stable_connection=true$" \
         <<<"$controller_output" || fail 'native recording directory result is absent'
       if [ "$viewer_generation" -eq 2 ]; then
+        grep -Eq '^FLUTTER_PEER_RECORDING_DENIED kernel=EACCES error_visible=1 active=0 retry_available=1 files=0 fresh_pixels=4 maximum_age_ms=[0-9]+$' \
+          <<<"$controller_output" || fail 'recording failure outcome is absent'
         grep -Eq '^FLUTTER_PEER_RECORDING_OUTPUT_OK codec=vp[89] packets=[0-9]+ decoded_frames=[0-9]+ first_frame=[0-9]+ last_frame=[0-9]+ duration_ms=[0-9]+ bytes=[0-9]+ sha256=[0-9a-f]{64} path=selected mode=0600 stopped=ui viewer=alive truncated=refused$' \
           <<<"$controller_output" || fail 'native recording decode result is absent'
       fi

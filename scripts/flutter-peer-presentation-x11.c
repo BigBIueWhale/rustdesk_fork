@@ -7828,7 +7828,8 @@ static int exercise_recording_directory(Display *display, const ViewerWindow *vi
         read_process_resources(viewer->pid, &resources) != 0 ||
         !resources_are_bounded(baseline, &resources)) goto out;
     print_resources("recording-directory", restore ? 2U : 1U, &resources);
-    if (restore && (recording_output(display, viewer, history) != 0 ||
+    if (restore && (recording_failure(display, viewer, history) != 0 ||
+        recording_output(display, viewer, history) != 0 ||
         wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
         read_connection_identity(&final) != 0 || !same_connection(connection, &final) ||
         read_process_resources(viewer->pid, &resources) != 0 ||

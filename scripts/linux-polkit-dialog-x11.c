@@ -90,7 +90,7 @@ static int agent_click(unsigned int pid, const char *name) {
     return result;
 }
 
-static int agent_authenticate(Display *display, unsigned int pid) {
+static int agent_select(unsigned int pid) {
     AtspiAccessible *combo = agent_control(pid, ATSPI_ROLE_COMBO_BOX, NULL);
     if (combo == NULL) return -1;
     AtspiSelection *selection = atspi_accessible_get_selection_iface(combo);
@@ -112,6 +112,30 @@ static int agent_authenticate(Display *display, unsigned int pid) {
         if (error != NULL) goto out;
     }
     if (selected < 0 || !atspi_selection_select_child(selection, selected, &error) || error != NULL) goto out;
+    result = 0;
+out:
+    g_clear_error(&error);
+    if (menu != NULL) g_object_unref(menu);
+    if (selection != NULL) g_object_unref(selection);
+    g_object_unref(combo);
+    return result;
+}
+
+static int agent_password_count(unsigned int pid, gint expected) {
+    AtspiAccessible *field = agent_control(pid, ATSPI_ROLE_PASSWORD_TEXT, NULL);
+    if (field == NULL) return -1;
+    AtspiText *text = atspi_accessible_get_text_iface(field);
+    GError *error = NULL;
+    int result = text != NULL && atspi_text_get_character_count(text, &error) == expected && error == NULL;
+    g_clear_error(&error);
+    if (text != NULL) g_object_unref(text);
+    g_object_unref(field);
+    return result ? 0 : -1;
+}
+
+static int agent_password(Display *display, unsigned int pid, int partial) {
+    GError *error = NULL;
+    int result = -1;
     Window root = DefaultRootWindow(display), returned_root, parent, *windows = NULL, dialog = None;
     unsigned int windows_count = 0U, matches = 0U;
     if (XQueryTree(display, root, &returned_root, &parent, &windows, &windows_count) == 0) goto out;
@@ -141,9 +165,11 @@ static int agent_authenticate(Display *display, unsigned int pid) {
     if (!focused) goto out;
     /* Synthetic fixture administrator secret, entered into the real PAM dialog. */
     static const char password[] = "Receiver-admin-PAM-2026!";
+    size_t length = partial ? 5U : sizeof(password) - 1U;
+    if (agent_password_count(pid, 0) != 0) goto out;
     KeyCode shift = XKeysymToKeycode(display, XK_Shift_L);
     if (shift == 0U) goto out;
-    for (size_t i = 0U; i < sizeof(password) - 1U; ++i) {
+    for (size_t i = 0U; i < length; ++i) {
         int upper = password[i] >= 'A' && password[i] <= 'Z';
         int shifted = upper || password[i] == '!';
         KeySym key = (KeySym)(upper ? password[i] - 'A' + 'a' : password[i] == '!' ? '1' : password[i]);
@@ -153,12 +179,14 @@ static int agent_authenticate(Display *display, unsigned int pid) {
         XSync(display, False);
         if (typed != 0) goto out;
     }
-    result = agent_click(pid, "Authenticate");
+    /* Observe masked character count, never the password text. */
+    if (agent_password_count(pid, (gint)length) != 0) goto out;
+    if (partial) {
+        printf("LINUX_POLKIT_PASSWORD_ENTRY=pass characters=%zu submitted=no\n", length);
+        result = 0;
+    } else result = agent_click(pid, "Authenticate");
 out:
     g_clear_error(&error);
-    if (menu != NULL) g_object_unref(menu);
-    if (selection != NULL) g_object_unref(selection);
-    g_object_unref(combo);
     return result;
 }
 
@@ -188,7 +216,12 @@ int main(int argc, char **argv) {
     if (message != NULL) {
         g_object_unref(message);
         if (strcmp(argv[2], "cancel") == 0) result = agent_click((unsigned int)pid, "Cancel");
-        else if (strcmp(argv[2], "authenticate") == 0) result = agent_authenticate(display, (unsigned int)pid);
+        else if (strcmp(argv[2], "select") == 0) result = agent_select((unsigned int)pid);
+        else if (strcmp(argv[2], "password") == 0) result = agent_password(display, (unsigned int)pid, 1);
+        else if (strcmp(argv[2], "cancel-password") == 0 && agent_password_count((unsigned int)pid, 5) == 0)
+            result = agent_click((unsigned int)pid, "Cancel");
+        else if (strcmp(argv[2], "authenticate") == 0 && agent_select((unsigned int)pid) == 0)
+            result = agent_password(display, (unsigned int)pid, 0);
     }
     if (result != 0) {
         PasswordPromptScan diagnostic;

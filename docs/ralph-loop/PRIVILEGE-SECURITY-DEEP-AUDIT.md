@@ -144931,3 +144931,29 @@ QEMU3856374 joins with zero; private/RAM state retire and three endpoint deltas
 are zero. Eight retained files match CTE/TUF under
 `graphical-authorization-ledger-edb4c219.json`. The approximate 400,000-token
 compression obligation remains open.
+
+## 2026-11-11 — installed GTK password-entry cancellation
+
+The user-requested status review made no authoritative change (no-progress goal
+turn). Continue the installed R-S0/R-S11ie workflow after its accepted selection-
+screen cancellation checkpoint. Password-entry Cancel is a distinct, actionable
+normal workflow: selecting an administrator starts the packaged PAM helper.
+It reuses the accepted application and agent and closes this remaining cancellation
+condition before switching to broader concurrency or other-platform prerequisites.
+
+Primary sources reviewed: polkit 122 `src/polkitagent/polkitagentsession.c` and
+`polkitagenthelper-pam.c` at https://github.com/polkit-org/polkit/tree/122/src/polkitagent.
+The session spawns its own setuid helper with the selected username, sends its
+cookie over stdin, and cancels by retiring/reaping the helper. The helper sends
+the PAM prompt before reading a response. The test therefore separates actual
+GTK administrator selection, partial password entry and Cancel. Root observes
+the exact helper parent/image/argv/UID/start and x86_64 read(0) wait; pidfds retain
+both it and pkcheck. AT-SPI verifies five masked characters before cancellation
+without reading their text. Protected/user credentials, old-password CPace,
+same-GUI/agent fresh PAM success and subsequent no-agent refusal remain required.
+
+The existing graphical workload gains one case, fifteen Flutter stages plus
+three agent stages, and a fifth CPace exchange. Product binaries, authorization
+rules, resource admission and cleanup are unchanged. Native execution is pending;
+syntax inspection is not acceptance. TUF is clean at 800f79a6, with no live run
+or RAM workspace and 40,599,532 KiB available before admission.

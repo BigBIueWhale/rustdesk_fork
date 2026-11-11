@@ -9338,7 +9338,7 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
         require_exact_fixed_receipt \
-            "LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=gtk-dialog authorization=polkit-pam helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent cpace=4 stale_refusals=1 cleanup=joined" \
+            "LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=4 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=gtk-selection-and-password authorization=polkit-pam helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent cpace=5 stale_refusals=1 cleanup=joined" \
             'installed graphical cancellation and fresh authorized retry'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
         require_exact_fixed_receipt \

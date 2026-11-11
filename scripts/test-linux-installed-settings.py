@@ -39,6 +39,9 @@ UNCERTAIN_STAGES = (('open', 'fill', 'submit-approved') + ('pending',) * 21
                     + ('uncertain', 'uncertain-preserved', 'cancel', 'reopen', 'submit', 'denied'))
 ADMIN_FAILURE_STAGES = ('open', 'fill', 'submit', 'denied', 'reopen', 'fill',
                         'submit-approved', 'applied', 'reopen', 'submit', 'denied')
+GRAPHICAL_STAGES = ('open', 'fill', 'submit', 'denied', 'reopen', 'fill', 'submit',
+                    'agent-select', 'agent-password', 'agent-cancel', 'denied',
+                    'reopen', 'fill', 'submit-approved', 'applied', 'reopen', 'submit', 'denied')
 
 
 def run(argv, *, env=ENV, timeout=30, output_limit=131072):
@@ -358,10 +361,17 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
             app_command = ['/usr/bin/setpriv', '--no-new-privs', *app_command]
         app = subprocess.Popen(app_command, env=environment,
                                stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
-        stages = (ADMIN_FAILURE_STAGES if admin_failure else UNCERTAIN_STAGES if uncertain
+        stages = (GRAPHICAL_STAGES if graphical else ADMIN_FAILURE_STAGES if admin_failure else UNCERTAIN_STAGES if uncertain
                   else RESTART_STAGES if restarted else STAGES)
         for stage in stages:
-            output = run([str(WORK / 'settings-driver'), str(app.pid), stage], env=environment,
+            if stage.startswith('agent-'):
+                if agent is None or agent.poll() is not None:
+                    raise RuntimeError('graphical agent exited before password-entry cancellation')
+                action = {'agent-select': 'select', 'agent-password': 'password', 'agent-cancel': 'cancel-password'}[stage]
+                driver = [str(WORK / 'agent-driver'), str(agent.pid), action]
+            else:
+                driver = [str(WORK / 'settings-driver'), str(app.pid), stage]
+            output = run(driver, env=environment,
                          timeout=40, output_limit=524288)
             print(output, end='', file=sys.stderr, flush=True)
             if app.poll() is not None:
@@ -870,6 +880,39 @@ def scenario(receiver, probe_sha):
                 wait_network_retirement(network_before)
 
 
+def pending_graphical_pam(agent_identity):
+    # The pinned x86_64 helper has sent its PAM prompt before blocking in read(0).
+    executable = Path('/usr/lib/polkit-1/polkit-agent-helper-1')
+    expected = [os.fsencode(executable), b'rdreceiver4003', b'']
+    deadline = time.monotonic() + 5
+    while True:
+        matches = []
+        for proc in Path('/proc').iterdir():
+            if not proc.name.isdecimal():
+                continue
+            try:
+                fields = (proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()
+                if int(fields[1]) == agent_identity[0] and (proc / 'cmdline').read_bytes().split(b'\0') == expected:
+                    matches.append((proc, int(fields[19])))
+            except FileNotFoundError:
+                continue
+        if len(matches) > 1:
+            raise RuntimeError('graphical agent has duplicate PAM helpers')
+        if matches:
+            proc, start = matches[0]
+            status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+            if (status['Uid'].split() != ['4001', '0', '0', '0']
+                    or not (proc / 'exe').samefile(executable)
+                    or int(Path(f'/proc/{agent_identity[0]}/stat').read_bytes().rsplit(b') ', 1)[1].split()[19]) != agent_identity[1]):
+                raise RuntimeError('graphical PAM helper identity differs')
+            syscall = (proc / 'syscall').read_text().split()
+            if len(syscall) >= 3 and syscall[0] == '0' and int(syscall[1], 0) == 0:
+                return proc, start
+        if time.monotonic() >= deadline:
+            raise RuntimeError('graphical PAM helper did not wait for password input')
+        time.sleep(0.01)
+
+
 def admin_failure_scenario(receiver, probe_sha, graphical=None):
     unit = Path('/etc/systemd/system/rustdesk.service')
     if unit.exists():
@@ -881,6 +924,9 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
     process = None
     requester = committed = profile_before = authority = None
     helper_fd = helper = helper_start = cancelled_at = agent_identity = None
+    pam_fd = pam_helper = pam_start = None
+    stages = GRAPHICAL_STAGES if graphical is not None else ADMIN_FAILURE_STAGES
+    cancellations = 0
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
         record = receiver.ready()
@@ -902,7 +948,7 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                 raise RuntimeError('graphical workflow is outside its real logind session')
             process.stdin.write(b'application\n')
             process.stdin.flush()
-        for index, stage in enumerate(ADMIN_FAILURE_STAGES):
+        for index, stage in enumerate(stages):
             if not select.select([process.stdout], [], [], 45)[0]:
                 raise RuntimeError('administrator failure GUI stage timed out')
             raw = process.stdout.readline(4096)
@@ -928,7 +974,7 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
             if graphical is not None:
                 if (proc / 'cgroup').read_text() != session_cgroup:
                     raise RuntimeError('GUI left the native desktop session')
-                if index <= 7:
+                if committed is None or stage == 'applied':
                     agent_proc = Path(f'/proc/{event["agent_pid"]}')
                     agent_start = int((agent_proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19])
                     current_agent = (event['agent_pid'], agent_start)
@@ -956,28 +1002,49 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                 profile_before = user_credential()
                 if graphical is None:
                     authority = authorization.enter_context(administrator(receiver, requester))
-            elif index == 2:
+            elif index == 2 or (graphical is not None and index == 6):
                 if graphical is None:
                     authenticate(receiver, authority, requester, record, before, incorrect_password=True)
                 else:
+                    if helper_fd is not None:
+                        os.close(helper_fd)
+                        helper_fd = None
                     helper, helper_start = receiver.pending_admin_helper(*requester, record, wait_seconds=5)
                     helper_fd = os.pidfd_open(int(helper.name))
                     if (int((helper / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]) != helper_start
                             or select.select([helper_fd], [], [], 0)[0]):
                         raise RuntimeError('graphical cancellation lost the pending authorization helper')
-                    cancelled_at = time.monotonic()
-                    command = b'cancel\n'
-            elif index == 3:
-                service_refusals(record, *requester, 1, exit_status=3 if graphical is not None else 1)
+                    if index == 2:
+                        cancelled_at = time.monotonic()
+                        command = b'cancel\n'
+            elif stage == 'agent-select':
+                pam_helper, pam_start = pending_graphical_pam(agent_identity)
+                pam_fd = os.pidfd_open(int(pam_helper.name))
+                if (int((pam_helper / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]) != pam_start
+                        or select.select([pam_fd, helper_fd], [], [], 0)[0]):
+                    raise RuntimeError('password-entry fixture lost a pending authorization helper')
+            elif stage == 'agent-password':
+                if pending_graphical_pam(agent_identity) != (pam_helper, pam_start) or select.select([pam_fd, helper_fd], [], [], 0)[0]:
+                    raise RuntimeError('partial password unexpectedly completed authentication')
+                cancelled_at = time.monotonic()
+            elif stage == 'denied' and committed is None:
+                cancellations += 1
+                service_refusals(record, *requester, cancellations, exit_status=3 if graphical is not None else 1)
                 if graphical is not None:
                     if (not select.select([helper_fd], [], [], 0)[0] or helper.exists()
                             or time.monotonic() - cancelled_at >= 10):
                         raise RuntimeError('cancelled graphical authorization did not promptly reap its helper')
+                    if pam_fd is not None and (not select.select([pam_fd], [], [], 0)[0] or pam_helper.exists()):
+                        raise RuntimeError('cancelled password entry left its PAM helper')
                     print('LINUX_INSTALLED_SETTINGS_GRAPHICAL_CANCEL=' + json.dumps({
                         'requester': requester, 'agent': agent_identity, 'helper': [int(helper.name), helper_start],
                         'session': session_id, 'cgroup': session_cgroup, 'helper_reaped': True,
+                        'phase': 'password-entry' if pam_fd is not None else 'administrator-selection',
+                        'pam_helper': [int(pam_helper.name), pam_start] if pam_fd is not None else None,
+                        'pam_helper_reaped': True if pam_fd is not None else None,
                         'protected_unchanged': True, 'seconds': time.monotonic() - cancelled_at}, sort_keys=True), flush=True)
-                receiver.keyed(BASELINE_PASSWORD, 'gui-admin-failure-preserved', record, probe_sha)
+                phase = 'gui-admin-failure-preserved' if cancellations == 1 else 'gui-password-cancel-preserved'
+                receiver.keyed(BASELINE_PASSWORD, phase, record, probe_sha)
             elif stage == 'submit-approved':
                 # Reuse the registered agent: this must produce a fresh actual PAM challenge.
                 if graphical is None:
@@ -989,8 +1056,8 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                 authorization.close()
                 if graphical is not None:
                     command = b'retire-agent\n'
-            elif index == 10:
-                service_refusals(record, *requester, 1, exit_status=3 if graphical is not None else 1)
+            elif stage == 'denied':
+                service_refusals(record, *requester, cancellations, exit_status=3 if graphical is not None else 1)
                 service_refusals(record, *requester, 1)
             print('LINUX_INSTALLED_SETTINGS_ADMIN_STAGE=' + json.dumps({**event, 'index': index,
                   'requester_start': requester[1], 'service_generation': record['generation'],
@@ -1012,6 +1079,8 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
             authorization.close()
             if helper_fd is not None:
                 os.close(helper_fd)
+            if pam_fd is not None:
+                os.close(pam_fd)
         finally:
             try:
                 if process is not None and graphical is None:
@@ -1272,10 +1341,10 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False):
     if digest(receiver.PROBE) != probe_sha:
         raise RuntimeError('CPace probe changed during the installed workflow')
     if graphical:
-        print(f'LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
-              'ui=actual service=actual cancellation=gtk-dialog authorization=polkit-pam '
+        print(f'LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=4 app_commit={commit} manifest_sha256={manifest_sha} '
+              'ui=actual service=actual cancellation=gtk-selection-and-password authorization=polkit-pam '
               'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
-              'cpace=4 stale_refusals=1 cleanup=joined', flush=True)
+              'cpace=5 stale_refusals=1 cleanup=joined', flush=True)
     elif admin_failure:
         print(f'LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam '

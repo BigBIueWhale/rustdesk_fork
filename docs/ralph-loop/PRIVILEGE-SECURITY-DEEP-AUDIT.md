@@ -145887,6 +145887,43 @@ after 100.132 seconds; RAM peak 4,205,932,544 bytes, four zero listener deltas a
 exact 29-leaf diagnostic retirement are reconciled under the free lock.
 package-stop-c863e799.json and nine files / 178,205 bytes match CTE/TUF.
 
+## 2026-11-11 — package replacement drains admitted credentials; native acceptance
+
+At a2fe42909d288f5cf8858fa8c1ae786803ff3803, TUF p2fBdtuus5 exits zero
+(tool22865). The actual package remains 19,791,564 bytes, SHA-256
+19249a56142c98ccad41e9e50db93028dc9b00fc88b4812f4946c7b4b064aaf4; its
+independent archive validator and all 72 retained app6429f3cb payloads pass.
+The provisioned baseline completes mutual CPace on supervisor7394/child7466,
+start6580/generation85872d53-ace3-42de-b131-39f4b41d2746/listener26816.
+
+With all eighteen child threads held, real requesters7566/7572 remain pending.
+Actual dpkg7676 invokes prerm shutdown and stays alive for 35.018 seconds while
+the primary, service-child and Rust-library inode/device pairs remain unchanged.
+The original unit invocation remains deactivating with zero restarts beyond its
+shipped 30-second deadline. Later requester7689 exits 1 without success; its
+transport times out before admission. After barrier release, both admitted
+requesters report Done/exit0, the exact supervisor and child are reaped, and the
+unit/log report clean exit. Unpack exits zero and replaces all three file objects;
+the drained observation completes 2.218 seconds after release. Root credential
+advances to the second value and the user-profile credential remains unchanged.
+
+Real dpkg configure starts supervisor8447/child8456/start10667/generation
+f560ab62-52b9-4201-b035-5d1432a14172/listener32116. Two further mutual CPace
+controls surround a receiver-confirmed earlier-password refusal. Four loopback
+TIME_WAIT rows drain to exact baseline equality in 61.411 seconds. Desktop
+retirement, restart8556, live UID4002 refusal, reinstall8690, removal/purge and
+final APT/dpkg consistency pass. All twelve recorded ordinary package commands
+exit zero, as do the separately observed unpack/configure transactions.
+
+QEMU3973208 joins zero after 186.239 seconds; peak RAM scratch is 4,275,269,632
+bytes within admission. All four host listener deltas are zero. Reconcile raw
+observations, exact clean source, free shared lock and absent QEMU/private/RAM/
+Unix endpoints. package-stop-a2fe4290.json and nine bounded files / 160,747 bytes
+match CTE/TUF. This accepts the named actual same-package replacement scenario;
+distinct historical binaries during concurrent mutation, other shutdown failures,
+cross-platform and final-release evidence remain OPEN. Update the current ledger
+and obtain its fresh isolated count; no product code or application build changed.
+
 ## 2026-11-11 — normal-package settings failure and recovery preparation
 
 The preceding turn is progress: normal-package graphical cancellation/concurrency

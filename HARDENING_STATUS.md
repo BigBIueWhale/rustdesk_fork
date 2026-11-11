@@ -5126,7 +5126,7 @@ stale-password refusal pass (`sessionless-graphical-6429f3cb.json`). A separate
 35-second stopped-child barrier preserves two admitted changes through normal
 systemd stop; both finish, a later request is refused, the exact generation exits
 cleanly and restart retains the final credential (`sessionless-stop-6429f3cb.json`).
-Those graphical and stop regressions install the retained app layout directly.
+Those initial graphical and stop regressions installed the retained app layout directly.
 The dependency-complete package now separately passes first-desktop startup after
 sessionless provisioning, including real PAM/logind selection, exact child proof,
 mutual CPace, wrong-password refusal and child retirement with unchanged supervisor
@@ -5143,7 +5143,15 @@ and restart persistence with five CPace exchanges and two stale-password refusal
 (`package-uncertain-9cbc1f42.json`). Distinct-app Debian replacement also preserves
 the credential across verified old/new process generations and actual CPace
 authentication (`package-upgrade-328c3d5d.json`, scope above). Current handoff
-coverage and the broader authority/release matrix remain OPEN.
+coverage and the broader authority/release matrix remain OPEN. Actual same-package
+replacement now drains two admitted credential changes through its real prerm
+(`package-stop-a2fe4290.json`): dpkg and all executable objects remain pending/
+unchanged for 35 seconds; both changes then report Applied, the old generation
+exits cleanly, and unpack/configure starts a fresh generation with the final
+credential. Three CPace exchanges, stale/late/ordinary-user refusal, unchanged
+profile, subsequent restart/reinstall/remove/purge and joined cleanup pass.
+Distinct historical binaries during concurrent mutation and other shutdown
+failure paths remain unproved.
 
 **Still OPEN:** exact current release packages and upgrades; installed privileged
 action/settings authorization; genuine-image incumbents, non-root actors and

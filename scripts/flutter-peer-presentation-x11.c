@@ -7735,8 +7735,10 @@ static int choose_recording_directory(Display *display, Window main, unsigned in
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     unsigned int absent = 0U;
     while (monotonic_millis() < deadline && absent < 3U) {
-        if (query_named_accessible(pid, "Choose Directory", deadline, &dialog, 0) != 0) goto out;
-        absent = dialog == NULL ? absent + 1U : 0U;
+        /* A retiring GTK child can disappear between accessibility calls.
+         * Only a complete scan may establish dialog absence. */
+        int status = query_named_accessible(pid, "Choose Directory", deadline, &dialog, 0);
+        absent = status == 0 && dialog == NULL ? absent + 1U : 0U;
         g_clear_object(&dialog);
         if (sleep_millis(100U) != 0) goto out;
     }

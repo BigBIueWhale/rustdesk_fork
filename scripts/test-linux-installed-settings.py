@@ -1301,13 +1301,8 @@ def stopped_child(receiver, record):
             os.close(fd)
 
 
-def uncertain_scenario(receiver, probe_sha):
-    unit = Path('/etc/systemd/system/rustdesk.service')
-    if unit.exists():
-        raise RuntimeError('uncertainty scenario requires absent initial service state')
-    install(MEDIA / 'repo/res/rustdesk.service', unit)
-    run(['/usr/bin/systemctl', 'daemon-reload'])
-    network_before = network_state()
+def uncertain_scenario(receiver, probe_sha, network_before):
+    package_unit()
     authorization, barrier = ExitStack(), ExitStack()
     process = None
     record = committed = requester = profile_before = submitted_at = authority = None
@@ -1338,6 +1333,8 @@ def uncertain_scenario(receiver, probe_sha):
                     or receiver.child_record() != record
                     or receiver.credential() != (committed if committed is not None else before)):
                 raise RuntimeError('uncertainty GUI, service generation or credential changed unexpectedly')
+            for pid in (event['pid'], record['supervisor'], record['pid']):
+                package_process(pid)
             requester = identity
             if stage == 'fill':
                 profile_before = user_credential()
@@ -1418,6 +1415,8 @@ def uncertain_scenario(receiver, probe_sha):
             raise RuntimeError('uncertainty GUI did not retire with the expected credential state')
         run(['/usr/bin/systemctl', 'restart', 'rustdesk.service'], timeout=40)
         restarted = receiver.ready(record)
+        for pid in (restarted['supervisor'], restarted['pid']):
+            package_process(pid)
         credential_network(receiver, restarted, probe_sha, 'gui-uncertain-restarted')
         if receiver.credential() != committed:
             raise RuntimeError('unconfirmed GUI mutation did not survive service restart')
@@ -1649,7 +1648,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     agent_archive_sha = None
     if graphical:
         arguments, agent_archive_sha = arguments[:-1], arguments[-1]
-    if graphical or settings:
+    if graphical or settings or uncertain:
         package_install = True
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
@@ -1672,7 +1671,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
         raise RuntimeError('materialized app destination differs')
     execution = Path(execution)
     prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical,
-                               package=package or package_install, package_install=package_install, settings=settings)
+                               package=package or package_install, package_install=package_install,
+                               settings=settings or uncertain)
     if not package:
         probe_manifest = MEDIA / 'settings-probe/peer-manifest.json'
         probe = MEDIA / 'settings-probe/probe_client'
@@ -1687,10 +1687,10 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-settings' if settings else '--run', str(source),
+                        '--run-uncertain' if uncertain else '--run-settings' if settings else '--run', str(source),
                         str(prepared), str(app_input), manifest_sha, commit, probe_sha,
                         *([agent_archive_sha] if graphical else [])],
-                       env=ENV, check=True, timeout=600)
+                       env=ENV, check=True, timeout=840 if uncertain else 600)
         return
     if package:
         print(f'LINUX_DEBIAN_CANDIDATE_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
@@ -1726,8 +1726,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
         raise RuntimeError('fixture administrator UID already exists')
     try:
         receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
-        scenario_function = (concurrent_stop_scenario if concurrent_stop else admin_failure_scenario if admin_failure
-                             else uncertain_scenario)
+        scenario_function = concurrent_stop_scenario if concurrent_stop else admin_failure_scenario
         receiver.installed_desktop(lambda: scenario_function(receiver, probe_sha), settings=True)
     finally:
         run(['/usr/sbin/userdel', 'rdreceiver4003'])
@@ -1746,11 +1745,6 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
               'ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam '
               'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
               'cpace=4 stale_refusals=1 cleanup=joined', flush=True)
-    elif uncertain:
-        print(f'LINUX_INSTALLED_SETTINGS_UNCERTAIN_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
-              'ui=actual service=actual authorization=polkit-pam child=kernel-stopped deadline=600 '
-              'outcome=Uncertain durable=committed recovery=same-generation cpace=5 stale_refusals=2 '
-              'restart=service cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':
@@ -1769,7 +1763,7 @@ if __name__ == '__main__':
     elif sys.argv[1:] == ['--session-restart']:
         session(restarted=True, packaged=True)
     elif sys.argv[1:] == ['--session-uncertain']:
-        session(uncertain=True)
+        session(uncertain=True, packaged=True)
     elif sys.argv[1:] == ['--session-admin-failure']:
         session(admin_failure=True)
     elif sys.argv[1:] == ['--session-graphical']:

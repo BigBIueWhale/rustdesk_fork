@@ -265,7 +265,8 @@ def administrator_units(source, archive, version, settings, receiver):
     print('LINUX_DEBIAN_ADMIN_UNITS=' + json.dumps(completed, sort_keys=True), flush=True)
 
 
-def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before):
+def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before,
+                      uncertain=False):
     desktop_runtime(settings, prepared)
     require(not Path('/etc/ld.so.conf.d/rustdesk-settings-fixture.conf').exists()
             and not Path('/usr/local/lib/rustdesk-settings-fixture').exists(),
@@ -307,18 +308,20 @@ def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_arc
                 receiver, probe_sha, graphical=(actor, session, pam), network_before=network_before),
                 settings=True, session_controller=True)
         else:
-            receiver.installed_desktop(lambda: settings.scenario(receiver, probe_sha, network_before), settings=True)
+            scenario = settings.uncertain_scenario if uncertain else settings.scenario
+            receiver.installed_desktop(lambda: scenario(receiver, probe_sha, network_before), settings=True)
         settings.service_absent()
         require(settings.run(['/usr/bin/dpkg', '--verify', 'rustdesk']) == '',
                 'settings workflow changed the installed package')
-        label, cases = ('GRAPHICAL', 5) if agent_archive_sha is not None else ('FAILURE', 8)
+        label, cases = (('GRAPHICAL', 5) if agent_archive_sha is not None else
+                        ('UNCERTAIN', 3) if uncertain else ('FAILURE', 8))
         print(f'LINUX_DEBIAN_{label}_WORKFLOW=pass cases={cases} libraries=apt policy=package '
               'unit=vendor authorization=polkit-pam profile=unchanged cleanup=joined', flush=True)
     finally:
         command(['/usr/sbin/userdel', 'rdreceiver4003'], 'retire-desktop-administrator')
 
 
-def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None, settings_failure=False):
+def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None, settings_mode=None):
     require(Path(__file__).resolve() == SCRIPT, 'package test entry differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
@@ -429,13 +432,14 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             return fd
 
         first = installed_state('installed')
-        if agent_archive_sha is not None or settings_failure:
-            settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before)
+        if agent_archive_sha is not None or settings_mode is not None:
+            settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before,
+                              uncertain=settings_mode == 'uncertain')
             require(select.select([first], [], [], 0)[0] == [first],
                     'settings workflow did not retire the original package supervisor')
             credential = receiver.credential()
             settings.run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
-            installed_state('after-settings' if settings_failure else 'after-graphical')
+            installed_state('after-settings' if settings_mode is not None else 'after-graphical')
             require(receiver.credential() == credential, 'settings credential did not survive service restart')
         else:
             sessionless_snapshot('before-password')
@@ -508,7 +512,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
         command(['/usr/bin/dpkg', '--purge', 'rustdesk'], 'purge')
         require(not any(os.path.lexists(p) for p in ('/root/.config/rustdesk', '/root/.config/RustDesk',
                     '/etc/init.d/rustdesk')), 'purge retained package-owned state')
-        if agent_archive_sha is None and not settings_failure:
+        if agent_archive_sha is None and settings_mode is None:
             administrator_units(source, archive, version, settings, receiver)
         command([*apt, 'check'], 'final-dependencies')
         require(command(['/usr/bin/dpkg', '--audit'], 'final-dpkg-audit') == '', 'final dpkg state is incomplete')
@@ -544,7 +548,13 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if settings_failure:
+    if settings_mode == 'uncertain':
+        print(f'LINUX_DEBIAN_SETTINGS_UNCERTAIN_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired '
+              'ui=actual service=actual authorization=polkit-pam child=kernel-stopped deadline=600 '
+              'outcome=Uncertain durable=committed recovery=same-generation cpace=5 stale_refusals=2 '
+              'restart=service cleanup=joined', flush=True)
+    elif settings_mode == 'failure':
         print(f'LINUX_DEBIAN_SETTINGS_FAILURE_NATIVE=pass cases=8 app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired '
               'ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam '
@@ -564,8 +574,9 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 
 if __name__ == '__main__':
     require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
-            or (len(sys.argv) == 8 and sys.argv[1] == '--run-settings'),
+            or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
-         sys.argv[8] if len(sys.argv) == 9 else None, settings_failure=sys.argv[1] == '--run-settings')
+         sys.argv[8] if len(sys.argv) == 9 else None,
+         settings_mode={'--run-settings': 'failure', '--run-uncertain': 'uncertain'}.get(sys.argv[1]))

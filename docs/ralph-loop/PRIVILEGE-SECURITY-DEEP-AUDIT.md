@@ -145901,3 +145901,32 @@ and its byte round trip. package-failure-ledger-ce6ce988.json and eight files /
 host listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
+
+## 2026-11-11 — normal-package prolonged uncertainty preparation
+
+The previous turn is progress: eight actual-package settings scenarios passed,
+with reconciled evidence and cleanup. Both hosts are clean at efe62876; the
+existing password SSH master works, the shared lock is free, no private run remains,
+and TUF has about 43 GiB available memory. Continue the remaining package settings
+result before upgrades: the ten-minute Uncertain/recovery path has only earlier
+direct-layout evidence. Reuse app6429f3cb and the existing authenticated closure.
+
+Review src/ipc.rs's unchanged 600-second recovery deadline, the actual AT-SPI
+pending/uncertain dialog assertions and exact-child SIGSTOP/SIGCONT ownership.
+Linux pidfd_open(2)/pidfd_send_signal(2) specify process-bound signaling and
+pollable exit; preserve the retained descriptor, generation/thread observations,
+and finally-resume before joined cleanup. Do not shorten product timing or infer
+rollback from the GUI deadline.
+https://man7.org/linux/man-pages/man2/pidfd_open.2.html
+https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html
+
+Move the existing uncertainty mode onto ordinary APT/package installation and
+the package-owned unit/policy; remove its direct-layout unit replacement and
+fixture-library environment. Preserve all thirty UI stages, twenty-one pending
+observations, actual administrator authorization, five mutual CPace controls,
+two receiver-confirmed stale-password refusals and restart preservation. Check
+product mappings/environment against fixture libraries throughout. The existing
+900-second outer integration budget encloses the unchanged ten-minute deadline,
+package preparation/lifecycle and joined retirement; the package subprocess gets
+840 seconds. Normal restart, live UID-4002 refusal, reinstall/removal/purge and
+final APT/dpkg checks follow. No product correction is selected before execution.

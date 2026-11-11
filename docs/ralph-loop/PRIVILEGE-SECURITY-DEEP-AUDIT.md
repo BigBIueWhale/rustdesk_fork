@@ -146327,3 +146327,40 @@ injection and session runtime branch; all remaining installed settings modes now
 use the actual package. Move the six real-file log-snapshot controls into package
 settings preparation so their coverage survives deletion. Native acceptance is
 pending; final artifacts, other authority/lifecycle paths and R-S0 remain OPEN.
+
+## 2026-11-11 — actual-package incorrect administrator password and retry accepted
+
+7c70f69d0d7df44bad1f727dbda72b7ad1e19cf5 passes AST, shell syntax and diff
+checks. TUF VNJg31Ll8S exits zero (tool79300). The same independently validated
+19,791,564-byte package SHA-256
+19249a56142c98ccad41e9e50db93028dc9b00fc88b4812f4946c7b4b064aaf4 installs
+all 72 unchanged app6429f3cb payloads with APT-resolved libraries. The six retained
+real-file log-snapshot controls also pass in ordinary package preparation.
+
+All eleven actual GUI stages pass on GUI7784/start7006. Agent7897 serves both
+the incorrect and correct administrator challenges for that same requester.
+The first real PAM challenge fails, and exact root pkcheck7917/start7467 exits
+and is reaped within 1.946 seconds of the incorrect answer. The service-owned
+credential and ordinary profile remain unchanged, the GUI shows Denied, and
+baseline CPace still works. A fresh challenge through the same registered agent
+succeeds, the GUI reports Applied, and its next no-agent request is Denied.
+Root-held logs bind failed/no-agent refusals to exact PID/start/UID and exit1/2.
+All four CPace controls use supervisor7590/child7725/start6984/generation
+c0ec48a1-63e6-468f-8d60-7f07a511eb7b/listener24124. The child confirms refusal
+of the previous password; the user-profile credential stays unchanged throughout.
+
+Five loopback TIME_WAIT rows drain in 61.110 seconds to exact baseline equality.
+The GUI/agent/desktop retire; restart8158 and reinstall8292 preserve the protected
+credential, live UID4002 mutation is refused, removal preserves it and purge
+retires it. All sixteen package commands exit zero, including final APT/dpkg
+consistency checks. QEMU3977506 joins zero after 161.964 seconds; peak admitted
+RAM scratch is 4,252,393,472 bytes and all four host listener deltas are zero.
+Reconcile exact clean source, raw observations and absent QEMU/private/RAM/Unix
+endpoints under the free shared lock. package-admin-failure-7c70f69d.json and nine
+bounded files / 158,528 bytes match CTE/TUF.
+
+This closes the named actual-package wrong-administrator-password/retry scenario
+and removes the final settings direct-layout/copy-library branch. The OS agent
+here is pkttyagent; graphical wrong-password interaction, other failure schedules,
+cross-platform and final-release evidence remain OPEN. Update the ledger and
+obtain its fresh isolated count; no product code or application build changed.

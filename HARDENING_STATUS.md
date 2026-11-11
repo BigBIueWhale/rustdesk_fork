@@ -7532,9 +7532,18 @@ Four mutual CPace exchanges and one child-confirmed old-password refusal preserv
 the exact supervisor/child/generation/listener. No user-profile fallback occurs.
 `linux-gui-admin-failure-9c90275b.json` binds all observations, the immutable app,
 joined private/RAM/VM retirement and four zero endpoint deltas. The audit retains
-the first fixture-precondition failure and readiness-order repair. Graphical
+the first fixture-precondition failure and readiness-order repair.
+The same three cases/eleven GUI stages now pass with the actual dependency-complete
+package and current retained app6429f3cb (`package-admin-failure-7c70f69d.json`).
+The wrong-password helper exits/reaps in 1.946 seconds, protected/profile state
+stays unchanged, and the same GUI/agent retry applies. Four CPace controls and
+stale-password refusal preserve the exact serving generation. Real package
+unit/policy/APT libraries, ordinary-user refusal, restart/reinstall/remove/purge
+and joined cleanup pass. The obsolete direct-layout installer and copied-library
+runtime are deleted; all five existing settings modes use the actual package.
+This wrong-password case uses pkttyagent for the real PAM challenge. Graphical
 dialog dismissal and retry are accepted below; other failure/concurrency
-schedules, final packages and complete R-S0 remain OPEN.
+schedules, final release artifacts and complete R-S0 remain OPEN.
 
 **Graphical OS authentication cancellation and retry accepted.** TUF
 `22FynCzYst`, harness `dbefe4a3`, reuses the unchanged `83fa8494` application.

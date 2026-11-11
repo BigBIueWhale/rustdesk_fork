@@ -146681,3 +146681,26 @@ and byte round trip. android-gradle-stage-ledger-347e7fc1.json and eight files /
 scratch peaks at 403,001,344 bytes, three host listener deltas are zero, and
 private/RAM roots are absent. The approximate 400,000-token compression obligation
 remains OPEN. This audit-only append preserves the measured ledger.
+
+## 2026-11-11 — candidate Android Build Tools input
+
+Continue the Android release-build prerequisite after verified Gradle staging.
+TUF is clean at 1331d149 with 42 GiB available memory. AGP8.11's official table
+requires/defaults Build Tools35.0.0, Gradle8.13+ and JDK17:
+https://developer.android.com/build/releases/agp-8-11-0-release-notes
+The existing shared APK warmer uses canonical SDK34 and would replace the
+canonical Gradle cache, so candidate build integration remains necessary.
+Acquire Build Tools35 separately through the existing fixed-archive transaction.
+F-Droid's independent checksum record and Tor's build recipe agree on SHA-256
+bd3a4966912eb8b30ed0d00b0cda6b6543b949d5ffe00bea54c04c81e1561d88:
+https://raw.githubusercontent.com/f-droid/android-sdk-transparency-log/master/checksums.json
+https://lists.torproject.org/mailman3/hyperkitty/list/tor-commits%40lists.torproject.org/message/57ECXK7GYKKRZCKVXESI6OGBGLSWXK3H/
+F-Droid's retained Google repository record gives 61,958,799 bytes and publisher
+SHA-1 2cfaa0bbb2336e9ec18ed3ecea84fa2e2af607bc. Before first acquisition, the new
+bounded metadata verifier must confirm those exact fields against live Google
+repository2-3.xml and F-Droid's independent record. Neither metadata retrieval nor
+archive staging executes the tools. SHA-1 is publisher integrity evidence; the
+independent SHA-256 remains the content pin. Candidate manifest grows to nine
+entries, preserves the existing no-clobber publication and reuses cached inputs.
+Offline metadata refusals and actual archive tests/acquisition are pending.
+No SDK/target policy, canonical input or product behavior changes in this slice.

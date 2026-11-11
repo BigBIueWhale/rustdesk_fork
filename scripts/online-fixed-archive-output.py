@@ -247,8 +247,9 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         ):
             fail("the seven-entry manifest is not the exact Android toolchain source")
         return
-    if len(specs) == 8:
+    if len(specs) == 9:
         if names != (
+            "build-tools_r35_linux.zip",
             "flutter-3.47.5.tar.xz",
             "flutter-maven/arm64_v8a_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.jar",
             "flutter-maven/arm64_v8a_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.pom",
@@ -258,7 +259,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
             "flutter-maven/x86_64_release-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.pom",
             "gradle-8.14.7-bin.zip",
         ):
-            fail("the eight-entry manifest is not the exact Flutter candidate SDK/Maven/Gradle source")
+            fail("the nine-entry manifest is not the exact Flutter candidate SDK/Maven/Gradle/Build Tools source")
         return
     if len(specs) == 14:
         if any(
@@ -338,7 +339,7 @@ def validate_manifest_shape(specs: Sequence[ArchiveSpec]) -> None:
         "an admitted two-entry Dart-audit or Android-emulator source, "
         "three Flutter model-test toolchain entries, "
         "an admitted six-entry Android-emulator or WiX source, seven Android build entries, "
-        "eight Flutter candidate SDK/Maven/Gradle entries, "
+        "nine Flutter candidate SDK/Maven/Gradle/Build Tools entries, "
         "an admitted ten-entry Linux full-peer source, "
         "14 toolchain entries, "
         "or 33 vcpkg distfile entries, "
@@ -1568,7 +1569,7 @@ def test_flutter_archive_specs() -> tuple[ArchiveSpec, ...]:
 
 def test_flutter_candidate_archive_specs() -> tuple[ArchiveSpec, ...]:
     records: list[list[str]] = []
-    names = ["flutter-3.47.5.tar.xz"] + [
+    names = ["build-tools_r35_linux.zip", "flutter-3.47.5.tar.xz"] + [
         f"flutter-maven/{artifact}-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.{extension}"
         for artifact in ("arm64_v8a_release", "flutter_embedding_release", "x86_64_release")
         for extension in ("jar", "pom")
@@ -1955,8 +1956,8 @@ def self_test() -> None:
             fail("Android emulator self-test lost its exact runtime/Maven manifest")
         if len(android_build_specs) != 7:
             fail("Android build self-test lost its exact toolchain manifest")
-        if len(flutter_candidate_specs) != 8:
-            fail("Flutter candidate self-test lost its exact SDK/Maven/Gradle manifest")
+        if len(flutter_candidate_specs) != 9:
+            fail("Flutter candidate self-test lost its exact SDK/Maven/Gradle/Build Tools manifest")
         substituted_candidate_specs = [
             [
                 spec.name,
@@ -1971,14 +1972,14 @@ def self_test() -> None:
             "flutter-maven/x86_64_profile-1.0.0-af7e796e161ae0bb1ff0758c71a7105418bd9ded.jar",
             "flutter-maven/x86_64_release-1.0.0-a18df97ca57a249df5d8d68cd0820600223ce262.jar",
         ):
-            substituted_candidate_specs[5][0] = replacement
+            substituted_candidate_specs[6][0] = replacement
             try:
                 parse_specs(substituted_candidate_specs)
             except ContractError:
                 pass
             else:
                 fail("Flutter candidate self-test accepted a substituted Maven artifact")
-        for length in (1, 7):
+        for length in (1, 7, 8):
             incomplete_specs = [
                 [spec.name, spec.url, str(spec.size), spec.sha256, ",".join(spec.redirect_hosts)]
                 for spec in flutter_candidate_specs[:length]

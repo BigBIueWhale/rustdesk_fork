@@ -423,6 +423,12 @@ readonly -a FLUTTER_TEST_FIXED_ARCHIVE_ARGS=(
 readonly FLUTTER_PRESENTATION_CANDIDATE_MAVEN_VERSION="1.0.0-${FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION}"
 readonly -a FLUTTER_PRESENTATION_CANDIDATE_FIXED_ARCHIVE_ARGS=(
     --entry
+    "build-tools_r35_linux.zip"
+    "https://dl.google.com/android/repository/build-tools_r35_linux.zip"
+    "$SIZE_ANDROID_CANDIDATE_BUILD_TOOLS"
+    "$SHA256_ANDROID_CANDIDATE_BUILD_TOOLS"
+    "dl.google.com"
+    --entry
     "flutter-${FLUTTER_PRESENTATION_CANDIDATE_VERSION}.tar.xz"
     "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_PRESENTATION_CANDIDATE_VERSION}-stable.tar.xz"
     "$SIZE_FLUTTER_PRESENTATION_CANDIDATE"
@@ -2219,7 +2225,12 @@ stage_flutter_test_inputs() {
 }
 
 stage_flutter_presentation_candidate() {
-    local directory
+    local directory helper="$SCRIPT_DIR/verify-android-build-tools-metadata.py"
+    local metadata_args=(
+        --size "$SIZE_ANDROID_CANDIDATE_BUILD_TOOLS"
+        --sha1 "$SHA1_ANDROID_CANDIDATE_BUILD_TOOLS"
+        --sha256 "$SHA256_ANDROID_CANDIDATE_BUILD_TOOLS"
+    )
     for directory in "$ONLINE_CANDIDATE_ROOT" "$FLUTTER_PRESENTATION_CANDIDATE_ROOT"; do
         if [ -e "$directory" ] || [ -L "$directory" ]; then
             [ -d "$directory" ] && [ ! -L "$directory" ] \
@@ -2235,10 +2246,23 @@ stage_flutter_presentation_candidate() {
             || die "Flutter presentation candidate root is not on the online-state filesystem: $directory"
     done
     verify_or_load_android_builder_image
+    if [ ! -e "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/build-tools_r35_linux.zip" ] \
+        && [ ! -L "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/build-tools_r35_linux.zip" ]; then
+        [ -f "$helper" ] && [ ! -L "$helper" ] \
+            || die "Android Build Tools metadata verifier is absent or ambiguous"
+        online_docker_run_offline \
+            --mount "type=bind,source=$helper,target=/authority/metadata.py,readonly,bind-recursive=disabled" \
+            "$(online_fetch_builder_runtime_ref "$ANDROID_BUILDER_CONFIG_ID")" \
+            /usr/bin/python3 -I -S /authority/metadata.py "${metadata_args[@]}" --self-test
+        online_docker_run_archive_acquisition \
+            --mount "type=bind,source=$helper,target=/authority/metadata.py,readonly,bind-recursive=disabled" \
+            "$(online_fetch_builder_runtime_ref "$ANDROID_BUILDER_CONFIG_ID")" \
+            /usr/bin/python3 -I -S /authority/metadata.py "${metadata_args[@]}"
+    fi
     stage_archive_bundle flutter-presentation-candidate \
         "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
         .rustdesk-flutter-presentation-candidate \
-        "pinned Flutter presentation candidate SDK/Maven/Gradle inputs" \
+        "pinned Flutter presentation candidate SDK/Maven/Gradle/Build Tools inputs" \
         "$ANDROID_BUILDER_CONFIG_ID" android-builder
 }
 

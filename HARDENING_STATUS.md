@@ -129,20 +129,24 @@ OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
 below retains the required authorized behavior.
 
-**Current Linux build verified (2026-11-11).** Build `kz2xxNctS5` at `74b64685`
-includes serialized credential convergence and the SIGPIPE correction. The complete
-Rust/Flutter build, thirteen widget/two native controls and all 73 payload hashes
-pass with two Cargo jobs, a 10-GiB compiler limit and zero OOM events. The admitted
-14-GiB guest and scratch/headroom limits are unchanged. Evidence:
-`linux-concurrent-build-74b64685.json`. This bundle passes installed GUI/root-CLI
-overlap, GTK cancellation/retry, no-agent refusal and two admitted CLI changes
-through normal systemd stop/restart. The installed section retains exact scope.
+**Current Linux application/package checkpoint (2026-11-11).** App `6429f3cb`
+includes the sessionless credential correction. Guest Rust/Flutter compilation,
+thirteen widget/two native controls and all 73 payload hashes pass with the existing
+two-job/10-GiB compiler limits and zero OOM events. The original outer command's
+terminal result was not retained. Its exact pending capsule was independently
+revalidated and recovered with the existing no-clobber publisher after joined
+VM/RAM retirement; `sessionless-build-recovered-6429f3cb.json` records that scope.
+This artifact passes normal dependency-complete Debian install/reinstall/remove/
+purge, sessionless password completion and ordinary-user refusal. The same app
+also passes the installed-layout graphical authorization/concurrent-change and
+queued-change normal-stop/restart regressions. The package and service sections
+below retain the three native receipts and remaining acceptance boundaries.
 Earlier app `83fa8494` separately passes GUI Applied/Denied/Failed/restart
 (`linux-sigpipe-settings-a3c017a6.json`) and actual ten-minute Uncertain reporting,
 same-child recovery and credential persistence (`linux-sigpipe-recovery-a3c017a6.json`).
 The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
-Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-release
+Flutter 3.47.5 remains a candidate. Complete installed/package, other-platform, final-release
 and dependency/native-asset inventory acceptance remain OPEN; the current monitor
 runtime result is under R-S11go.
 
@@ -371,15 +375,19 @@ unit, policy, manager resources and freshly compiled XDO are packaged. The
 71.790-second no-NIC transaction retires its container/QEMU/private/RAM state
 with four zero listener deltas. `debian-candidate-18079460.json` retains provenance.
 This is construction from one retained application, not cold application A==B.
-Normal dependency-complete installation now passes on that app: `bvrMolSDnR`
-at `844f49df` installs all 330 authenticated dependencies through APT without an
-override or network, verifies all payloads and starts the actual vendor service.
-The sessionless root password command then has no final outcome within 20 seconds;
-ordinary service stop exceeds 45 seconds. The VM eventually powers down and its
-owned processes/private/RAM state retire. `debian-install-sessionless-844f49df.json`
-retains the failure; durable mutation was not observed after timeout. Refusal,
-reinstall, removal and purge did not run. The child-absence correction below has
-component evidence; corrected full-app/package acceptance remains **OPEN**.
+Normal dependency-complete lifecycle now passes on corrected app `6429f3cb`:
+`jBbAh4OO5G` installs all 330 authenticated dependencies through APT without an
+override or network, verifies all 72 payloads and starts the actual vendor service.
+With no session or child before/after, the root password command reports Applied
+in 0.164 seconds and creates the protected credential; UID 4002 is refused without
+changing it. Same-version reinstall reaps the old supervisor and preserves the
+credential; removal stops the replacement and preserves it; purge removes the
+protected state. Final APT/dpkg checks pass. `sessionless-install-6429f3cb.json`
+binds the package, observations and joined cleanup. The earlier `74b64685` app's
+20-second password timeout/45-second stop timeout remain in
+`debian-install-sessionless-844f49df.json`; its durable outcome was unobserved.
+Actual-package desktop bootstrap/settings, upgrades, administrator masks/links/
+replacement units/drop-ins and the complete release matrix remain **OPEN**.
 Canonical input promotion also remains open: the Debian recipe selects stock
 Flutter 3.24.5 while the accepted app uses the 3.47.5 candidate and patched engine.
 
@@ -5030,7 +5038,7 @@ they and the audit retain exact timings, run IDs, hashes, observations and fixtu
 | Stopped-child shutdown (`7973c6f1`, `fdbab046`) | After CPace, exact-child SIGSTOP holds all fifteen threads. Ordinary stop remains deactivating with the same supervisor/child and unchanged record through four seconds of TERM pending, then retires the tree in 8.259 seconds with successful unit exit and zero restarts. A three-second stopped observation and explicit new startup preserve the credential and pass CPace/stop. | `linux-stopped-child-7973c6f1.json`. |
 | Post-reap cleanup correction (`e0c73321`) | A controlled root-only fault removes the record at successful wait4. The old binary sends numeric-PID TERM after reaping and gets ESRCH. Termination now checks the retained Child exit status before signaling; reaped children permit only record cleanup, and inspection/removal errors remain errors. The unchanged fault now causes zero post-reap TERM calls, service exit 1, unchanged credential and full cleanup after successful CPace. Same-artifact stopped-child regression retains four seconds of pending TERM, retires in 8.265 seconds, then passes fresh startup/login/stop. | `linux-record-cleanup-86c4fc22.json`, `linux-record-cleanup-build-e0c73321.json`, `linux-record-cleanup-accepted-e0c73321.json`, `linux-record-cleanup-stop-e0c73321.json`. No unprivileged record-write trigger or actual wrong-process signal is demonstrated. |
 
-**Sessionless credential completion — correction has component evidence.**
+**Sessionless credential completion — native package and live-child regressions pass.**
 `a815d684` replaces unconditional absent-child recovery with supervisor-owned
 process accounting, initialized after previous-child recovery. Every launch is
 counted before spawn and only the retained Child's observed exit releases it;
@@ -5040,8 +5048,18 @@ root state. Existing children still require authenticated convergence. At
 `7cde2aca`, all four actual process cases and twenty existing identity/selector
 controls pass in 0.18 seconds, including a held pre-exec launch, failed exec,
 repeated waits and lost ownership. `child-process-native-7cde2aca.json` binds the
-34.247-second isolated run and joined cleanup. Full application, installed
-sessionless completion, desktop handoff and live-child regressions remain OPEN.
+34.247-second isolated run and joined cleanup. The corrected full application
+`6429f3cb` passes the sessionless Debian package lifecycle above. Its exact bytes
+also pass real GTK cancellation at selection/password entry, polkit/PAM retry,
+no-agent refusal and overlapping GUI/root-CLI changes: both remain pending while
+the child is stopped, then report success after its convergence; final CPace and
+stale-password refusal pass (`sessionless-graphical-6429f3cb.json`). A separate
+35-second stopped-child barrier preserves two admitted changes through normal
+systemd stop; both finish, a later request is refused, the exact generation exits
+cleanly and restart retains the final credential (`sessionless-stop-6429f3cb.json`).
+These desktop runs install the retained app layout directly. Actual-package
+desktop startup after sessionless provisioning, current handoff coverage and the
+broader authority/release matrix remain OPEN.
 
 **Still OPEN:** exact current release packages and upgrades; installed privileged
 action/settings authorization; genuine-image incumbents, non-root actors and

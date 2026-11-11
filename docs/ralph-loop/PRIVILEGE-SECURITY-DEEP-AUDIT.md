@@ -145441,3 +145441,61 @@ zero after 30.483 seconds and private/RAM roots retire. Whole-ledger compression
 to its approximate 400,000-token target remains OPEN. Proceed with the existing
 isolated full-app build using retained engine ddb1541d and the admitted compiler
 limits, then replay the dependency-complete installation against its exact output.
+
+## 2026-11-11 — sessionless package lifecycle and live-child acceptance
+
+Continue the selected package/credential milestone. The preceding status turn
+verified the specific build handle still live. On this continuation tool63726 is
+missing; retained B0HppM5FlG evidence instead establishes completed guest Rust/
+Flutter compilation, thirteen widget/two native controls, QEMU3904735 joined zero
+after 1201.117 seconds, absent RAM scratch and four zero listener deltas. The outer
+command's terminal result is unobserved and is not claimed successful. Its pending
+application and private diagnostic directory remain. Under the free shared lock,
+prove exact private identity, absence of its process handles/Unix endpoints, clean
+pushed source, complete capture hashes, expected build context and all 73 payload
+hashes, plus retained engine/manifest identities. Use the existing descriptor-owned
+no-clobber app publisher, then retire the exact private tree. No rebuild occurs.
+The source-bound app manifest is
+676bd6fabbc574b848cadd32d16cc639292104a8af345c97257cc767d328598a.
+sessionless-build-recovered-6429f3cb.json and thirteen files/381,521 bytes match
+CTE/TUF. Peak admitted RAM scratch was 11,901,874,176 bytes; limits are unchanged.
+
+TUF jBbAh4OO5G at 6429f3cb exits zero (tool11977). The production package and all
+330 pinned dependencies install normally through offline APT. All 72 payloads,
+dpkg ownership/checksums, protected child image and loader resolution pass. The
+vendor service is active/running with zero restarts. No session/child/child record
+exists before or after the root password command, which reports Applied in
+0.163530799 seconds and creates a root-owned 0600 credential. UID4002 is refused
+without changing it. Same-version reinstall reaps the original supervisor and
+preserves the credential; removal reaps the replacement and preserves it; purge
+removes protected state. Final APT/dpkg checks pass. The package SHA-256 is
+f5ef3a923a04af375f8d40f548313c847e3c4b3d61ee9e5d426e62ddf9423718.
+sessionless-install-6429f3cb.json and nine files/130,568 bytes match both hosts.
+QEMU3921989 joins zero after 78.263 seconds; RAM peak is 4,027,527,168 bytes.
+
+The same app passes An4OPKX4rd (tool96479 exit zero): two actual GTK cancellation
+phases preserve protected/profile state and reap helpers; fresh polkit/PAM retry
+admits the GUI change. With the exact child stopped, overlapping GUI/root-CLI
+operations stay pending and the second does not replace the first durable value.
+After resume both report success in 0.818 seconds on the same generation. No-agent
+refusal, five mutual CPace exchanges and one receiver-confirmed stale-password
+refusal pass. sessionless-graphical-6429f3cb.json and nine files/127,540 bytes match
+both hosts; QEMU3924035 joins zero after 155.107 seconds, RAM peak 3,842,785,280.
+
+WNWk3q5yJb (tool38051 exit zero) passes the nearby normal-stop regression. The
+actual service stays deactivating through a 35.057-second exact-child barrier,
+beyond its ordinary 30-second stop timeout, while preserving two admitted changes.
+A later request is refused. On release both admitted CLIs report Done, the exact
+child/supervisor are reaped and the unit reports clean success in 0.746 seconds.
+A fresh generation preserves the final durable credential, passes CPace and
+refuses the stale value. sessionless-stop-6429f3cb.json and nine files/114,490 bytes
+match both hosts; QEMU3926066 joins zero after 166.890 seconds, RAM peak 3,838,656,512.
+All three native runs have four zero listener deltas and absent private/RAM roots.
+Their outer transcripts are retained with a bounded local capture.
+
+The demonstrated sessionless completion failure and this ordinary Debian lifecycle
+are closed on the named artifact. Desktop regressions use a directly installed
+app layout; they do not establish the package's first desktop startup after
+sessionless provisioning. That transition is the next concrete package acceptance
+step. Administrator unit-state preservation, upgrades, canonical input promotion,
+cold reproducibility, remaining platforms and the full release goal remain OPEN.

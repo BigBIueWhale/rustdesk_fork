@@ -145039,3 +145039,41 @@ binds 141.636 seconds, 3,842,957,312-byte RAM peak, QEMU3862371 joined zero,
 private/RAM retirement and four zero endpoint deltas. Eleven files/323,405 bytes
 match CTE/TUF, including the full guest logs and screenshot. The outer tool text
 was truncated; its retained excerpt omits oversized lines and is labeled as such.
+
+Diagnostic replay `QhTlgIQ5Eq` at `7ac0e592` exits one with the same unchanged
+83fa8494 app. Original supervisor9092/child9101 generation
+1b4d81c8-61a8-4ab3-9014-83cc2e76e113 is retained by opened log descriptors.
+GUI9183 and root CLI9520 overlap while all seventeen child threads remain stopped
+for 2.014 seconds; both durable values appear. After resume the CLI reports Done,
+but the GUI never reports Applied. The original root log records replica outcome
+Failed, authority-failure shutdown and termination with unresolved admission
+authority. This establishes the failure mechanism beyond the first screenshot.
+`linux-concurrent-diagnostic-7ac0e592.json` (10,530 bytes; SHA-256
+7486a961113e2f3698d43d6a2428fc07cdfae273884f7d7bc3506e8ba60aa2a7)
+binds 141.693 seconds, RAM peak 3,842,830,336 bytes, QEMU3863936 joined zero,
+private/RAM retirement and four zero endpoint deltas. Eleven files/329,008 bytes
+match CTE/TUF. Full raw logs survive the bounded outer excerpt.
+
+Correction: LinuxPasswordAdmissionCoordinator owns one asynchronous commit permit
+covering durable persistence, typed PRS reread and exact-child convergence.
+Distinct admitted operations previously overlapped these steps although the
+child's blocking mutation capacity is one; its contested admission becomes
+InternalFailure. Authorized operations now wait after irreversible Committing
+admission, retaining requester-independent completion and existing shutdown drain.
+The four transport permits bound waiters; ordinary authorization, identity replay,
+operation UUID/fingerprint and recovery ownership remain required. No ledger mutex
+is held across await. Tokio 1.44.2's primary Semaphore source documents asynchronous
+FIFO acquisition and permit-drop release:
+https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/sync/semaphore.rs
+The installed oracle now requires exactly one durable value while the first
+runtime convergence is held, followed by both truthful outcomes and final CLI
+credential CPace/old-GUI-value refusal on the original generation. Corrected
+application build and native acceptance remain pending.
+
+Under the shared verifier lock, classify 53f66299 as superseded by accepted
+SIGPIPE-corrected 83fa8494. Verify its manifest, all 73 payload hashes, closed
+inventory and owner/modes before descriptor-owned retirement. This frees
+70,561,792 allocated file bytes without raising the four-generation cache cap.
+Preserve 83fa8494 as the reproduced concurrency baseline, 7e6f6459 and the
+intentional 0ccb2a7e pending bundle. The three `concurrent-retired-53f66299*`
+records (14,370 bytes) match CTE/TUF; no source or canonical offline input is removed.

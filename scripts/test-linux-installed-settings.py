@@ -1097,8 +1097,8 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                     current = receiver.credential()
                     if current != observed[-1]:
                         observed.append(current)
-                    if len(observed) > 2 or current == before:
-                        raise RuntimeError('concurrent requests produced an unexpected durable transition')
+                    if len(observed) != 1 or current == before:
+                        raise RuntimeError('concurrent request persisted before the first runtime convergence')
                     time.sleep(0.02)
                 cli_proc = Path(f'/proc/{concurrent.pid}')
                 cli_status = dict(line.split(':', 1) for line in (cli_proc / 'status').read_text().splitlines() if ':' in line)

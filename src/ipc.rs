@@ -1486,6 +1486,7 @@ impl LinuxPasswordAdmissionLedger {
 struct LinuxPasswordAdmissionCoordinator {
     ledger: std::sync::Mutex<LinuxPasswordAdmissionLedger>,
     changed: Notify,
+    commit_slot: Semaphore,
 }
 
 #[cfg(target_os = "linux")]
@@ -1505,6 +1506,7 @@ impl LinuxPasswordAdmissionCoordinator {
         Self {
             ledger: std::sync::Mutex::new(LinuxPasswordAdmissionLedger::new()),
             changed: Notify::new(),
+            commit_slot: Semaphore::new(1),
         }
     }
 
@@ -6357,7 +6359,15 @@ where
             }
         }
 
-        let result = match commit().await {
+        // Persistence and replica convergence form one service-owned transaction.
+        // Already admitted requests wait here without cancelling on requester exit.
+        let committed = match coordinator.commit_slot.acquire().await {
+            Ok(_permit) => commit().await,
+            Err(err) => Err(anyhow::anyhow!(
+                "Linux password commit owner is unavailable: {err}"
+            )),
+        };
+        let result = match committed {
             Ok(result) => result,
             Err(err) => {
                 if !coordinator.release_failed_commit(operation_id, &caller) {

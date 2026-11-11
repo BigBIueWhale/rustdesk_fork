@@ -145735,3 +145735,16 @@ acceptance remain OPEN. Continue the package milestone with its graphical
 authorization/settings workflow using the existing retained app and dependency
 closure. Update the current ledger and obtain its fresh isolated count before
 ending this checkpoint.
+
+Fresh isolated count RSgpue6tVU at 2b7344a0 exits zero (tool6310). The ledger is
+404,857 tokens / 1,848,405 bytes, SHA-256
+8949341f07536165590e745e8b595b39a64d2ff4ed6a81a6b41c11844b73d9e5;
+requirements are 366,715 tokens / 1,674,000 bytes, SHA-256
+6167a2e2eaaa01b0036b1f1b011e4c30bb5ab8793f4342fc8a076bcdca7f0d93.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and both byte round trips. package-admin-units-ledger-2b7344a0.json and eight
+files/118,141 bytes match CTE/TUF. QEMU3943866 joins zero after 30.377 seconds;
+three host listener deltas are zero, and private/RAM roots are absent. The ledger
+falls by 507 tokens as stale source-only history is replaced by current native
+evidence. Its approximate 400,000-token compression obligation remains OPEN.
+This audit-only append preserves both measured documents.

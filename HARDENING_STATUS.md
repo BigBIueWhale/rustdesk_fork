@@ -7373,6 +7373,21 @@ OS-agent interaction and final-package acceptance remain separate. Earlier
 `password-outcome-installed-c1375436.json` and `password-outcome-failed-d7459a5a.json`;
 the audit retains their fixture failures and the older `d1bf0877` scope.
 
+**Incorrect administrator password and fresh GUI retry accepted.** TUF
+`HjU5czWy5G`, harness `9c90275b`, reuses the same `83fa8494` app. All three cases /
+eleven actual GUI stages pass: real PAM authentication failure produces Denied,
+leaves protected/user-profile credentials unchanged and reaps the exact root
+pkcheck within 2.379 seconds of the incorrect answer. Baseline CPace still works.
+The same GUI and registered agent complete a fresh correct PAM challenge and
+Applied; after agent retirement, the same GUI receives a fresh no-agent Denied.
+Four mutual CPace exchanges and one child-confirmed old-password refusal preserve
+the exact supervisor/child/generation/listener. No user-profile fallback occurs.
+`linux-gui-admin-failure-9c90275b.json` binds all observations, the immutable app,
+joined private/RAM/VM retirement and four zero endpoint deltas. The audit retains
+the first fixture-precondition failure and readiness-order repair. Actual user
+dismissal of an authentication dialog, graphical OS agents, other failure and
+concurrency schedules, final packages and complete R-S0 remain OPEN.
+
 `d9fc6405`/`53f66299` replace the Boolean native/Flutter password result with
 Applied/Denied/Failed/Uncertain, retain bounded-recovery expiry as Uncertain,
 and distinguish derivation failure from policy refusal. The dialog explains that

@@ -144779,3 +144779,26 @@ The failed run's complete guest/console evidence is retained in
 `linux-admin-failure-precondition-a1cab68b.json`; ten files / 125,099 bytes match
 CTE/TUF. QEMU3840173 joins with zero, private/RAM state retire and all four endpoint
 deltas are zero. Runtime is 123.575 seconds; RAM workspace peak 3,839,270,912 bytes.
+
+**Accepted.** `HjU5czWy5G` at `9c90275b`, tool session35972, exits zero with the
+unchanged `83fa8494` app. Three cases / eleven actual GUI stages pass. Real PAM
+rejects the incorrect administrator password; exact root pkcheck9274/start6059
+exits and is reaped within 2.379 seconds of the answer while agent9254 remains
+alive. Root-held logs bind refusal status1 to GUI9148/start5601/UID4001.
+Protected and user-profile credentials remain unchanged and baseline CPace works.
+The same GUI/agent produce one fresh correct challenge and Applied. After joined
+agent retirement, a fresh request yields GUI Denied and the matching root status2.
+Four mutual CPace exchanges and one child-confirmed old-password refusal preserve
+supervisor9059, child9068/start5481, generation and listener inode25414. Six real-file
+log controls pass during preparation; all 73 app payloads remain unchanged.
+
+`linux-gui-admin-failure-9c90275b.json` is 13,921 bytes, SHA-256
+`86699be241e96e8cd1502b22004788f42343248e0198242dc3bb5e9cf68bbd55`.
+Nine retained files / 112,969 bytes match CTE/TUF. Runtime is 143.452 seconds;
+RAM workspace peaks at 3,839,860,736 bytes. QEMU3841666 joins with zero; private
+state and RAM retire, guest networking returns to baseline, and four endpoint
+deltas are zero. No product correction or rebuild was needed for this gap.
+The accepted scope is incorrect-password handling through the actual installed
+GUI with a textual OS agent, including same-agent recovery. User dismissal of
+authentication, graphical OS-agent interaction, other authorization/concurrency
+schedules, final packages, cross-platform and complete R-S0 remain OPEN.

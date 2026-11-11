@@ -144516,3 +144516,29 @@ Seven controls, complete byte round trip and outer acceptance pass; three endpoi
 deltas are zero and exact QEMU/private/RAM retirement is reconciled.
 `linux-sigpipe-ledger-cfaf6104.json` binds eight matching files / 115,493 bytes on
 CTE/TUF. Compression below the approximate 400,000-token target remains open.
+
+## 2026-11-11 — Native Linux launcher broken-pipe comparison
+
+Previous turn answered the user's completion-status question; it made no goal
+progress. Continue the reproduced installed password-recovery failure. TUF still
+has 41,880,485,888 available bytes, below the unchanged full-build requirement;
+neither host has a live verifier run. The smaller launcher check is a prerequisite
+for validating the existing correction, not installed recovery acceptance.
+
+`--linux-launcher-tests` compiles the complete current `flutter/linux/main.cc`
+and the exact `53f66299` predecessor with the pinned devcheck compiler and real GTK
+headers/libraries. Both load the same fixture `librustdesk.so`. Its constructor
+writes to a closed Unix socket with write/writev, or a closed pipe, before returning
+false from the core entry. The expected distinction is native SIGPIPE termination
+before core entry versus EPIPE followed by normal headless completion. A healthy
+control must succeed for both launchers; invoking the GUI stub fails the check.
+Python restores default SIGPIPE disposition before each executable starts.
+
+The existing unprivileged compiled-component container orchestration now serves
+both this check and the unchanged Debian archive tests. Source mounts remain
+read-only, capabilities absent, no-new-privileges set and networking disabled;
+the shared bounded-RAM VM profile, monitoring and joined cleanup remain required.
+The historical source export is digest-bound and stays in the admitted RAM workspace.
+Eight component observations and the affected Debian lane are prepared, not yet run.
+The complete Rust library, GUI and installed service are outside this fixture;
+their corrected-artifact build and same-child recovery replay remain OPEN.

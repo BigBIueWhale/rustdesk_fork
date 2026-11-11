@@ -85,6 +85,9 @@ case "$#:${8:-}" in
     8:--debian-polkit-tests)
         MODE=debian-polkit-tests
         ;;
+    8:--linux-launcher-tests)
+        MODE=linux-launcher-tests
+        ;;
     8:--debian-package-tests)
         MODE=debian-package-tests
         ;;
@@ -1725,12 +1728,24 @@ run_debian_maintainer_tests() {
         "$(sha256sum "$VERIFY_REPO/res/DEBIAN/prerm" | awk '{print $1}')"
 }
 
-run_debian_archive_integration_tests() {
+run_compiled_component_tests() {
     local work work_id load_output inspect status=0 source_before
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
-    local output=$ROOT/debian-package-tests.out
-    local -a sources=("$VERIFY_REPO/build.py" "$VERIFY_REPO/scripts/verify-debian-package-authority.py"
-        "$VERIFY_REPO/res/com.carriez.RustDesk.policy" "$OFFLINE_IMAGE_PROVENANCE" "$ENTRY_PREFLIGHT")
+    local output=$ROOT/$MODE.out source program
+    local -a component_sources sources mounts=()
+    if [ "$MODE" = linux-launcher-tests ]; then
+        component_sources=(flutter/linux/main.cc flutter/linux/my_application.h
+            flutter/linux/main-before.cc scripts/test-linux-launcher-native.py)
+        program='import runpy; runpy.run_path("/repo/scripts/test-linux-launcher-native.py", run_name="__main__")'
+    else
+        component_sources=(build.py scripts/verify-debian-package-authority.py res/com.carriez.RustDesk.policy)
+        program='import runpy,sys; scope=runpy.run_path("/repo/scripts/verify-debian-package-authority.py"); scope["require_native_fixture_principal"](); sys.argv=["package-checker","--repo","/repo","--self-test"]; scope["main"]()'
+    fi
+    sources=("$OFFLINE_IMAGE_PROVENANCE" "$ENTRY_PREFLIGHT")
+    for source in "${component_sources[@]}"; do
+        sources+=("$VERIFY_REPO/$source")
+        mounts+=(--mount "type=bind,source=$VERIFY_REPO/$source,target=/repo/$source,readonly,bind-recursive=disabled")
+    done
     source_before="$(sha256sum "${sources[@]}")"
     setpriv --reuid=4000 --regid=4000 --clear-groups /bin/bash "$ENTRY_PREFLIGHT" >/dev/null
     load_output="$(setpriv --reuid=4000 --regid=4000 --clear-groups \
@@ -1744,11 +1759,11 @@ run_debian_archive_integration_tests() {
             --cargo-sha "$SHA256_DEV_CHECK_CARGO" --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
             --debian-snapshot "$DEV_CHECK_DEBIAN_SNAPSHOT" --security-snapshot "$DEV_CHECK_SECURITY_SNAPSHOT" \
             --source-date-epoch "$DEV_CHECK_SOURCE_DATE_EPOCH" --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
-            --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID")" || fail 'Debian package-test compiler verification/load failed'
+            --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID")" || fail 'compiled component compiler verification/load failed'
     [ "$load_output" = "loaded and verified devcheck $DEV_CHECK_IMAGE_ID" ] \
-        || fail 'Debian package-test compiler receipt differs'
-    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups /usr/bin/mktemp -d /tmp/debian-package-tests.XXXXXXXXXX)"
-    [ "$(stat -c '%u:%g:%a' "$work")" = 4000:4000:700 ] || fail 'Debian package scratch authority differs'
+        || fail 'compiled component compiler receipt differs'
+    work="$(setpriv --reuid=4000 --regid=4000 --clear-groups /usr/bin/mktemp -d "/tmp/$MODE.XXXXXXXXXX")"
+    [ "$(stat -c '%u:%g:%a' "$work")" = 4000:4000:700 ] || fail 'compiled component scratch authority differs'
     work_id="$(stat -c '%d:%i' "$work")"
     CONTAINER_ID="$("$CLIENT" --host "unix://$SOCK" create \
         --pull=never --network=none --read-only --user 4000:4000 \
@@ -1756,18 +1771,16 @@ run_debian_archive_integration_tests() {
         --memory=512m --memory-swap=512m --cpus=2 --pids-limit=64 --cgroupns=private --ipc=private \
         --ulimit nofile=256:256 --ulimit core=0:0 --ulimit fsize=16777216:16777216 \
         --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=700,uid=4000,gid=4000 \
-        --mount "type=bind,source=$VERIFY_REPO/build.py,target=/repo/build.py,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$VERIFY_REPO/scripts/verify-debian-package-authority.py,target=/repo/scripts/verify-debian-package-authority.py,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$VERIFY_REPO/res/com.carriez.RustDesk.policy,target=/repo/res/com.carriez.RustDesk.policy,readonly,bind-recursive=disabled" \
+        "${mounts[@]}" \
         --mount "type=bind,source=$work,target=/work,bind-recursive=disabled" \
         --env PATH=/usr/bin:/bin --env LC_ALL=C --env HOME=/nonexistent --env TMPDIR=/work \
         --workdir /work --entrypoint /usr/bin/python3 "$DEV_CHECK_IMAGE_CONFIG_ID" -B -I -S -c \
-        'import runpy,sys; scope=runpy.run_path("/repo/scripts/verify-debian-package-authority.py"); scope["require_native_fixture_principal"](); sys.argv=["package-checker","--repo","/repo","--self-test"]; scope["main"]()')" \
-        || fail 'cannot create the confined Debian package-test container'
-    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'Debian package-test container identity differs'
-    inspect=$ROOT/debian-package-container.json
+        "$program")" \
+        || fail 'cannot create the confined compiled component container'
+    [[ "$CONTAINER_ID" =~ ^[0-9a-f]{64}$ ]] || fail 'compiled component container identity differs'
+    inspect=$ROOT/$MODE-container.json
     "$CLIENT" --host "unix://$SOCK" inspect "$CONTAINER_ID" >"$inspect"
-    /usr/bin/python3 -B -I -S - "$inspect" "$DEV_CHECK_IMAGE_CONFIG_ID" "$VERIFY_REPO" "$work" <<'PY'
+    /usr/bin/python3 -B -I -S - "$inspect" "$DEV_CHECK_IMAGE_CONFIG_ID" "$VERIFY_REPO" "$work" "${component_sources[@]}" <<'PY'
 import json,sys
 from pathlib import Path
 container,=json.loads(Path(sys.argv[1]).read_text())
@@ -1782,8 +1795,7 @@ assert host["Privileged"] is False and not host["PidMode"] and not host["UTSMode
 assert host["IpcMode"]==host["CgroupnsMode"]=="private"
 assert not host.get("Devices") and not host.get("PortBindings") and not host["PublishAllPorts"]
 repo=sys.argv[3];work=sys.argv[4]
-expected={"/repo/"+name:(repo+"/"+name,False) for name in
-          ("build.py","scripts/verify-debian-package-authority.py","res/com.carriez.RustDesk.policy")}
+expected={"/repo/"+name:(repo+"/"+name,False) for name in sys.argv[5:]}
 expected["/work"]=(work,True)
 actual={mount["Destination"]:(mount["Source"],mount["RW"]) for mount in container["Mounts"] if mount["Type"]=="bind"}
 assert actual==expected
@@ -1792,10 +1804,14 @@ assert set(host["Tmpfs"])=={"/tmp"}
 assert set(host["Tmpfs"]["/tmp"].split(","))==set("rw,noexec,nosuid,nodev,size=16m,mode=700,uid=4000,gid=4000".split(","))
 PY
     "$CLIENT" --host "unix://$SOCK" start --attach "$CONTAINER_ID" >"$output" 2>&1 || status=$?
-    [ "$(stat -c '%s' "$output")" -le 65536 ] || fail 'Debian package-test output exceeded its bound'
+    [ "$(stat -c '%s' "$output")" -le 65536 ] || fail 'compiled component output exceeded its bound'
     [ "$status" -eq 0 ] \
         && [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
-        || { tail -n 60 "$output" >&2; fail 'Debian archive integration tests failed'; }
+        || { tail -n 60 "$output" >&2; fail 'compiled component tests failed'; }
+    if [ "$MODE" = linux-launcher-tests ]; then
+        [ "$(grep -Fxc 'LINUX_LAUNCHER_TESTS=pass cases=8 baseline_sigpipe=3 corrected_epipe=3 healthy=2 library=fixture gui=unexecuted' "$output")" -eq 1 ] \
+            && [ "$(wc -l <"$output")" -eq 2 ] || fail 'Linux launcher result differs'
+    else
     [ "$(grep -Fxc 'ok  Debian package archive and production-finalizer self-tests passed' "$output")" -eq 1 ] \
         && [ "$(wc -l <"$output")" -eq 3 ] || fail 'Debian archive integration result differs'
     /usr/bin/python3 -B -I -S - "$output" <<'PY'
@@ -1822,20 +1838,25 @@ for case in value["maintainer_cli_cases"].values():
 for digest in [value[name] for name in ("fixture_archive_sha256","production_archive_sha256","runner_sha256","compiler_sha256")]+list(value["libraries_sha256"].values()):
  assert re.fullmatch("[0-9a-f]{64}",digest)
 PY
+    fi
     "$CLIENT" --host "unix://$SOCK" rm "$CONTAINER_ID" >/dev/null
     CONTAINER_ID=
     "$CLIENT" --host "unix://$SOCK" image rm "$DEV_CHECK_IMAGE_CONFIG_ID" >/dev/null
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
-        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] || fail 'Debian package tests left Docker objects'
+        && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] || fail 'compiled component tests left Docker objects'
     setpriv --reuid=4000 --regid=4000 --clear-groups \
         /usr/bin/python3 -B -I -S "$VERIFY_REPO/scripts/verify-private-tree-closure.py" \
         --remove-empty-private-root "$work" --expected-identity "$work_id"
-    [ ! -e "$work" ] && [ ! -L "$work" ] || fail 'Debian package-test scratch remains'
-    [ "$(sha256sum "${sources[@]}")" = "$source_before" ] || fail 'Debian package-test source changed'
+    [ ! -e "$work" ] && [ ! -L "$work" ] || fail 'compiled component scratch remains'
+    [ "$(sha256sum "${sources[@]}")" = "$source_before" ] || fail 'compiled component source changed'
     stop_docker_authority
     cat "$output"
+    if [ "$MODE" = linux-launcher-tests ]; then
+        printf 'LINUX_LAUNCHER_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' "$DEV_CHECK_IMAGE_CONFIG_ID"
+    else
     printf 'DEBIAN_PACKAGE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=%s generator_sha256=%s checker_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
-        "$DEV_CHECK_IMAGE_CONFIG_ID" "$(sha256sum "${sources[0]}" | awk '{print $1}')" "$(sha256sum "${sources[1]}" | awk '{print $1}')"
+        "$DEV_CHECK_IMAGE_CONFIG_ID" "$(sha256sum "$VERIFY_REPO/build.py" | awk '{print $1}')" "$(sha256sum "$VERIFY_REPO/scripts/verify-debian-package-authority.py" | awk '{print $1}')"
+    fi
 }
 
 run_fixed_archive_tests() {
@@ -15772,8 +15793,8 @@ if [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; the
     run_debian_package_tests
     exit 0
 fi
-if [ "$MODE" = debian-package-tests ]; then
-    run_debian_archive_integration_tests
+if [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ]; then
+    run_compiled_component_tests
     exit 0
 fi
 if [ "$MODE" = linux-service-receiver-tests ]; then

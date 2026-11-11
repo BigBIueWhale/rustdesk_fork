@@ -400,7 +400,7 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
         retire_children()
 
 
-def owned_log(directory, pid, uid):
+def owned_log(directory, pid, uid, retained=None):
     # The complete optimized application logs to files, unlike the debug receiver.
     for parent in [directory, *directory.parents]:
         info = parent.lstat()
@@ -441,6 +441,8 @@ def owned_log(directory, pid, uid):
         data = stream.read(before.st_size)
         after = os.fstat(stream.fileno())
         current = path.lstat()
+        if retained is not None:
+            retained.append((path, os.fdopen(os.dup(stream.fileno()), 'rb'), uid))
     if ((after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
             or (current.st_dev, current.st_ino) != (before.st_dev, before.st_ino)
             or after.st_uid != uid or after.st_nlink != 1 or after.st_mode & 0o022
@@ -928,6 +930,7 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
     pam_fd = pam_helper = pam_start = None
     barrier = ExitStack()
     concurrent = first_committed = None
+    retained_logs = []
     stages = GRAPHICAL_STAGES if graphical is not None else ADMIN_FAILURE_STAGES
     cancellations = 0
     try:
@@ -1072,6 +1075,10 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                     authenticate(receiver, authority, requester, record, before)
                 else:
                     receiver.pending_admin_helper(*requester, record, wait_seconds=5)
+                    for directory, pid, uid in (
+                            ('/root/.local/share/logs/RustDesk/service', record['supervisor'], 0),
+                            ('/home/rdreceiver4001/.local/share/logs/RustDesk/server', record['pid'], 4001)):
+                        owned_log(Path(directory), pid, uid, retained=retained_logs)
                     threads = barrier.enter_context(stopped_child(receiver, record))
                     command = b'authenticate\n'
             elif stage == 'pending':
@@ -1135,15 +1142,21 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
     except Exception as error:
         if graphical is not None and first_committed is not None:
             diagnostic = {'error': str(error), 'expected_service': record, 'logs': {}}
-            for label, directory, pid, uid in (
-                    ('supervisor', '/root/.local/share/logs/RustDesk/service', record['supervisor'], 0),
-                    ('child', '/home/rdreceiver4001/.local/share/logs/RustDesk/server', record['pid'], 4001)):
+            for path, stream, uid in retained_logs:
                 try:
-                    path, data = owned_log(Path(directory), pid, uid)
-                    diagnostic['logs'][label] = {'path': str(path), 'bytes': len(data),
-                        'sha256': hashlib.sha256(data).hexdigest(), 'tail': data[-16384:].decode()}
+                    before_log = os.fstat(stream.fileno())
+                    if (not stat.S_ISREG(before_log.st_mode) or before_log.st_uid != uid
+                            or before_log.st_nlink != 1 or before_log.st_mode & 0o022
+                            or before_log.st_size > 8 * 1024 * 1024):
+                        raise RuntimeError('retained diagnostic log authority or bound changed')
+                    data = os.pread(stream.fileno(), before_log.st_size, 0)
+                    if len(data) != before_log.st_size or os.fstat(stream.fileno()).st_size < before_log.st_size:
+                        raise RuntimeError('retained diagnostic log truncated during observation')
+                    data = data[:data.rfind(b'\n') + 1]
+                    diagnostic['logs'][str(path)] = {'bytes': len(data),
+                        'sha256': hashlib.sha256(data).hexdigest(), 'tail': data[-16384:].decode('utf-8', errors='replace')}
                 except (OSError, RuntimeError) as observation_error:
-                    diagnostic['logs'][label] = {'unavailable': str(observation_error)}
+                    diagnostic['logs'][str(path)] = {'unavailable': str(observation_error)}
             print('LINUX_INSTALLED_SETTINGS_CONCURRENT_FAILURE=' + json.dumps(diagnostic, sort_keys=True), flush=True)
         raise
     finally:
@@ -1164,6 +1177,8 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                 os.close(helper_fd)
             if pam_fd is not None:
                 os.close(pam_fd)
+            for _, stream, _ in retained_logs:
+                stream.close()
         finally:
             try:
                 if process is not None and graphical is None:

@@ -145021,3 +145021,21 @@ the superseded GUI value. The existing cancellation/no-agent controls remain the
 nearest workflow regression. No product edit or app rebuild yet; runtime execution
 is pending. This is one authorized GUI plus administrator CLI, not two graphical
 prompts or exhaustive concurrency acceptance.
+
+First installed overlap `InBa9EeiXW` at `fede70c4` exits one. Both durable
+values are observed during 2.028 seconds with all seventeen original child
+threads stopped. After resume, CLI9522 exits zero/Done but GUI9185 never reaches
+Applied; its failure screenshot shows another administrator-selection prompt.
+The original supervisor9094 and child9103 are already absent when diagnostics
+attempt to enumerate their file descriptors. This proves the failed schedule,
+not its cause; no final CPace or complete concurrency acceptance follows.
+Retain the exact product log descriptors before the barrier in the diagnostic
+replay so their terminal records survive process exit. The application and
+scenario remain unchanged; do not infer a fix from source alone.
+
+`linux-concurrent-first-fede70c4.json` (10,517 bytes; SHA-256
+c97c8f8471988676af3c000db91cb1144c3723c5e53e174fbfd67935040367ba)
+binds 141.636 seconds, 3,842,957,312-byte RAM peak, QEMU3862371 joined zero,
+private/RAM retirement and four zero endpoint deltas. Eleven files/323,405 bytes
+match CTE/TUF, including the full guest logs and screenshot. The outer tool text
+was truncated; its retained excerpt omits oversized lines and is labeled as such.

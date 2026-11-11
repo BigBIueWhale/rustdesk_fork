@@ -7377,9 +7377,17 @@ Uncertain warning after 602.369 seconds, following 21 pending-dialog checks with
 the exact child kernel-stopped, protected credential committed and user-profile
 fields unchanged. After child resume, the combined generation/credential check
 fails before network or restart validation; the differing state was not retained.
-The overall scenario fails and same-generation recovery remains OPEN. Capsule:
-`password-outcome-uncertain-17553c34.json`. The next run must distinguish the two
-conditions and retain bounded service logs before cleanup; no product cause is inferred.
+The overall scenario fails and same-child recovery remains OPEN. Capsule:
+`password-outcome-uncertain-17553c34.json`. Diagnostic replay `p5EnPeh5rh` at
+`9e5963d5` preserves the credential but proves the original child exits from SIGPIPE;
+the supervisor replaces it within the same service generation. Its held log and
+exact identities are retained in `password-uncertain-diagnostic-9e5963d5.json`.
+`b7b0569b` initializes checked SIGPIPE-ignore policy at the Linux Flutter executable
+entry before loading the Rust library, so broken pipes reach existing I/O error
+handling. The correction is unverified: the full-app build refuses before VM launch,
+requiring 44,032 MiB with only 39,824 MiB available. No corrected artifact exists.
+`linux-sigpipe-build-refusal-b7b0569b.json` retains that dependency. Build and replay
+the same recovery case plus Applied/Denied/Failed controls when resources admit it.
 Other failure paths, mutation recovery across receiver restart, native macOS
 outcome classification, graphical OS-agent interaction,
 cancellation during authorization, concurrency, other platforms, final packages

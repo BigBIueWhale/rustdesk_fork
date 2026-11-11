@@ -144495,3 +144495,16 @@ No dependency, retry, timeout, authorization or process-replacement behavior cha
 Next: build the exact corrected app, then repeat the original recovery scenario
 and the existing Applied/Denied/Failed GUI controls. Until execution, the product
 correction and complete installed acceptance remain unverified.
+
+Build admission at `b7b0569b` exits one before any VM or candidate artifact is
+created: the unchanged full-app profile requires 44,032 MiB, with 39,824 MiB
+available. CTE's read-only inventory has about 28 GiB available, also insufficient.
+No host workload or resource bound is changed. The exact launcher correction is
+committed, but compilation and native acceptance remain OPEN; source review and
+`git diff --check` do not establish either. Preserve the existing app as the
+observed failing baseline. `linux-sigpipe-build-refusal-b7b0569b.json` and its raw
+output total 2,274 bytes, matching both hosts; no private run, RAM workspace or
+candidate artifact remains. A feasible focused launcher check may advance component
+evidence while full-build capacity is unavailable, but cannot replace the required
+complete installed recovery replay. This resource constraint does not block the
+whole goal while other useful authorized work remains available.

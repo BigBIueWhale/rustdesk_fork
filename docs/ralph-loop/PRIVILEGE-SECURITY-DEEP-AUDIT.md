@@ -145237,3 +145237,19 @@ its nine-file 85,512-byte evidence set matches CTE/TUF. Source and refs were
 frozen through terminal reconciliation and evidence copying. Next obtain the
 authenticated package dependency closure and exercise real dpkg install/upgrade
 with service startup, authorized credentials, preservation and package ownership.
+
+Final source-gate review finds one supplementary check tied to the old shell
+`cp -r` spelling. Delete only that token assertion: all three required manager
+inventory entries, template-authority predicates and emitted-package validation
+remain. Both real candidate archives already passed the independent validator.
+Shell syntax, exact diff review and whitespace checks pass; no product/runtime
+behavior changed after the accepted package transaction.
+
+Fresh ledger count afnYO2wO2G at 5d16d326 passes (tool85839): 404,532 tokens /
+1,846,354 bytes, SHA-256
+cdcce59d596335ff930b534486e73eb29b940b48f7865b5841aff43edfc4b822.
+Fixed-method seven controls and whole-input round trip pass. The 30.484-second
+transaction joins QEMU3880267 and retires private/RAM state, with three zero
+endpoint deltas. debian-candidate-ledger-5d16d326.json and its eight-file
+115,352-byte evidence set match CTE/TUF. The approximate 400,000-token cleanup
+obligation remains open. No job is live and no package binary is retained on disk.

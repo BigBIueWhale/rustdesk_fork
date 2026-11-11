@@ -8507,8 +8507,7 @@ fi
 for token in \
   '"usr/share/rustdesk/files/openrc/rustdesk"' \
   '"usr/share/rustdesk/files/runit/run"' \
-  '"usr/share/rustdesk/files/manual/rustdesk-service"' \
-  'cp -r ../res/service-managers/. tmpdeb/usr/share/rustdesk/files/'; do
+  '"usr/share/rustdesk/files/manual/rustdesk-service"'; do
   grep -qF -- "$token" build.py \
     || r_s11c27p="$r_s11c27p package:${token##*/}"
 done

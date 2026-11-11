@@ -145892,3 +145892,12 @@ no product defect was observed and no product edit or rebuild was needed.
 Actual-package ten-minute Uncertain reporting/recovery, upgrades and complete
 release acceptance remain OPEN. Update the ledger and obtain its fresh isolated
 count; keep the measured ledger unchanged afterward.
+
+Fresh count wgDpuvDoIa at ce6ce988 exits zero (tool53440): 405,336 tokens /
+1,850,785 bytes, SHA-256 410a017477cb2e80217bba418a3ee4ac12e51e568b6fc78cf1be234805f1d471.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and its byte round trip. package-failure-ledger-ce6ce988.json and eight files /
+115,819 bytes match CTE/TUF. QEMU3952651 joins zero after 30.071 seconds; three
+host listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.

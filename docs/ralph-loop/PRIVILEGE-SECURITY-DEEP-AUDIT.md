@@ -146805,3 +146805,13 @@ This is source compatibility evidence, not an executed APK compiler failure.
 Do not edit cached packages in place. Align the maintained plugin inputs and
 candidate lock, authenticate dependencies, compose the candidate SDK/cache and
 build the actual APK. Complete promotion and cross-platform acceptance stay OPEN.
+
+Fresh ledger count 71fnAaAj3E at 684da36e/tool11398 exits zero: 407,165 tokens /
+1,858,667 bytes, SHA-256 07c2174d980c173f000ca25745a12a7f1d983b8d3c4166f6ea8854ceb87ccd6f.
+The fixed tiktoken0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and the whole-input byte round trip. android-candidate-gradle-ledger-684da36e.json
+and eight files / 115,887 bytes match both hosts. QEMU4023618 joins zero after
+30.810 monitor seconds; RAM scratch peaks at 403,070,976 bytes, all three host
+listener deltas are zero, and exact private/RAM roots are absent. Approximate
+400,000-token compression remains OPEN. This audit-only append leaves the measured
+ledger unchanged.

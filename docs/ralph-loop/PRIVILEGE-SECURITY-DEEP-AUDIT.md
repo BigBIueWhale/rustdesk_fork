@@ -146183,3 +146183,12 @@ nine bounded files / 199,840 bytes match CTE/TUF. The named migration and abort
 behavior is accepted; full historical application/script transitions, other error
 paths and final release acceptance remain OPEN. Update the current ledger and
 obtain its fresh isolated count.
+
+Fresh count 7bn3AoWIyX at 5de33807 exits zero (tool28170): 405,831 tokens /
+1,853,098 bytes, SHA-256 f8b7dbbe9ed332a383c258c8f155fd47221e938cb7246c3dd2251433d7844239.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and its byte round trip. package-conffile-ledger-5de33807.json and eight files /
+115,638 bytes match CTE/TUF. QEMU3968146 joins zero after 30.266 seconds; three
+host listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.

@@ -2,6 +2,7 @@
 """Real Flutter password controls with the installed service, in the owned VM only."""
 
 import ctypes
+import errno
 from contextlib import ExitStack, contextmanager
 import grp
 import hashlib
@@ -15,6 +16,7 @@ import re
 import select
 import shutil
 import signal
+import socket
 import stat
 import subprocess
 import sys
@@ -555,11 +557,24 @@ def service_absent():
     expected = {'ActiveState': 'inactive', 'SubState': 'dead', 'Result': 'success',
                 'MainPID': '0', 'ExecMainStatus': '0'}
     paths = ['/sys/fs/cgroup/system.slice/rustdesk.service', '/run/rustdesk/service-child.record']
-    paths += ['/run/RustDesk-service/ipc' + suffix
-              for suffix in ('_service', '_service_password', '_service_credential')]
-    if properties != expected or any(os.path.lexists(path) for path in paths):
-        raise RuntimeError(f'fixture service is not completely stopped: {properties}')
-    return properties
+    remaining = [path for path in paths if os.path.lexists(path)]
+    if properties != expected or remaining:
+        raise RuntimeError(f'fixture service is not completely stopped: {properties}, remaining={remaining}')
+    endpoints = []
+    for suffix in ('_service', '_service_password', '_service_credential'):
+        path = '/run/RustDesk-service/ipc' + suffix
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+            peer.settimeout(1)
+            try:
+                peer.connect(path)
+            except OSError as error:
+                if error.errno not in (errno.ENOENT, errno.ECONNREFUSED):
+                    raise
+                endpoints.append({'path': path, 'errno': error.errno,
+                                  'filesystem_entry': os.path.lexists(path)})
+            else:
+                raise RuntimeError(f'stopped service endpoint still accepts connections: {path}')
+    return {**properties, 'endpoint_observations': endpoints}
 
 
 def stop_service(receiver, record):
@@ -574,7 +589,7 @@ def stop_service(receiver, record):
             raise RuntimeError('controlled service stop left an exact process alive')
         properties = service_absent()
         print('LINUX_INSTALLED_SETTINGS_STOPPED=' + json.dumps({**record, **properties,
-              'processes': 'pidfd-exited', 'endpoints': 'absent'}, sort_keys=True), flush=True)
+              'processes': 'pidfd-exited', 'endpoints': 'unavailable'}, sort_keys=True), flush=True)
     finally:
         for fd in retained:
             os.close(fd)

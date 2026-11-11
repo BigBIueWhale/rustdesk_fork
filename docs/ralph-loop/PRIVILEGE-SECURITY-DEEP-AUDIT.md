@@ -144339,3 +144339,17 @@ does not make a successful stop command alone proof of complete process retireme
 the [pidfd contract](https://man7.org/linux/man-pages/man2/pidfd_open.2.html) supplies
 exact-process exit observation. Unit state, cgroup and endpoint absence are checked
 as well. This prepares a native failure/recovery case; it claims no execution yet.
+
+`vtxPVKdXeA` at `8ba49e1e` repeats the original sixteen GUI stages and reopens/fills
+the next dialog, then rejects the fixture's filesystem-absence check after both
+exact service processes exit and systemd reports inactive/dead/success. It does not
+submit the stopped-service request. The failing check did not identify which path
+remained, so this is not a product diagnosis. The source retains pathname sockets
+for guarded stale-endpoint recovery. The [Unix socket contract](https://man7.org/linux/man-pages/man7/unix.7.html)
+distinguishes a filesystem entry from a listening socket. Require complete process,
+cgroup and runtime-record retirement plus actual ENOENT/ECONNREFUSED from all three
+fixed privileged endpoints; reject every other error or successful connection and
+retain each result. Do not delete a pathname to manufacture service unavailability.
+`password-outcome-failed-8ba49e1e.json` binds the rejected run: 144.869 seconds,
+3,839,815,680-byte RAM peak, four zero endpoint deltas and exact QEMU/private/RAM
+retirement. Nine files / 107,640 bytes match both hosts. Reuse the unchanged app.

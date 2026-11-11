@@ -144353,3 +144353,17 @@ retain each result. Do not delete a pathname to manufacture service unavailabili
 `password-outcome-failed-8ba49e1e.json` binds the rejected run: 144.869 seconds,
 3,839,815,680-byte RAM peak, four zero endpoint deltas and exact QEMU/private/RAM
 retirement. Nine files / 107,640 bytes match both hosts. Reuse the unchanged app.
+
+`ZBIHuqMJkd` at `ee298ac7` passes all eight native cases / 23 actual GUI stages.
+All three stopped endpoints retain filesystem entries but return ECONNREFUSED;
+the GUI reports Failed, both credential stores remain unchanged, and the same GUI
+receives a correlated Denied from the fresh service. Seven CPace exchanges and
+three exact old-password refusals pass. Guest network/session cleanup completes.
+The overall command still exits one: an overlooked duplicate guest receipt expects
+the obsolete six-case summary. Delete that duplicate comparison; the guest retains
+the real Python exit status and input-provider hash check, while outer acceptance
+already requires the complete eight-case source/artifact-bound receipt, specific
+failure/agent results and guest completion. No native assertion is removed.
+`password-outcome-failed-ee298ac7.json` retains 153.820 seconds, 3,842,310,144-byte
+RAM peak, four zero endpoint deltas and exact retirement; nine files / 110,812 bytes
+match both hosts. Repeat the unchanged app for complete outer acceptance.

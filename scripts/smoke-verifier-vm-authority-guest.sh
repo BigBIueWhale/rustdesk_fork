@@ -14777,8 +14777,6 @@ run_flutter_peer_presentation() {
         [ "$peer_status" -eq 0 ] || fail "installed Flutter settings exited $peer_status"
         [ "$(sha256sum <"$provider_installed/libxdo.so.3" | awk '{print $1}')" = "$provider_sha" ] \
             || fail 'installed Flutter settings input provider changed'
-        [ "$(grep -Fxc "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=6 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam cpace=5 stale_refusals=2 restart=service-and-gui cleanup=joined" "$output")" -eq 1 ] \
-            || fail 'installed Flutter settings completion is absent or duplicated'
     else
     peer_args=(
         --source-archive "$FLUTTER_PEER_SOURCE_ARCHIVE"

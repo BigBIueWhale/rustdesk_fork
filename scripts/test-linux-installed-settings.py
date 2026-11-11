@@ -30,6 +30,7 @@ WORK = Path('/var/tmp/rustdesk-linux-service-receiver')
 ENV = {'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'}
 BASELINE_PASSWORD = 'Installed-baseline-2026!'
 GUI_PASSWORD = 'InstalledGui2026'
+CONCURRENT_PASSWORD = 'InstalledConcurrent2026'
 GRAPHICAL_AGENT = Path('/usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1')
 GRAPHICAL_AGENT_SHA = '2a7cec811453d11b56cde55a4fba340767c7e996931179a474d4e5d5fcb70df0'
 STAGES = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied',
@@ -41,7 +42,7 @@ ADMIN_FAILURE_STAGES = ('open', 'fill', 'submit', 'denied', 'reopen', 'fill',
                         'submit-approved', 'applied', 'reopen', 'submit', 'denied')
 GRAPHICAL_STAGES = ('open', 'fill', 'submit', 'denied', 'reopen', 'fill', 'submit',
                     'agent-select', 'agent-password', 'agent-cancel', 'denied',
-                    'reopen', 'fill', 'submit-approved', 'applied', 'reopen', 'submit', 'denied')
+                    'reopen', 'fill', 'submit-approved', 'pending', 'applied', 'reopen', 'submit', 'denied')
 
 
 def run(argv, *, env=ENV, timeout=30, output_limit=131072):
@@ -600,14 +601,14 @@ def authenticate(receiver, authority, requester, record, before, password_delay=
         {**observation, 'terminal': terminal.decode()}, sort_keys=True), flush=True)
 
 
-def credential_network(receiver, record, probe_sha, phase):
-    receiver.keyed(GUI_PASSWORD, phase + '-new', record, probe_sha)
+def credential_network(receiver, record, probe_sha, phase, new=GUI_PASSWORD, old=BASELINE_PASSWORD):
+    receiver.keyed(new, phase + '-new', record, probe_sha)
     directory = Path('/home/rdreceiver4001/.local/share/logs/RustDesk/server')
     path, baseline = owned_log(directory, record['pid'], 4001)
     before = receiver.credential()
     listener = receiver.direct_listener(record)
     result = receiver.run([*ordinary(4002), str(receiver.PROBE), '127.0.0.1:21118', '--password-stdin', 'fail'],
-                          input=BASELINE_PASSWORD + '\n', timeout=45)
+                          input=old + '\n', timeout=45)
     if result.stdout.splitlines() != ['probe_client: keying ok=false (expected=fail)', 'probe_client: PASS'] or result.stderr:
         raise RuntimeError('obsolete GUI credential was not refused')
     after_path, after = owned_log(directory, record['pid'], 4001)
@@ -618,7 +619,7 @@ def credential_network(receiver, record, probe_sha, phase):
             or receiver.credential() != before or receiver.direct_listener(record) != listener
             or receiver.child_record() != record):
         raise RuntimeError(f'obsolete credential lacks exact child confirmation-mismatch evidence: {delta}')
-    receiver.keyed(GUI_PASSWORD, phase + '-recovery', record, probe_sha)
+    receiver.keyed(new, phase + '-recovery', record, probe_sha)
     print('LINUX_INSTALLED_SETTINGS_CREDENTIAL=' + json.dumps(
         {'phase': phase, **record, 'old': 'receiver-confirmed-refusal', 'new': 'mutual-cpace',
          'log': str(path), 'log_sha256': hashlib.sha256(after).hexdigest(), 'refusal': failures[0]}, sort_keys=True), flush=True)
@@ -925,6 +926,8 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
     requester = committed = profile_before = authority = None
     helper_fd = helper = helper_start = cancelled_at = agent_identity = None
     pam_fd = pam_helper = pam_start = None
+    barrier = ExitStack()
+    concurrent = first_committed = None
     stages = GRAPHICAL_STAGES if graphical is not None else ADMIN_FAILURE_STAGES
     cancellations = 0
     try:
@@ -989,9 +992,27 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                     agent_identity = current_agent
                 elif event['agent_pid'] is not None or Path(f'/proc/{agent_identity[0]}').exists():
                     raise RuntimeError('graphical agent was not reaped before fresh no-agent refusal')
+            if graphical is not None and stage == 'pending':
+                deadline = time.monotonic() + 5
+                while (first_committed := receiver.credential()) == before:
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError('concurrent GUI change did not reach durable commit')
+                    time.sleep(0.01)
+                committed = first_committed
             if stage == 'applied':
+                if concurrent is not None:
+                    stdout, stderr = concurrent.communicate(timeout=15)
+                    if (concurrent.returncode != 0 or stdout.strip() != 'Done!'
+                            or len(stdout) + len(stderr) > 131072):
+                        raise RuntimeError('concurrent administrator CLI did not report Applied: '
+                                           + repr((concurrent.returncode, stdout[-4096:], stderr[-4096:])))
+                    print('LINUX_INSTALLED_SETTINGS_CONCURRENT_COMPLETE=' + json.dumps({
+                        'cli_pid': concurrent.pid, 'exit': concurrent.returncode, 'stdout': stdout,
+                        'stderr': stderr, 'gui_pid': requester[0], 'gui': 'Applied',
+                        'seconds_after_resume': time.monotonic() - resumed_at,
+                        'service_generation': record['generation']}, sort_keys=True), flush=True)
                 committed = receiver.credential()
-                if committed == before:
+                if committed == before or (concurrent is not None and committed == first_committed):
                     raise RuntimeError('GUI reported authorized success without changing the credential')
             if receiver.credential() != (committed if committed is not None else before):
                 raise RuntimeError('administrator failure changed the credential without authorized GUI success')
@@ -1051,7 +1072,40 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                     authenticate(receiver, authority, requester, record, before)
                 else:
                     receiver.pending_admin_helper(*requester, record, wait_seconds=5)
+                    threads = barrier.enter_context(stopped_child(receiver, record))
                     command = b'authenticate\n'
+            elif stage == 'pending':
+                # A second real administrator request overlaps the GUI's admitted commit.
+                concurrent = subprocess.Popen([str(receiver.PRIMARY), '--password-stdin'], env=ENV,
+                    stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                concurrent.stdin.write(CONCURRENT_PASSWORD + '\n')
+                concurrent.stdin.close()
+                concurrent.stdin = None
+                started = time.monotonic()
+                observed = [first_committed]
+                while time.monotonic() - started < 2:
+                    if (concurrent.poll() is not None or receiver.stopped_receiver_threads(record) != threads
+                            or receiver.child_record() != record or user_credential() != profile_before):
+                        raise RuntimeError('concurrent request completed or lost authority before child resume')
+                    current = receiver.credential()
+                    if current != observed[-1]:
+                        observed.append(current)
+                    if len(observed) > 2 or current == before:
+                        raise RuntimeError('concurrent requests produced an unexpected durable transition')
+                    time.sleep(0.02)
+                cli_proc = Path(f'/proc/{concurrent.pid}')
+                cli_status = dict(line.split(':', 1) for line in (cli_proc / 'status').read_text().splitlines() if ':' in line)
+                if cli_status['Uid'].split() != ['0'] * 4 or not (cli_proc / 'exe').samefile(receiver.PRIMARY):
+                    raise RuntimeError('concurrent administrator CLI identity differs')
+                committed = receiver.credential()
+                print('LINUX_INSTALLED_SETTINGS_CONCURRENT_PENDING=' + json.dumps({
+                    **record, 'gui_pid': requester[0], 'cli_pid': concurrent.pid,
+                    'cli_start': int((cli_proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]),
+                    'child_threads': threads, 'seconds': time.monotonic() - started,
+                    'durable_observations': observed, 'gui': 'pending', 'cli': 'pending',
+                    'profile_unchanged': True}, sort_keys=True), flush=True)
+                resumed_at = time.monotonic()
+                barrier.close()
             elif stage == 'applied':
                 authorization.close()
                 if graphical is not None:
@@ -1073,9 +1127,38 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
             raise RuntimeError('administrator failure GUI did not retire')
         if committed is None or receiver.credential() != committed:
             raise RuntimeError('administrator failure workflow did not retire with its committed credential')
-        credential_network(receiver, record, probe_sha, 'gui-admin-failure-retry')
+        if graphical is not None:
+            credential_network(receiver, record, probe_sha, 'gui-concurrent-final',
+                               new=CONCURRENT_PASSWORD, old=GUI_PASSWORD)
+        else:
+            credential_network(receiver, record, probe_sha, 'gui-admin-failure-retry')
+    except Exception as error:
+        if graphical is not None and first_committed is not None:
+            diagnostic = {'error': str(error), 'expected_service': record, 'logs': {}}
+            for label, directory, pid, uid in (
+                    ('supervisor', '/root/.local/share/logs/RustDesk/service', record['supervisor'], 0),
+                    ('child', '/home/rdreceiver4001/.local/share/logs/RustDesk/server', record['pid'], 4001)):
+                try:
+                    path, data = owned_log(Path(directory), pid, uid)
+                    diagnostic['logs'][label] = {'path': str(path), 'bytes': len(data),
+                        'sha256': hashlib.sha256(data).hexdigest(), 'tail': data[-16384:].decode()}
+                except (OSError, RuntimeError) as observation_error:
+                    diagnostic['logs'][label] = {'unavailable': str(observation_error)}
+            print('LINUX_INSTALLED_SETTINGS_CONCURRENT_FAILURE=' + json.dumps(diagnostic, sort_keys=True), flush=True)
+        raise
     finally:
         try:
+            barrier.close()
+            if concurrent is not None:
+                if concurrent.poll() is None:
+                    concurrent.terminate()
+                stdout, stderr = concurrent.communicate(timeout=10)
+                print('LINUX_INSTALLED_SETTINGS_CONCURRENT_RETIRED=' + json.dumps({
+                    'pid': concurrent.pid, 'exit': concurrent.returncode,
+                    'stdout': stdout[-4096:], 'stderr': stderr[-4096:]}, sort_keys=True), flush=True)
+                for pipe in (concurrent.stdin, concurrent.stdout, concurrent.stderr):
+                    if pipe is not None and not pipe.closed:
+                        pipe.close()
             authorization.close()
             if helper_fd is not None:
                 os.close(helper_fd)
@@ -1341,10 +1424,10 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False):
     if digest(receiver.PROBE) != probe_sha:
         raise RuntimeError('CPace probe changed during the installed workflow')
     if graphical:
-        print(f'LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=4 app_commit={commit} manifest_sha256={manifest_sha} '
+        print(f'LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=5 app_commit={commit} manifest_sha256={manifest_sha} '
               'ui=actual service=actual cancellation=gtk-selection-and-password authorization=polkit-pam '
               'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
-              'cpace=5 stale_refusals=1 cleanup=joined', flush=True)
+              'concurrent=gui-and-cli cpace=5 stale_refusals=1 cleanup=joined', flush=True)
     elif admin_failure:
         print(f'LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam '

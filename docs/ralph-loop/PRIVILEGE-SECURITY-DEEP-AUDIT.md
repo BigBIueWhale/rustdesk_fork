@@ -144993,3 +144993,31 @@ joins with zero, private/RAM roots retire and three endpoint deltas are zero.
 `password-cancel-ledger-ffb4b17e.json` binds the count and cleanup; its eight-file
 115,172-byte evidence set matches CTE/TUF. The approximate 400,000-token
 compression obligation remains open. No test or VM remains running.
+
+## 2026-11-11 — installed concurrent GUI and administrator password changes
+
+Previous goal turn was progress: real password-entry cancellation and fresh retry
+accepted at dbefe4a3. Continue the remaining installed R-S0/R-S11ie concurrency
+condition with the same immutable application. This checks the actual credential
+workflow before adding other desktop/platform fixture prerequisites.
+
+Source review: src/ipc.rs admits four service-password transactions and distinct
+operation IDs; Config::set_permanent_password_with_store serializes each durable
+write, while commit_service_owned_unattended_password_change separately rereads
+the PRS and awaits child convergence. No rejection of a second request merely
+because the first is pending is established. The intended observation is two
+truthful outcomes and agreement between final durable and runtime credentials.
+Polkit's primary pkcheck manual confirms receiver-bound process/UID/start proof
+and distinct authorization outcomes; no authorization shortcut is introduced.
+https://polkit.pages.freedesktop.org/polkit/pkcheck.1.html
+
+Extend the existing graphical workflow by one pending stage. Before correct PAM
+approval, retain/stop the exact child using the already accepted kernel barrier.
+After the GUI's durable commit, overlap one root administrator CLI request for a
+different value for two seconds. Both must remain pending while the child cannot
+converge; preserve observed durable transitions. Resume the same child, require
+GUI Applied and CLI Done, then prove the final CLI value by mutual CPace and refuse
+the superseded GUI value. The existing cancellation/no-agent controls remain the
+nearest workflow regression. No product edit or app rebuild yet; runtime execution
+is pending. This is one authorized GUI plus administrator CLI, not two graphical
+prompts or exhaustive concurrency acceptance.

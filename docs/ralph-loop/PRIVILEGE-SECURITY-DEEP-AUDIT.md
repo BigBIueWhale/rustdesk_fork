@@ -147503,3 +147503,13 @@ and keep recorder failure separate from decoder/connection failure. Then run the
 caller regressions and unchanged native denied-write/visible-error/decoded-retry
 scenario. Controlled-side error propagation and broader installed/platform,
 R-S0/R-F5 and release acceptance remain OPEN.
+
+Fresh count at 46813038/RlCxQewNjV/tool86672 passes: 408,907 tokens /
+1,866,020 bytes, SHA-256
+8729173e3d54cda0cbca946880541daf01ade87689e12b8933b2abec7535fb96.
+The fixed tokenizer, seven controls and whole-input round trip pass. Eight files /
+116,481 bytes in recording-finish-ledger-46813038.json match both hosts.
+QEMU 658120 joins zero after 30.065 seconds; peak scratch 403,165,184 bytes,
+three zero listener deltas and exact private/socket/RAM absence are verified.
+The approximate 400,000-token compression remains OPEN. This audit-only append
+preserves the measured ledger bytes.

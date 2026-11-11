@@ -146364,3 +146364,12 @@ and removes the final settings direct-layout/copy-library branch. The OS agent
 here is pkttyagent; graphical wrong-password interaction, other failure schedules,
 cross-platform and final-release evidence remain OPEN. Update the ledger and
 obtain its fresh isolated count; no product code or application build changed.
+
+Fresh count Qjl3BeT3Zn at 5496dd30 exits zero (tool20254): 406,103 tokens /
+1,854,421 bytes, SHA-256 f78a028af47645303822b6413543dba7104acb9b614623a2e43d627bf87a8bb8.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and byte round trip. package-admin-failure-ledger-5496dd30.json and eight files /
+115,778 bytes match CTE/TUF. QEMU3980190 joins zero after 30.123 seconds; three
+host listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.

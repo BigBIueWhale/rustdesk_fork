@@ -7384,8 +7384,15 @@ the supervisor replaces it within the same service generation. Its held log and
 exact identities are retained in `password-uncertain-diagnostic-9e5963d5.json`.
 `b7b0569b` initializes checked SIGPIPE-ignore policy at the Linux Flutter executable
 entry before loading the Rust library, so broken pipes reach existing I/O error
-handling. The correction is unverified: the full-app build refuses before VM launch,
-requiring 44,032 MiB with only 39,824 MiB available. No corrected artifact exists.
+handling. Native launcher comparison `Eyapzgp8No` at `ff3aac3b` passes eight cases:
+the exact previous launcher dies from SIGPIPE on socket write/writev and pipe write;
+the corrected launcher receives EPIPE and reaches normal core completion. Both
+healthy controls pass. Production main/header compile against pinned GTK, but the
+loaded core and unused GUI entry are fixtures. `linux-launcher-native-ff3aac3b.json`
+binds source/executable identities and joined cleanup. The affected Debian archive
+lane also passes unchanged (`launcher-debian-regression-ff3aac3b.json`). Complete
+application recovery remains unverified: the full-app build refuses before VM launch,
+requiring 44,032 MiB with only 39,824 MiB available. No corrected complete app exists.
 `linux-sigpipe-build-refusal-b7b0569b.json` retains that dependency. Build and replay
 the same recovery case plus Applied/Denied/Failed controls when resources admit it.
 Other failure paths, mutation recovery across receiver restart, native macOS

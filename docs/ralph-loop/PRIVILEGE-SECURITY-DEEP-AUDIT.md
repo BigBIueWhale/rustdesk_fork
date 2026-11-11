@@ -144542,3 +144542,29 @@ The historical source export is digest-bound and stays in the admitted RAM works
 Eight component observations and the affected Debian lane are prepared, not yet run.
 The complete Rust library, GUI and installed service are outside this fixture;
 their corrected-artifact build and same-child recovery replay remain OPEN.
+
+**Native component acceptance.** TUF `Eyapzgp8No` at `ff3aac3b` exits zero.
+All three old-launcher broken-pipe cases terminate with signal 13 before core
+entry; all three corrected cases observe EPIPE and normal core completion.
+Both healthy controls pass. The current executable is
+`28aba76cda126faf06d125007a7081476cef0e8153a3aaf1226e66c8449f7b43`;
+the capsule binds predecessor, fixture, compiler and header identities as well.
+The complete 32.030-second VM transaction peaks at 3,880,058,880 RAM bytes;
+QEMU3810486 joins with zero, private/RAM state disappear and three endpoint deltas
+are zero. `linux-launcher-native-ff3aac3b.json` is 4,486 bytes, SHA-256
+`59717f32ad6fff04ba352ed21ccb9db38ff107449f53fc1ad17f804b60675d7a`.
+Eight retained files / 79,556 bytes match CTE/TUF.
+
+The affected existing Debian archive/finalizer lane `Thwz9TmGKk` also exits zero
+at the same source: two CLI-verified archives, all eight maintainer source-refusal
+cases and the valid/invalid native ELF load-range observations retain their passes.
+Its 31.595-second transaction peaks at 3,906,805,760 RAM bytes; QEMU3812099 joins
+with zero, private/RAM state disappear and three endpoint deltas are zero.
+`launcher-debian-regression-ff3aac3b.json` is 6,928 bytes, SHA-256
+`2e2d7dc1dcaf547bb40598b2a40c87adbcb63ec2e5e3a221c0691e0b04e8f014`;
+eight files / 84,798 bytes match both hosts. No root or host compiler/product ran.
+
+This closes the launcher compilation/broken-pipe component prerequisite. The
+actual Rust core, full GTK application, original installed recovery and existing
+Applied/Denied/Failed schedules still require a corrected complete artifact.
+Do not repeat these passed component cases absent a relevant change or concern.

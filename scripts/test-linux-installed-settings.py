@@ -101,13 +101,7 @@ def install(source, target, mode=0o644):
         raise RuntimeError(f'installed copy differs: {target}')
 
 
-def prepare(graphical=False):
-    if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
-        raise RuntimeError('settings runtime preparation requires the ordinary isolated container')
-    print(run(['/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-installed-settings-log.py']),
-          end='', flush=True)
-    for kind in ('xvfb', 'atspi'):
-        print(run(['/bin/bash', f'/work/scripts/smoke-{kind}-prepare.sh'], timeout=60), end='', flush=True)
+def prepare_drivers(graphical=False):
     flags = run(['/usr/bin/pkg-config', '--cflags', '--libs', 'x11', 'xtst', 'xi',
                  'atspi-2', 'gobject-2.0', 'gtk+-3.0']).split()
     for copy in ('first', 'second'):
@@ -121,6 +115,16 @@ def prepare(graphical=False):
                  '/work/scripts/linux-polkit-dialog-x11.c', *flags, '-o', f'/out/agent-driver-{copy}'], timeout=60)
         if digest('/out/agent-driver-first') != digest('/out/agent-driver-second'):
             raise RuntimeError('repeated graphical-agent driver builds differ')
+
+
+def prepare():
+    if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
+        raise RuntimeError('settings runtime preparation requires the ordinary isolated container')
+    print(run(['/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-installed-settings-log.py']),
+          end='', flush=True)
+    for kind in ('xvfb', 'atspi'):
+        print(run(['/bin/bash', f'/work/scripts/smoke-{kind}-prepare.sh'], timeout=60), end='', flush=True)
+    prepare_drivers()
     libraries = Path('/out/libraries')
     libraries.mkdir()
     roots = []
@@ -136,9 +140,6 @@ def prepare(graphical=False):
     dynamic = [Path('/usr/lib/x86_64-linux-gnu') / name for name in
                ('dri/swrast_dri.so', 'libEGL_mesa.so.0', 'libGLX_mesa.so.0',
                 'libEGL.so.1', 'libGLESv2.so.2', 'libGL.so.1', 'libGLX.so.0')]
-    if graphical:
-        # PNG is built into this GdkPixbuf; its GIO format detection needs the MIME database.
-        shutil.copyfile('/usr/share/mime/mime.cache', '/out/mime.cache')
     if not all(p.is_file() for p in dynamic):
         raise RuntimeError('pinned image lacks the software renderer closure')
     roots += dynamic
@@ -176,7 +177,7 @@ def prepare(graphical=False):
     print(f'LINUX_INSTALLED_SETTINGS_PREPARED=pass driver_builds=2 equality=bytes runtime_files={len(records)}', flush=True)
 
 
-def prepare_package(single=False):
+def prepare_package(single=False, graphical=False):
     if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
         raise RuntimeError('candidate packaging requires the ordinary isolated container')
     os.chdir('/work')
@@ -220,6 +221,9 @@ def prepare_package(single=False):
     if single:
         print(run(['/bin/bash', '/work/scripts/smoke-xvfb-prepare.sh'], timeout=60), end='', flush=True)
         shutil.copytree('/usr/share/X11/xkb', '/out/xkb')
+    if graphical:
+        prepare_drivers(graphical=True)
+        print(run(['/bin/bash', '/work/scripts/smoke-atspi-prepare.sh'], timeout=60), end='', flush=True)
     records = {str(p.relative_to('/out')): {'sha256': digest(p), 'bytes': p.stat().st_size}
                for p in Path('/out').rglob('*') if p.is_file()}
     if sum(r['bytes'] for r in records.values()) > 268435456:
@@ -233,7 +237,8 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
     os.chown(prepared, 1000, 1000)
     mounts = [(str(source), '/work', True), (str(execution), '/app', True),
               (str(prepared), '/out', False)]
-    for kind in (('xvfb',) if package_install else () if package else ('xvfb', 'atspi')):
+    for kind in (('xvfb', 'atspi') if graphical else ('xvfb',) if package_install
+                 else () if package else ('xvfb', 'atspi')):
         mounts.append((str(source / 'online/inputs' / (kind + '-debs')), f'/{kind}-inputs', True))
         for suffix in ('debs', 'root'):
             path = WORK / f'{kind}-{suffix}'
@@ -254,8 +259,8 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
     for host, target, readonly in mounts:
         args += ['--mount', f'type=bind,source={host},target={target},bind-recursive=disabled' + (',readonly' if readonly else '')]
     args += [image, '/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-linux-installed-settings.py',
-             '--prepare-package-install' if package_install else '--prepare-package' if package
-             else '--prepare-graphical' if graphical else '--prepare']
+             '--prepare-package-graphical' if graphical else '--prepare-package-install' if package_install
+             else '--prepare-package' if package else '--prepare']
     container = docker(args).strip()
     if re.fullmatch('[0-9a-f]{64}', container) is None:
         raise RuntimeError('settings preparation container identity differs')
@@ -314,14 +319,10 @@ def install_runtime(prepared):
                 install(path, destination / path.relative_to(prepared / name))
     install(prepared / 'fc-match', WORK / 'fc-match', 0o755)
     install(prepared / 'driver-first', WORK / 'settings-driver', 0o755)
-    if (prepared / 'agent-driver-first').exists():
-        install(prepared / 'agent-driver-first', WORK / 'agent-driver', 0o755)
     install(prepared / '50_mesa.json', '/usr/share/glvnd/egl_vendor.d/50_mesa.json')
     # Xvfb starts with the receiver's closed environment, before the GUI environment.
     install(prepared / 'libraries/swrast_dri.so', '/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so')
     run(['/usr/sbin/ldconfig'])
-    if (prepared / 'mime.cache').exists():
-        install(prepared / 'mime.cache', '/usr/share/mime/mime.cache')
     listing = run([*ordinary(4001), '/usr/bin/ldd', str(WORK / 'Xvfb')])
     if 'not found' in listing:
         raise RuntimeError(f'ordinary desktop cannot load its installed runtime: {listing}')
@@ -372,9 +373,8 @@ def install_graphical_agent(archive_sha):
     path = WORK / filename
     with path.open('xb') as stream:
         stream.write(package)
-    extracted = WORK / 'graphical-agent-package'
-    run(['/usr/bin/dpkg-deb', '--extract', str(path), str(extracted)])
-    install(extracted / GRAPHICAL_AGENT.relative_to('/'), GRAPHICAL_AGENT, 0o755)
+    run(['/usr/bin/dpkg', '--install', str(path)],
+        env={**ENV, 'PATH': '/usr/sbin:/usr/bin:/sbin:/bin', 'DEBIAN_FRONTEND': 'noninteractive'})
     if digest(GRAPHICAL_AGENT) != GRAPHICAL_AGENT_SHA:
         raise RuntimeError('packaged graphical agent executable differs')
     listing = run([*ordinary(4001), '/usr/bin/ldd', str(GRAPHICAL_AGENT)])
@@ -391,10 +391,13 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
                    'DISPLAY': ':77', 'XAUTHORITY': '/run/user/4001/gdm/Xauthority',
                    'XDG_RUNTIME_DIR': '/run/user/4001', 'XDG_SESSION_TYPE': 'x11',
                    'XDG_DATA_DIRS': '/usr/local/share:/usr/share', 'GDK_BACKEND': 'x11',
-                   'LIBGL_ALWAYS_SOFTWARE': '1', 'LIBGL_DRIVERS_PATH': '/usr/local/lib/rustdesk-settings-fixture'}
+                   'LIBGL_ALWAYS_SOFTWARE': '1'}
+    if not graphical:
+        environment['LIBGL_DRIVERS_PATH'] = '/usr/local/lib/rustdesk-settings-fixture'
     bus = app = agent = None
     try:
-        font = run([str(WORK / 'fc-match'), '-f', '%{file}', 'sans-serif'], env=environment).strip()
+        font = run(['/usr/bin/fc-match' if graphical else str(WORK / 'fc-match'),
+                    '-f', '%{file}', 'sans-serif'], env=environment).strip()
         if not font.startswith('/usr/share/fonts/truetype/dejavu/') or not Path(font).is_file():
             raise RuntimeError(f'ordinary desktop has no installed sans-serif font: {font}')
         print(f'LINUX_INSTALLED_SETTINGS_FONT=pass path={font} sha256={digest(font)}',
@@ -969,13 +972,19 @@ def pending_graphical_pam(agent_identity):
         time.sleep(0.01)
 
 
-def admin_failure_scenario(receiver, probe_sha, graphical=None):
+def admin_failure_scenario(receiver, probe_sha, graphical=None, network_before=None):
     unit = Path('/etc/systemd/system/rustdesk.service')
-    if unit.exists():
+    if os.path.lexists(unit):
         raise RuntimeError('administrator failure scenario requires absent initial service state')
-    install(MEDIA / 'repo/res/rustdesk.service', unit)
-    run(['/usr/bin/systemctl', 'daemon-reload'])
-    network_before = network_state()
+    if graphical is None:
+        install(MEDIA / 'repo/res/rustdesk.service', unit)
+        run(['/usr/bin/systemctl', 'daemon-reload'])
+    elif (digest('/usr/lib/systemd/system/rustdesk.service') != digest(MEDIA / 'repo/res/rustdesk.service')
+          or run(['/usr/bin/dpkg-query', '--search', '/usr/lib/systemd/system/rustdesk.service']).strip()
+          != 'rustdesk: /usr/lib/systemd/system/rustdesk.service'):
+        raise RuntimeError('graphical workflow requires the package-owned vendor unit')
+    if network_before is None:
+        network_before = network_state()
     authorization = ExitStack()
     process = None
     requester = committed = profile_before = authority = None
@@ -1031,6 +1040,13 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None):
                                                  'current_listener': current_listener}, sort_keys=True))
             requester = identity
             if graphical is not None:
+                for pid in (requester[0], record['supervisor'], record['pid']):
+                    product = Path('/proc') / str(pid)
+                    if (any(path in (product / 'maps').read_text() for path in
+                            (str(WORK / 'debian-x11'), '/usr/local/lib/rustdesk-settings-fixture'))
+                            or any(value.startswith((b'LD_LIBRARY_PATH=', b'LD_PRELOAD=', b'LIBGL_DRIVERS_PATH='))
+                                   for value in (product / 'environ').read_bytes().split(b'\0'))):
+                        raise RuntimeError('packaged product loaded or inherited a private fixture runtime')
                 if (proc / 'cgroup').read_text() != session_cgroup:
                     raise RuntimeError('GUI left the native desktop session')
                 if committed is None or stage == 'applied':
@@ -1616,8 +1632,10 @@ def concurrent_stop_scenario(receiver, probe_sha):
 def main(arguments, uncertain=False, admin_failure=False, graphical=False, concurrent_stop=False, package=False,
          package_install=False):
     guard()
+    agent_archive_sha = None
     if graphical:
         arguments, agent_archive_sha = arguments[:-1], arguments[-1]
+        package_install = True
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
     source, app_input, provider = Path(source), Path(app_input), Path(provider)
@@ -1654,7 +1672,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')), '--run', str(source),
-                        str(prepared), str(app_input), manifest_sha, commit, probe_sha],
+                        str(prepared), str(app_input), manifest_sha, commit, probe_sha,
+                        *([agent_archive_sha] if graphical else [])],
                        env=ENV, check=True, timeout=600)
         return
     if package:
@@ -1664,8 +1683,6 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
         return
     receiver.install_polkit(archive_sha, polkit_manifest)
     install_runtime(prepared)
-    if graphical:
-        install_graphical_agent(agent_archive_sha)
     manifest = json.loads((app_input / 'app-manifest.json').read_text())
     if digest(app_input / 'app-manifest.json') != manifest_sha or manifest['context'] != json.loads(context):
         raise RuntimeError('installed app manifest changed')
@@ -1695,11 +1712,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
         receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
         scenario_function = (concurrent_stop_scenario if concurrent_stop else admin_failure_scenario if admin_failure
                              else uncertain_scenario if uncertain else scenario)
-        if graphical:
-            receiver.installed_desktop(lambda actor, session, pam: admin_failure_scenario(
-                receiver, probe_sha, graphical=(actor, session, pam)), settings=True, session_controller=True)
-        else:
-            receiver.installed_desktop(lambda: scenario_function(receiver, probe_sha), settings=True)
+        receiver.installed_desktop(lambda: scenario_function(receiver, probe_sha), settings=True)
     finally:
         run(['/usr/sbin/userdel', 'rdreceiver4003'])
     for name, record in manifest['files'].items():
@@ -1712,11 +1725,6 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
               'clients=actual-root-cli service=actual queued=2 shutdown=systemctl barrier=ptrace '
               'stop_deadline=extended outcomes=Applied post_stop=refused restart=retained '
               'cpace=3 stale_refusals=1 cleanup=joined', flush=True)
-    elif graphical:
-        print(f'LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=5 app_commit={commit} manifest_sha256={manifest_sha} '
-              'ui=actual service=actual cancellation=gtk-selection-and-password authorization=polkit-pam '
-              'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
-              'concurrent=gui-and-cli cpace=5 stale_refusals=1 cleanup=joined', flush=True)
     elif admin_failure:
         print(f'LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam '
@@ -1736,8 +1744,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
 if __name__ == '__main__':
     if sys.argv[1:] == ['--prepare']:
         prepare()
-    elif sys.argv[1:] == ['--prepare-graphical']:
-        prepare(graphical=True)
+    elif sys.argv[1:] == ['--prepare-package-graphical']:
+        prepare_package(single=True, graphical=True)
     elif sys.argv[1:] == ['--prepare-package']:
         prepare_package()
     elif sys.argv[1:] == ['--prepare-package-install']:

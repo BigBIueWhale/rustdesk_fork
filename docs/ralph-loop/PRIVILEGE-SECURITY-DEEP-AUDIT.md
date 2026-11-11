@@ -145748,3 +145748,37 @@ three host listener deltas are zero, and private/RAM roots are absent. The ledge
 falls by 507 tokens as stale source-only history is replaced by current native
 evidence. Its approximate 400,000-token compression obligation remains OPEN.
 This audit-only append preserves both measured documents.
+
+## 2026-11-11 — graphical authorization through the normal Debian package
+
+The previous turn is progress: a reproduced masked-unit installation failure was
+corrected and the complete four-case administrator lifecycle accepted. Continue
+the package milestone with graphical password authorization before version upgrades.
+Existing graphical evidence installs an app layout and overlays runtime libraries;
+it does not prove normal package/dependency/policy integration. TUF's password SSH
+master is live, both sources are clean at e2be746d, no private run remains and
+available memory is about 43 GiB. Reuse accepted app6429f3cb and the current scripts.
+
+Read Bookworm polkit(8), policykit-1-gnome and at-spi2-core package contracts.
+The graphical agent belongs to the desktop session; polkitd and the application's
+policy remain system package state. The existing 330-package runtime already
+contains GTK/Mesa/fonts/MIME and polkit 122-3. The retained exact agent and two
+accessibility packages can supply the desktop fixture through ordinary dpkg with
+dependency checks, without a library overlay or replacement application policy.
+https://manpages.debian.org/bookworm/polkitd/polkit.8.en.html
+https://packages.debian.org/bookworm/policykit-1-gnome
+https://packages.debian.org/bookworm/at-spi2-core
+
+Move the existing graphical execution mode onto the normal package transaction;
+do not add a parallel direct-layout graphical mode. Share package construction,
+offline APT installation, payload verification and removal with the accepted
+lifecycle. Preserve the unchanged nineteen UI stages: both real GTK cancellations,
+helper/PAM retirement, same-GUI/agent fresh authorization, held-child concurrent
+GUI/root-CLI commits and fresh no-agent refusal. Check actual GUI/supervisor/child
+maps and environments for private fixture-runtime contamination. Use the installed
+vendor unit and package policy, then restart, verify credential persistence and
+ordinary-user refusal against a live supervisor, reinstall, remove and purge.
+Keep the four-case administrator matrix in its existing focused mode. The package
+branch supplies its preinstallation network baseline because package startup owns
+the listener before the graphical callback. Retain normal limits and joined cleanup.
+No product change or new complete-application build is selected before execution.

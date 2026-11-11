@@ -265,7 +265,53 @@ def administrator_units(source, archive, version, settings, receiver):
     print('LINUX_DEBIAN_ADMIN_UNITS=' + json.dumps(completed, sort_keys=True), flush=True)
 
 
-def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
+def graphical_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before):
+    desktop_runtime(settings, prepared)
+    require(not Path('/etc/ld.so.conf.d/rustdesk-settings-fixture.conf').exists()
+            and not Path('/usr/local/lib/rustdesk-settings-fixture').exists(),
+            'package settings must use the ordinary installed libraries')
+    packages = []
+    for line in (source / 'scripts/smoke-atspi-packages.tsv').read_text().splitlines():
+        if not line or line.startswith('#'):
+            continue
+        name, size, sha, _ = line.split('\t')
+        path = WORK / 'atspi-debs' / (name + '.deb')
+        require(path.is_file() and not path.is_symlink() and path.stat().st_size == int(size)
+                and digest(path) == sha, 'desktop accessibility package differs from its pin')
+        packages.append(str(path))
+    require(len(packages) == 2, 'desktop accessibility package closure differs')
+    command(['/usr/bin/dpkg', '--install', *packages], 'desktop-accessibility')
+    settings.install_graphical_agent(agent_archive_sha)
+    installed = command(['/usr/bin/dpkg-query', '--show', '--showformat=${Package}\t${Version}\t${Status}\n',
+                         'at-spi2-core', 'gsettings-desktop-schemas', 'policykit-1-gnome'],
+                        'desktop-runtime-inventory')
+    require(dict((name, (version, status)) for name, version, status in
+                 (line.split('\t') for line in installed.splitlines())) == {
+                     'at-spi2-core': ('2.46.0-5', 'install ok installed'),
+                     'gsettings-desktop-schemas': ('43.0-1', 'install ok installed'),
+                     'policykit-1-gnome': ('0.105-8', 'install ok installed')},
+            'desktop accessibility or agent package is not configured')
+    for name, target in (('driver-first', 'settings-driver'), ('agent-driver-first', 'agent-driver')):
+        settings.install(prepared / name, WORK / target, 0o755)
+        require('not found' not in settings.run(['/usr/bin/ldd', str(WORK / target)]),
+                'package settings driver has an unresolved dependency')
+    command(['/usr/sbin/useradd', '--uid', '4003', '--user-group', '--create-home',
+             '--shell', '/usr/sbin/nologin', '--groups', 'sudo', 'rdreceiver4003'], 'desktop-administrator')
+    try:
+        receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
+        receiver.installed_desktop(lambda actor, session, pam: settings.admin_failure_scenario(
+            receiver, probe_sha, graphical=(actor, session, pam), network_before=network_before),
+            settings=True, session_controller=True)
+        settings.service_absent()
+        require(settings.run(['/usr/bin/dpkg', '--verify', 'rustdesk']) == '',
+                'graphical settings changed the installed package')
+        print('LINUX_DEBIAN_GRAPHICAL_WORKFLOW=pass cases=5 libraries=apt policy=package '
+              'unit=vendor authorization=polkit-pam profile=unchanged cleanup=joined', flush=True)
+    finally:
+        command(['/usr/sbin/userdel', 'rdreceiver4003'], 'retire-desktop-administrator')
+
+
+def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None):
     require(Path(__file__).resolve() == SCRIPT, 'package test entry differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
@@ -376,56 +422,65 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
             return fd
 
         first = installed_state('installed')
-        sessionless_snapshot('before-password')
-        started = time.monotonic()
-        receiver.change(0, settings.BASELINE_PASSWORD, True)
-        print('LINUX_DEBIAN_INSTALL_PASSWORD_SECONDS=' + str(time.monotonic() - started), flush=True)
-        sessionless_snapshot('after-password')
-        credential = receiver.credential()
-        require(digest(receiver.PROBE) == probe_sha, 'installed CPace probe differs')
-        desktop_runtime(settings, prepared)
+        if agent_archive_sha is not None:
+            graphical_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before)
+            require(select.select([first], [], [], 0)[0] == [first],
+                    'graphical workflow did not retire the original package supervisor')
+            credential = receiver.credential()
+            settings.run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+            installed_state('after-graphical')
+            require(receiver.credential() == credential, 'graphical credential did not survive service restart')
+        else:
+            sessionless_snapshot('before-password')
+            started = time.monotonic()
+            receiver.change(0, settings.BASELINE_PASSWORD, True)
+            print('LINUX_DEBIAN_INSTALL_PASSWORD_SECONDS=' + str(time.monotonic() - started), flush=True)
+            sessionless_snapshot('after-password')
+            credential = receiver.credential()
+            require(digest(receiver.PROBE) == probe_sha, 'installed CPace probe differs')
+            desktop_runtime(settings, prepared)
 
-        def desktop_bootstrap(actor, session, pam):
-            record = receiver.ready()
-            child_fd = os.pidfd_open(record['pid'])
-            try:
-                require(receiver.child_record() == record and record['supervisor'] == supervisors[0]
-                        and not select.select([first, child_fd], [], [], 0)[0]
-                        and receiver.credential() == credential, 'desktop bootstrap changed its owner or credential')
-                for pid in (record['supervisor'], record['pid']):
-                    proc = Path('/proc') / str(pid)
-                    require(str(WORK / 'debian-x11') not in (proc / 'maps').read_text()
-                            and not any(value.startswith((b'LD_LIBRARY_PATH=', b'LD_PRELOAD='))
-                                        for value in (proc / 'environ').read_bytes().split(b'\0')),
-                            'product loaded or inherited the private desktop runtime')
-                settings.credential_network(receiver, record, probe_sha, 'package-desktop-bootstrap',
-                                            new=settings.BASELINE_PASSWORD, old='Wrong-bootstrap-password-2026!')
-                actor.stdin.write(b'close\n')
-                actor.stdin.flush()
-                require(pam.reply(actor) == {'session': session, 'phase': 'closed'},
-                        'desktop did not close its actual PAM session')
-                require(select.select([child_fd], [], [], 25)[0] == [child_fd],
-                        'service child survived desktop session closure')
-                deadline = time.monotonic() + 5
-                while (Path(f'/proc/{record["pid"]}').exists()
-                       or os.path.lexists('/run/rustdesk/service-child.record')):
-                    require(time.monotonic() < deadline, 'desktop child or record was not retired')
-                    time.sleep(0.05)
-                require(not select.select([first], [], [], 0)[0] and receiver.credential() == credential,
-                        'desktop retirement changed the supervisor or credential')
-                print('LINUX_DEBIAN_DESKTOP_BOOTSTRAP=' + json.dumps({
-                    **record, 'session': session, 'credential_sha256': credential,
-                    'authentication': 'mutual-cpace', 'wrong_password': 'receiver-confirmed-refusal',
-                    'child': 'exited-and-reaped',
-                }, sort_keys=True), flush=True)
-            finally:
-                os.close(child_fd)
+            def desktop_bootstrap(actor, session, pam):
+                record = receiver.ready()
+                child_fd = os.pidfd_open(record['pid'])
+                try:
+                    require(receiver.child_record() == record and record['supervisor'] == supervisors[0]
+                            and not select.select([first, child_fd], [], [], 0)[0]
+                            and receiver.credential() == credential, 'desktop bootstrap changed its owner or credential')
+                    for pid in (record['supervisor'], record['pid']):
+                        proc = Path('/proc') / str(pid)
+                        require(str(WORK / 'debian-x11') not in (proc / 'maps').read_text()
+                                and not any(value.startswith((b'LD_LIBRARY_PATH=', b'LD_PRELOAD='))
+                                            for value in (proc / 'environ').read_bytes().split(b'\0')),
+                                'product loaded or inherited the private desktop runtime')
+                    settings.credential_network(receiver, record, probe_sha, 'package-desktop-bootstrap',
+                                                new=settings.BASELINE_PASSWORD, old='Wrong-bootstrap-password-2026!')
+                    actor.stdin.write(b'close\n')
+                    actor.stdin.flush()
+                    require(pam.reply(actor) == {'session': session, 'phase': 'closed'},
+                            'desktop did not close its actual PAM session')
+                    require(select.select([child_fd], [], [], 25)[0] == [child_fd],
+                            'service child survived desktop session closure')
+                    deadline = time.monotonic() + 5
+                    while (Path(f'/proc/{record["pid"]}').exists()
+                           or os.path.lexists('/run/rustdesk/service-child.record')):
+                        require(time.monotonic() < deadline, 'desktop child or record was not retired')
+                        time.sleep(0.05)
+                    require(not select.select([first], [], [], 0)[0] and receiver.credential() == credential,
+                            'desktop retirement changed the supervisor or credential')
+                    print('LINUX_DEBIAN_DESKTOP_BOOTSTRAP=' + json.dumps({
+                        **record, 'session': session, 'credential_sha256': credential,
+                        'authentication': 'mutual-cpace', 'wrong_password': 'receiver-confirmed-refusal',
+                        'child': 'exited-and-reaped',
+                    }, sort_keys=True), flush=True)
+                finally:
+                    os.close(child_fd)
 
-        receiver.installed_desktop(desktop_bootstrap, close_session=True)
-        sessionless_snapshot('after-desktop')
-        require(settings.run(['/usr/bin/systemctl', 'show', 'rustdesk.service',
-                '--property=MainPID', '--value']).strip() == str(supervisors[0]),
-                'package supervisor changed during desktop lifecycle')
+            receiver.installed_desktop(desktop_bootstrap, close_session=True)
+            sessionless_snapshot('after-desktop')
+            require(settings.run(['/usr/bin/systemctl', 'show', 'rustdesk.service',
+                    '--property=MainPID', '--value']).strip() == str(supervisors[0]),
+                    'package supervisor changed during desktop lifecycle')
         require(digest(receiver.PROBE) == probe_sha, 'desktop workflow changed the CPace probe')
         command(['/usr/sbin/useradd', '--uid', '4002', '--user-group', '--create-home',
                  '--shell', '/usr/sbin/nologin', 'rdreceiver4002'], 'ordinary-user')
@@ -434,7 +489,8 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
         require(receiver.credential() == credential, 'refused operation changed the installed credential')
         command(['/usr/bin/dpkg', '--install', str(archive)], 'reinstall', timeout=90)
         second = installed_state('reinstalled')
-        require(select.select([first], [], [], 2)[0] == [first] and receiver.credential() == credential,
+        require(all(select.select([fd], [], [], 2)[0] for fd in pidfds[:-1])
+                and receiver.credential() == credential,
                 'reinstall failed to retire its old supervisor or preserve the credential')
         command(['/usr/bin/dpkg', '--remove', 'rustdesk'], 'remove', timeout=90)
         require(select.select([second], [], [], 2)[0] == [second] and receiver.credential() == credential,
@@ -445,7 +501,8 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
         command(['/usr/bin/dpkg', '--purge', 'rustdesk'], 'purge')
         require(not any(os.path.lexists(p) for p in ('/root/.config/rustdesk', '/root/.config/RustDesk',
                     '/etc/init.d/rustdesk')), 'purge retained package-owned state')
-        administrator_units(source, archive, version, settings, receiver)
+        if agent_archive_sha is None:
+            administrator_units(source, archive, version, settings, receiver)
         command([*apt, 'check'], 'final-dependencies')
         require(command(['/usr/bin/dpkg', '--audit'], 'final-dpkg-audit') == '', 'final dpkg state is incomplete')
         require(digest(manifest_path) == manifest_sha, 'application input changed')
@@ -480,12 +537,21 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    print(f'LINUX_DEBIAN_INSTALL_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
-          'dependencies=apt-checked install=dpkg reinstall=same-version service=actual credential=preserved '
-          'remove=preserved purge=retired desktop=credential-bootstrap cpace=2 wrong_password=refused '
-          'admin_units=4 cleanup=joined', flush=True)
+    if agent_archive_sha is not None:
+        print(f'LINUX_DEBIAN_SETTINGS_NATIVE=pass cases=5 app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired '
+              'ui=actual service=actual cancellation=gtk-selection-and-password authorization=polkit-pam '
+              'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
+              'concurrent=gui-and-cli cpace=5 stale_refusals=1 cleanup=joined', flush=True)
+    else:
+        print(f'LINUX_DEBIAN_INSTALL_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked install=dpkg reinstall=same-version service=actual credential=preserved '
+              'remove=preserved purge=retired desktop=credential-bootstrap cpace=2 wrong_password=refused '
+              'admin_units=4 cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':
-    require(len(sys.argv) == 8 and sys.argv[1] == '--run', 'closed Debian installation arguments required')
-    main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7])
+    require(len(sys.argv) in (8, 9) and sys.argv[1] == '--run', 'closed Debian installation arguments required')
+    require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
+    main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
+         sys.argv[8] if len(sys.argv) == 9 else None)

@@ -8339,13 +8339,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = clip
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = recording-output ]; then
     mapfile -t recording_output_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'RECORDING_OUTPUT_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=35 exit_code=0 unchanged=before-after execution_seconds=[0-9]+$'
+            'RECORDING_OUTPUT_ARTIFACT=complete sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/scrap-[0-9a-f]{16} tests=38 exit_code=0 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#recording_output_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'RECORDING_OUTPUT_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'recording output artifact receipt differs'
     require_exact_fixed_receipt \
-        "RECORDING_OUTPUT_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=35 target=linux-x86_64 scope=scrap-library-native-webm-and-parent-check rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "RECORDING_OUTPUT_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=38 target=linux-x86_64 scope=scrap-library-native-webm-and-parent-check rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'recording output compilation and native result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'recording output cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-video ]; then
@@ -10630,7 +10630,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'CLIPBOARD_FILETIME_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=13 scope=clipboard-library-file-descriptors network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = recording-output ]; then
-        printf 'RECORDING_OUTPUT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=35 scope=scrap-library-native-webm-and-parent-check network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'RECORDING_OUTPUT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=38 scope=scrap-library-native-webm-and-parent-check network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then
         printf 'VIEWER_VIDEO_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=10 scope=complete-parent-library-native-decoder-and-recording-outcomes network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

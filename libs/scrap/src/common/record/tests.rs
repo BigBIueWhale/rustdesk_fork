@@ -272,7 +272,7 @@ fn rejected_recording_is_terminal(file_limit: bool) {
     assert!(recorder.write_frame(&next, 128, 96).is_err(), "resize reopened failed output");
     assert!(recorder.inner.is_none());
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), entries);
-    drop(recorder);
+    assert!(recorder.finish().is_err(), "finish concealed the earlier write failure");
     assert_eq!(fs::read(&output).unwrap(), bytes, "failed output changed after retirement");
 }
 
@@ -683,6 +683,67 @@ fn native_recording_epoch_finalize_failure_stops_before_new_file() {
         assert_eq!(fs::read(&output).unwrap(), before);
         drop(recorder);
         assert_eq!(fs::read(&output).unwrap(), before);
+    });
+}
+
+#[test]
+fn native_recording_finish_preserves_complete_vp8_and_vp9() {
+    for codec in [VpxVideoCodecId::VP8, VpxVideoCodecId::VP9] {
+        let dir = TestDir::new();
+        let mut recorder = timeline_recorder(&dir);
+        let frames = hbb_common::message_proto::EncodedVideoFrames {
+            frames: native_frames(codec), ..Default::default()
+        };
+        let batch = match codec {
+            VpxVideoCodecId::VP8 => video_frame::Union::Vp8s(frames),
+            VpxVideoCodecId::VP9 => video_frame::Union::Vp9s(frames),
+        };
+        recorder.write_frame(&batch, 64, 48).unwrap();
+        let output = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+        let before = fs::metadata(&output).unwrap();
+        recorder.finish().expect("checked native recording finish");
+        let after = fs::metadata(&output).unwrap();
+        assert_eq!((after.dev(), after.ino(), after.mode()),
+            (before.dev(), before.ino(), before.mode()));
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
+        assert_eq!(webm_timestamps(&output), vec![0, 2_000_000_000]);
+    }
+}
+
+#[test]
+fn native_recording_finish_without_frames_creates_no_output() {
+    let dir = TestDir::new();
+    timeline_recorder(&dir).finish().unwrap();
+    let mut recorder = timeline_recorder(&dir);
+    let mut frames = native_interframes();
+    recorder.write_frame(&vp8_batch(frames.remove(1)), 64, 48).unwrap();
+    recorder.finish().unwrap();
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
+}
+
+#[test]
+fn native_recording_finish_reports_native_finalize_failure() {
+    isolated_mux_case("native_recording_finish_reports_native_finalize_failure", || {
+        use std::io::Write;
+        let dir = TestDir::new();
+        let mut recorder = timeline_recorder(&dir);
+        recorder.write_frame(&vp8_batch(native_frames(VpxVideoCodecId::VP8).remove(0)),
+            64, 48).unwrap();
+        let output = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+        let before = fs::read(&output).unwrap();
+        let metadata = fs::metadata(&output).unwrap();
+        let mut canary = OpenOptions::new().write(true).create_new(true)
+            .open(dir.0.join("limit-canary")).unwrap();
+        let limit = FileLimit::zero();
+        assert_eq!(canary.write_all(b"x").unwrap_err().raw_os_error(), Some(crate::libc::EFBIG));
+        let result = recorder.finish();
+        drop(limit);
+        assert!(result.is_err(), "native finalization failure was reported as success");
+        let after = fs::metadata(&output).unwrap();
+        assert_eq!((after.dev(), after.ino(), after.mode()),
+            (metadata.dev(), metadata.ino(), metadata.mode()));
+        assert_eq!(fs::read(&output).unwrap(), before);
+        assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
     });
 }
 

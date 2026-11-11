@@ -141,6 +141,15 @@ impl Recorder {
         Ok(())
     }
 
+    /// Consume the recorder and report file finalization as well as earlier write failure.
+    pub fn finish(mut self) -> ResultType<()> {
+        self.close_epoch()?;
+        if self.failed {
+            bail!("recording failed");
+        }
+        Ok(())
+    }
+
     pub fn write_message(&mut self, msg: &Message, w: usize, h: usize) {
         if let Some(message::Union::VideoFrame(vf)) = &msg.union {
             if let Some(frame) = &vf.union {

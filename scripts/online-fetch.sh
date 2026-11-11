@@ -2950,43 +2950,116 @@ maintenance_discover_flutter_plugin_archives() {
         /usr/bin/python3 -I -S /authority/discover.py
 }
 
-maintenance_probe_flutter_plugin_migration() {
+maintenance_discover_flutter_plugin_cache() {
     local builder="$DEB_BUILDER_CONFIG_ID" work work_identity phase network
+    local seed_receipt cache_receipt lock_fd
     local sdk="$FLUTTER_PRESENTATION_CANDIDATE_ROOT/flutter-$FLUTTER_PRESENTATION_CANDIDATE_VERSION.tar.xz"
-    local -a mounts
+    local -a mounts phase_mounts
     verify_or_load_deb_builder_image
     require_online_fetch_builder_image deb-builder "$builder"
     assert_online_fetch_source_tools
     prepare_gradle_source
     verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
-    work="$(umask 077; /usr/bin/mktemp -d "$ONLINE_FETCH_TMP/flutter-plugin-probe.XXXXXXXXXX")"
+    verify_sha256 "$GRADLE_SOURCE_AUTHORITY/scripts/flutter-plugin-migration-pubspec.lock" \
+        "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK"
+    exec {lock_fd}<"$FLUTTER_PRESENTATION_CANDIDATE_ROOT"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die 'another transaction owns the Flutter presentation cache'
+    seed_receipt="$(pub_cache_output_tool check-complete \
+        --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
+    [ "$seed_receipt" = "sha256=$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE" ] \
+        || die 'plugin cache seed differs from its authenticated pin'
+    work="$(umask 077; /usr/bin/mktemp -d "$ONLINE_FETCH_TMP/flutter-plugin-cache.XXXXXXXXXX")"
     work_identity="$(/usr/bin/stat -c '%d:%i' "$work")"
     mounts=(
         --mount "type=bind,source=$work,target=/work,bind-recursive=disabled"
         --mount "type=bind,source=$sdk,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$FLUTTER_PRESENTATION_CANDIDATE_ROOT/pub-cache,target=/seed,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/flutter,target=/project-source,readonly,bind-recursive=disabled"
-        --mount "type=bind,source=$SCRIPT_DIR/probe-flutter-plugin-migration.sh,target=/authority/probe.sh,readonly,bind-recursive=disabled"
-        --mount "type=bind,source=$SCRIPT_DIR/pins.env,target=/authority/pins.env,readonly,bind-recursive=disabled"
-        --mount "type=bind,source=$SCRIPT_DIR/flutter-presentation-candidate-pubspec.lock,target=/authority/pubspec.lock,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/derive-flutter-plugin-cache.sh,target=/authority/derive.sh,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/pins.env,target=/authority/pins.env,readonly,bind-recursive=disabled"
+        --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/flutter-plugin-migration-pubspec.lock,target=/authority/pubspec.lock,readonly,bind-recursive=disabled"
     )
-    for phase in resolve replay; do
+    for phase in derive replay; do
         network=none
-        [ "$phase" != resolve ] || network=bridge
+        phase_mounts=()
+        if [ "$phase" = derive ]; then
+            network=bridge
+        else
+            cache_receipt="$(pub_cache_output_tool verify-reproduction \
+                --cache "$work/pub-cache" --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")"
+            [[ "$cache_receipt" =~ ^sha256=[0-9a-f]{64}$ ]] \
+                || die 'derived plugin cache receipt is malformed'
+            /usr/bin/install -d -m 0700 "$work/replay-cache" \
+                "$work/replay-cache/hosted" "$work/replay-cache/hosted-hashes" "$work/replay-cache/git"
+            phase_mounts=(
+                --mount "type=bind,source=$work/replay-cache,target=/tmp/pub-cache,bind-recursive=disabled"
+                --mount "type=bind,source=$work/pub-cache/hosted,target=/tmp/pub-cache/hosted,readonly,bind-recursive=disabled"
+                --mount "type=bind,source=$work/pub-cache/hosted-hashes,target=/tmp/pub-cache/hosted-hashes,readonly,bind-recursive=disabled"
+                --mount "type=bind,source=$work/pub-cache/git,target=/tmp/pub-cache/git,readonly,bind-recursive=disabled"
+            )
+        fi
         online_docker run --rm --pull=never --network="$network" --read-only \
             --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \
             --cap-drop=ALL --security-opt=no-new-privileges \
             --pids-limit=512 --memory=8g --memory-swap=8g --cpus=4 \
             --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g \
-            "${mounts[@]}" "$(online_fetch_builder_runtime_ref "$builder")" \
-            /bin/bash --noprofile --norc /authority/probe.sh "$phase"
+            "${mounts[@]}" "${phase_mounts[@]}" "$(online_fetch_builder_runtime_ref "$builder")" \
+            /bin/bash --noprofile --norc /authority/derive.sh "$phase"
     done
+    [ "$(pub_cache_output_tool verify-reproduction --cache "$work/pub-cache" \
+          --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")" = "$cache_receipt" ] \
+        || die 'derived plugin cache changed during read-only replay'
+    [ "$(pub_cache_output_tool check-complete --online "$FLUTTER_PRESENTATION_CANDIDATE_ROOT" \
+          --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID")" = "$seed_receipt" ] \
+        || die 'authenticated plugin cache seed changed'
+    /usr/bin/python3 -I -S - "$GRADLE_SOURCE_AUTHORITY/scripts" \
+        "$FLUTTER_PRESENTATION_CANDIDATE_ROOT/pub-cache" "$work/pub-cache" <<'PY'
+import ast,importlib.util,json,pathlib,sys
+scripts,seed,cache=map(pathlib.Path,sys.argv[1:])
+spec=importlib.util.spec_from_file_location('pub_output',scripts/'online-pub-cache-output.py')
+module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+before,before_links=module.reproduction_entries(seed)
+after,after_links=module.reproduction_entries(cache)
+for path,value in before.items():
+    if path!='.' and after.get(path)!=value:
+        raise ValueError('authenticated seed entry changed: '+path)
+if before_links!=after_links:
+    raise ValueError('authenticated seed hardlink topology changed')
+source=ast.parse((scripts/'discover-flutter-plugin-archives.py').read_text())
+packages=next(ast.literal_eval(node.value) for node in source.body
+              if isinstance(node,ast.Assign) and any(isinstance(target,ast.Name)
+                 and target.id=='PACKAGES' for target in node.targets))
+old_names={path.name for path in (seed/'hosted/pub.dev').iterdir()}
+new_names={path.name for path in (cache/'hosted/pub.dev').iterdir()}
+expected={name+'-'+version for name,version,digest in packages}
+if new_names-old_names!=expected or old_names-new_names:
+    raise ValueError('derived hosted package inventory differs from the fourteen authenticated inputs')
+for name,version,digest in packages:
+    if (cache/'hosted-hashes/pub.dev'/(name+'-'+version+'.sha256')).read_text()!=digest:
+        raise ValueError('derived package hash differs from first-pin provenance: '+name)
+print('FLUTTER_PLUGIN_CACHE_INVENTORY='+json.dumps({
+    'seed_hosted_packages':len(old_names),'derived_hosted_packages':len(new_names),
+    'added_packages':sorted(expected),'preserved_seed_entries':len(before)-1,
+    'derived_entries':len(after),'seed_content_preserved':True,
+    'hardlink_topology_preserved':True},sort_keys=True,separators=(',',':')))
+PY
     verify_gradle_source_unchanged
     retire_gradle_source_build
     verify_sha256 "$sdk" "$SHA256_FLUTTER_PRESENTATION_CANDIDATE"
     [ -d "$work" ] && [ ! -L "$work" ] \
         && [ "$(/usr/bin/stat -c '%d:%i' "$work")" = "$work_identity" ] \
-        || die 'plugin migration probe workspace identity changed'
+        || die 'plugin cache workspace identity changed'
+    /usr/bin/python3 -I -S "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
+        --root "$work" --expected-identity "$work_identity" \
+        --owner "$ONLINE_FETCH_UID" --group "$ONLINE_FETCH_GID"
     /usr/bin/rm -rf --one-file-system -- "$work"
+    "$FLOCK_BIN" --unlock "$lock_fd"
+    exec {lock_fd}<&-
+    printf 'FLUTTER_PLUGIN_CACHE_DISCOVERY=pass %s lock_sha256=%s seed_sha256=%s cache_published=false\n' \
+        "$cache_receipt" "$SHA256_FLUTTER_PLUGIN_MIGRATION_PROJECT_LOCK" \
+        "$SHA256_FLUTTER_PRESENTATION_CANDIDATE_PUB_CACHE"
 }
 
 maintenance_probe_android_candidate_gradle() {
@@ -8942,10 +9015,10 @@ main() {
             maintenance_discover_flutter_plugin_archives
             return 0
             ;;
-        --maintenance-probe-flutter-plugin-migration)
+        --maintenance-discover-flutter-plugin-cache)
             [ "$#" -eq 1 ] \
-                || die "--maintenance-probe-flutter-plugin-migration takes no arguments"
-            maintenance_probe_flutter_plugin_migration
+                || die "--maintenance-discover-flutter-plugin-cache takes no arguments"
+            maintenance_discover_flutter_plugin_cache
             return 0
             ;;
         --maintenance-probe-android-candidate-gradle)

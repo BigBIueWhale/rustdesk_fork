@@ -144923,3 +144923,11 @@ this named graphical cancellation/retry schedule only. Password-entry cancellati
 concurrency, other graphical agents/platforms, final packages and full R-S0 remain
 open. No product change or rebuild was necessary. This passed workflow needs no
 repetition without a relevant change or concern.
+
+Fresh ledger count `6bmX5yw2Bn` at `edb4c219` passes the fixed tokenizer method,
+seven controls and whole-input round trip: 403,730 tokens / 1,842,798 bytes,
+SHA-256 `5885bf87baefc2a9b9712ed533b190f8f858ef13d83422556b891cc406212564`.
+QEMU3856374 joins with zero; private/RAM state retire and three endpoint deltas
+are zero. Eight retained files match CTE/TUF under
+`graphical-authorization-ledger-edb4c219.json`. The approximate 400,000-token
+compression obligation remains open.

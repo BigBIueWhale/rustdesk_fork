@@ -74,8 +74,13 @@ def metadata(data, origin, name, version, sha256):
     url = value.get("archive_url")
     require(isinstance(url, str) and len(url) <= 2048, "archive URL is not bounded text")
     location = urllib.parse.urlsplit(url)
-    require(location.scheme == "https" and location.netloc == urllib.parse.urlsplit(origin).netloc
-            and location.path.startswith("/") and not location.fragment,
+    same_origin = (location.scheme == "https"
+                   and location.netloc == urllib.parse.urlsplit(origin).netloc
+                   and location.path.startswith("/") and not location.fragment)
+    cfug_storage = (origin == ORIGINS[1] and urllib.parse.unquote(url)
+                    == "https://storage.flutter-io.cn/dartlang-pub-exported-api/latest/api/archives/"
+                    + f"{name}-{version}.tar.gz")
+    require(same_origin or cfug_storage,
             f"{name}: archive URL leaves {origin}: {url!r}")
     return value
 
@@ -165,6 +170,10 @@ def self_test():
             "archive_url": f"{ORIGINS[0]}/api/archives/{name}-{version}.tar.gz",
             "pubspec": {"name": name, "version": version}}
     metadata(json.dumps(good).encode(), ORIGINS[0], name, version, sha256)
+    mirror = copy.deepcopy(good)
+    mirror["archive_url"] = ("https://storage.flutter-io.cn/dartlang-pub-exported-api/latest/api/archives/"
+                             + f"{name}-{version}.tar.gz")
+    metadata(json.dumps(mirror).encode(), ORIGINS[1], name, version, sha256)
     cases = []
     for key, value in (("version", "0.0.0"), ("retracted", True),
                        ("archive_sha256", "0" * 64), ("pubspec", {}),
@@ -173,6 +182,7 @@ def self_test():
         bad[key] = value
         cases.append(json.dumps(bad).encode())
     cases.append(b'{"version":"1","version":"2"}')
+    cases.append(json.dumps(mirror).encode())  # Publisher cannot use the mirror's content path.
     for case in cases:
         try:
             metadata(case, ORIGINS[0], name, version, sha256)

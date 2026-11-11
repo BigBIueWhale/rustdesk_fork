@@ -435,7 +435,19 @@ All three workflows use APT libraries and package-owned unit/policy, with pinned
 desktop/accessibility inputs. Normal restart/reinstall preserve the credential;
 live UID-4002 refusal, removal/purge and final APT/dpkg checks pass. Each run retires
 its helpers/GUI/desktop, joins QEMU/private/RAM cleanup and records four zero host
-listener deltas. Version upgrades and the complete release matrix remain **OPEN**.
+listener deltas.
+Distinct-application replacement now passes at `328c3d5d`
+(`package-upgrade-328c3d5d.json`): the complete retained `74b64685` bundle is
+reconstructed against its manifest and replaced by `6429f3cb` through real dpkg
+installation during a PAM/logind desktop session. Only their Rust core differs;
+all 72 payloads verify. Retained pidfds prove both earlier processes exited, and
+both replacement processes map the new library inode/digest. The protected
+credential and user profile survive; four mutual CPace exchanges and two wrong-
+password refusals cover both generations. Desktop retirement, live ordinary-user
+refusal, reinstall/remove/purge and dependency checks pass with joined cleanup.
+Both packages use current production scripts and the policy-required base version
+1.4.7. Historical release/script transitions, old edited conffiles, cross-base
+version upgrades and the complete release matrix remain **OPEN**.
 These scenarios do not establish remote rendered
 pixels/input, physical-seat switching or a complete desktop session workload.
 Canonical input promotion also remains open: the Debian recipe selects stock
@@ -5121,8 +5133,10 @@ same-GUI recovery/refusal and credential persistence across service/GUI restarts
 receiver-confirmed stale-password refusals. Three normal-package uncertainty
 scenarios also pass the actual ten-minute deadline, same-child credential recovery
 and restart persistence with five CPace exchanges and two stale-password refusals
-(`package-uncertain-9cbc1f42.json`). Current handoff coverage and the broader
-authority/release matrix remain OPEN.
+(`package-uncertain-9cbc1f42.json`). Distinct-app Debian replacement also preserves
+the credential across verified old/new process generations and actual CPace
+authentication (`package-upgrade-328c3d5d.json`, scope above). Current handoff
+coverage and the broader authority/release matrix remain OPEN.
 
 **Still OPEN:** exact current release packages and upgrades; installed privileged
 action/settings authorization; genuine-image incumbents, non-root actors and

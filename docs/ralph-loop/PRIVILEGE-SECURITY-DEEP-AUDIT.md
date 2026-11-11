@@ -146024,3 +146024,41 @@ two fresh CPace exchanges and another wrong-password refusal. Close the desktop,
 then verify live ordinary-user refusal, current reinstall, removal preserving
 state, purge retiring it, dependency consistency and exact cleanup. No product
 correction is selected before execution; native acceptance remains pending.
+
+## 2026-11-11 — distinct-application Debian replacement accepted
+
+Preparation 328c3d5d175f573c2bd4de0b5e27812788c9cf70 passes Python AST,
+shell syntax and diff checks. TUF oaw0xAVDUh exits zero (tool72513). The
+ordinary container reconstructs all 72 earlier payloads against the pinned full
+manifest; both archives pass independent archive validation. Old package SHA-256
+d623512e8bd2bb12ce48aba79bce5aa4280db437b3038298720133eae48da636 and current
+5765a5d021666550e3590f99321b3b6c631588f350e29c084a5adc1c34c8b8a2 differ.
+Both retain base version 1.4.7 and current production packaging/scripts.
+
+APT installs the earlier app with all 330 authenticated dependencies. Supervisor
+7426/child7502/start7526, generation c0c01411-cc99-4290-9d05-65830e8f826e,
+each maps four segments of the earlier core at inode396291. After provisioning
+in actual PAM/logind desktop c1, both mutual CPace controls and receiver-confirmed
+wrong-password refusal pass. Dpkg replacement retires both exact old pidfds and
+starts supervisor7705/child7718/start7889, generation
+109601ca-d603-4c0d-988d-b2f403e954b5. Both map four segments of the current core
+at inode397569. All 72 installed payloads verify; the protected credential and
+user-profile credential remain unchanged. Two further mutual CPace controls and
+wrong-password refusal bind the new child's exact listener27869.
+
+Closing the real desktop retires its child/record and preserves the new supervisor
+and credential. Live UID4002 mutation is refused unchanged; current reinstall
+replaces/reaps its predecessor with supervisor7926 and preserves the credential.
+Removal stops it and preserves state; purge removes state. All fourteen package
+commands and final APT/dpkg checks pass. Six completed loopback TIME_WAIT rows
+drain in 57.698 seconds to exact network baseline equality. No product correction
+or application rebuild was necessary.
+
+QEMU3959741 joins zero after 152.483 seconds; peak RAM scratch 4,183,056,384 bytes
+stays within admission. All four host listener deltas are zero. Under the free
+shared lock, reconcile raw observations, clean exact source and absent QEMU/
+private/RAM/Unix endpoints. package-upgrade-328c3d5d.json and nine bounded files /
+147,877 bytes match CTE/TUF. Accept this distinct compiled-application replacement
+with current packaging; historical release/script transitions, older conffile
+handling, cross-base upgrades and final release acceptance remain OPEN. Update
+the current ledger and obtain its fresh isolated token count.

@@ -147085,3 +147085,11 @@ https://raw.githubusercontent.com/flutter/flutter/3.47.5/packages/flutter_tools/
 Keep supported-platform alignment and native acceptance open; no minimum-version
 change, complete SDK promotion or release readiness is claimed. Preserve accepted
 6429f3cb application evidence. Count the revised ledger once after this update.
+
+Fresh count at bf19c41e/iETADAVFBR/tool83240 passes: 407,637 tokens/1,860,513 bytes,
+SHA-256 57201c0a4922b8ae0dfcf830af77635e5736d90dd6182a261740c30098f39cc0.
+The fixed tokenizer, seven controls and byte round trip pass. Eight files/115,847
+bytes in plugin-dialog-ledger-bf19c41e.json match CTE and TUF. QEMU 4066221 joins
+zero after 30.747 seconds; peak scratch 403,091,456 bytes, zero listener deltas
+and exact private/RAM cleanup. The approximate 400,000-token compression remains
+OPEN. This append leaves the measured ledger unchanged.

@@ -144367,3 +144367,24 @@ failure/agent results and guest completion. No native assertion is removed.
 `password-outcome-failed-ee298ac7.json` retains 153.820 seconds, 3,842,310,144-byte
 RAM peak, four zero endpoint deltas and exact retirement; nine files / 110,812 bytes
 match both hosts. Repeat the unchanged app for complete outer acceptance.
+
+**Unavailable-service Failed and same-GUI recovery accepted.** `hu6NHtlHxk` at
+`d7459a5a` exits zero on the unchanged `53f66299` app. All eight cases / 23 GUI
+stages, prior administrator approval/refusals, seven CPace exchanges and three
+old-password refusals pass. The restarted GUI remains PID9568 across service
+shutdown, explicit Failed, dialog cancellation, service restart and fresh Denied.
+Protected and user-profile credential fields remain unchanged during the failure.
+Both retained service processes exit; cgroup/runtime record disappear and each
+fixed privileged endpoint returns ECONNREFUSED despite its remaining pathname.
+Guest network/session cleanup and complete outer acceptance pass.
+
+`password-outcome-failed-d7459a5a.json` is 15,767 bytes, SHA-256
+`2d513f1139d7b5ce1a48829bb012d021c74b0e4bd5bf4825b83f0a6861abdeb5`.
+Nine files / 121,451 bytes match CTE/TUF. The 155.789-second transaction peaks at
+3,839,295,488 RAM-scratch bytes; four zero endpoint deltas, exact QEMU0 join and
+absent private/RAM state are reconciled before either tree changes. No application
+code or artifact rebuild was needed. Native Uncertain, other failure paths,
+mutation recovery across receiver restart, authorization cancellation/concurrency,
+other platforms and final packages remain open. Next: exercise a committed change
+whose result cannot be confirmed, using the actual GUI and existing bounded
+recovery semantics; preserve the now-demonstrated Applied/Denied/Failed behavior.

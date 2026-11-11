@@ -135,7 +135,8 @@ command controls and all 73 payload hashes. `password-outcome-build-53f66299.jso
 binds exact cleanup and four zero listener deltas. That full bundle now passes
 installed-GUI cancellation, explicit Denied reporting, administrator-authorized
 Applied and restart persistence (`password-outcome-installed-c1375436.json`);
-the installed section records scope.
+the same bundle also passes unavailable-service Failed and recovery in the same GUI
+(`password-outcome-failed-d7459a5a.json`). The installed section records scope.
 The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
 Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-release
@@ -7334,7 +7335,7 @@ R-S0/R-F5 and release acceptance remain OPEN.
 | Coordinator and raw v2 | `e69129bc` passed seven coordinator/23 raw-module cases in five groups: actual AF_UNIX readiness before disclosure, canonical/fragmented/empty/max/auth bodies, malformed/truncated/expired input, wiping, half-close, replay, expiry and shutdown. Pre-write refusal is NotSent; a started write is uncertain. `linux-wire-v2-accepted-e69129bc.json` retains exact scope. Two wording-only tests were later deleted; the current seven coordinator/21 protocol cases are not thereby validated. |
 | Current coordinator execution gap | At `04c7e32e`, the 28-case attempt refused before QEMU: admission required 39,936 MiB with 23,531 MiB available. No case ran. `login-inventory-role.json` retains the refusal. Guest/scratch admission and the no-disk-fallback rule remain binding. |
 
-**Full installed-layout GUI — Applied/Denied and restart accepted (2026-11-11).**
+**Full installed-layout GUI — Applied/Denied, unavailable-service Failed and restart accepted (2026-11-11).**
 TUF `JuDHUtbhR2` at `c1375436` reuses optimized bundle `53f66299` with the shipped
 service/policy and actual PAM/logind/polkit. Six cases/eighteen actual GUI stages
 cover entered-text cancellation, two initial no-agent refusals, administrator-
@@ -7351,6 +7352,18 @@ The agent remains alive through observed Applied and retires before the final
 refusal; the preceding early-agent-exit attempt failed after PAM completion.
 The older `d1bf0877` acceptance remains valid for its own artifact.
 
+TUF `hu6NHtlHxk` at `d7459a5a` extends the unchanged bundle to eight cases / 23 GUI
+stages with complete outer acceptance. After the restarted GUI fills the dialog,
+the exact service processes exit and its cgroup/runtime record retire; all three
+privileged sockets refuse connections. Submission displays Failed, leaves protected
+and user-profile credential fields unchanged, and permits cancellation. Following
+service restart, the same GUI obtains a fresh root-log-correlated Denied. Seven
+mutual CPace exchanges and three old-password refusals establish credential use
+across the three service generations. Guest network/session, QEMU and private/RAM
+cleanup pass with four zero endpoint deltas. Capsule: `password-outcome-failed-d7459a5a.json`.
+The earlier fixture pathname assumption and duplicate-receipt rejection are retained
+in the audit; neither was accepted as a product failure or an overall pass.
+
 `d9fc6405`/`53f66299` replace the Boolean native/Flutter password result with
 Applied/Denied/Failed/Uncertain, retain bounded-recovery expiry as Uncertain,
 and distinguish derivation failure from policy refusal. The dialog explains that
@@ -7358,8 +7371,9 @@ an unconfirmed change may already have applied and never automatically retries.
 All 120 rendered cases, including seven password-dialog cases, and three selected
 parser controls pass at `750883af`; an intermediate stale count rejects that outer
 run. `d365011d` corrects the remaining count, whose fresh outer acceptance is OPEN.
-The full bundle above proves native Applied/Denied through the actual UI; controlled
-widget results do not prove native Failed/Uncertain or receiver-restart recovery.
+The full bundle above proves native Applied/Denied and pre-admission unavailable-service
+Failed through the actual UI. Other failure paths, native Uncertain and mutation
+recovery across receiver restart remain unproved by controlled widget results.
 Those scenarios, native macOS outcome classification, graphical OS-agent interaction,
 cancellation during authorization, concurrency, other platforms, final packages
 and complete R-S0 remain OPEN.

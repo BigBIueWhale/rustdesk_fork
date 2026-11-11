@@ -145431,3 +145431,13 @@ descriptor-owned removal frees 70,561,792 allocated file bytes; three
 sessionless-retired-83fa8494 records/14,358 bytes match CTE/TUF. Canonical inputs,
 source and retained runtime evidence are untouched. Full corrected application
 build and package/native acceptance remain pending.
+
+Fresh ledger count MgKbeniFNG at 407fdd12 exits zero (tool75298): 404,829 tokens /
+1,847,787 bytes, SHA-256 6b07d8002039b2c5e12d2b6c59b867348f56662c42e31b082355ba2d77c3a987.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and the exact byte round trip. sessionless-ledger-407fdd12.json and eight files /
+115,383 bytes match CTE/TUF. Three listener deltas are zero; QEMU3903838 joins
+zero after 30.483 seconds and private/RAM roots retire. Whole-ledger compression
+to its approximate 400,000-token target remains OPEN. Proceed with the existing
+isolated full-app build using retained engine ddb1541d and the admitted compiler
+limits, then replay the dependency-complete installation against its exact output.

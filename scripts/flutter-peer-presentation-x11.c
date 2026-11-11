@@ -7653,13 +7653,12 @@ out:
 }
 
 static int screenshot_chooser_control(AtspiAccessible *dialog, unsigned int pid,
-                                      const char *name, AtspiRole role, int focused,
+                                      const char *name, AtspiRole role,
                                       AtspiAccessible **control) {
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     *control = NULL;
     while (monotonic_millis() < deadline) {
-        NamedControlScan scan = {.name = name, .deadline = deadline,
-                                .focused_text = focused, .role = role};
+        NamedControlScan scan = {.name = name, .deadline = deadline, .role = role};
         int result = scan_named_control_node(dialog, pid, 0U, &scan, 0);
         if (result == 0 && scan.matches == 1U) {
             *control = scan.match;
@@ -7798,8 +7797,8 @@ static int exercise_screenshot_save(Display *display, const ViewerWindow *viewer
         AtspiRole role = atspi_accessible_get_role(dialog, &error);
         if (error != NULL || role != ATSPI_ROLE_FILE_CHOOSER) goto out;
         phase = "filename";
-        if (screenshot_chooser_control(dialog, (unsigned int)viewer->pid, "filename",
-                                       ATSPI_ROLE_TEXT, 1, &field) != 0 ||
+        if (screenshot_chooser_control(dialog, (unsigned int)viewer->pid, "",
+                                       ATSPI_ROLE_TEXT, &field) != 0 ||
             (editable = atspi_accessible_get_editable_text_iface(field)) == NULL ||
             (text = atspi_accessible_get_text_iface(field)) == NULL) goto out;
         gchar *suggested = atspi_text_get_text(text, 0, -1, &error);
@@ -7818,7 +7817,7 @@ static int exercise_screenshot_save(Display *display, const ViewerWindow *viewer
         phase = sequence == 0U ? "cancel" : "save";
         if (screenshot_chooser_control(dialog, (unsigned int)viewer->pid,
                                        sequence == 0U ? "Cancel" : "Save",
-                                       ATSPI_ROLE_PUSH_BUTTON, 0, &button) != 0 ||
+                                       ATSPI_ROLE_PUSH_BUTTON, &button) != 0 ||
             (action = atspi_accessible_get_action_iface(button)) == NULL) goto out;
         gint actions = atspi_action_get_n_actions(action, &error);
         if (error != NULL || actions != 1) goto out;

@@ -144984,3 +144984,12 @@ and final-package/complete R-S0 acceptance remain open. The next decisive instal
 settings check is concurrent authorized requests with truthful per-request outcomes
 and final durable/runtime credential agreement. Do not repeat these passed
 cancellation cases without a relevant change or concern.
+
+Fresh ledger count `zt4Pgj0KST` at `ffb4b17e` exits zero (tool87198): 403,777
+tokens / 1,843,005 bytes, SHA-256
+d1f76394c580e31d21b54975fefcb9d4e50b21910068a625ecba6b771553bbc3.
+The fixed tokenizer method, seven controls and byte round trip pass. QEMU3860668
+joins with zero, private/RAM roots retire and three endpoint deltas are zero.
+`password-cancel-ledger-ffb4b17e.json` binds the count and cleanup; its eight-file
+115,172-byte evidence set matches CTE/TUF. The approximate 400,000-token
+compression obligation remains open. No test or VM remains running.

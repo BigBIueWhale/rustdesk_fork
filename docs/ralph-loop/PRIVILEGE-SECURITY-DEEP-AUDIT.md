@@ -146141,3 +146141,45 @@ exact earlier file identities or absence, preserve predecessor installed state
 and leave no temporary backup before a successful retry. The genuine package
 still passes its independent archive validator; the intentionally refused package
 is explicitly a bounded fault fixture. Corrected native acceptance is pending.
+
+## 2026-11-11 — obsolete conffile migration and abort recovery accepted
+
+Correction e2db584ab7a70530acff0d18b2f236cb1a41556a passes Python AST,
+POSIX/shell syntax and diff checks. TUF jtQ6ulMa1C exits zero (tool98833).
+Current actual package SHA-256
+19249a56142c98ccad41e9e50db93028dc9b00fc88b4812f4946c7b4b064aaf4 passes
+independent archive validation; all 72 retained app6429f3cb payloads are unchanged.
+The conffile-only predecessor is a1212c9870c8ad82e632d498ff7a3f02cc41a36f20d81fe8b24fdf3188c378ef;
+the intentional final-preinst-exit fault archive is
+883461c0148ff249e39b75d81ce9d433e2c11cfb95e3d305d5c555e51399c84f.
+
+All twelve original observations pass. Untouched historical startwm/xorg files
+are absent after upgrade; edited originals retain exact inode, owner, mode,
+length and content under .dpkg-bak through reinstall/removal, then disappear on
+purge. Administrator deletions remain absent. The separate administrator note's
+exact identity/content survives every operation. All three new abort transactions
+exit 1 at the intentional final preinst instruction; actual postrm restores the
+old originals or absence, no backup staging remains, predecessor state stays
+installed and the real retry succeeds. Native helper messages confirm restoration
+after both unchanged-file moves and edited-file backups.
+
+Eight actual supervisor generations pass all installed payload/unit/link checks:
+7410,7716 and migration pairs8028/8157,8470/8599,8872/9001. Pidfds prove old
+process retirement on reinstall and absence after removal. Of thirty package
+commands, exactly the three fault controls exit 1; all others exit zero. Final
+APT consistency and dpkg audit pass. The ordinary workflow provisions the protected
+credential without a desktop, bootstraps child7502/start7602/generation
+9b990d03-0a11-4a02-8326-d181095179c0 in a real PAM/logind session, completes two
+mutual CPace controls with listener25607 and confirms wrong-password refusal.
+Session closure retires the child, live UID4002 mutation is refused unchanged,
+reinstall/removal preserve the credential and purge removes it.
+
+Three completed loopback TIME_WAIT rows drain in 40.801 seconds to exact baseline
+equality. QEMU3965698 joins zero after 149.775 seconds; peak RAM scratch
+4,243,152,896 bytes stays within admission. All four host listener deltas are
+zero. Reconcile raw observations, clean exact source and absent QEMU/private/RAM/
+Unix endpoints under the free shared lock. package-conffile-e2db584a.json and
+nine bounded files / 199,840 bytes match CTE/TUF. The named migration and abort
+behavior is accepted; full historical application/script transitions, other error
+paths and final release acceptance remain OPEN. Update the current ledger and
+obtain its fresh isolated count.

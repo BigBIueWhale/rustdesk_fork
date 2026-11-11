@@ -446,8 +446,15 @@ credential and user profile survive; four mutual CPace exchanges and two wrong-
 password refusals cover both generations. Desktop retirement, live ordinary-user
 refusal, reinstall/remove/purge and dependency checks pass with joined cleanup.
 Both packages use current production scripts and the policy-required base version
-1.4.7. Historical release/script transitions, old edited conffiles, cross-base
-version upgrades and the complete release matrix remain **OPEN**.
+1.4.7. Obsolete desktop conffile migration separately passes at `e2db584a`
+(`package-conffile-e2db584a.json`): twelve upgrade/reinstall/remove/purge states
+cover untouched, edited and deleted historical files. Untouched copies retire,
+edits retain exact inode/ownership/mode/bytes as backups until purge, and deleted
+files stay absent. Three actual preinst failures restore the original state and
+permit retry; an administrator neighbor remains unchanged throughout. The current
+package runs the real application, while the predecessor is a conffile-only
+fixture. Historical release/script transitions, other migration/error paths,
+cross-base version upgrades and the complete release matrix remain **OPEN**.
 These scenarios do not establish remote rendered
 pixels/input, physical-seat switching or a complete desktop session workload.
 Canonical input promotion also remains open: the Debian recipe selects stock
@@ -5273,10 +5280,16 @@ inventory/conffiles/modes/ownership/command link/md5sums, plus refusal of each r
 in staging, data archives and conffile metadata. Seven existing polkit-dependency cases also
 pass. Payload contents are controlled fixtures; no full application, installed service or
 real polkit receiver ran. Retained evidence: `retired-desktop-resources-9c8ebb1c.json`.
-Installed upgrade handling of old administrator-edited conffiles, current release artifacts,
-existing-session/headless native functionality and R-S0 acceptance remain OPEN. Package
-archive admission and source-layout catalogue deletion are recorded below. No installed
-conffile cleanup is performed.
+Installed migration is corrected at `e2db584a`: checked `dpkg-maintscript-helper`
+calls in preinst/postinst/postrm retire unchanged obsolete files, preserve edits
+as `.dpkg-bak`, restore originals on abort and remove backups on purge. The old
+package left untouched files behind; `package-conffile-baseline-f744d5ef.json`
+retains that result. The unchanged twelve lifecycle observations now pass, with
+three added abort/retry controls and real current-package service/credential/
+desktop/CPace checks (`package-conffile-e2db584a.json`). The predecessor fixture
+establishes exact historical conffile bytes and dpkg records; no historical
+application or maintainer scripts execute. Current release artifacts, broader
+historical upgrades, existing-session/headless coverage and R-S0 remain OPEN.
 
 **Verdict: source topology largely implemented; Android controlled-CM admission is source-corrected,
 but installed/native and release evidence remain OPEN.** The ordinary desktop IPC protocol has no password request,

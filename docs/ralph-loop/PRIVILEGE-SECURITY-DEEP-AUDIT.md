@@ -144901,3 +144901,25 @@ Full failed-run evidence is in `linux-graphical-helper-readiness-6c1047ac.json`.
 QEMU3852518 joins with zero; private/RAM state retire and four endpoint deltas are
 zero. Provider AccountsService/ATK warnings remain in the raw logs; this fixture
 does not exercise account avatars or every OS-agent presentation behavior.
+
+**Accepted final graphical workflow.** `AQZqLhZzIT` at `4abb8134`, tool session
+79381, exits zero with the unchanged `83fa8494` app. All eleven actual GUI stages
+pass: Cancel before administrator selection returns root status3/GUI Denied,
+protected/user-profile credentials remain unchanged and the exact root helper
+9300/start6605 exits/reaps within 1.528 seconds. GUI9176/start6157 and agent9175
+share actual PAM session `c1`; the same pair complete a fresh correct PAM approval
+and Applied. Agent retirement precedes fresh status2/Denied. Four mutual CPace
+exchanges and one old-password refusal retain supervisor9085, child9094/start6034,
+generation `86bb29ac-15de-451e-ad62-faab3613f499` and listener25596.
+Both GTK password-icon decodes pass; missing-PNG-format/surface errors are absent.
+Provider AccountsService/ATK warnings remain retained, without avatar acceptance.
+
+Runtime is 147.119 seconds; RAM workspace peaks at 3,842,314,240 bytes.
+QEMU3854016 joins with zero; private/RAM state retire and four endpoint deltas
+are zero. `linux-graphical-authorization-4abb8134.json` is 13,321 bytes, SHA-256
+`9eebcebc2c3bcb9d1cb084cd53594cacc4ed6621b8da5e16a468e55e12c43ff0`.
+The capsule and all eight raw/outer receipts match CTE/TUF. The ledger accepts
+this named graphical cancellation/retry schedule only. Password-entry cancellation,
+concurrency, other graphical agents/platforms, final packages and full R-S0 remain
+open. No product change or rebuild was necessary. This passed workflow needs no
+repetition without a relevant change or concern.

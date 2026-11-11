@@ -5180,7 +5180,7 @@ with Windows transport in `src/platform/windows.rs`, macOS authorization in
 | R-S11ib / R-S11e-265 / #387 | `WindowsServiceOwnedShareRdpRequester` retains the elevated UI process, creation time, identity and equal pipe/process token proof until its consuming HKLM commit. | Real settings-page allow/refusal with observed 64-bit registry effects, process/token/image/argv races and pipe-handle sharing. |
 | R-S11ic / R-S11e-266 / #388 | Distinct Windows credential/control requester capabilities retain the launch-bound LocalSystem supervisor across request reads and final actions. Prepared shutdown retains authority across its acknowledgement and replays before the latch. | Installed credential quiesce/apply/query/resume, session count and shutdown; wrong endpoint/principal, failed acknowledgement or post-acknowledgement replay must cause no protected action. |
 | R-S11id / R-S11e-267 / #389 | `MacosServiceOwnedPasswordAdmission` owns exact requester and authorization proof through the typed `Prepared` transition; only the preparation owner retains the secret. | Authorization Services allow/deny/expiry/replay/cleanup, exact-role and last-owner races, secret-free status and admitted-operation finality. |
-| R-S11ie / R-S11e-268 / #390 | `LinuxServiceOwnedPasswordAdmission` retains the post-polkit requester through the exact `Authorizing` to `Committing` transition. Denial cancels only its matching pending claim. | The installed-layout `ea13742f` checkpoint below accepts administrator-authorized post-commit requester exit, same-child convergence, restart persistence and subsequent grant/refusal. Remaining identity/replay races, GUI cancellation, concurrency/drain schedules and final-package acceptance stay open; earlier timeout/shutdown scenarios retain their named artifact scope. |
+| R-S11ie / R-S11e-268 / #390 | `LinuxServiceOwnedPasswordAdmission` retains the post-polkit requester through the exact `Authorizing` to `Committing` transition. Denial cancels only its matching pending claim. | Installed-layout `ea13742f` accepts authorized post-commit requester exit, same-child convergence, restart persistence and subsequent grant/refusal. Graphical `4abb8134` on app `83fa8494` accepts GTK dialog dismissal, unchanged credentials, same-GUI/agent fresh PAM approval and no-agent refusal. Remaining identity/replay races, cancellation during password entry, concurrency/drain schedules, other graphical agents and final-package acceptance stay open; earlier timeout/shutdown scenarios retain their named artifact scope. |
 | R-S11if / R-S11e-269 / #391 | Windows endpoint-derived typed requests retain user/service admissions through the bounded queue. User admission fixes its action; fresh service `Active` insertion consumes service admission. | Installed user and LocalSystem endpoints, UAC, wrong endpoint/token, queue lifetime, request races, retry and crash recovery. |
 | R-S11ig / R-S11e-270 / #392 | Linux credential response admission consumes the exact child requester and retains its UUID; only that owner reads and sends the runtime PRS. | Child identity/ancestry/runtime-generation and socket races, malformed/trailing requests, child exit and response failure. |
 | R-S11ih / R-S11e-271 / #393 | `LinuxServiceOwnedPasswordReplicaWriter` retains the exact child; only a typed PRS reread after durable commit selects convergence. The consuming send preserves `NotSent` versus `Uncertain`. | Installed `a3c017a6` on app `83fa8494` accepts same-child convergence after the real GUI uncertainty deadline, new/old credential outcomes and restart persistence. Final role/UID/ancestry replay, remaining connect/pre-send/send/response schedules and final-package acceptance stay open. |
@@ -7384,9 +7384,30 @@ Four mutual CPace exchanges and one child-confirmed old-password refusal preserv
 the exact supervisor/child/generation/listener. No user-profile fallback occurs.
 `linux-gui-admin-failure-9c90275b.json` binds all observations, the immutable app,
 joined private/RAM/VM retirement and four zero endpoint deltas. The audit retains
-the first fixture-precondition failure and readiness-order repair. Actual user
-dismissal of an authentication dialog, graphical OS agents, other failure and
-concurrency schedules, final packages and complete R-S0 remain OPEN.
+the first fixture-precondition failure and readiness-order repair. Graphical
+dialog dismissal and retry are accepted below; other failure/concurrency
+schedules, final packages and complete R-S0 remain OPEN.
+
+**Graphical OS authentication cancellation and retry accepted.** TUF
+`AQZqLhZzIT`, harness `4abb8134`, reuses the unchanged `83fa8494` application.
+The packaged Debian GTK agent `0.105-8` and GUI share real PAM/logind session `c1`;
+kernel identities, common session cgroup, GUI no-new-privileges and agent principal
+are checked. Eleven actual GUI stages cover Cancel in the OS dialog before
+administrator selection, Denied with protected/user-profile credentials unchanged,
+fresh correct PAM authentication through the same agent and GUI, Applied, and
+fresh no-agent Denied after agent retirement. The cancellation's root-held status3
+binds the exact GUI requester; its retained pkcheck exits/reaps within 1.528 seconds.
+Four mutual CPace exchanges and one old-password refusal preserve the exact service
+child/generation/listener. GTK's password PNG decodes before both agent actions.
+
+`linux-graphical-authorization-4abb8134.json` binds source, immutable app, all
+outcomes and joined cleanup. QEMU/private/RAM state retire and all four endpoint
+deltas are zero. The audit retains the initial passing authorization run, MIME
+runtime correction and helper-readiness fixture failure. Provider AccountsService/
+ATK warnings remain in raw output; account avatars are outside this fixture.
+This closes the named Debian GTK/X11 cancellation/retry workflow. Cancellation
+during administrator password entry, other agents/desktops, concurrent requests,
+remaining identity/failure schedules, final packages and complete R-S0 stay OPEN.
 
 `d9fc6405`/`53f66299` replace the Boolean native/Flutter password result with
 Applied/Denied/Failed/Uncertain, retain bounded-recovery expiry as Uncertain,

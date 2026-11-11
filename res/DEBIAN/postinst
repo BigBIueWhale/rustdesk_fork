@@ -9,7 +9,20 @@ if [ "$1" = configure ]; then
 
 	update-rc.d "$service" defaults >/dev/null
 	if [ -d /run/systemd/system ]; then
-		deb-systemd-helper enable "$unit" >/dev/null
+		/bin/systemctl --system daemon-reload >/dev/null
+		unit_load_state=$(/bin/systemctl --system show --property=LoadState --value "$unit")
+		case "$unit_load_state" in
+			loaded)
+				deb-systemd-helper enable "$unit" >/dev/null
+				;;
+			masked)
+				deb-systemd-helper update-state "$unit" >/dev/null
+				;;
+			*)
+				printf 'Cannot configure %s with load state %s\n' "$unit" "$unit_load_state" >&2
+				exit 1
+				;;
+		esac
 		/bin/systemctl --system daemon-reload >/dev/null
 		deb-systemd-invoke start "$unit" >/dev/null
 	else

@@ -145642,3 +145642,35 @@ unchanged fixture-owned administrator files after successful purge. Keep the
 existing package/bootstrap regression and final dependency/audit/network checks;
 this reuses one dependency installation instead of adding a new execution mode.
 No product or maintainer-script change is made before observing the result.
+
+TUF fiYXgx4Q1Q at 51181057 reproduces a package failure. Normal installation,
+sessionless provisioning, desktop bootstrap/refusal/retirement, reinstall,
+remove and purge execute before the new matrix. Fresh admin-mask-install exits
+1: systemctl preset refuses the masked /etc unit and deb-systemd-helper enable
+propagates that failure from postinst into dpkg. Other administrator cases do not
+run. The helper's exact 1.65.2+deb12u1 scripts were read inertly from the already
+authenticated dependency archive: helper SHA a895d5f077651960b6ca4ed9c53f8b36eae422ae170f61c972d0c6579e9f8732,
+invoke SHA f06db7d1c3440e1e3b4bcc890f22157f837e15992d20517d16c699de4a38bd7a.
+First enable calls preset; update-state records the dependency state without
+enabling. Invoke independently respects disabled/masked state when starting.
+
+Correct postinst to reload the manager, query the exact unit's LoadState through
+the checked read-only systemctl property API, enable only a loaded unit, and
+update helper state for a masked unit. An unavailable/unknown load state fails
+explicitly; query/helper errors still propagate. Retain the checked post-helper
+manager reload and Debian start invocation. Never unmask, rewrite administrator
+files, ignore helper errors or introduce another service-control path. The compact
+existing source gate permits precisely this read-only query alongside reload;
+its direct lifecycle and error-masking prohibitions remain. Native acceptance
+will repeat the unchanged four-case matrix and ordinary workflow against a package
+rebuilt from the same retained application with only the maintainer correction.
+Bookworm systemctl(1) documents mask preventing enablement and its load/introspection
+surface: https://manpages.debian.org/bookworm/systemd/systemctl.1.en.html
+
+Tool42114 exits 1; QEMU3938455 joins zero after 78.981 seconds. Peak RAM scratch
+is 4,206,120,960 bytes; the RAM workspace is absent and all four host listener
+deltas are zero. Under the free run lock, verify private identity66306:80656079,
+capture hashes, no owned handles or Unix endpoints and clean pushed source, then
+retire the exact private tree. package-admin-units-51181057.json and nine files /
+194,278 bytes match CTE/TUF. The outer transcript is retained as exact bytes,
+including its non-UTF8 terminal fragments; no overall acceptance is claimed.

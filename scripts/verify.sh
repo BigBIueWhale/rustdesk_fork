@@ -9066,7 +9066,7 @@ grep -qE '^NotifyAccess=main$' res/rustdesk.service || r_s11c10j="$r_s11c10j uni
 if grep -qE '^ExecStop=|pkill' res/rustdesk.service; then
   r_s11c10j="$r_s11c10j unit:legacy-execstop"
 fi
-if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|systemctl|--machine=' res/DEBIAN | grep -vF '/bin/systemctl --system daemon-reload >/dev/null' >"$VERIFY_TMP/rd_verify_r_s11c10j_pkg"; then
+if grep -RInE 'INITSYS|/proc/1/exe|ps -ef|grep -E|awk|sed -i|service rustdesk|systemctl|--machine=' res/DEBIAN | grep -vF -e '/bin/systemctl --system daemon-reload >/dev/null' -e 'unit_load_state=$(/bin/systemctl --system show --property=LoadState --value "$unit")' >"$VERIFY_TMP/rd_verify_r_s11c10j_pkg"; then
   cat "$VERIFY_TMP/rd_verify_r_s11c10j_pkg"
   r_s11c10j="$r_s11c10j maintscript:raw-service-discovery-or-systemctl"
 fi

@@ -133,6 +133,138 @@ def desktop_runtime(settings, prepared):
     print('LINUX_DEBIAN_DESKTOP_RUNTIME=private product_libraries=apt loader_configuration=unchanged', flush=True)
 
 
+def administrator_units(source, archive, version, settings, receiver):
+    primary = Path('/etc/systemd/system/rustdesk.service')
+    drop_directory = Path('/etc/systemd/system/rustdesk.service.d')
+    drop = drop_directory / '90-package-fixture.conf'
+    vendor = Path('/usr/lib/systemd/system/rustdesk.service')
+    linked = WORK / 'administrator-unit/rustdesk.service'
+    linked.parent.mkdir(mode=0o755)
+    linked.parent.chmod(0o755)
+
+    def snapshot(path):
+        info = path.lstat()
+        require(info.st_uid == info.st_gid == 0 and info.st_nlink == 1
+                and (stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)),
+                'administrator fixture authority differs')
+        return {'device': info.st_dev, 'inode': info.st_ino, 'mode': info.st_mode,
+                'uid': info.st_uid, 'gid': info.st_gid, 'bytes': info.st_size,
+                'mtime_ns': info.st_mtime_ns, 'ctime_ns': info.st_ctime_ns,
+                'target': os.readlink(path) if path.is_symlink() else None,
+                'sha256': None if path.is_symlink() else digest(path)}
+
+    def properties():
+        return dict(line.split('=', 1) for line in settings.run([
+            '/usr/bin/systemctl', 'show', 'rustdesk.service',
+            '--property=LoadState,ActiveState,SubState,MainPID,FragmentPath,DropInPaths,Environment,NRestarts'
+        ]).splitlines())
+
+    completed = []
+    for kind in ('mask', 'linked', 'replacement', 'drop-in'):
+        require(not any(os.path.lexists(p) for p in (primary, drop_directory, linked, vendor)),
+                'administrator unit case is not fresh')
+        settings.service_absent()
+        environment = 'RUSTDESK_PACKAGE_ADMIN=' + kind
+        addition = '\n[Service]\nEnvironment=' + environment + '\n'
+        if kind == 'mask':
+            primary.symlink_to('/dev/null')
+            paths = [primary]
+        elif kind == 'linked':
+            linked.write_bytes((source / 'res/rustdesk.service').read_bytes() + addition.encode())
+            linked.chmod(0o644)
+            primary.symlink_to(linked)
+            paths = [primary, linked]
+        elif kind == 'replacement':
+            primary.write_bytes((source / 'res/rustdesk.service').read_bytes() + addition.encode())
+            primary.chmod(0o644)
+            paths = [primary]
+        else:
+            drop_directory.mkdir(mode=0o755)
+            drop_directory.chmod(0o755)
+            drop.write_text(addition)
+            drop.chmod(0o644)
+            paths = [drop]
+        original = {str(p): snapshot(p) for p in paths}
+        settings.run(['/usr/bin/systemctl', 'daemon-reload'])
+        pidfds = []
+        phases = []
+        try:
+            for phase, action in (('install', '--install'), ('reinstall', '--install'),
+                                  ('remove', '--remove'), ('purge', '--purge')):
+                command(['/usr/bin/dpkg', action, str(archive) if action == '--install' else 'rustdesk'],
+                        'admin-' + kind + '-' + phase, timeout=90)
+                observed = {str(p): snapshot(p) for p in paths}
+                require(observed == original, 'package changed administrator unit state')
+                props = properties()
+                if action == '--install':
+                    require(settings.run(['/usr/bin/dpkg-query', '--show', '--showformat=${Status}\t${Version}',
+                                          'rustdesk']) == 'install ok installed\t' + version,
+                            'administrator-state package is not configured')
+                    require(settings.run(['/usr/bin/dpkg', '--verify', 'rustdesk']) == ''
+                            and digest(vendor) == digest(source / 'res/rustdesk.service')
+                            and os.readlink('/usr/bin/rustdesk') == '../share/rustdesk/rustdesk',
+                            'administrator-state package payload differs')
+                    if kind == 'mask':
+                        require(props['LoadState'] == 'masked' and props['ActiveState'] == 'inactive'
+                                and props['MainPID'] == '0', 'installation bypassed the administrator mask')
+                        settings.service_absent()
+                    else:
+                        fragment = linked if kind == 'linked' else primary if kind == 'replacement' else vendor
+                        require(props['LoadState'] == 'loaded' and props['ActiveState'] == 'active'
+                                and props['SubState'] == 'running' and props['NRestarts'] == '0'
+                                and Path(props['FragmentPath']).samefile(fragment)
+                                and props['DropInPaths'] == (str(drop) if kind == 'drop-in' else '')
+                                and environment in props['Environment'].split(),
+                                'administrator unit did not govern the installed service')
+                        pid = int(props['MainPID'])
+                        require(pid > 1, 'administrator unit has no supervisor')
+                        fd = os.pidfd_open(pid)
+                        pidfds.append(fd)
+                        require(Path(f'/proc/{pid}/exe').samefile(receiver.PRIMARY)
+                                and environment.encode() in Path(f'/proc/{pid}/environ').read_bytes().split(b'\0')
+                                and not select.select([fd], [], [], 0)[0]
+                                and properties()['MainPID'] == str(pid),
+                                'administrator-selected supervisor identity or environment differs')
+                        require(all(select.select([old], [], [], 2)[0] for old in pidfds[:-1]),
+                                'reinstall retained an old administrator-selected supervisor')
+                else:
+                    require(all(select.select([fd], [], [], 2)[0] for fd in pidfds),
+                            'package removal retained an administrator-selected supervisor')
+                    settings.service_absent()
+                    require(not any(os.path.lexists(p) for p in
+                            (vendor, Path('/usr/bin/rustdesk'), receiver.PRIMARY)),
+                            'administrator-state removal retained package payload')
+                    if phase == 'purge':
+                        require(not any(os.path.lexists(p) for p in
+                                ('/root/.config/rustdesk', '/root/.config/RustDesk', '/etc/init.d/rustdesk')),
+                                'administrator-state purge retained package-owned state')
+                phases.append(phase)
+                print('LINUX_DEBIAN_ADMIN_UNIT=' + json.dumps({
+                    'case': kind, 'phase': phase, 'files': observed, 'unit': props,
+                    'retired_supervisors': len(pidfds) - (1 if action == '--install' and kind != 'mask' else 0),
+                }, sort_keys=True), flush=True)
+        finally:
+            try:
+                if vendor.exists() and kind != 'mask':
+                    settings.run(['/usr/bin/systemctl', 'stop', 'rustdesk.service'], timeout=45)
+                require(all(select.select([fd], [], [], 2)[0] for fd in pidfds),
+                        'administrator-unit fixture did not retire its supervisors')
+            finally:
+                for fd in pidfds:
+                    os.close(fd)
+        require({str(p): snapshot(p) for p in paths} == original,
+                'administrator unit changed before fixture retirement')
+        for path in paths:
+            path.unlink()
+        if kind == 'drop-in':
+            drop_directory.rmdir()
+        settings.run(['/usr/bin/systemctl', 'daemon-reload'])
+        settings.service_absent()
+        completed.append({'case': kind, 'phases': phases})
+    linked.parent.rmdir()
+    print('LINUX_DEBIAN_ADMIN_UNITS=' + json.dumps(completed, sort_keys=True), flush=True)
+
+
 def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
     require(Path(__file__).resolve() == SCRIPT, 'package test entry differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
@@ -313,6 +445,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
         command(['/usr/bin/dpkg', '--purge', 'rustdesk'], 'purge')
         require(not any(os.path.lexists(p) for p in ('/root/.config/rustdesk', '/root/.config/RustDesk',
                     '/etc/init.d/rustdesk')), 'purge retained package-owned state')
+        administrator_units(source, archive, version, settings, receiver)
         command([*apt, 'check'], 'final-dependencies')
         require(command(['/usr/bin/dpkg', '--audit'], 'final-dpkg-audit') == '', 'final dpkg state is incomplete')
         require(digest(manifest_path) == manifest_sha, 'application input changed')
@@ -349,7 +482,8 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
     settings.wait_network_retirement(network_before)
     print(f'LINUX_DEBIAN_INSTALL_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
           'dependencies=apt-checked install=dpkg reinstall=same-version service=actual credential=preserved '
-          'remove=preserved purge=retired desktop=credential-bootstrap cpace=2 wrong_password=refused cleanup=joined', flush=True)
+          'remove=preserved purge=retired desktop=credential-bootstrap cpace=2 wrong_password=refused '
+          'admin_units=4 cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':

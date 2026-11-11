@@ -145605,3 +145605,40 @@ eight files/115,811 bytes match CTE/TUF. QEMU3936806 joins zero after 30.532
 seconds; three host listener deltas are zero, and private/RAM roots retire.
 Whole-ledger compression to the approximate 400,000-token target remains OPEN.
 This audit-only append preserves the counted ledger bytes.
+
+## 2026-11-11 — Debian administrator unit-state lifecycle preparation
+
+The previous turn made native acceptance progress: package first-desktop bootstrap
+and exact network/process/storage retirement passed. Continue the same package
+milestone with R-S11by's explicit administrator-state matrix before broader
+graphical settings or version upgrades. The retained 6429f3cb application and
+authenticated dependency closure suffice. TUF's existing SSH master works, source
+is clean, the shared run lock is free and available memory is 43 GiB.
+
+Research Debian Policy 9.3/10.7, Bookworm systemd.unit(5), deb-systemd-helper(1p)
+and deb-systemd-invoke(1p). Administrator /etc unit state takes precedence; linked
+units outside the load path differ from aliases; helper enablement has persistent
+state; service invocation must respect Debian policy. R-S11by additionally requires
+administrator masks/links to survive purge. Existing maintainer scripts delegate
+to these helpers and do not directly mutate unit paths. The remaining question is
+their actual combined behavior during package operations, not source spelling.
+https://www.debian.org/doc/debian-policy/ch-opersys.html#starting-system-services
+https://www.debian.org/doc/debian-policy/ch-files.html#configuration-files
+https://manpages.debian.org/bookworm/systemd/systemd.unit.5.en.html
+https://manpages.debian.org/bookworm/init-system-helpers/deb-systemd-helper.1p.en.html
+https://manpages.debian.org/bookworm/init-system-helpers/deb-systemd-invoke.1p.en.html
+
+Extend the existing bounded guest package transaction after its ordinary purge,
+sharing the installed dependencies and prepared archive. Four fresh cases create
+an administrator mask, a primary link to an external unit, a regular replacement
+unit, and a drop-in. Each traverses install, same-version reinstall, remove and
+purge. Snapshot exact file/link identities, metadata, target bytes and content;
+require preservation after every operation. The mask must remain effective with
+no supervisor. Other cases must select the intended fragment/drop-in, run the
+actual installed image, and carry the administrator environment in both manager
+properties and the real process. Retain pidfds, prove predecessor retirement on
+reinstall and complete service/endpoint retirement on removal. Remove only the
+unchanged fixture-owned administrator files after successful purge. Keep the
+existing package/bootstrap regression and final dependency/audit/network checks;
+this reuses one dependency installation instead of adding a new execution mode.
+No product or maintainer-script change is made before observing the result.

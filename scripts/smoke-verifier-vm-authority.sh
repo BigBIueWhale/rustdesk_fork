@@ -9367,7 +9367,7 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
         require_exact_fixed_receipt \
-            "LINUX_DEBIAN_INSTALL_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg reinstall=same-version service=actual credential=preserved remove=preserved purge=retired desktop=credential-bootstrap cpace=2 wrong_password=refused cleanup=joined" \
+            "LINUX_DEBIAN_INSTALL_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg reinstall=same-version service=actual credential=preserved remove=preserved purge=retired desktop=credential-bootstrap cpace=2 wrong_password=refused admin_units=4 cleanup=joined" \
             'dependency-complete Debian package lifecycle'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ]; then
         require_exact_fixed_receipt \

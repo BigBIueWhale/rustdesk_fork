@@ -131,6 +131,12 @@ def prepare(graphical=False):
     dynamic = [Path('/usr/lib/x86_64-linux-gnu') / name for name in
                ('dri/swrast_dri.so', 'libEGL_mesa.so.0', 'libGLX_mesa.so.0',
                 'libEGL.so.1', 'libGLESv2.so.2', 'libGL.so.1', 'libGLX.so.0')]
+    if graphical:
+        pixbuf = Path('/usr/lib/x86_64-linux-gnu/gdk-pixbuf-2.0')
+        query = pixbuf / 'gdk-pixbuf-query-loaders'
+        dynamic.append(pixbuf / '2.10.0/loaders/libpixbufloader-png.so')
+        roots.append(query)
+        shutil.copyfile(query, '/out/gdk-pixbuf-query-loaders')
     if not all(p.is_file() for p in dynamic):
         raise RuntimeError('pinned image lacks the software renderer closure')
     roots += dynamic
@@ -260,6 +266,14 @@ def install_runtime(prepared):
     # Xvfb starts with the receiver's closed environment, before the GUI environment.
     install(prepared / 'libraries/swrast_dri.so', '/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so')
     run(['/usr/sbin/ldconfig'])
+    if (prepared / 'gdk-pixbuf-query-loaders').exists():
+        install(prepared / 'gdk-pixbuf-query-loaders', WORK / 'gdk-pixbuf-query-loaders', 0o755)
+        cache = run([*ordinary(4001), str(WORK / 'gdk-pixbuf-query-loaders'), str(runtime / 'libpixbufloader-png.so')])
+        if '"image/png"' not in cache or '"png"' not in cache:
+            raise RuntimeError('installed graphical runtime cannot register its PNG loader')
+        (runtime / 'pixbuf-loaders.cache').write_text(cache)
+        (runtime / 'pixbuf-loaders.cache').chmod(0o644)
+        print('LINUX_INSTALLED_SETTINGS_PNG=pass loader=packaged cache=fixture-local', flush=True)
     listing = run([*ordinary(4001), '/usr/bin/ldd', str(WORK / 'Xvfb')])
     if 'not found' in listing:
         raise RuntimeError(f'ordinary desktop cannot load its installed runtime: {listing}')
@@ -346,6 +360,7 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
             raise RuntimeError('owned session bus is not local')
         environment['DBUS_SESSION_BUS_ADDRESS'] = address
         if graphical:
+            environment['GDK_PIXBUF_MODULE_FILE'] = '/usr/local/lib/rustdesk-settings-fixture/pixbuf-loaders.cache'
             agent = subprocess.Popen([str(GRAPHICAL_AGENT)], env=environment,
                                      stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
         app_command = ['/usr/share/rustdesk/rustdesk']

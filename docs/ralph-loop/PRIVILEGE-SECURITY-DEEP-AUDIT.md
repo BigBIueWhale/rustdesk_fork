@@ -144861,3 +144861,19 @@ setuid PAM helper path inside the disposable VM. Root policy is unchanged.
 Preparation is unaccepted until the exact installed application completes the
 dialog, root-helper retirement, credential preservation, fresh grant, CPace and
 joined-cleanup observations. No product rebuild or host installation is needed.
+
+First graphical replay `K4Q1DM3cEQ` at `5224e3c3` passes all eleven GUI stages:
+GTK Cancel produces root pkcheck status3, GUI Denied, exact helper exit/reaping
+within 1.338 seconds and unchanged protected/user-profile credentials. The same
+GUI/agent completes a fresh correct PAM approval; agent retirement then permits
+a fresh status2/Denied check. Four mutual CPace exchanges and one old-credential
+refusal pass with one service child/generation/listener. The real session is `c1`.
+All four endpoint deltas are zero; QEMU3848898 joins with zero and private/RAM
+state retires. Nine files / 124,233 bytes match CTE/TUF under
+`linux-graphical-authorization-5224e3c3.json`. This accepts authorization behavior,
+but its agent logs expose missing PNG-loader support in the fixture's copied GTK
+runtime. Supply the matching pinned-image loader, its dependencies and query tool,
+then register a fixture-local cache via documented `GDK_PIXBUF_MODULE_FILE`.
+The [Debian loader-tool manual](https://manpages.debian.org/bookworm/libgdk-pixbuf2.0-bin/gdk-pixbuf-query-loaders.1.en.html)
+defines this discovery path. Rerun the focused workflow for this specific runtime
+correction; no previous unrelated scenario or application build needs repetition.

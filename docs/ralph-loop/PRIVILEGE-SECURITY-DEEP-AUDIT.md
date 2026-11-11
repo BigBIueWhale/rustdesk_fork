@@ -145857,6 +145857,25 @@ No product change or app rebuild; retained app6429f3cb executes unchanged. This
 tests same-package replacement, not a distinct historical binary under concurrent
 mutation. Native acceptance is pending; broader release obligations remain OPEN.
 
+TUF eWOI5wVWGH at e9247bac exits 1 (tool36633) before the selected scenario.
+Actual package installation, 72 payloads and dependency checks pass. The fixture
+captures a published child record while PAM's desktop is still creating its
+Xauthority file; journal child7463 cannot authorize X11, and replacement7525 is
+present before the initial CPace check. The strict retained-child check refuses.
+No package replacement, 35-second barrier or acceptance verdict is reached.
+QEMU3969979 joins zero in 75.407 seconds, RAM peak 4,205,998,080 bytes and four
+zero listener deltas. Reconcile the exact 29-leaf private diagnostic tree and raw
+captures under the free lock, retire it, and copy nine bounded files / 177,867
+bytes to CTE. package-stop-e9247bac.json matches both hosts.
+
+Add an explicit serving prerequisite to the receiver's existing bounded readiness
+wait and request it only for this scenario's baseline and configured replacement.
+It requires the exact child to own the real listener before choosing that record;
+the subsequent identity checks still reject any change. Other scenarios retain
+their existing record-only readiness semantics. No product restart, timeout change
+or post-baseline retry is introduced. This is a fixture correction for establishing
+the stable serving precondition; desktop startup/recovery acceptance is separate.
+
 ## 2026-11-11 — normal-package settings failure and recovery preparation
 
 The preceding turn is progress: normal-package graphical cancellation/concurrency

@@ -1604,7 +1604,7 @@ def concurrent_stop_scenario(receiver, probe_sha, archive, network_before):
 
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
-        record = receiver.ready()
+        record = receiver.ready(serving=True)
         for pid in (record['supervisor'], record['pid']):
             package_process(pid)
         payload_before = payload_identity()
@@ -1728,7 +1728,7 @@ def concurrent_stop_scenario(receiver, probe_sha, archive, network_before):
         if (run(['/usr/bin/dpkg-query', '--show', '--showformat=${Status}', 'rustdesk']) != 'install ok installed'
                 or run(['/usr/bin/dpkg', '--verify', 'rustdesk'])):
             raise RuntimeError('drained package replacement is not configured and intact')
-        recovered = receiver.ready()
+        recovered = receiver.ready(serving=True)
         for pid in (recovered['supervisor'], recovered['pid']):
             package_process(pid)
         if (recovered['generation'] == record['generation'] or receiver.credential() != final_value):

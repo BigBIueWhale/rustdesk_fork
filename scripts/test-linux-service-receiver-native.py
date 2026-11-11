@@ -296,7 +296,7 @@ def child_record(supervisor=None, uid=4001):
     return {"supervisor": main, "pid": int(pid), "start": int(start), "generation": generation}
 
 
-def ready(previous=None, child_replacement=False, uid=4001):
+def ready(previous=None, child_replacement=False, uid=4001, serving=False):
     deadline = time.monotonic() + 25
     last = ""
     while time.monotonic() < deadline:
@@ -310,7 +310,7 @@ def ready(previous=None, child_replacement=False, uid=4001):
             elif previous is not None:
                 changed = (record["supervisor"] != previous["supervisor"]
                            and record["generation"] != previous["generation"])
-            if changed:
+            if changed and (not serving or direct_listener(record, uid=uid) is not None):
                 return record
         except (OSError, ValueError, KeyError, RuntimeError) as error:
             last = str(error)

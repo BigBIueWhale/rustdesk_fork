@@ -145106,3 +145106,12 @@ schedule against its two failed predecessors. It does not establish all concurre
 principals, shutdown drain, identity races, other desktops/platforms or final-package
 acceptance. The next useful installed-settings check is shutdown while two admitted
 changes are queued, preserving finality and truthful outcomes through service drain.
+
+Fresh ledger count `zTf1LZGYkS` at `6c2a90c1` exits zero (tool67035): 404,052
+tokens / 1,844,306 bytes, SHA-256
+168ed595263cb0d4e9ebfc8fdfdecbc8890d0f9261dfd8bbc780b46578a58b18.
+The fixed tiktoken method, seven controls and byte round trip pass. QEMU3870079
+joins zero; private/RAM roots retire and three endpoint deltas are zero.
+`concurrent-ledger-6c2a90c1.json` and its eight-file 115,419-byte evidence set
+match CTE/TUF. The approximate 400,000-token compression obligation remains open.
+No VM or test remains running at this checkpoint.

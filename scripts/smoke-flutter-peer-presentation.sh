@@ -101,6 +101,7 @@ case "$#:${1:-}" in
         --mouse-input) PEER_SCENARIO=mouse-input ;;
         --mouse-retirement) PEER_SCENARIO=mouse-retirement ;;
         --screenshot-save) PEER_SCENARIO=screenshot-save ;;
+        --recording-directory) PEER_SCENARIO=recording-directory ;;
         --view-scaling) PEER_SCENARIO=view-scaling ;;
         --image-quality) PEER_SCENARIO=image-quality ;;
         --quality-restart) PEER_SCENARIO=quality-restart ;;
@@ -292,6 +293,11 @@ elif [ "$PEER_SCENARIO" = view-scaling ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined view_scaling=9 input_points=45 pixels=fresh stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = recording-directory ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined recording_directory=passed generations=2 cancel=unchanged path=exact storage=verified pixels=fresh'
 elif [ "$PEER_SCENARIO" = screenshot-save ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

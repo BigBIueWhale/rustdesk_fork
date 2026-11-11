@@ -27,7 +27,7 @@ MENU_ACTION=pointer
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
   monitor-switch|monitor-burst) EXPECTED_RESTARTS=0 ;;
-  recent-search|native-components) EXPECTED_RESTARTS=0 ;;
+  recent-search|native-components|recording-directory) EXPECTED_RESTARTS=0 ;;
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|congestion-soak|input-latency|input-recovery|input-loss|input-congestion|input-soak|input-congestion-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
@@ -1668,6 +1668,10 @@ PY
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
     viewer_generations=1
+    if [ "$PEER_SCENARIO" = recording-directory ]; then
+      viewer_generations=2
+      mkdir -m 700 -- /tmp/recording-selected-שלום /tmp/recording-cancelled
+    fi
     [ "$PEER_SCENARIO" != credential-restart ] || viewer_generations=2
     [ "$ROTATE_CREDENTIAL" -eq 0 ] || viewer_generations=3
     [ "$PEER_SCENARIO" != credential-menu ] || viewer_generations=3
@@ -1774,6 +1778,9 @@ PY
     elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
       keyboard_phases=(map restart-translate legacy restore)
       controller_args+=("--keyboard-${keyboard_phases[viewer_generation - 1]}")
+    elif [ "$PEER_SCENARIO" = recording-directory ]; then
+      recording_phases=(directory restore)
+      controller_args+=("--recording-${recording_phases[viewer_generation - 1]}")
     elif [ "$PEER_SCENARIO" = quality-restart ]; then
       quality_phases=(best low balanced restore)
       controller_args+=("--quality-${quality_phases[viewer_generation - 1]}")
@@ -2208,6 +2215,10 @@ PY
       [ "$(grep -Ec '^FLUTTER_PEER_VIEW_SCALE_INPUT_POINT_OK sequence=7 point=1 .* entry_click=1$' <<<"$controller_output")" -eq 1 ] \
         || fail 'first click after entering the smaller viewer is absent or duplicated'
       viewer_result='viewer=joined xvfb=joined view_scaling=9 input_points=45 pixels=fresh stable_connection=true resources=bounded'
+    elif [ "$PEER_SCENARIO" = recording-directory ]; then
+      grep -Eq "^FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=$viewer_generation cancel=unchanged path=exact fresh_pixels=4 maximum_age_ms=[0-9]+ stable_connection=true$" \
+        <<<"$controller_output" || fail 'native recording directory result is absent'
+      viewer_result='viewer=joined xvfb=joined recording_directory=passed generations=2 cancel=unchanged path=exact storage=verified pixels=fresh'
     elif [ "$PEER_SCENARIO" = screenshot-save ]; then
       grep -Fxq 'FLUTTER_PEER_SCREENSHOT_SAVE_OK cases=2 cancel=empty save=png source_frame=verified stable_connection=true' \
         <<<"$controller_output" || fail 'native screenshot save/cancel result is absent'
@@ -2457,6 +2468,8 @@ PY
         printf 'FLUTTER_PEER_THEME_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       elif [ "$PEER_SCENARIO" = language-restart ] || [ "$PEER_SCENARIO" = language-direction ]; then
         printf 'FLUTTER_PEER_LANGUAGE_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
+      elif [ "$PEER_SCENARIO" = recording-directory ]; then
+        printf 'FLUTTER_PEER_RECORDING_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       elif [ "$PEER_SCENARIO" = quality-restart ]; then
         printf 'FLUTTER_PEER_QUALITY_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
@@ -2468,7 +2481,7 @@ PY
     fi
     if [ "$PEER_SCENARIO" = theme-restart ] || [ "$PEER_SCENARIO" = theme-appearance ] \
       || [ "$PEER_SCENARIO" = theme-save-failure ] || [ "$PEER_SCENARIO" = language-restart ] \
-      || [ "$PEER_SCENARIO" = language-direction ]; then
+      || [ "$PEER_SCENARIO" = language-direction ] || [ "$PEER_SCENARIO" = recording-directory ]; then
       python3 - "$viewer_generation" "$PEER_SCENARIO" <<'PY'
 import os, stat, sys, tomllib
 try:
@@ -2484,7 +2497,9 @@ try:
         if len(data) != metadata.st_size:
             raise ValueError()
     key, receipt = 'theme', 'THEME'
-    if sys.argv[2] == 'language-direction':
+    if sys.argv[2] == 'recording-directory':
+        key, receipt, expected = 'video-save-directory', 'RECORDING', '/tmp/recording-selected-שלום'
+    elif sys.argv[2] == 'language-direction':
         key, receipt = 'lang', 'LANGUAGE'
         expected = ('he', 'en', 'en')[int(sys.argv[1]) - 1]
     elif sys.argv[2] == 'language-restart':
@@ -2620,6 +2635,9 @@ PY
     fi
     done
     listener_is_exact || fail 'viewer lifecycle changed the exact server listener'
+    if [ "$PEER_SCENARIO" = recording-directory ]; then
+      rmdir -- /tmp/recording-selected-שלום /tmp/recording-cancelled
+    fi
     [ "$(udp_socket_count)" -eq 0 ] || fail 'viewer lifecycle opened a UDP socket'
     "$READY" --stop "$XVFB_PID" "$XVFB_START"
     wait "$XVFB_PID" 2>/dev/null || true

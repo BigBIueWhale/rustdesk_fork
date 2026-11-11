@@ -57,6 +57,7 @@ FLUTTER_CLIPBOARD_TEXT=0
 FLUTTER_KEYBOARD_INPUT=0
 FLUTTER_MOUSE_INPUT=0
 FLUTTER_SCREENSHOT_SAVE=0
+FLUTTER_RECORDING_DIRECTORY=0
 FLUTTER_VIEW_SCALING=0
 FLUTTER_IMAGE_QUALITY=0
 FLUTTER_QUALITY_RESTART=0
@@ -778,6 +779,7 @@ case "$#:${1:-}" in
                 --mouse-input) FLUTTER_MOUSE_INPUT=1 ;;
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save) FLUTTER_SCREENSHOT_SAVE=1 ;;
+                --recording-directory) FLUTTER_RECORDING_DIRECTORY=1 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
                 --quality-restart) FLUTTER_QUALITY_RESTART=1 ;;
@@ -854,7 +856,7 @@ case "$#:${1:-}" in
         printf 'Original offline engine setup: %s --linux-flutter-engine-prepare\n' "${0##*/}" >&2
         printf 'Explicit offline engine integration build: %s --linux-flutter-engine-build\n' "${0##*/}" >&2
         printf 'Source-bound Linux app producer: %s --linux-flutter-app-build --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256\n' "${0##*/}" >&2
-        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--input-congestion-soak|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save|--view-scaling|--session-close|--wake-lock|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
+        printf 'Source-bound Linux app replay: %s --linux-flutter-app-replay --app-commit COMMIT --app-manifest-sha256 SHA256 --engine-commit COMMIT --engine-archive-sha256 SHA256 --engine-manifest-sha256 SHA256 [--viewer-suspend|--viewer-isolation|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--input-congestion-soak|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save|--recording-directory|--view-scaling|--session-close|--wake-lock|--background-close|--theme-restart|--theme-appearance|--theme-save-failure|--credential-retry|--credential-restart|--credential-rotation|--credential-forget|--credential-menu|--credential-menu-accessible]\n' "${0##*/}" >&2
         printf 'Focused native Docker log-lifetime check: %s --android-runtime-log-tests\n' "${0##*/}" >&2
         printf 'PE artifact canonicalization checks: %s --pe-canonicalizer-tests\n' "${0##*/}" >&2
         printf 'Windows service-result file checks: %s --windows-service-result-tests\n' "${0##*/}" >&2
@@ -984,6 +986,7 @@ readonly FLUTTER_CLIPBOARD_TEXT
 readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
 readonly FLUTTER_SCREENSHOT_SAVE
+readonly FLUTTER_RECORDING_DIRECTORY
 readonly FLUTTER_VIEW_SCALING
 readonly FLUTTER_SESSION_CLOSE
 readonly FLUTTER_MONITOR_SWITCH
@@ -5688,6 +5691,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         fi
         [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
         [ "$FLUTTER_SCREENSHOT_SAVE" -eq 0 ] || guest_invocation+=' --screenshot-save'
+        [ "$FLUTTER_RECORDING_DIRECTORY" -eq 0 ] || guest_invocation+=' --recording-directory'
         [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || guest_invocation+=' --view-scaling'
         [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || guest_invocation+=' --session-close'
         [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || guest_invocation+=' --monitor-switch'
@@ -9507,6 +9511,7 @@ elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
 elif [ "$MODE" = flutter-peer-presentation ]; then
     peer_scenario=focus-reconnect-resource
     [ "$FLUTTER_SCREENSHOT_SAVE" -eq 0 ] || peer_scenario=screenshot-save
+    [ "$FLUTTER_RECORDING_DIRECTORY" -eq 0 ] || peer_scenario=recording-directory
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_scenario=view-scaling
     [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_scenario=image-quality
     [ "$FLUTTER_QUALITY_RESTART" -eq 0 ] || peer_scenario=quality-restart

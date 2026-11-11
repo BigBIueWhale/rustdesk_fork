@@ -3779,7 +3779,8 @@ out:
     return result;
 }
 
-static int find_main_window(Display *display, unsigned long expected_pid, Window *window) {
+static int find_app_window(Display *display, unsigned long expected_pid,
+                           const char *expected_title, Window *window) {
     Window root = RootWindow(display, DefaultScreen(display));
     Atom net_name = XInternAtom(display, "_NET_WM_NAME", False);
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
@@ -3804,7 +3805,7 @@ static int find_main_window(Display *display, unsigned long expected_pid, Window
                 attributes.map_state != IsViewable || attributes.width < 320 ||
                 attributes.height < 40 ||
                 read_text_property(display, children[index], net_name, title, sizeof(title)) != 0 ||
-                strcmp(title, "RustDesk") != 0) continue;
+                strcmp(title, expected_title) != 0) continue;
             if (XGetClassHint(display, children[index], &hint) != 0 &&
                 hint.res_name != NULL && hint.res_class != NULL &&
                 strcmp(hint.res_name, "rustdesk") == 0 && strcmp(hint.res_class, "Rustdesk") == 0) {
@@ -3820,6 +3821,10 @@ static int find_main_window(Display *display, unsigned long expected_pid, Window
         if (sleep_millis(SAMPLE_INTERVAL_MS) != 0) return -1;
     }
     return -1;
+}
+
+static int find_main_window(Display *display, unsigned long expected_pid, Window *window) {
+    return find_app_window(display, expected_pid, "RustDesk", window);
 }
 
 static int main_header_luminance(Display *display, Window window, unsigned int *luminance) {
@@ -7671,6 +7676,170 @@ static int screenshot_chooser_control(AtspiAccessible *dialog, unsigned int pid,
     return -1;
 }
 
+
+static int choose_recording_directory(Display *display, Window main, unsigned int pid,
+                                       const char *path, int cancel) {
+    AtspiAccessible *dialog = NULL, *field = NULL, *button = NULL;
+    AtspiEditableText *editable = NULL;
+    AtspiText *text = NULL;
+    AtspiAction *action = NULL;
+    GError *error = NULL;
+    Window chooser = None;
+    int result = -1, control_held = 0;
+    const char *phase = "open";
+    if (click_main_control(display, main, pid, "Change") != 0 ||
+        find_app_window(display, pid, "Choose Directory", &chooser) != 0) goto out;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    if (query_named_accessible(pid, "Choose Directory", deadline, &dialog, 0) != 0 ||
+        dialog == NULL || atspi_accessible_get_role(dialog, &error) != ATSPI_ROLE_FILE_CHOOSER ||
+        error != NULL) goto out;
+    phase = "location";
+    XRaiseWindow(display, chooser);
+    XSetInputFocus(display, chooser, RevertToParent, CurrentTime);
+    XSync(display, False);
+    KeyCode control = XKeysymToKeycode(display, XK_Control_L);
+    if (control == 0U || XTestFakeKeyEvent(display, control, True, CurrentTime) == 0) goto out;
+    control_held = 1;
+    int typed = fake_key(display, XK_l);
+    int released = XTestFakeKeyEvent(display, control, False, CurrentTime);
+    control_held = released == 0;
+    XSync(display, False);
+    if (typed != 0 || released == 0) goto out;
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline && field == NULL) {
+        NamedControlScan scan = {.name = "", .deadline = deadline, .focused_text = 1};
+        int status = scan_named_control_node(dialog, pid, 0U, &scan, 0);
+        if (status == 0 && scan.matches == 1U) field = scan.match;
+        else g_clear_object(&scan.match);
+        if (status < 0 || (field == NULL && sleep_millis(100U) != 0)) goto out;
+    }
+    if (field == NULL || (editable = atspi_accessible_get_editable_text_iface(field)) == NULL ||
+        (text = atspi_accessible_get_text_iface(field)) == NULL ||
+        !atspi_editable_text_set_text_contents(editable, path, &error) || error != NULL) goto out;
+    gchar *value = atspi_text_get_text(text, 0, -1, &error);
+    int exact = error == NULL && value != NULL && strcmp(value, path) == 0;
+    g_free(value);
+    if (!exact) goto out;
+    phase = cancel ? "cancel" : "select";
+    if (screenshot_chooser_control(dialog, pid, cancel ? "Cancel" : "Open",
+                                    ATSPI_ROLE_PUSH_BUTTON, &button) != 0 ||
+        (action = atspi_accessible_get_action_iface(button)) == NULL) goto out;
+    gint count = atspi_action_get_n_actions(action, &error);
+    if (error != NULL || count != 1) goto out;
+    gchar *name = atspi_action_get_action_name(action, 0, &error);
+    exact = error == NULL && name != NULL && strcmp(name, "click") == 0;
+    g_free(name);
+    if (!exact || !atspi_action_do_action(action, 0, &error) || error != NULL) goto out;
+    g_clear_object(&dialog);
+    phase = "retirement";
+    deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    unsigned int absent = 0U;
+    while (monotonic_millis() < deadline && absent < 3U) {
+        if (query_named_accessible(pid, "Choose Directory", deadline, &dialog, 0) != 0) goto out;
+        absent = dialog == NULL ? absent + 1U : 0U;
+        g_clear_object(&dialog);
+        if (sleep_millis(100U) != 0) goto out;
+    }
+    if (absent != 3U) goto out;
+    result = 0;
+out:
+    if (control_held) {
+        XTestFakeKeyEvent(display, XKeysymToKeycode(display, XK_Control_L), False, CurrentTime);
+        XSync(display, False);
+    }
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_RECORDING_CHOOSER_FAIL phase=%s error=%s\n",
+                phase, error != NULL ? error->message : "unavailable");
+    g_clear_error(&error);
+    g_clear_object(&dialog);
+    g_clear_object(&field);
+    g_clear_object(&editable);
+    g_clear_object(&text);
+    g_clear_object(&button);
+    g_clear_object(&action);
+    return result;
+}
+
+static int recording_path_visible(unsigned int pid) {
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (monotonic_millis() < deadline) {
+        AtspiAccessible *label = NULL;
+        int status = query_accessible_with_focus(pid, "/tmp/recording-selected-שלום",
+                          deadline, &label, 0, 0, NULL, 0, 1);
+        int found = label != NULL;
+        g_clear_object(&label);
+        if (status != 0) return -1;
+        if (found) return 0;
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return -1;
+}
+
+static int exercise_recording_directory(Display *display, const ViewerWindow *viewer,
+                                         SourceHistory *history,
+                                         const ConnectionIdentity *connection,
+                                         const ProcessResources *baseline, int restore) {
+    Window main = None;
+    unsigned int pid = (unsigned int)viewer->pid;
+    int result = -1, directory = -1;
+    const char *phase = "settings";
+    ConfigFileState before = {0}, after = {0};
+    ConnectionIdentity final = {{0}, {0}, 0UL};
+    ProcessResources resources = {0};
+    uint64_t fresh = 0U, age = 0U;
+    if (prepare_main_settings(display, viewer, &main) != 0) goto out;
+    XMoveResizeWindow(display, main, 0, 0, 1000U, 760U);
+    XRaiseWindow(display, main);
+    XSetInputFocus(display, main, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (sleep_millis(500U) != 0) goto out;
+    phase = restore ? "restored-path" : "select-path";
+    if ((!restore && choose_recording_directory(display, main, pid,
+                              "/tmp/recording-selected-שלום", 0) != 0) ||
+        recording_path_visible(pid) != 0) goto out;
+    printf("FLUTTER_PEER_RECORDING_PATH_OK generation=%u source=%s path=exact-unicode\n",
+           restore ? 2U : 1U, restore ? "restart" : "native-chooser");
+    phase = "cancel-baseline";
+    if (sleep_millis(500U) != 0) goto out;
+    directory = open("/tmp/viewer-home/.config/rustdesk",
+                     O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (directory < 0 || read_config_file(directory, "RustDesk_local.toml", &before) != 0)
+        goto out;
+    phase = "cancel-preserves";
+    if (choose_recording_directory(display, main, pid, "/tmp/recording-cancelled", 1) != 0 ||
+        recording_path_visible(pid) != 0 ||
+        read_config_file(directory, "RustDesk_local.toml", &after) != 0 ||
+        before.device != after.device || before.inode != after.inode ||
+        before.bytes != after.bytes || strcmp(before.sha256, after.sha256) != 0) goto out;
+    printf("FLUTTER_PEER_RECORDING_CANCEL_OK generation=%u file=unchanged path=preserved\n",
+           restore ? 2U : 1U);
+    if (close_viewer(display, main) != 0) goto out;
+    main = None;
+    phase = "session";
+    XRaiseWindow(display, viewer->window);
+    XSetInputFocus(display, viewer->window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
+        read_connection_identity(&final) != 0 || !same_connection(connection, &final) ||
+        read_process_resources(viewer->pid, &resources) != 0 ||
+        !resources_are_bounded(baseline, &resources)) goto out;
+    print_resources("recording-directory", restore ? 2U : 1U, &resources);
+    printf("FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=%u cancel=unchanged path=exact "
+           "fresh_pixels=4 maximum_age_ms=%llu stable_connection=true\n",
+           restore ? 2U : 1U, (unsigned long long)age);
+    result = 0;
+out:
+    if (directory >= 0 && close(directory) != 0) result = -1;
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        fprintf(stderr, "FLUTTER_PEER_RECORDING_DIRECTORY_FAIL phase=%s\n", phase);
+        if (scan_password_prompt(pid, &diagnostic, 1) != 0)
+            fputs("FLUTTER_PEER_RECORDING_DIRECTORY_FAIL diagnostic=unavailable\n", stderr);
+    }
+    if (main != None && close_viewer(display, main) != 0) result = -1;
+    return result;
+}
+
 static int screenshot_png_matches(int directory, SourceHistory *history,
                                   uint64_t requested_us, uint64_t received_us) {
     static const char filename[] = "screen-שלום.png";
@@ -8123,6 +8292,8 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--mouse-input") != 0 &&
                                     strcmp(argv[5], "--mouse-retirement") != 0 &&
                                     strcmp(argv[5], "--screenshot-save") != 0 &&
+                                    strcmp(argv[5], "--recording-directory") != 0 &&
+                                    strcmp(argv[5], "--recording-restore") != 0 &&
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--image-quality") != 0 &&
                                     strcmp(argv[5], "--quality-best") != 0 &&
@@ -8173,7 +8344,7 @@ int main(int argc, char **argv) {
               "--language-direction, --language-direction-english, --language-direction-restore, "
               "--native-components\n", stderr);
         fputs("usage: flutter-peer-presentation-x11 SOURCE_DISPLAY VIEWER_DISPLAY VIEWER_PID "
-              "VIEWER_START [--viewer-suspend|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--input-congestion-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
+              "VIEWER_START [--viewer-suspend|--viewer-soak|--congestion-soak|--input-latency|--input-recovery|--input-loss|--input-congestion|--input-soak|--input-congestion-soak|--isolation-slow|--isolation-healthy|--network-impairment|--network-loss|--network-congestion|--clipboard-text|--clipboard-images|--keyboard-input|--keyboard-modes|--view-only|--view-only-save-failure|--keyboard-retirement|--mouse-input|--mouse-retirement|--screenshot-save|--recording-directory|--recording-restore|--view-scaling|--session-close|--wake-lock|--background-close|--theme-light|--theme-dark|--theme-system|--theme-restore|--theme-appearance|--theme-save-failure|--credential-retry|--credential-enroll|--credential-replace|--credential-forget|--credential-menu|--credential-menu-accessible|--credential-empty|--credential-restore]\n",
               stderr);
         return 2;
     }
@@ -8545,6 +8716,18 @@ int main(int argc, char **argv) {
         int result = theme_generation != 0U
             ? exercise_theme_restart(display, &viewer, &history, theme_generation, &current_connection)
             : exercise_theme_appearance(display, &viewer, &history, &current_connection);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
+    if (argc == 6 && (strcmp(argv[5], "--recording-directory") == 0 ||
+                      strcmp(argv[5], "--recording-restore") == 0)) {
+        int result = exercise_recording_directory(display, &viewer, &history,
+                         &current_connection, &baseline_resources,
+                         strcmp(argv[5], "--recording-restore") == 0);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

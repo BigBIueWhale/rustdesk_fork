@@ -29,6 +29,7 @@ BASELINE_PASSWORD = 'Installed-baseline-2026!'
 GUI_PASSWORD = 'InstalledGui2026'
 STAGES = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied',
           'reopen', 'fill', 'submit-approved', 'applied', 'reopen', 'submit', 'denied')
+RESTART_STAGES = ('open', 'fill', 'submit', 'failed', 'reopen', 'submit', 'denied')
 
 
 def run(argv, *, env=ENV, timeout=30, output_limit=131072):
@@ -297,7 +298,7 @@ def session(restarted=False):
         environment['DBUS_SESSION_BUS_ADDRESS'] = address
         app = subprocess.Popen(['/usr/share/rustdesk/rustdesk'], env=environment,
                                stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
-        stages = ('open', 'cancel') if restarted else STAGES
+        stages = RESTART_STAGES if restarted else STAGES
         for stage in stages:
             output = run([str(WORK / 'settings-driver'), str(app.pid), stage], env=environment,
                          timeout=40, output_limit=524288)
@@ -529,6 +530,56 @@ def wait_network_retirement(baseline):
         time.sleep(0.1)
 
 
+def user_credential():
+    import tomllib  # This observation runs in the guest, not the older preparation image.
+
+    path = Path('/home/rdreceiver4001/.config/rustdesk/RustDesk.toml')
+    if not path.exists():
+        values = {}
+    else:
+        metadata = path.lstat()
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 4001
+                or metadata.st_nlink != 1 or metadata.st_size > 65536):
+            raise RuntimeError('ordinary-user credential file authority differs')
+        values = tomllib.loads(path.read_text())
+    fields = [values.get(key, '') for key in ('password', 'password_prs', 'salt')]
+    if not all(isinstance(value, str) for value in fields):
+        raise RuntimeError('ordinary-user credential fields differ')
+    return hashlib.sha256(json.dumps(fields).encode()).hexdigest()
+
+
+def service_absent():
+    properties = dict(line.split('=', 1) for line in run([
+        '/usr/bin/systemctl', 'show', 'rustdesk.service',
+        '--property=ActiveState,SubState,Result,MainPID,ExecMainStatus']).splitlines())
+    expected = {'ActiveState': 'inactive', 'SubState': 'dead', 'Result': 'success',
+                'MainPID': '0', 'ExecMainStatus': '0'}
+    paths = ['/sys/fs/cgroup/system.slice/rustdesk.service', '/run/rustdesk/service-child.record']
+    paths += ['/run/RustDesk-service/ipc' + suffix
+              for suffix in ('_service', '_service_password', '_service_credential')]
+    if properties != expected or any(os.path.lexists(path) for path in paths):
+        raise RuntimeError(f'fixture service is not completely stopped: {properties}')
+    return properties
+
+
+def stop_service(receiver, record):
+    retained = []
+    try:
+        for pid in (record['supervisor'], record['pid']):
+            retained.append(os.pidfd_open(pid))
+        if receiver.child_record() != record or select.select(retained, [], [], 0)[0]:
+            raise RuntimeError('service generation changed before the controlled stop')
+        run(['/usr/bin/systemctl', 'stop', 'rustdesk.service'], timeout=40)
+        if len(select.select(retained, [], [], 2)[0]) != len(retained):
+            raise RuntimeError('controlled service stop left an exact process alive')
+        properties = service_absent()
+        print('LINUX_INSTALLED_SETTINGS_STOPPED=' + json.dumps({**record, **properties,
+              'processes': 'pidfd-exited', 'endpoints': 'absent'}, sort_keys=True), flush=True)
+    finally:
+        for fd in retained:
+            os.close(fd)
+
+
 def scenario(receiver, probe_sha):
     unit = Path('/etc/systemd/system/rustdesk.service')
     if unit.exists():
@@ -599,6 +650,7 @@ def scenario(receiver, probe_sha):
         credential_network(receiver, record, probe_sha, 'gui-applied')
         run(['/usr/bin/systemctl', 'restart', 'rustdesk.service'], timeout=40)
         restarted = receiver.ready(record)
+        record = restarted
         if receiver.credential() != committed:
             raise RuntimeError('GUI credential did not persist through service restart')
         credential_network(receiver, restarted, probe_sha, 'gui-restarted')
@@ -606,19 +658,49 @@ def scenario(receiver, probe_sha):
             pipe.close()
         process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT), '--session-restart'],
                                    env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
-        for stage in ('open', 'cancel'):
+        stopped = False
+        restarted_requester = None
+        profile_before = None
+        for stage in RESTART_STAGES:
             if not select.select([process.stdout], [], [], 45)[0]:
                 raise RuntimeError('restarted GUI stage timed out')
             event = json.loads(process.stdout.readline(4096))
             if (event.get('stage') != stage or event.get('pid') == requester[0]
-                    or receiver.credential() != committed or receiver.child_record() != restarted):
+                    or receiver.credential() != committed):
                 raise RuntimeError('restarted GUI or protected credential differs')
+            identity = (event['pid'], int(Path(f'/proc/{event["pid"]}/stat').read_bytes().rsplit(b') ', 1)[1].split()[19]))
+            if restarted_requester is not None and identity != restarted_requester:
+                raise RuntimeError('GUI generation changed across the service outage')
+            restarted_requester = identity
+            if stopped:
+                service_absent()
+                if user_credential() != profile_before:
+                    raise RuntimeError('unavailable installed service caused a user-profile credential write')
+            elif receiver.child_record() != restarted:
+                raise RuntimeError('service changed outside the controlled outage')
             print('LINUX_INSTALLED_SETTINGS_RESTART=' + json.dumps({**event, **restarted,
-                  'gui_pid': event['pid'], 'credential': 'preserved'}, sort_keys=True), flush=True)
+                  'gui_pid': event['pid'], 'credential': 'preserved',
+                  'service': 'stopped' if stopped else 'running'}, sort_keys=True), flush=True)
+            if stage == 'fill':
+                profile_before = user_credential()
+                stop_service(receiver, restarted)
+                stopped = True
+            elif stage == 'failed':
+                run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+                restarted = receiver.ready(restarted)
+                record = restarted
+                stopped = False
+            elif stage == 'denied':
+                service_refusals(restarted, *restarted_requester, 1)
+                if user_credential() != profile_before:
+                    raise RuntimeError('service recovery changed the user-profile credential')
             process.stdin.write(b'continue\n')
             process.stdin.flush()
         if process.wait(timeout=15) != 0:
             raise RuntimeError('restarted GUI did not retire')
+        credential_network(receiver, restarted, probe_sha, 'gui-service-recovered')
+        print('LINUX_INSTALLED_SETTINGS_FAILURE=pass outcome=Failed service=absent '
+              'protected=unchanged profile=unchanged recovery=same-gui-denied cleanup=joined', flush=True)
     except Exception:
         if record is not None:
             try:
@@ -720,9 +802,9 @@ def main(arguments):
             raise RuntimeError('installed application changed during execution')
     if digest(receiver.PROBE) != probe_sha:
         raise RuntimeError('CPace probe changed during the installed workflow')
-    print(f'LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=6 app_commit={commit} manifest_sha256={manifest_sha} '
+    print(f'LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=8 app_commit={commit} manifest_sha256={manifest_sha} '
           'ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam '
-          'cpace=5 stale_refusals=2 restart=service-and-gui cleanup=joined', flush=True)
+          'cpace=7 stale_refusals=3 restart=service-and-gui failure=service-unavailable cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':

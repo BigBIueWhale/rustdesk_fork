@@ -243,8 +243,12 @@ int main(int argc, char **argv) {
         if (settings_visible(pid, "Set password", 0) != 0 ||
             settings_visible(pid, "Prompt: Password change was denied.", 0) != 0 ||
             settings_visible(pid, "Set permanent password", 1) != 0) goto atspi_out;
-    } else if (strcmp(argv[2], "denied") == 0) {
-        if (settings_visible(pid, "Prompt: Password change was denied.", 1) != 0 ||
+    } else if (strcmp(argv[2], "denied") == 0 || strcmp(argv[2], "failed") == 0) {
+        int failed = strcmp(argv[2], "failed") == 0;
+        const char *message = failed ? "Prompt: Failed" : "Prompt: Password change was denied.";
+        const char *other = failed ? "Prompt: Password change was denied." : "Prompt: Failed";
+        if (settings_visible(pid, message, 1) != 0 || settings_visible(pid, other, 0) != 0 ||
+            settings_visible(pid, "Prompt: The password change could not be confirmed. It may have been applied.", 0) != 0 ||
             settings_visible(pid, "Set password", 1) != 0) goto atspi_out;
         /* A failed request leaves the real cancel action usable. */
         if (activate_named_control(pid, "Cancel") != 0 ||

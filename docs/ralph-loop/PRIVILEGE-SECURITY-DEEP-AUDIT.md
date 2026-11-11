@@ -144314,3 +144314,28 @@ Native Failed/Uncertain, receiver-restart recovery, macOS result classification,
 authorization cancellation/concurrency and final packages remain OPEN. The next
 decisive work is actual failure/uncertainty reporting on this retained bundle,
 preserving the demonstrated authorized workflow and exact operation ownership.
+
+The intervening user-requested status assessment made no implementation progress.
+Revalidation finds the already-launched `Yg8xoSecqN` count terminal; do not restart it.
+At `65e7e3c9`, the complete ledger is 402,375 tokens / 1,836,638 bytes, SHA-256
+`824c7d86ac86374a31e628a1c16fd041b580b04ca790a976c24b2061101b61aa`.
+Seven controls and the byte round trip pass with the fixed method. Guest completion,
+waited QEMU0, absent exact process/private/RAM state and three zero endpoint deltas
+are reconciled; the original outer tool handle is unavailable, so its exit status
+is not reconstructed. `password-outcome-ledger-65e7e3c9.json` binds those limits;
+seven files / 111,520 bytes match CTE/TUF. Compression remains open.
+
+**Next native outcome: unavailable installed service.** R-S0/R-S11b require an
+explicit failure without falling through to user-owned credential storage. Reuse
+the accepted `53f66299` app: after the restarted ordinary GUI fills its dialog,
+stop only the disposable guest's installed service, prove both retained processes
+exited and its cgroup/record/three privileged endpoints disappeared, then submit.
+Require actual `Failed` text, unchanged protected and user-profile credential
+fields, and usable cancellation. Restart the service and require the same GUI
+generation to obtain the ordinary no-agent Denied result; repeat credential use
+and old-password refusal through CPace. Preserve all earlier authorized controls.
+The [systemctl contract](https://freedesktop.org/software/systemd/man/latest/systemctl.html)
+does not make a successful stop command alone proof of complete process retirement;
+the [pidfd contract](https://man7.org/linux/man-pages/man2/pidfd_open.2.html) supplies
+exact-process exit observation. Unit state, cgroup and endpoint absence are checked
+as well. This prepares a native failure/recovery case; it claims no execution yet.

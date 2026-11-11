@@ -9274,7 +9274,10 @@ elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
         'LINUX_INSTALLED_SETTINGS_AGENT=pass lifetime=through-applied cleanup=joined' \
         'installed GUI authentication-agent retirement'
     require_exact_fixed_receipt \
-        "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=6 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam cpace=5 stale_refusals=2 restart=service-and-gui cleanup=joined" \
+        'LINUX_INSTALLED_SETTINGS_FAILURE=pass outcome=Failed service=absent protected=unchanged profile=unchanged recovery=same-gui-denied cleanup=joined' \
+        'installed GUI unavailable-service failure and recovery'
+    require_exact_fixed_receipt \
+        "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=8 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam cpace=7 stale_refusals=3 restart=service-and-gui failure=service-unavailable cleanup=joined" \
         'installed Flutter password settings result'
     require_exact_fixed_receipt \
         "LINUX_INSTALLED_SETTINGS_VM=pass harness=$FLUTTER_PEER_SOURCE_COMMIT manifest=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 network=none root=disposable-guest-only app_build=absent cleanup=joined" \

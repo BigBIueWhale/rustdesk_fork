@@ -503,37 +503,40 @@ version pass. `android-build-tools-stage-a14ea712.json` and
 `android-build-tools-archive-tests-a14ea712.json` bind unchanged prior inputs and
 joined cleanup. The archive is not yet composed into a candidate SDK or executed.
 The shared Gradle cache validator also needs explicit support for the candidate
-binary distribution; it currently requires an `-all` ZIP. Cached plugins declare
-compile SDK 31–34; Flutter's
-default SDK 36 alone does not require changing the fork's compile/target SDK.
-The existing file_picker/sqflite inputs still reference the removed Android
-Registrar API. Candidate migration now resolves at `2aa4157d`, TUF `8naCVfydhO`:
-file_selector 1.1.0 and sqflite 2.4.6 produce a 194-package lock, preserving 180
-records exactly, adding eleven, changing three and removing file_picker plus
-the unused lifecycle override/package. A separate no-NIC replay enforces the
-unchanged lock; Dart analysis accepts the required path-selection/SQLite APIs.
-`flutter-plugin-migration-2aa4157d.json` retains the exact manifest/lock, package
-metadata, output and joined cleanup. The application remains unchanged. All fourteen changed archives
-now pass first-pin cross-checking at `ba16484a`, TUF `wCPbX9TySX`: publisher
-metadata, exact pub.dev bytes, separately served CFUG bytes and the discovered
-lock agree for 767,477 bytes. `flutter-plugin-archives-ba16484a.json` retains
-per-package provenance, manifests, native build files and joined cleanup. Both
-new Android plugins use `flutter.compileSdkVersion` (36 in the candidate SDK)
-and declare AGP 8.13.1; the selector also declares Kotlin 2.3.0. The earlier
-Gradle fixture does not resolve this new plugin closure. The candidate Pub cache
-is now published separately at `6133c546`, TUF `UiGVUgazlP`, with pinned digest
+binary distribution; it currently requires an `-all` ZIP.
+The file_picker/sqflite migration is implemented at `d8d31d75`: file_selector
+1.1.0 and sqflite 2.4.6 use the authenticated 194-package graph in
+`flutter/pubspec.lock`, replacing the old Android Registrar-dependent versions.
+The duplicate exploratory lock and unused lifecycle override are deleted.
+Screenshot saving and recording-directory selection use the new API; Windows/macOS
+secondary windows register the selector, and macOS imports sqflite_darwin.
+Resolution/API evidence is in `flutter-plugin-migration-2aa4157d.json`;
+`flutter-plugin-archives-ba16484a.json` binds all fourteen changed archives to
+publisher metadata, exact pub.dev bytes, independently served CFUG bytes and the
+lock (767,477 bytes). Both new Android plugins use `flutter.compileSdkVersion`
+(36 in the candidate SDK) and declare AGP 8.13.1; the selector declares Kotlin
+2.3.0. The earlier Gradle fixture does not resolve this new plugin closure.
+The separately published 272-package cache has pinned digest
 `fc3d40987ffbc03c0aa675d990852264c126e67a358a4a78797c2ee6d6d5d931`.
-All 31,327 seed entries and hardlink groups are preserved; fourteen authenticated
-versions extend the hosted inventory from 258 to 272 packages. At `7719eed1`,
-TUF `ws6QfdZxD3`, the retained cache passes a fresh no-network, enforced-lock
-replay with five kernel-checked read-only input mounts, including the workspace
-that previously exposed a writable cache alias. Manifest, lock, SDK and both
-cache digests remain unchanged. `flutter-plugin-cache-stage-6133c546.json` and
-`flutter-plugin-cache-replay-7719eed1.json` bind publication/reuse, exact output
-and joined cleanup. The reusable candidate occupies about 524 MiB on TUF;
-temporary VM storage is retired. Next migrate both dialog calls and Windows/macOS secondary-window
-registrations, then compose the actual SDK/cache closure and build the APK. SDK/lock/engine
-promotion, actual dialog/Android behavior and cross-platform acceptance stay **OPEN**.
+All 31,327 seed entries and hardlink groups survive. Publication at `6133c546`
+and no-network enforced-lock replay at `7719eed1` preserve the manifest, lock,
+SDK and both cache digests, with five kernel-checked read-only input mounts.
+`flutter-plugin-cache-stage-6133c546.json` and
+`flutter-plugin-cache-replay-7719eed1.json` retain those receipts and joined
+cleanup. The reusable candidate occupies about 524 MiB on TUF.
+Focused tests now use this cache and Flutter 3.47.5: twelve screenshot-handler
+cases pass at `d8d31d75`, and four recording-directory cases pass at `60af9de8`,
+each with three parser controls. Capsules `plugin-screenshot-d8d31d75-retry.json`
+and `plugin-recording-60af9de8.json` bind production-source execution, zero host
+listener deltas and joined VM/RAM retirement. Picker/native responses are doubles;
+actual OS dialogs, durable saves and secondary-window registration remain unverified.
+Next align the complete application builders with the product lock/new cache:
+their candidate path still installs the obsolete 185-package lock. Compose and
+authenticate the actual Android SDK/Gradle closure, then build and exercise the APK.
+Apple projects/Pod locks also remain incompatible: the selected SDK migrates to
+macOS 12/iOS 15 while the projects declare 10.14/13; the selector podspecs require
+12/15 and sqflite has moved to sqflite_darwin. Coherent supported-platform alignment,
+native builds/dialogs, SDK/lock/engine promotion and release acceptance stay **OPEN**.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,

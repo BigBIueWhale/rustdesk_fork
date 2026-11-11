@@ -147020,3 +147020,68 @@ exits 0 after 30.045 seconds, peak scratch 402,956,288 bytes; all three listener
 snapshots have zero additions/removals and exact private/RAM cleanup passes.
 The approximate 400,000-token compression obligation remains OPEN. This append
 does not change the measured ledger.
+
+### 2026-11-11 — file-selector migration and focused dialog behavior
+
+Continue R-B10/R-B12's current-application/Android prerequisite. d8d31d75 moves
+the two production file dialogs to file_selector 1.1.0, pins sqflite 2.4.6,
+registers the selector in Windows/macOS secondary engines and imports the renamed
+sqflite_darwin module on macOS. The authenticated 194-package graph is now the
+product flutter/pubspec.lock; the duplicate exploratory lock and manifest-rewrite
+shim are deleted. Exact lock e03728db829b4d7e0fd100f3b3e9846caad0a2dcbeecba7ad142bb19c2972279
+and manifest d9d9e5a64cd38d336d4c2e4d29cbbb298e0425b881ca7ddeefb65185c6468f92
+match the previously resolved/replayed inputs. Cache acquisition consumes those
+product files. Flutter model tests now use the authenticated 3.47.5 SDK and
+272-package cache with only fresh bookkeeping writable; existing hosted/hash/git
+trees remain read-only. Selective SDK/Rust extraction retires installer scratch
+and keeps the admitted RAM limits. Other model profiles are not reaccepted here.
+
+Source/API review uses the authenticated package definitions and native registration
+exports. Screenshot selection preserves the exact chosen path, PNG filters, native
+save ownership, cancellation and session-generation checks. Recording preserves
+one pending operation, pinned-policy checks, local errors/retry and disposal.
+No native OS dialog or privileged save is represented by the component doubles.
+
+At d8d31d75, WhcGRHlM3W/tool82685 passes twelve screenshot cases and three result
+parser controls under Flutter 3.47.5; Dart JSON completes in 8.231 seconds. The
+outer run takes 298 seconds, storage monitor 303.349 seconds, peak RAM scratch
+4,956,205,056 bytes. QEMU 4061936 joins zero; exact private/RAM/Unix endpoints
+retire. Nine files/94,312 bytes under plugin-screenshot-d8d31d75-retry.json match
+CTE and TUF. The earlier 470-byte preboot refusal is preserved on both hosts as
+plugin-screenshot-d8d31d75.outer.log, SHA-256
+612d6370d6ab4457ecf98dcf4b902c22f0af4ea98062f1249a1b47ea62a7da56.
+TUF's checkout umask made the two changed launchers group-writable; host-network
+entry validation correctly refused before launch. Removing only their group-write
+bits restored 0755. Subsequent TUF checkout operations use umask 022.
+
+c5c694d8 selects only the four existing recording-directory cases instead of the
+larger settings shard. XZMRY0QvzF/tool46889 executes all four successfully, then
+fails because parser controls receive no focused profile and evaluate the unrelated
+default model inventory. 60af9de8 fixes that single invocation; no expectation is
+removed. The failed run retains nine files/113,496 bytes in
+plugin-recording-c5c694d8.json, including exact private inventory, output and joined
+cleanup. QEMU 4063057 joins zero after 266.062 seconds; peak scratch 4,692,881,408
+bytes. Diagnostics retire only after identity-bound comparison with retained logs.
+
+At 60af9de8, SmqNyNyymc/tool79891 passes all four recording cases and three parser
+controls; Dart JSON completes in 9.597 seconds. Duplicate clicks, cancellation,
+picker/save failure with retry and closing the page during pending work pass.
+Outer/storage durations are 292/297.436 seconds, peak scratch 4,844,531,712 bytes;
+QEMU 4064236 joins zero and exact private/RAM/Unix endpoints are absent. Nine files/
+85,349 bytes in plugin-recording-60af9de8.json match both hosts. All three VM runs
+retain four listener snapshots with zero added/removed endpoints. Shell syntax and
+git diff --check pass. No host application/test execution or authentication change
+is involved; the user's existing password-authenticated TUF master remains in use.
+
+This is component acceptance only. Complete application builders still install the
+old 185-package candidate lock/cache; update those consumers before a fresh build.
+Android plugin SDK 36/AGP 8.13.1/Kotlin 2.3.0 closure authentication, APK execution,
+actual dialogs and native secondary-window behavior remain OPEN. Apple Pod locks
+still refer to the old sqflite layout. Authenticated selector podspecs require
+macOS 12/iOS 15; the projects declare 10.14/13. Exact Flutter 3.47.5 migrations also
+raise those targets, so an older selector alone cannot resolve that SDK mismatch:
+https://raw.githubusercontent.com/flutter/flutter/3.47.5/packages/flutter_tools/lib/src/macos/migrations/macos_deployment_target_migration.dart
+https://raw.githubusercontent.com/flutter/flutter/3.47.5/packages/flutter_tools/lib/src/ios/migrations/ios_deployment_target_migration.dart
+Keep supported-platform alignment and native acceptance open; no minimum-version
+change, complete SDK promotion or release readiness is claimed. Preserve accepted
+6429f3cb application evidence. Count the revised ledger once after this update.

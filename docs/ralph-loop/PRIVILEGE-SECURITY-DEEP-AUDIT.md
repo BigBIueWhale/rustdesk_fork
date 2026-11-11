@@ -145499,3 +145499,12 @@ app layout; they do not establish the package's first desktop startup after
 sessionless provisioning. That transition is the next concrete package acceptance
 step. Administrator unit-state preservation, upgrades, canonical input promotion,
 cold reproducibility, remaining platforms and the full release goal remain OPEN.
+
+Fresh count zgeu0wyCtw at b38a7096 exits zero (tool55273): 405,106 tokens /
+1,849,201 bytes, SHA-256 c30914f5d93fdd4ad3554b9b75de186665c71f669c8be949177a1393ff7a38a7.
+The unchanged fixed tokenizer passes seven controls and the byte round trip.
+sessionless-acceptance-ledger-b38a7096.json and eight files/116,096 bytes match
+CTE/TUF. QEMU3928548 joins zero after 30.482 seconds, three listener deltas are
+zero and private/RAM roots retire. The approximate 400,000-token ledger
+compression obligation remains OPEN. This audit-only append does not change the
+counted ledger bytes.

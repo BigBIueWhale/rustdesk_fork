@@ -145693,3 +145693,45 @@ zero overlay allocation and 69,632-byte RAM peak. Verify the free run lock,
 exact diagnostic identity66306:80656079, clean source, absent RAM/workspace Unix
 endpoints and no owned descriptor references before descriptor-owned removal.
 package-admin-units-9d1d1af7.json and three files/5,164 bytes match CTE/TUF.
+
+## 2026-11-11 — Debian administrator unit-state lifecycle accepted
+
+TUF gsiGymPAQG at eb8377f7 exits zero (tool6055). The rebuilt package SHA-256 is
+5765a5d021666550e3590f99321b3b6c631588f350e29c084a5adc1c34c8b8a2;
+all application bytes still come from accepted 6429f3cb. Normal offline APT,
+sessionless password Applied in 0.163 seconds, ordinary-user refusal, real PAM/
+logind first-desktop bootstrap with two mutual CPace exchanges and receiver-
+confirmed wrong-password refusal, exact child retirement, credential preservation,
+same-version reinstall/removal/purge and final dependency/dpkg audits all pass.
+
+All sixteen administrator observations pass: mask, primary link to an external
+unit, regular replacement and drop-in, each through install/reinstall/remove/
+purge. Exact inode/metadata/content/target snapshots remain unchanged. The mask
+stays loaded as masked and inactive with MainPID0. Other cases select the intended
+fragment/drop-in, run the installed image with the administrator environment and
+zero manager restarts, replace/reap the prior supervisor on reinstall, then retire
+all retained supervisors and service endpoints on removal. Only the unchanged
+fixture-owned administrator objects are removed after successful purge.
+
+The former mask failure is corrected without unmasking or suppressing a helper
+error. R-S11by's timeless configure contract now makes that necessary distinction
+explicit: checked enable for loaded units, helper-state update without enablement
+for masked units; unavailable/unknown states fail closed. The retained-app source
+comparison admits precisely the four independently authenticated current package
+scripts, whose emitted archive bytes are separately exact-matched. No application
+rebuild or acceptance weakening was needed.
+
+The network inventory returns to its exact baseline after 43.036 seconds. QEMU
+3941224 joins zero after 141.504 seconds; peak RAM scratch is 4,238,778,368 bytes
+under unchanged admission limits. Four host listener deltas are zero, and private/
+RAM roots are absent. Independently reconcile all observations, process/workspace/
+Unix-endpoint absence and clean source under the free shared lock before evidence
+copy. package-admin-units-eb8377f7.json and nine files/184,401 bytes match CTE/TUF.
+
+This accepts the named administrator-state package lifecycle and its ordinary
+workflow regression. Actual-package graphical settings, version upgrades, final
+cold builds, canonical Flutter input promotion and broader platform/release
+acceptance remain OPEN. Continue the package milestone with its graphical
+authorization/settings workflow using the existing retained app and dependency
+closure. Update the current ledger and obtain its fresh isolated count before
+ending this checkpoint.

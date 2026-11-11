@@ -137,8 +137,9 @@ terminal result was not retained. Its exact pending capsule was independently
 revalidated and recovered with the existing no-clobber publisher after joined
 VM/RAM retirement; `sessionless-build-recovered-6429f3cb.json` records that scope.
 This artifact passes normal dependency-complete Debian install/reinstall/remove/
-purge, sessionless password completion, first-desktop credential bootstrap and
-ordinary-user refusal. The same app
+purge, sessionless password completion, first-desktop credential bootstrap,
+ordinary-user refusal and preservation of administrator unit state across all
+four package operations. The same app
 also passes the installed-layout graphical authorization/concurrent-change and
 queued-change normal-stop/restart regressions. The package and service sections
 below retain the native receipts and remaining acceptance boundaries.
@@ -398,9 +399,19 @@ APT dependencies remain in use. Three completed loopback TIME_WAIT records drain
 in 56.740 seconds to exact baseline equality before joined VM/RAM retirement.
 The initial fixture omitted that existing wait and failed outer network equality;
 its native observations remain in `package-bootstrap-af9e5595.json`, without an
-overall acceptance claim. Actual-package graphical settings, upgrades,
-administrator masks/links/replacement units/drop-ins and the complete release
-matrix remain **OPEN**. This bootstrap check does not establish rendered pixels,
+overall acceptance claim. The administrator unit matrix now passes at `eb8377f7`
+with the same retained app and current package scripts. Initial native execution
+reproduced a configure failure on a masked unit: the helper's first enable
+attempt called preset and failed. `9d1d1af7` preserves the mask and updates helper
+state without enabling it; loaded units retain checked enable/start. All four
+cases—mask, primary link, regular replacement and drop-in—preserve exact identity,
+metadata and contents through install/reinstall/remove/purge. The mask remains
+inactive; other cases run the intended unit with its administrator environment,
+reap predecessors on reinstall and retire fully on removal. The ordinary package/
+bootstrap workflow and final APT/dpkg checks also pass. Evidence and joined cleanup:
+`package-admin-units-eb8377f7.json`; the initial failure is retained in
+`package-admin-units-51181057.json`. Actual-package graphical settings, upgrades
+and the complete release matrix remain **OPEN**. These checks do not establish rendered pixels,
 input, physical-seat switching or a complete desktop session workload.
 Canonical input promotion also remains open: the Debian recipe selects stock
 Flutter 3.24.5 while the accepted app uses the 3.47.5 candidate and patched engine.
@@ -11240,65 +11251,39 @@ sandbox implementation and checker-repair history remain in Git.
   enumeration and attribution, install/repair/major-upgrade/uninstall execution, a clean exact-commit Windows build,
   and artifact identity. Typed pinned WiX extensions may contribute expected extension-owned actions; no final empty
   `CustomAction` table is claimed.
-- **R-S11by/R-S11e-91 — Debian vendor unit is package-owned and administrator unit state is preserved — SOURCE
-  IMPLEMENTED AND CONFINED SOURCE/PACKAGE/MUTATION VERIFIED 2026-07-23; CLEAN EXACT-COMMIT PACKAGE AND INSTALLED
-  LIFECYCLE EVIDENCE REMAIN R-B2.** Platform: Debian package construction and systemd package lifecycle.
-  Endpoint/action: installation, upgrade, removal, and purge of `rustdesk.service`. Boundary: dpkg-owned vendor files
-  and Debian service-manager helper state ↔ administrator-owned primary unit, mask, replacement, and drop-in state
-  below `/etc/systemd/system`.
+- **R-S11by/R-S11e-91 — Debian vendor ownership and administrator unit preservation —
+  NATIVE CANDIDATE LIFECYCLE VERIFIED 2026-11-11; upgrades and final cold artifacts OPEN.**
+  `build.py::package_flutter_deb` ships source-identical root/root mode-0644
+  `/usr/lib/systemd/system/rustdesk.service`, covered by `md5sums`. Dpkg alone owns
+  that vendor file; the old private template and maintainer-script primary-unit
+  deletion/copy paths are absent. The scripts preserve administrator masks, primary
+  links, replacement units and drop-ins. Upgrade preinst only reads its exact old-unit
+  predicate before checked stop; prerm stops/disables, postrm reloads after removal,
+  and purge clears helper/root credential state.
 
-  The inherited package did not ship the systemd unit at its installed vendor path. It shipped a private copy below
-  `/usr/share/rustdesk/files/systemd`; `postinst` unconditionally removed the exact `/etc/systemd/system/rustdesk.service`
-  object, removed both system and user vendor paths, recreated `/usr/lib/systemd/system`, and copied the private
-  template into place. `prerm` deleted the same three unit paths before dpkg's package-file removal phase and reloaded
-  systemd while the unit's ownership was still script-defined. Because an administrator mask is the exact `/etc`
-  object linked to `/dev/null`, this could erase a deliberate mask or replacement. This is local package-authority and
-  availability debt, not evidence that an administrator object existed or was deleted on a real host, that Docker
-  acquired root, that a public listener was opened, or that a machine was compromised.
+  Native execution initially failed configure on an administrator mask because
+  first-time helper enable called systemctl preset. `9d1d1af7` reloads and checks
+  the unit's load state, uses checked enable for loaded units and checked helper
+  update-state for masked units, then reloads and invokes policy-respecting start.
+  Query/helper errors and unexpected states fail; no unmask or direct unit mutation
+  exists. `scripts/test-linux-debian-install.py::administrator_units` now exercises
+  four fresh administrator cases through all four actual dpkg operations. At
+  `eb8377f7`, exact object identities, metadata, contents and link targets survive
+  all sixteen observations. Masked service stays inactive; other units run the real
+  installed image with the selected fragment/drop-in and administrator environment.
+  Pidfds prove predecessor retirement on reinstall and full retirement on removal.
+  The ordinary dependency-complete package/bootstrap workflow also passes.
+  `package-admin-units-eb8377f7.json` binds the exact archive, retained app6429f3cb,
+  observations and joined cleanup; `package-admin-units-51181057.json` retains the
+  reproduced failure. Archive validation independently checks emitted unit/script
+  bytes, owner/mode, inventory and md5 membership. Earlier source/mutation receipts
+  remain in Git history and do not substitute for these native observations.
 
-  The authority model is now conventional and closed. `build.py` places the byte-exact `res/rustdesk.service` directly
-  at `/usr/lib/systemd/system/rustdesk.service`; the exact package inventory admits that root/root mode-0644 ordinary
-  file and its three vendor directories, excludes the legacy `/usr/share` template, and includes the unit in generated
-  `md5sums`. Dpkg owns install, replacement, and removal. `postinst`, `prerm`, and `postrm` contain no primary systemd
-  unit path. They retain only checked `deb-systemd-helper`/`deb-systemd-invoke` lifecycle operations and the fixed
-  manager reload. `prerm` stops/disables before removal; after dpkg removes the vendor
-  file, `postrm remove|purge` reloads the manager, while purge separately clears helper and root service-config state.
-  The exact upgrade-only `preinst` read predicate remains so an existing old unit is stopped before transition; it
-  neither writes nor removes any unit object. Administrator masks, replacement units, primary-unit links, and drop-ins
-  are not package-script state.
-
-  The focused semantic validator rejects every systemd search-path reference outside that one `preinst` predicate,
-  enforces the revised stop/disable/remove/reload order, and remains failure-propagating. The package authority
-  validator binds the direct constructor commands and exact inventory, byte-compares an emitted unit with source,
-  verifies its mode/link/owner and `md5sums` membership, and deliberately mutates the constructor back to the legacy
-  template, restores each of the three script deletions, removes the post-removal reload, corrupts the unit bytes, and
-  changes its mode. The release artifact gate independently extracts and compares the systemd unit. The disposable
-  installed-system fixture now creates an administrator-owned `/etc/systemd/system/rustdesk.service` link before
-  installation and requires that exact link to survive install, removal, and purge while the dpkg-owned vendor unit is
-  installed and removed normally. Debian's primary contracts are
-  <https://www.debian.org/doc/debian-policy/ch-opersys.html#starting-system-services>,
-  <https://www.debian.org/doc/debian-policy/ch-files.html#configuration-files>, and
-  <https://manpages.debian.org/unstable/systemd/systemd.unit.5.en.html>.
-
-  Confined focused verification used the already-present immutable Debian builder image
-  `sha256:6766564c65b0daead7d7031fcf0ff9ec8becab6ef9e3f9a7efd9f02f1b893776` as UID/GID 1000 with
-  `--pull=never`, no network, a read-only root and source, all capabilities dropped, `no-new-privileges`, bounded
-  PID/memory/no-swap/CPU use, and private tmpfs-only writable state. Bash syntax passed for all changed shell scripts;
-  in-memory Python compilation passed for all changed validators; the maintainer-script semantic validator passed;
-  and the package authority self-test returned `ok  Debian package tree is root-owned, exact-mode, link-free, and
-  source-gated`. That result predates R-S11bz's package-owned command symlink and is retained only as evidence for
-  this earlier vendor-unit slice. Its production-constructor fixture, exact archive parser/inventory/mode/digest checks, legacy
-  constructor and maintainer-script mutations, wrong-unit-content mutation, and wrong-mode mutation all ran.
-
-  No image was built or pulled, no port or host namespace was used, and no container ran as root or received a host
-  service/configuration/device/Docker-socket mount. No `.deb` was built or installed and no maintainer script was
-  executed against a host root filesystem. No host RustDesk process, service, configuration, listener, firewall,
-  network, or device state was inspected or changed.
-
-  This source slice does not claim a newly built `.deb`, installation on this host, or execution of the privileged
-  systemd fixture. The current clean exact-commit Debian cold build and installed install/upgrade/removal/purge run
-  remain R-B2. No host RustDesk process, service, configuration, listener, firewall, network, or device state is in
-  scope for this source change.
+  This verifies the named candidate's install, same-version reinstall, removal and
+  purge on systemd. Version upgrades, other init systems, graphical settings, final
+  clean cold application/package A==B and complete R-B2 acceptance remain OPEN.
+  Debian Policy §9.3/§10.7 and systemd.unit(5) govern vendor/admin precedence;
+  the audit retains primary-source research and exact helper-package identities.
 - **R-S11bz/R-S11e-92 — Debian primary command is package-owned and maintainer scripts never mutate `/usr/bin` —
   SOURCE IMPLEMENTED AND CONFINED SOURCE/PACKAGE/MUTATION VERIFICATION PASSED 2026-07-23; CLEAN EXACT-COMMIT
   PACKAGE AND INSTALLED LIFECYCLE EVIDENCE REMAIN R-B2.** Platform: Debian package construction and every package lifecycle

@@ -147371,3 +147371,16 @@ after full viewer restart on the named bundle. Recording output/playback,
 interrupted/concurrent chooser lifetimes, failure durability, other platforms,
 installed artifacts and broader R-S0/R-F5/release acceptance remain OPEN.
 The ledger records this scope; measure it once with the fixed tokenizer.
+
+Fresh count at a09247bf/p3jfAIVtS2/tool64677 passes: 408,361 tokens /
+1,863,711 bytes, SHA-256
+a44c805a7e146156b64c79e8ea64d26f6d39a5e9398556179dc432206341ffcb.
+The fixed tokenizer, seven controls and whole-input round trip pass. Eight files /
+117,668 bytes in recording-ledger-a09247bf.json match both hosts. QEMU 402989
+joins zero after 30.287 seconds; peak RAM scratch is 403,030,016 bytes and exact
+private/socket/RAM cleanup passes. Before/during listener deltas are zero; the
+after snapshot adds unattributed UDP 0.0.0.0:54023, retained exactly without
+owner inspection or mutation. Host IP socket creation remains kernel-denied for
+the harness. This count does not claim an unchanged global endpoint inventory.
+The approximate 400,000-token compression remains OPEN. This audit-only append
+leaves the measured ledger intact.

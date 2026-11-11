@@ -145401,3 +145401,13 @@ image, nondumpability, bootstrap and publication ordering checks. No behavioral
 result is credited. child-process-precheck-a815d684.json retains nine files/81,607
 bytes matching CTE/TUF, QEMU3890145 joined zero, four zero listener deltas and exact
 private/RAM retirement after 34.241 seconds.
+
+Retry pRUWrneE7l at 3630f9c4 exits one at the wrapper's named-test filter,
+which admits only the three older module prefixes. Remove this duplicate filter;
+the existing loop still requires every named case and exact summary/inventory
+count equality. Print bounded complete test output before result validation so a
+wrapper error cannot hide it. child-process-count-3630f9c4.json retains nine
+files/81,549 bytes, four zero listener deltas and QEMU3890822/private/RAM retirement
+after 33.633 seconds. Its failure-description incorrectly says before compilation:
+source inspection locates this rejection after test execution. Full test output
+was not retained, so no individual test acceptance is credited from that run.

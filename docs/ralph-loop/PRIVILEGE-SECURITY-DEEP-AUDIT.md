@@ -144877,3 +144877,15 @@ then register a fixture-local cache via documented `GDK_PIXBUF_MODULE_FILE`.
 The [Debian loader-tool manual](https://manpages.debian.org/bookworm/libgdk-pixbuf2.0-bin/gdk-pixbuf-query-loaders.1.en.html)
 defines this discovery path. Rerun the focused workflow for this specific runtime
 correction; no previous unrelated scenario or application build needs repetition.
+
+`7fSRVLjWzT` at `522786d9` refuses preparation because this pinned image has no
+separate PNG module; it runs no GUI scenario. The initially proposed module/cache
+correction was wrong. Read-only image-layer inspection shows GdkPixbuf 2.42.10's
+module inventory, and its [upstream format selector](https://raw.githubusercontent.com/GNOME/gdk-pixbuf/2.42.10/gdk-pixbuf/gdk-pixbuf-io.c)
+uses GIO MIME detection even for its built-in PNG loader. Include the image's
+existing MIME cache instead and require actual decoding of GTK's 16x16 password
+PNG before each agent action. Failed-run evidence is preserved under
+`linux-graphical-png-preparation-522786d9.json`; ten files / 101,117 bytes match
+CTE/TUF. QEMU3851012 joins with zero; private/RAM state retire and all four
+endpoint deltas are zero. The first authorization acceptance remains valid;
+the corrected graphical runtime requires a fresh focused replay.

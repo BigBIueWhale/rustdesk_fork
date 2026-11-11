@@ -170,6 +170,16 @@ int main(int argc, char **argv) {
     if (errno != 0 || *end != '\0' || pid <= 1 || pid > UINT_MAX) return 2;
     Display *display = XOpenDisplay(NULL);
     if (display == NULL) return 1;
+    if (!gtk_init_check(NULL, NULL)) { XCloseDisplay(display); return 1; }
+    GError *error = NULL;
+    GdkPixbuf *icon = gdk_pixbuf_new_from_resource(
+        "/org/gtk/libgtk/icons/16x16/actions/dialog-password.png", &error);
+    int png_ready = error == NULL && icon != NULL &&
+        gdk_pixbuf_get_width(icon) == 16 && gdk_pixbuf_get_height(icon) == 16;
+    if (icon != NULL) g_object_unref(icon);
+    g_clear_error(&error);
+    if (!png_ready) { XCloseDisplay(display); return 1; }
+    puts("LINUX_INSTALLED_SETTINGS_PNG=pass source=gtk-resource dimensions=16x16");
     if (atspi_init() != 0) { XCloseDisplay(display); return 1; }
     atspi_set_timeout(1000, 1000);
     AtspiAccessible *message = agent_control((unsigned int)pid, ATSPI_ROLE_LABEL,

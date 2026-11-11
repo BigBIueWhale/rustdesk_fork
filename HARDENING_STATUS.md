@@ -530,9 +530,22 @@ each with three parser controls. Capsules `plugin-screenshot-d8d31d75-retry.json
 and `plugin-recording-60af9de8.json` bind production-source execution, zero host
 listener deltas and joined VM/RAM retirement. Picker/native responses are doubles;
 actual OS dialogs, durable saves and secondary-window registration remain unverified.
-Next align the complete application builders with the product lock/new cache:
-their candidate path still installs the obsolete 185-package lock. Compose and
-authenticate the actual Android SDK/Gradle closure, then build and exercise the APK.
+Full Linux application compilation now passes at `d3bd788d`, TUF `aONSilftjt`.
+The builder verifies the committed product lock directly and consumes the separate
+authenticated cache through a read-only mount. Offline enforced-lock resolution,
+nine native plugin inputs, thirteen Dart view-mode cases and two Rust command
+cases pass. The retained bundle contains 74 files/70,377,124 bytes, including the
+native Linux selector and unchanged patched engine. Capsule
+`plugin-app-build-d3bd788d-retry.json` binds the exact source, manifest/payloads,
+compiler resource limits, zero listener deltas and joined VM/RAM cleanup.
+This is build acceptance; actual OS dialogs and installed acceptance of these
+new bytes remain open. The superseded `74b64685` bundle was hash-verified and
+retired within the existing four-generation cache limit; its historical evidence
+and the accepted `6429f3cb` bundle remain (`plugin-app-retired-74b64685.json`).
+Next exercise native screenshot save/cancel and recording-directory selection.
+Cold-cache seed construction still needs alignment with the product manifest;
+this build reuses the authenticated published cache. Compose and authenticate
+the actual Android SDK/Gradle closure, then build and exercise the APK.
 Apple projects/Pod locks also remain incompatible: the selected SDK migrates to
 macOS 12/iOS 15 while the projects declare 10.14/13; the selector podspecs require
 12/15 and sqflite has moved to sqflite_darwin. Coherent supported-platform alignment,

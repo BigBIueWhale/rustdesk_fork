@@ -147093,3 +147093,82 @@ bytes in plugin-dialog-ledger-bf19c41e.json match CTE and TUF. QEMU 4066221 join
 zero after 30.747 seconds; peak scratch 403,091,456 bytes, zero listener deltas
 and exact private/RAM cleanup. The approximate 400,000-token compression remains
 OPEN. This append leaves the measured ledger unchanged.
+
+### 2026-11-12 — complete Linux application builds with the migrated plugin graph
+
+Continue R-B10/R-B12: the actual application builder still replaced the product
+lock with the obsolete 185-package discovery lock. Aligning it takes priority over
+another component shard because it unlocks native screenshot/recording dialogs
+on the migrated application. Success requires offline compilation from the exact
+194-package product lock and authenticated 272-package cache, immutable inputs,
+source-bound output and joined cleanup. It does not establish native UI behavior.
+
+3502096b verifies flutter/pubspec.lock directly, removes discovery-lock replacement
+and mounts the new cache through its separate sealed authority. Stable candidate
+pin names now select product lock e03728db829b4d7e0fd100f3b3e9846caad0a2dcbeecba7ad142bb19c2972279
+and cache fc3d40987ffbc03c0aa675d990852264c126e67a358a4a78797c2ee6d6d5d931;
+the old acquisition seed has explicit seed pin names. Historical app replay still
+derives its inputs from the exact producer commit, without a compatibility branch.
+The Dart contract requires both offline resolution and enforced lock/hash equality:
+https://dart.dev/tools/pub/cmd/pub-get
+Current build checks retain both and prove the product lock unchanged.
+
+The first preboot refusal, rdhAhBVeyh at 3502096b, found an obsolete three-entry SDK
+directory assumption: authenticated Maven, Gradle and Build Tools candidates now
+coexist there. d3bd788d admits the exact SDK archive independently while retaining
+canonical parent, owner/mode, regular-file, link-count, size and digest checks.
+The next preboot refusal, yM1Swz9D3i/tool65713, found the four-generation artifact
+cache full. Both runs are reconciled with no QEMU start, retired private/RAM state
+and bounded evidence: plugin-app-build-3502096b.json (two files/2,063 bytes) and
+plugin-app-build-d3bd788d.json (three files/3,846 bytes), identical on both hosts.
+
+Retire only the superseded 74b646858ba46136e7e76b6fcf447a44bccd4b39 application:
+all 73 payloads/70,340,788 bytes, exact directories, ownership, modes, link absence
+and manifest 46bf7e2d3d47f6df0ef48ecfc766f672dd1424df5d8ef6a430efcdaa6738b6be
+were verified under the shared lock. Descriptor-owned removal of 66306:82228841
+freed 70,561,792 allocated file bytes. Preserve 6429f3cb's accepted app, 7e6f6459's
+designated fixture, 0ccb2a7e's unresolved pending generation and all historical
+receipts. plugin-app-retired-74b64685.json and its retained manifest match both
+hosts (two files/13,911 bytes). The cache limit remains four.
+
+At d3bd788d73a1f3442ab5f71ea577437dc7f13c6f, aONSilftjt/tool86137 exits zero.
+Run --linux-flutter-app-build with engine commit ddb1541d11ac9c5aba983814d5ad228490929284,
+archive 57387c0449db041817c1e0954ec7977068acdf800d2a3d0b6a3281022cdf115a and
+manifest d4af9790d123c1c5d4eb7d40581b7ef824e53310402c9f9b23934d59a1f3f30b.
+Offline lock resolution and nine native plugin inputs pass. Thirteen Dart view-mode
+cases and two Rust command cases pass; the full Flutter Linux build exits zero.
+The published app has 74 payloads/70,377,124 bytes and manifest
+bf569419de286a3a815935f77ec6a2cf013a76ff6ad835cefaf8d323f2ecedbc.
+Independent read-only reconciliation checks every payload, exact inventory,
+producer pins/tree/recipe and the previously authenticated engine. The native
+file_selector_linux library is present; no file_picker payload remains.
+
+Two compiler jobs stay within 10 GiB, peaking at 10,697,826,304 bytes with zero
+swap/OOM events. Outer/storage durations are 1,214/1,220.184 seconds; RAM scratch
+peaks at 11,902,787,584 bytes within 16 GiB and overlay at 11,696,082,944 within
+12 GiB. Host available memory stays above 22,320,553,984 bytes. QEMU 4068730 joins
+zero, all four listener snapshots have zero additions/removals, and exact private,
+RAM and Unix endpoints are absent. The retained app uses 70,598,656 allocated file
+bytes. Ten evidence files/318,899 bytes in plugin-app-build-d3bd788d-retry.json
+match CTE and TUF. Source stayed frozen through terminal reconciliation and copy.
+Shell syntax and git diff --check pass. No host application/build/test execution
+or host authentication change is involved.
+
+Native save/cancel, durable PNG contents, recording directory and secondary-window
+behavior remain OPEN. Replace the old screenshot-save-unavailable scenario, which
+specifically expects missing zenity, with a real GTK selector scenario on these
+bytes; the new plugin uses GtkFileChooserNative. Existing 6429f3cb package results
+retain their original scope. Cold-cache acquisition also remains open: the seed
+producer now copies the current product manifest but expects the historical seed
+lock. This successful build reuses the authenticated cache and does not prove
+empty-cache reconstruction.
+
+Android remains a separate integration prerequisite. Official AGP 8.13.2 notes
+identify R8 8.13.19 with Kotlin 2.3 support; Kotlin's matrix lists KGP 2.3.10 support
+through AGP 9.0.0 and Gradle 9.0.0. This makes 8.13.2/2.3.10 a candidate for actual
+closure research with staged Gradle 8.14.7, not accepted new pins. SDK 36/platform,
+dependency authentication and APK execution remain open:
+https://developer.android.com/build/releases/agp-8-13-0-release-notes
+https://kotlinlang.org/docs/gradle-configure-project.html
+Apple project/Pod alignment, other native platforms, canonical input promotion and
+release acceptance remain OPEN. Count the revised ledger once after this update.

@@ -411,12 +411,11 @@ packages:
     source: hosted
     version: "0.5.3+7"
   file_selector_linux:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
-      name: file_selector_linux
-      sha256: da76400e7872ce7637ffdce12749ec24169c25f6195c28372208e65a24bcd2ab
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/file_selector_linux"
+      relative: true
+    source: path
     version: "0.9.4+1"
   file_selector_macos:
     dependency: transitive

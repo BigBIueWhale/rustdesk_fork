@@ -528,21 +528,31 @@ Focused tests now use this cache and Flutter 3.47.5: twelve screenshot-handler
 cases pass at `d8d31d75`, and four recording-directory cases pass at `60af9de8`,
 each with three parser controls. Capsules `plugin-screenshot-d8d31d75-retry.json`
 and `plugin-recording-60af9de8.json` bind production-source execution, zero host
-listener deltas and joined VM/RAM retirement. Picker/native responses are doubles;
-actual OS dialogs, durable saves and secondary-window registration remain unverified.
-Full Linux application compilation now passes at `d3bd788d`, TUF `aONSilftjt`.
-The builder verifies the committed product lock directly and consumes the separate
-authenticated cache through a read-only mount. Offline enforced-lock resolution,
-nine native plugin inputs, thirteen Dart view-mode cases and two Rust command
-cases pass. The retained bundle contains 74 files/70,377,124 bytes, including the
-native Linux selector and unchanged patched engine. Capsule
-`plugin-app-build-d3bd788d-retry.json` binds the exact source, manifest/payloads,
-compiler resource limits, zero listener deltas and joined VM/RAM cleanup.
-This is build acceptance; actual OS dialogs and installed acceptance of these
-new bytes remain open. The superseded `74b64685` bundle was hash-verified and
-retired within the existing four-generation cache limit; its historical evidence
-and the accepted `6429f3cb` bundle remain (`plugin-app-retired-74b64685.json`).
-Next exercise native screenshot save/cancel and recording-directory selection.
+listener deltas and joined VM/RAM retirement. Those component cases use picker
+and native-setting doubles; the Linux screenshot workflow now has actual UI evidence.
+Full Linux application compilation passes at `fd93151b`, TUF `awTE6V9BH8`.
+Offline enforced-lock resolution, nine native plugin inputs, thirteen Dart
+view-mode cases and two Rust command cases pass with the immutable published cache.
+The 74-file/70,377,124-byte bundle retains the exact patched engine. Capsule
+`selector-app-fd93151b.json` binds source, payloads, compiler limits and cleanup.
+Native replay `z1qg6SapEa` passes real GTK cancellation and screenshot saving:
+cancel leaves an empty directory; the exact Unicode path contains a mode-0600
+640x480 PNG whose decoded counter matches a live source publication. Four fresh
+displayed frames follow each action on the same connection, with bounded resources.
+The viewer exits zero and retires its engines cleanly. The unchanged scenario on
+`d3bd788d` passed both actions but failed the existing shutdown gate: upstream
+`file_selector_linux` recreated a message channel after engine retirement.
+`96295b57` vendors authenticated 0.9.4+1 and removes that recursive disposal call;
+the owning channel releases the API/plugin. Of 74 bundle payloads, only the selector
+library differs. `native-screenshot-fd93151b.json` retains this A/B comparison;
+`native-screenshot-14062dc0.json` retains the failure. All runs have zero listener
+deltas and joined VM/RAM cleanup. The obsolete pending `0ccb2a7e` bundle is now
+retired after exact manifest/payload verification: its View mode correction already
+passed native failure/retry at `54db1ce2`. Evidence remains, with the accepted
+`6429f3cb`, original `7e6f6459` and screenshot baseline `d3bd788d` bundles preserved
+within the four-generation limit (`selector-retired-0ccb2a7e.json`).
+Recording-directory selection, other-platform dialogs/secondary-window registration,
+interrupted/concurrent chooser lifetimes and installed acceptance remain OPEN.
 Cold-cache seed construction still needs alignment with the product manifest;
 this build reuses the authenticated published cache. Compose and authenticate
 the actual Android SDK/Gradle closure, then build and exercise the APK.
@@ -6356,7 +6366,10 @@ sources, artifacts, diagnostics, complete endpoint observations and joined bound
 RAM/private-root retirement are retained in
 `.harness-state/verifier-vm/screenshot-save-68120a10.json`.
 
-Native Windows compilation/runtime, Apple/mobile and rendered UI/FFI, installed
+Rendered Linux UI/FFI save and cancellation now pass on full app `fd93151b`:
+`native-screenshot-fd93151b.json` binds the real GTK chooser, exact Unicode path,
+source-counter-verified PNG, empty cancellation, fresh subsequent frames and clean
+viewer shutdown. Native Windows compilation/runtime, Apple/mobile, installed
 authority/settings, filesystem-specific durability/crash recovery and hostile
 directory-writer final exchange races remain OPEN. Unix identity checks do not
 make a by-name rename/unlink conditional on the checked inode. No whole-product

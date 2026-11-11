@@ -147180,3 +147180,109 @@ bytes in plugin-app-ledger-bdae6f37.json match both hosts. QEMU 4071848 joins ze
 after 30.272 seconds, peak scratch 403,025,920 bytes, zero listener deltas and exact
 private/RAM cleanup. The approximate 400,000-token compression remains OPEN.
 This append does not change the measured ledger.
+
+## 2026-11-12 — Native screenshot save/cancel and Linux selector shutdown corrected
+
+Continue the selected R-S0/R-S11ee screenshot workflow after the migrated plugin
+build. Actual dialog execution takes priority over another component test: the
+existing coverage used picker doubles and did not prove save/cancel or plugin
+teardown. The real GTK chooser must leave no file on Cancel, save the exact
+request-owned PNG at the selected Unicode path, preserve the connection/fresh
+display, and retire the viewer/engines without a post-retirement messenger call.
+
+Harness a1b25827 replaces the obsolete missing-zenity expectation with two actual
+GTK cases. Filename and buttons are selected within the exact native dialog;
+a bounded no-follow read verifies a single-link mode-0600 640x480 PNG, decodes
+its source counter and checks that publication against the live source history.
+Four fresh frames and bounded resources follow each action. First run 4KOd6kePiX
+failed an observer assumption: the showing editable filename field is not
+keyboard-focused in the no-window-manager Xvfb environment. 14062dc0 selects its
+unique showing role/name within that same dialog, retaining suggested-name and
+exact readback checks. No product or expected save/cancel result changes.
+
+Second run 50KGCW8H9a passes cancellation and saving on app d3bd788d, then fails
+the pre-existing shutdown gate. Its 2,410-byte PNG hashes to
+16ad58257b04a419a525cbcbbc4cd8332c190c75952135ae30818f72eb825113.
+After the remote window closes, file_selector_linux attempts handler registration
+without an engine. Both failed runs exit 1, retain raw evidence and have exact
+QEMU joins, absent RAM, four zero listener deltas, and descriptor-owned removal
+of failed private diagnostics/duplicate app bytes. Capsules
+native-screenshot-a1b25827.json (12 files/458,731 bytes) and
+native-screenshot-14062dc0.json (12 files/360,489 bytes) match CTE and TUF.
+The first is an observer failure; the second demonstrates the product defect.
+
+Source: the generated Pigeon channel owns the API, which owns the plugin.
+Messenger handler removal releases the last plugin reference. Upstream disposal
+calls ffs_file_selector_api_clear_method_handlers, which constructs a replacement
+channel during that teardown. Pinned Flutter source confirms the ownership:
+https://github.com/flutter/flutter/blob/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_basic_message_channel.cc
+https://github.com/flutter/flutter/blob/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_binary_messenger.cc
+The same model underlies the previously corrected vendored URL launcher.
+GTK/AT-SPI source guidance used for the real chooser:
+https://docs.gtk.org/gtk3/class.FileChooserNative.html
+https://docs.gtk.org/gtk3/method.FileChooser.set_current_name.html
+https://docs.gtk.org/atspi2/method.EditableText.set_text_contents.html
+
+Product 96295b57 imports authenticated file_selector_linux 0.9.4+1 and removes
+only the redundant disposal clear, retaining registrar release. The path override
+and committed lock/pins select that source. UPSTREAM.md binds the original archive
+da76400e7872ce7637ffdce12749ec24169c25f6195c28372208e65a24bcd2ab,
+dual-source acquisition, immutable cache and original plugin digest. fd93151b
+restores the upstream changelog's absent final newline after the import tool
+added one; all 32 untouched files now hash exactly to the authenticated package.
+The generated API, Dart methods, chooser behavior and dependency versions remain
+unchanged. The 272-package cache is reused unchanged.
+
+Before building, classify the old unpublished 0ccb2a7e bundle as superseded:
+its original failure was the obsolete outer Mute receipt, all owners already
+joined, and the same View mode correction passed actual failed-save/retry on
+bd65c0c4 at 54db1ce2. Under the shared lock, verify its exact closed inventory,
+74 payloads/70,340,674 bytes, manifest 2e422b8475ce43c3b35cec5c5f836c2b83e277f6af3a46d6d0bdf4a201e22480
+and identity 66306:83669843 before descriptor-owned removal. The first admission
+refused the pending root's 0700 mode; inspection established that only this
+unpublished root differs from published 0500 roots, while all 75 regular files
+remain 0400 and every child directory 0500. No payload was removed before that
+classification. selector-retired-0ccb2a7e.json retains the manifest and retirement,
+freeing 70,565,888 allocated file bytes. Keep 6429f3cb, 7e6f6459, d3bd788d and
+all historical evidence. The four-generation cap and canonical inputs stay intact.
+
+Full build awTE6V9BH8/tool81430 exits zero at fd93151be34374f808864b9c0dd32fc584d7fa27.
+Offline enforced-lock resolution, nine plugin inputs, thirteen Dart tests and two
+Rust command tests pass. The exact engine ddb1541d remains unchanged. Manifest
+f11a9eac46012a23627bb9d99a16d9cdf1ca692542b4c061d14a64af28e7834d binds
+74 payload files/70,377,124 bytes. Compiler peak is 10,714,902,528 bytes under
+10 GiB, two jobs, no OOM/swap. The admitted 14 GiB guest/16 GiB RAM scratch/
+12 GiB overlay/6 GiB headroom transaction lasts 1,253.295 seconds, peak scratch
+11,904,811,008 bytes. QEMU 4128938 joins zero; private/RAM/socket state retires
+with four zero endpoint deltas. selector-app-fd93151b.json binds ten files/
+321,645 bytes copied and independently verified on both hosts.
+
+The unchanged screenshot replay z1qg6SapEa/tool87874 exits zero on that bundle.
+Actual GTK Cancel leaves its private directory empty; Save writes screen-שלום.png
+as mode 0600, 2,400 bytes, SHA-256
+dfe8802a9af83bf771eaaf43b7f951780d88285ad24fa3a0e16a27e7f65aa762.
+The decoded 640x480 PNG carries frame 64 published at 86,398,540 us, between
+request 86,219,397 us and response observation 86,506,411 us. Four fresh frames
+follow each action on the original authenticated connection. Resource samples
+remain within the existing limits: RSS 353,348→364,120→374,732 KiB,
+threads 66→66→65 and descriptors 45→46→46. The same shutdown gate passes:
+viewer exits zero, all engines retire without the prior warning; server, source,
+Xvfb and listener retire. Only libfile_selector_linux_plugin.so differs between
+baseline and corrected 74-file bundles; the other 73 payloads match byte-for-byte.
+The selector's 48,040 bytes change SHA-256 from
+7a86442342949b177c949947269d55d15eff414e5b3ee3e7906ef284e2c673a6 to
+c442d4f661960a1f0a69e7802163d0b050f9a275fc6e12ab6abf07ab020cca44.
+
+native-screenshot-fd93151b.json binds nine files/104,966 bytes on both hosts.
+Storage lasts 115.688 seconds with peak RAM scratch 3,025,674,240 bytes under
+7 GiB, 10 GiB guest RAM and 6 GiB host headroom. QEMU 180952 joins zero,
+four endpoint deltas are zero, and exact private/RAM/socket state is absent.
+Source and artifact identities remained frozen through reconciliation and copy.
+No host product, installer, privileged container or authentication change ran.
+
+This closes the named Linux native screenshot save/cancel and selector-shutdown
+failure. Recording-directory selection, chooser interruption/concurrency, other
+platforms, installed artifacts, filesystem crash durability and broader release
+requirements remain OPEN. The exact saved PNG was observed during the run and
+then removed by the owned scenario; its digest/counter evidence is retained.
+Update the current ledger and count it once with the fixed tokenizer.

@@ -360,10 +360,22 @@ Actual pages, dialogs, FFI navigation and Navigator run; native admission/retire
 platform channels and preferences are doubles. Android/iOS device, native teardown
 and complete release acceptance remain OPEN; native work stays open above.
 
-**Checkpoint (2026-11-03):** Release-input promotion is OPEN after
-read-only investigation. The Debian recipe still selects stock Flutter 3.24.5;
-the validated Linux app producer uses 3.47.5 with the patched engine. No input,
-pin, recipe or artifact changed.
+**Debian candidate packaging (2026-11-11).** The production builder and retained-app
+validation now share `build.py::package_flutter_deb`. TUF `RVqlYwKto0` at
+`18079460` packages accepted app `74b64685` twice from fresh staging trees. Both
+19,792,264-byte archives have SHA-256
+`b1f44afa5e148e6252950db7afa58cfd2c13250a9e2d035bdf0a55655ecf8d8a`;
+the independent archive validator passes and extraction preserves all 72 app
+payloads plus the byte-identical mode-0711 service child. Real maintainer scripts,
+unit, policy, manager resources and freshly compiled XDO are packaged. The
+71.790-second no-NIC transaction retires its container/QEMU/private/RAM state
+with four zero listener deltas. `debian-candidate-18079460.json` retains provenance.
+This is construction from one retained application, not cold application A==B,
+installation or final-release acceptance. **OPEN:** dependency-complete dpkg
+install/upgrade and canonical input promotion. The Debian recipe still selects
+stock Flutter 3.24.5; the accepted app uses the 3.47.5 candidate and patched engine.
+The older final-package lifecycle fixture's forced dependency admission cannot
+establish dependency-complete installation. No dependency bypass is added.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,

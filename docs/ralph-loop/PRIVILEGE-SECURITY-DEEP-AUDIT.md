@@ -145217,3 +145217,23 @@ The closed --debian-candidate-package replay selector uses the unchanged admitte
 RAM profile, immutable application/context, read-only source, confined UID-1000
 container and joined retirement. Package data remains disposable VM scratch;
 only bounded logs/digests are retained. Initial execution is pending.
+
+Accepted TUF RVqlYwKto0 at 180794604bd80a0380bffafddfcabc6e159c962c exits zero
+(tool24694), reusing app74b64685/manifest46bf7e2d. The production constructor
+creates two 19,792,264-byte archives, both SHA-256
+b1f44afa5e148e6252950db7afa58cfd2c13250a9e2d035bdf0a55655ecf8d8a.
+Both independent CLI archive admissions pass, all 72 extracted application files
+match the immutable input, and the service-child bytes/mode pass. Four native
+XDO builds (existing replay preparation plus both packages) produce the same
+25,576-byte library hash7a0c269d. The package stages are separate; Rust/Flutter
+compilation, SDK promotion, installation and dependency resolution do not run.
+
+Storage reports 71.790 seconds and 3,091,939,328 bytes peak RAM workspace.
+QEMU3877956 joins zero, private/RAM roots are absent, and all four listener deltas
+are zero. The package bytes leave with disposable scratch. Capsule
+debian-candidate-18079460.json is 4,806 bytes, SHA-256
+45c4b59973ca6f300beb493a34812eadb6296e2b88b0d30ea2645c75a3f47720;
+its nine-file 85,512-byte evidence set matches CTE/TUF. Source and refs were
+frozen through terminal reconciliation and evidence copying. Next obtain the
+authenticated package dependency closure and exercise real dpkg install/upgrade
+with service startup, authorized credentials, preservation and package ownership.

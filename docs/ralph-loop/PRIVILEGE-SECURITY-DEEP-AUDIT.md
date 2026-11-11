@@ -145970,3 +145970,12 @@ removing the superseded earlier-app result references and sharing common package
 observations; exact historical evidence remains in the audit and retained files.
 Version upgrades, other package/authority workflows and complete cross-platform
 release acceptance remain OPEN. Obtain a fresh isolated ledger count.
+
+Fresh count DXomYR7Msw at fc0b7124 exits zero (tool49110): 405,370 tokens /
+1,851,001 bytes, SHA-256 2c5e9933a5cb37d95bec9d25fe22233231227ab66814de058b099bd042e047fd.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and its byte round trip. package-uncertain-ledger-fc0b7124.json and eight files /
+115,883 bytes match CTE/TUF. QEMU3957340 joins zero after 30.439 seconds; three
+host listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.

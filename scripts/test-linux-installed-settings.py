@@ -1359,7 +1359,208 @@ def uncertain_scenario(receiver, probe_sha):
                     wait_network_retirement(network_before)
 
 
-def main(arguments, uncertain=False, admin_failure=False, graphical=False):
+def concurrent_stop_scenario(receiver, probe_sha):
+    unit = Path('/etc/systemd/system/rustdesk.service')
+    if unit.exists():
+        raise RuntimeError('concurrent stop requires absent initial service state')
+    install(MEDIA / 'repo/res/rustdesk.service', unit)
+    run(['/usr/bin/systemctl', 'daemon-reload'])
+    network_before = network_state()
+    clients, retained_logs, pidfds = [], [], {}
+    trace = reference = None
+
+    def properties():
+        return dict(line.split('=', 1) for line in run([
+            '/usr/bin/systemctl', 'show', 'rustdesk.service',
+            '--property=MainPID,ActiveState,SubState,NRestarts,InvocationID,ExecMainCode,ExecMainStatus,Result,'
+            'Type,KillMode,NotifyAccess,TimeoutStopUSec'
+        ]).splitlines())
+
+    def root_snapshot():
+        path, stream, uid = retained_logs[0]
+        metadata = os.fstat(stream.fileno())
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != uid or metadata.st_nlink != 1
+                or metadata.st_mode & 0o022 or metadata.st_size > 8 * 1024 * 1024):
+            raise RuntimeError('retained shutdown log authority or bound differs')
+        data = os.pread(stream.fileno(), metadata.st_size, 0)
+        if len(data) != metadata.st_size or os.fstat(stream.fileno()).st_size < metadata.st_size:
+            raise RuntimeError('retained shutdown log truncated during observation')
+        data = data[:data.rfind(b'\n') + 1]
+        return data, {'path': str(path), 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
+                      'tail': data[-8192:].decode(errors='replace')}
+
+    def launch(value):
+        client = subprocess.Popen([str(receiver.PRIMARY), '--password-stdin'], env=ENV,
+                                  stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        clients.append(client)
+        proc = Path(f'/proc/{client.pid}')
+        deadline = time.monotonic() + 3
+        while (proc / 'cmdline').read_bytes().split(b'\0') != [os.fsencode(receiver.PRIMARY), b'--password-stdin', b'']:
+            if client.poll() is not None or time.monotonic() >= deadline:
+                raise RuntimeError('concurrent stop requester did not reach its exact installed role')
+            time.sleep(0.005)
+        status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+        if (status['Uid'].split() != ['0'] * 4 or not (proc / 'exe').samefile(receiver.PRIMARY)
+                or (proc / 'cgroup').read_text() == Path(f'/proc/{record["supervisor"]}/cgroup').read_text()):
+            raise RuntimeError('concurrent stop requester principal or image differs')
+        identity = {'pid': client.pid, 'start': int((proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19])}
+        client.stdin.write(value + '\n')
+        client.stdin.close()
+        client.stdin = None
+        return client, identity
+
+    def held():
+        if (any(client.poll() is not None for client in clients[:2])
+                or any(select.select([fd], [], [], 0)[0] for fd in pidfds.values())
+                or receiver.child_record() != record or receiver.credential() != first_value
+                or user_credential() != profile):
+            raise RuntimeError('queued changes lost pending ownership, durable ordering or profile isolation')
+        for tid in trace.attached:
+            proc = Path(f'/proc/{record["pid"]}/task/{tid}')
+            status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+            if ((proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[0] != b't'
+                    or int(status['TracerPid']) != os.getpid()):
+                raise RuntimeError('concurrent stop child escaped the exact tracing barrier')
+
+    try:
+        run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+        record = receiver.ready()
+        receiver.change(0, BASELINE_PASSWORD, True)
+        baseline, profile = receiver.credential(), user_credential()
+        receiver.keyed(BASELINE_PASSWORD, 'concurrent-stop-baseline', record, probe_sha)
+        initial = properties()
+        if (initial['ActiveState'] != 'active' or initial['MainPID'] != str(record['supervisor'])
+                or any(initial[key] != value for key, value in
+                       {'Type': 'notify', 'KillMode': 'mixed', 'NotifyAccess': 'main', 'TimeoutStopUSec': '30s'}.items())):
+            raise RuntimeError('concurrent stop lacks the installed supervisor')
+        reference = receiver.ServiceUnitResultReference()
+        identities = {}
+        for role, pid in (('supervisor', record['supervisor']), ('child', record['pid'])):
+            pidfds[role] = os.pidfd_open(pid)
+            identities[role] = {'pid': pid, 'start': int(Path(f'/proc/{pid}/stat').read_bytes().rsplit(b') ', 1)[1].split()[19])}
+        if identities['child']['start'] != record['start'] or receiver.child_record() != record:
+            raise RuntimeError('concurrent stop service identity changed')
+        owned_log(Path('/root/.local/share/logs/RustDesk/service'), record['supervisor'], 0, retained=retained_logs)
+        with stopped_child(receiver, record):
+            trace = receiver.TracedChildStop(record['pid'])
+            signal.pidfd_send_signal(pidfds['child'], signal.SIGCONT)
+            first, first_identity = launch(GUI_PASSWORD)
+            deadline = time.monotonic() + 5
+            while (first_value := receiver.credential()) == baseline:
+                if first.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError('first concurrent stop request did not persist')
+                time.sleep(0.01)
+            second, second_identity = launch(CONCURRENT_PASSWORD)
+            began = time.monotonic()
+            while time.monotonic() - began < 2:
+                held()
+                time.sleep(0.02)
+            run(['/usr/bin/systemctl', 'stop', '--no-block', 'rustdesk.service'], timeout=5)
+            stopping_at = time.monotonic()
+            while True:
+                held()
+                current = properties()
+                _, root_log = owned_log(Path('/root/.local/share/logs/RustDesk/service'), record['supervisor'], 0)
+                if (current['ActiveState'] == 'deactivating' and current['SubState'] == 'stop-sigterm'
+                        and root_log.count(b'R-T9: graceful shutdown initiated') == 1):
+                    break
+                if time.monotonic() - stopping_at > 3:
+                    raise RuntimeError('normal stop did not initiate actual service shutdown')
+                time.sleep(0.05)
+            # A fresh caller must not enter the closed admission queue.
+            late, late_identity = launch('Post-stop-must-not-apply-2026!')
+            stdout, stderr = late.communicate(timeout=5)
+            if late.returncode != 1 or stdout.strip() == 'Done!':
+                raise RuntimeError('post-stop request did not report refusal')
+            print('LINUX_INSTALLED_SETTINGS_STOP_REFUSAL=' + json.dumps({**late_identity,
+                  'exit': late.returncode, 'stdout': stdout, 'stderr': stderr}, sort_keys=True), flush=True)
+            # Cross the shipped 30-second stop deadline with both admitted owners held.
+            while time.monotonic() - stopping_at < 35:
+                held()
+                time.sleep(0.05)
+            current = properties()
+            if (current['MainPID'] != initial['MainPID'] or current['InvocationID'] != initial['InvocationID']
+                    or current['NRestarts'] != initial['NRestarts'] or current['ActiveState'] != 'deactivating'):
+                raise RuntimeError('queued changes did not survive the original unit stop deadline')
+            print('LINUX_INSTALLED_SETTINGS_STOP_PENDING=' + json.dumps({**record,
+                  'requesters': [first_identity, second_identity], 'threads': sorted(trace.attached),
+                  'seconds_after_stop': time.monotonic() - stopping_at, 'unit': current,
+                  'durable': first_value, 'profile_unchanged': True}, sort_keys=True), flush=True)
+            resumed_at = time.monotonic()
+            trace.release()
+            results = []
+            for client, identity in ((first, first_identity), (second, second_identity)):
+                stdout, stderr = client.communicate(timeout=10)
+                if client.returncode != 0 or stdout != 'Done!\n' or stderr:
+                    raise RuntimeError('admitted change lacked Applied after the shutdown barrier: '
+                                       + repr((client.returncode, stdout[-4096:], stderr[-4096:])))
+                results.append({**identity, 'exit': client.returncode, 'stdout': stdout})
+        deadline = resumed_at + 20
+        while (any(not select.select([fd], [], [], 0)[0] for fd in pidfds.values())
+               or Path('/sys/fs/cgroup/system.slice/rustdesk.service').exists()):
+            if time.monotonic() >= deadline:
+                raise RuntimeError('drained service did not retire its exact generation')
+            time.sleep(0.02)
+        for identity in identities.values():
+            proc = Path(f'/proc/{identity["pid"]}/stat')
+            if proc.exists() and int(proc.read_bytes().rsplit(b') ', 1)[1].split()[19]) == identity['start']:
+                raise RuntimeError('drained service process was not reaped')
+        service_absent()
+        outcome = properties()
+        final_value = receiver.credential()
+        if (outcome['ExecMainCode'] != '1' or outcome['NRestarts'] != initial['NRestarts']
+                or final_value in (baseline, first_value) or user_credential() != profile):
+            raise RuntimeError('concurrent drain lost its final credential or clean service outcome')
+        root_log, log_snapshot = root_snapshot()
+        if (not any(line.endswith(b'] Exit') for line in root_log.splitlines())
+                or b' ERROR ' in root_log):
+            raise RuntimeError('retained supervisor log lacks a clean final exit')
+        print('LINUX_INSTALLED_SETTINGS_STOP_COMPLETE=' + json.dumps({**record, 'requesters': results,
+              'seconds_after_resume': time.monotonic() - resumed_at, 'unit': outcome,
+              'durable': final_value, 'processes_reaped': identities, 'profile_unchanged': True,
+              'root_log': log_snapshot}, sort_keys=True), flush=True)
+        reference.close()
+        run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+        recovered = receiver.ready()
+        if (recovered['generation'] == record['generation'] or receiver.credential() != final_value):
+            raise RuntimeError('restart did not retain the final queued credential in a fresh generation')
+        credential_network(receiver, recovered, probe_sha, 'concurrent-stop-restart',
+                           new=CONCURRENT_PASSWORD, old=GUI_PASSWORD)
+    except Exception as error:
+        if retained_logs:
+            _, snapshot = root_snapshot()
+            print('LINUX_INSTALLED_SETTINGS_STOP_FAILURE=' + json.dumps(
+                {'error': str(error), 'root_log': snapshot}, sort_keys=True), flush=True)
+        raise
+    finally:
+        try:
+            if trace is not None and trace.attached:
+                if select.select([pidfds['child']], [], [], 0)[0]:
+                    trace.reap_killed()
+                else:
+                    trace.release()
+        finally:
+            try:
+                for client in clients:
+                    if client.poll() is None:
+                        client.kill()
+                    client.communicate(timeout=5)
+                    for pipe in (client.stdin, client.stdout, client.stderr):
+                        if pipe is not None and not pipe.closed:
+                            pipe.close()
+                run(['/usr/bin/systemctl', 'stop', 'rustdesk.service'], timeout=40)
+                service_absent()
+                wait_network_retirement(network_before)
+            finally:
+                if reference is not None:
+                    reference.close()
+                for _, stream, _ in retained_logs:
+                    stream.close()
+                for fd in pidfds.values():
+                    os.close(fd)
+
+
+def main(arguments, uncertain=False, admin_failure=False, graphical=False, concurrent_stop=False):
     guard()
     if graphical:
         arguments, agent_archive_sha = arguments[:-1], arguments[-1]
@@ -1425,7 +1626,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False):
         raise RuntimeError('fixture administrator UID already exists')
     try:
         receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
-        scenario_function = admin_failure_scenario if admin_failure else uncertain_scenario if uncertain else scenario
+        scenario_function = (concurrent_stop_scenario if concurrent_stop else admin_failure_scenario if admin_failure
+                             else uncertain_scenario if uncertain else scenario)
         if graphical:
             receiver.installed_desktop(lambda actor, session, pam: admin_failure_scenario(
                 receiver, probe_sha, graphical=(actor, session, pam)), settings=True, session_controller=True)
@@ -1438,7 +1640,12 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False):
             raise RuntimeError('installed application changed during execution')
     if digest(receiver.PROBE) != probe_sha:
         raise RuntimeError('CPace probe changed during the installed workflow')
-    if graphical:
+    if concurrent_stop:
+        print(f'LINUX_INSTALLED_SETTINGS_CONCURRENT_STOP_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
+              'clients=actual-root-cli service=actual queued=2 shutdown=systemctl barrier=ptrace '
+              'stop_deadline=extended outcomes=Applied post_stop=refused restart=retained '
+              'cpace=3 stale_refusals=1 cleanup=joined', flush=True)
+    elif graphical:
         print(f'LINUX_INSTALLED_SETTINGS_GRAPHICAL_NATIVE=pass cases=5 app_commit={commit} manifest_sha256={manifest_sha} '
               'ui=actual service=actual cancellation=gtk-selection-and-password authorization=polkit-pam '
               'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
@@ -1476,8 +1683,8 @@ if __name__ == '__main__':
         session(admin_failure=True, graphical=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure'):
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
-             admin_failure=sys.argv[1] == '--run-admin-failure')
+             admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop')
     else:
         raise SystemExit('closed installed-settings arguments required')

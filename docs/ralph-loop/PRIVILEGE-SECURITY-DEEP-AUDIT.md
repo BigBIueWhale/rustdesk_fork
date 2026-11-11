@@ -145115,3 +145115,28 @@ joins zero; private/RAM roots retire and three endpoint deltas are zero.
 `concurrent-ledger-6c2a90c1.json` and its eight-file 115,419-byte evidence set
 match CTE/TUF. The approximate 400,000-token compression obligation remains open.
 No VM or test remains running at this checkpoint.
+
+## 2026-11-11 — installed queued credential changes through service stop
+
+Previous turn was progress: 74b64685 corrects the reproduced GUI/root-CLI overlap
+and passes the complete installed scenario. Next exercise the same commit permit
+through shutdown; single-request drain evidence does not establish two admitted
+owners. Reuse the exact 74b64685 application, with no product rebuild or source change.
+The focused installed CLI scenario holds the child, submits two actual root requests,
+waits for the first durable value and an overlapping pending second request, then
+uses ordinary systemctl stop. A fresh third request must fail without persistence.
+Keep both owners pending for 35 seconds, beyond the shipped 30-second stop timeout;
+release the child, require both Applied, clean exit/reaping and absent endpoints,
+then restart and prove the final value by CPace while refusing the superseded value.
+These are root administrator CLIs, not another graphical-authentication claim.
+
+Source review: service shutdown closes admission and joins accepted transactions
+before retiring its child (src/ipc.rs and src/platform/linux.rs). The commit permit
+is requester-independent after irreversible admission. Reuse the native fixture's
+exact-thread TracedChildStop and retained systemd result reference. systemd v252's
+primary manuals specify mixed-mode main-process TERM, SIGCONT during shutdown,
+and notify-service stop-deadline extension; a plain SIGSTOP is not a reliable hold:
+https://raw.githubusercontent.com/systemd/systemd/v252/man/systemd.kill.xml
+https://raw.githubusercontent.com/systemd/systemd/v252/man/systemd.service.xml
+The new closed replay selector retains the existing RAM admission, isolated topology
+and joined cleanup. Native acceptance remains pending.

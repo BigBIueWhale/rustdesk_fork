@@ -1604,11 +1604,11 @@ def concurrent_stop_scenario(receiver, probe_sha, archive, network_before):
 
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+        receiver.change(0, BASELINE_PASSWORD, True)
         record = receiver.ready(serving=True)
         for pid in (record['supervisor'], record['pid']):
             package_process(pid)
         payload_before = payload_identity()
-        receiver.change(0, BASELINE_PASSWORD, True)
         baseline, profile = receiver.credential(), user_credential()
         receiver.keyed(BASELINE_PASSWORD, 'concurrent-stop-baseline', record, probe_sha)
         initial = properties()

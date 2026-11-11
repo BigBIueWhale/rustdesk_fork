@@ -145876,6 +145876,17 @@ their existing record-only readiness semantics. No product restart, timeout chan
 or post-baseline retry is introduced. This is a fixture correction for establishing
 the stable serving precondition; desktop startup/recovery acceptance is separate.
 
+The next run MnjUZoyTLB at c863e799 exits 1 (tool61233) during that prerequisite:
+the readiness wait precedes password provisioning, while direct_service.rs's
+R-S9 loop correctly parks the listener with an empty credential. This is a test
+ordering error, not evidence that the product failed to serve a provisioned
+credential. Move the existing root provisioning before serving readiness; retain
+the selected record unchanged throughout the subsequent drain assertions.
+No package replacement or concurrent-stop verdict ran. QEMU3971610 joins zero
+after 100.132 seconds; RAM peak 4,205,932,544 bytes, four zero listener deltas and
+exact 29-leaf diagnostic retirement are reconciled under the free lock.
+package-stop-c863e799.json and nine files / 178,205 bytes match CTE/TUF.
+
 ## 2026-11-11 — normal-package settings failure and recovery preparation
 
 The preceding turn is progress: normal-package graphical cancellation/concurrency

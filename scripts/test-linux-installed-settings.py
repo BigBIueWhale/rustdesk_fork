@@ -94,6 +94,8 @@ def install(source, target, mode=0o644):
 def prepare():
     if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
         raise RuntimeError('settings runtime preparation requires the ordinary isolated container')
+    print(run(['/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-installed-settings-log.py']),
+          end='', flush=True)
     for kind in ('xvfb', 'atspi'):
         print(run(['/bin/bash', f'/work/scripts/smoke-{kind}-prepare.sh'], timeout=60), end='', flush=True)
     flags = run(['/usr/bin/pkg-config', '--cflags', '--libs', 'x11', 'xtst', 'xi',
@@ -349,13 +351,30 @@ def owned_log(directory, pid, uid):
     if len(active) != 1:
         raise RuntimeError('the retained process must own exactly one current product log')
     path, = active
-    with path.open('rb') as stream:
+    # Capture a fixed prefix of this append-only log. Production rotates at 4 MiB;
+    # the observation cap permits that file plus a final record, not an unbounded read.
+    limit = 8 * 1024 * 1024
+    with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
         before = os.fstat(stream.fileno())
-        data = stream.read(131073)
+        if (not stat.S_ISREG(before.st_mode) or before.st_uid != uid or before.st_nlink != 1
+                or before.st_mode & 0o022 or (before.st_dev, before.st_ino) not in held):
+            raise RuntimeError('opened service log authority differs')
+        if before.st_size > limit:
+            raise RuntimeError(f'service log snapshot exceeds {limit} bytes: {before.st_size}')
+        data = stream.read(before.st_size)
         after = os.fstat(stream.fileno())
-    if (len(data) > 131072 or (before.st_dev, before.st_ino) not in held
-            or before.st_size != after.st_size or len(data) != after.st_size):
-        raise RuntimeError('service log exceeded its bound or changed during observation')
+        current = path.lstat()
+    if ((after.st_dev, after.st_ino) != (before.st_dev, before.st_ino)
+            or (current.st_dev, current.st_ino) != (before.st_dev, before.st_ino)
+            or after.st_uid != uid or after.st_nlink != 1 or after.st_mode & 0o022
+            or not before.st_size <= after.st_size <= limit or len(data) != before.st_size):
+        raise RuntimeError(f'service log snapshot changed: before={before.st_size} '
+                           f'after={after.st_size} read={len(data)}')
+    # A concurrent append may leave the captured prefix inside a UTF-8 log record.
+    data = data[:data.rfind(b'\n') + 1]
+    print('LINUX_INSTALLED_SETTINGS_LOG_SNAPSHOT=' + json.dumps({
+        'path': str(path), 'file_bytes_before': before.st_size, 'file_bytes_after': after.st_size,
+        'prefix_bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}, sort_keys=True), flush=True)
     return path, data
 
 

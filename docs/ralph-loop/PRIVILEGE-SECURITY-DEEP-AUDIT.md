@@ -144662,3 +144662,35 @@ The fixed tokenizer, seven controls and complete round trip pass. QEMU3825391
 joins with zero; private/RAM state disappear and three endpoint deltas are zero.
 `bounded-build-ledger-cc625f75.json` binds eight matching CTE/TUF files /
 116,194 bytes. The approximate 400,000-token compression target remains open.
+
+## 2026-11-11 — Corrected full-app recovery reaches log-observation failure
+
+Continue the reproduced installed recovery case with app `83fa8494` and its
+accepted manifest. TUF `9eD0BzUKQb` at harness `4970df73` reports Uncertain at
+602.342 seconds after all 21 pending checks. The same child9073/start5362,
+supervisor9064 and generation survive resume; mutual CPace uses the new password.
+The next observation fails before the old-password probe: `owned_log` rejects
+either a file above 128 KiB or any growth during its read. The exception does not
+distinguish those causes. Warning retention, old-password refusal and restart
+remain unverified, so the overall run is failed, not accepted.
+
+`linux-sigpipe-recovery-4970df73.json` retains that partial evidence and the
+complete raw guest/console logs; the outer tool excerpt is labeled truncated.
+Ten files / 132,523 bytes match CTE/TUF. QEMU3826896 joins with zero; private
+state and RAM retire, all four endpoint deltas are zero, and guest networking
+returns to baseline. Runtime is 732.328 seconds with 3,840,724,992 peak RAM
+workspace bytes. No new product correction is inferred from the observer failure.
+
+The observer now captures the initial descriptor-sized prefix of the exact held
+regular log, allowing append growth while refusing truncation, pathname replacement,
+authority drift and reads above 8 MiB. Production rotation is 4 MiB in
+`libs/hbb_common/src/lib.rs`; the former 128-KiB observation cap was unrelated.
+Only complete records from the captured prefix enter matching and hashing; their
+length/digest and before/after file lengths are retained. This follows the
+[descriptor metadata contract](https://docs.python.org/3/library/os.html#os.fstat)
+and [bounded buffered-read semantics](https://docs.python.org/3.11/library/io.html#io.BufferedIOBase.read).
+Six real-file cases run in the existing ordinary preparation container: large
+snapshot, append during observation, partial UTF-8 record, truncation, oversize and
+pathname replacement. Execute ordinary installed settings first for quick
+observer/regression feedback, then repeat the unchanged ten-minute uncertainty
+scenario on the same app. Product authority, deadlines and acceptance stay fixed.

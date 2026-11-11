@@ -145817,3 +145817,12 @@ This closes the five named normal-package graphical scenarios. No product defect
 was observed or product edit needed. Package Failed/Uncertain workflows, version
 upgrades, physical-seat/complete remote desktop behavior and final release evidence
 remain OPEN. Update the ledger and obtain its fresh isolated count.
+
+Fresh count aFiI2D0D2p at 37c72f22 exits zero (tool26018): 405,101 tokens /
+1,849,629 bytes, SHA-256 2a9bdb3a52f6cebba5ee5923a933540ce0202b40ca8a0b19c67c6c163b8d0565.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and its byte round trip. package-graphical-ledger-37c72f22.json and eight files /
+115,474 bytes match CTE/TUF. QEMU3948223 joins zero after 30.555 seconds; three
+host listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.

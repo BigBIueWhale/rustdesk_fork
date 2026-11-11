@@ -514,9 +514,16 @@ the unused lifecycle override/package. A separate no-NIC replay enforces the
 unchanged lock; Dart analysis accepts the required path-selection/SQLite APIs.
 `flutter-plugin-migration-2aa4157d.json` retains the exact manifest/lock, package
 metadata, output and joined cleanup. These are exploratory dependencies; the
-application and published caches remain unchanged. Next authenticate the fourteen
-new/changed archives, migrate both dialog calls and Windows/macOS secondary-window
-registrations, then compose the SDK/cache and build the APK. SDK/lock/engine
+application and published caches remain unchanged. All fourteen changed archives
+now pass first-pin cross-checking at `ba16484a`, TUF `wCPbX9TySX`: publisher
+metadata, exact pub.dev bytes, separately served CFUG bytes and the discovered
+lock agree for 767,477 bytes. `flutter-plugin-archives-ba16484a.json` retains
+per-package provenance, manifests, native build files and joined cleanup. Both
+new Android plugins use `flutter.compileSdkVersion` (36 in the candidate SDK)
+and declare AGP 8.13.1; the selector also declares Kotlin 2.3.0. The earlier
+Gradle fixture does not resolve this new plugin closure. Next stage the verified
+packages, migrate both dialog calls and Windows/macOS secondary-window
+registrations, then compose the actual SDK/cache closure and build the APK. SDK/lock/engine
 promotion, actual dialog/Android behavior and cross-platform acceptance stay **OPEN**.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**

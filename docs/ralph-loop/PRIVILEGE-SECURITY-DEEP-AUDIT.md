@@ -146923,3 +146923,41 @@ have none and no removals occur. Retain that observation accurately. The sealed
 host launcher kernel-denies owned IP sockets; no unrelated process was inspected
 or changed. Approximate400,000-token compression remains OPEN. This audit-only
 append preserves the measured ledger.
+
+## 2026-11-11 — candidate plugin archive provenance on restored TUF
+
+The existing password-authenticated SSH master works; CTE/TUF started clean at
+87c4a2a7. Continue the selected Android build prerequisite rather than repeat
+the accepted dependency resolve/offline/API checks. R-B12 requires each of the
+fourteen new or changed Pub archives to match publisher hashes and an independent
+content path. The Pub repository API defines archive_sha256 and archive_url;
+Flutter documents CFUG as the operator of pub.flutter-io.cn/storage.flutter-io.cn:
+https://raw.githubusercontent.com/dart-lang/pub/master/doc/repository-spec-v2.md
+https://docs.flutter.dev/community/china
+
+The bounded acquisition helper downloads metadata and archives from both paths,
+checks exact package/version/hash, inspects bounded archive metadata without
+extraction or execution, and publishes no cache. The first two attempts refuse
+archive URL assumptions: CFUG serves its published archive URLs from its storage
+domain, not the Pub API origin. Allow only that exact package storage path for
+CFUG; the publisher cannot substitute mirror content. b8dc93ed/NYMD7oHK2q and
+eedd438c/H02goSrNd0 retain failure capsules with seven passing refusal controls,
+zero listener deltas, exact QEMU joins and validated private/RAM retirement.
+Their respective fifteen-file evidence sets are 97,707 and 98,411 bytes on both
+hosts. No archive is accepted by either failed transaction.
+
+At ba16484a, wCPbX9TySX/tool35388 passes seven metadata refusals, changed-archive
+refusal, and all fourteen publisher/mirror/lock comparisons. The unique archives
+total767,477bytes; every package manifest agrees across the two metadata paths.
+The final success-v5 receipt binds source/tree, stdout/stderr, serial and capture.
+QEMU4045639 joins zero; outer57/monitor90.870seconds, peak RAM scratch3,067,744,256
+bytes, no added host listener, exact private/RAM/Unix endpoints absent. Nine files /
+380,794bytes, including flutter-plugin-archives-ba16484a.provenance.json, match
+CTE and TUF. Canonical inputs and existing source-bound artifacts remain intact.
+
+Authenticated native build files refine the next prerequisite: file_selector_android
+and sqflite_android use flutter.compileSdkVersion (candidate36) and declare
+AGP8.13.1; the selector declares Kotlin2.3.0 and Java17. Actual project resolution
+must include these inputs. The earlier AGP8.11.1/Kotlin2.2.21 fixture does not prove
+this plugin graph. No application migration, candidate cache publication, APK or
+native-dialog acceptance is claimed. Update the existing ledger and count it.

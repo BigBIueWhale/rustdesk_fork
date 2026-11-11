@@ -459,6 +459,18 @@ These scenarios do not establish remote rendered
 pixels/input, physical-seat switching or a complete desktop session workload.
 Canonical input promotion also remains open: the Debian recipe selects stock
 Flutter 3.24.5 while the accepted app uses the 3.47.5 candidate and patched engine.
+The candidate lock requires Dart >=3.11.0-0, so this needs coherent Android/Windows
+input migration as well. Candidate Android discovery at `2fad6b89` passes in TUF
+`yqCl41Hb9Q`: two matching downloads of all six embedding/ARM64/x86_64 JAR/POM
+objects, native ELF architecture and archive validation, exact Maven coordinates,
+and eleven embedding dependency coordinates. All six publisher SHA-1 sidecars
+return 404; the receipt explicitly retains incomplete checksum provenance and
+publishes no canonical inputs. `flutter-candidate-maven-2fad6b89.json` binds the
+raw output, successful outer receipt and joined VM/RAM cleanup. The preceding
+sidecar-only failure and exact diagnostic cleanup are in the audit. Next obtain
+publisher provenance and an independent content cross-check before first pins,
+then prepare the matched offline closure. SDK/lock/engine promotion, canonical
+build integration and cross-platform release acceptance remain **OPEN**.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,

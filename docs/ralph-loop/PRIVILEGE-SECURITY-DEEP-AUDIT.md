@@ -146428,3 +146428,31 @@ The result explicitly says canonical_inputs_published=false. This exploratory
 receipt cannot close R-B12 when publisher checksum provenance is missing; no
 release gate or canonical-input publisher is relaxed. A fresh run must establish
 the actual object availability/contents before choosing the next migration step.
+
+At2fad6b89, TUF yqCl41Hb9Q/tool67505 exits0. All six candidate objects exist:
+embedding/ARM64/x86_64 JAR/POM pairs each pass two identical downloads, exact
+coordinates, archive CRC/inventory and native ELF64 architecture checks. The
+embedding POM records eleven literal compile dependencies. All six SHA-1 sidecars
+return404, so publisher_checksums_complete=false and canonical_inputs_published=false
+remain explicit. This is successful bounded discovery, not R-B12 authentication
+or an APK/build acceptance result. No SDK/lock/release pin changes.
+
+Under the free shared/acquisition locks, reconcile the complete success-v5
+receipt against exact clean source/tree, serial and captured stdout hashes;
+preserve its reconstructed raw stdout and discovery JSON. QEMU3984553 joins0,
+outer elapsed66seconds/monitor99.006seconds, scratch peak3,072,966,656bytes;
+private run root and /dev/shm workspace are absent, listener additions are zero.
+Capsule flutter-candidate-maven-2fad6b89.json and eight bounded files/105,825bytes
+match CTE/TUF. No downloaded JAR/POM or disposable bulk image is retained.
+
+The exact Flutter update_engine_version.sh also selects the tracked release
+engine.version before any content-aware fallback; this supports the stamp-derived
+coordinate, without an arbitrary engine-content-hash substitution:
+https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/bin/internal/update_engine_version.sh
+Google's object API documents separately addressed metadata, generation selection
+and content access. Investigate that publisher provenance and an independent
+content cross-check next, before first pins and a matched Android offline closure:
+https://cloud.google.com/storage/docs/json_api/v1/objects
+https://cloud.google.com/storage/docs/json_api/v1/objects/get
+The release SDK migration remains selected and OPEN. Update the ledger and obtain
+its fresh isolated count; the retained application/engine evidence is unchanged.

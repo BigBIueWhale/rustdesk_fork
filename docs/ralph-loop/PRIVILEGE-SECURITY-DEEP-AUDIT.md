@@ -146911,3 +146911,15 @@ fl_register_plugins for each new engine; adding a second registration is wrong.
 The macOS explicit SQLite registration must follow the sqflite_darwin module.
 Real dialogs, application compilation, Android native compilation/runtime and
 complete release acceptance remain OPEN. Update the existing ledger and count it.
+
+Fresh count sZ3rcbK5gU at3c6f6d5e/tool56436 passes:407,267tokens/1,859,060bytes,
+SHA-256581a51d75da58817f9a3ff1930af9a6735d73ea7ab38d226dd4eb36644ec8295.
+The fixed tiktoken0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and byte round trip. flutter-plugin-migration-ledger-3c6f6d5e.json and eight files /
+115,489bytes match both hosts. QEMU4037517 joins zero after30.386seconds; RAM
+scratch peaks at403,075,072bytes and exact private/RAM roots are absent. The
+after snapshot observes one unattributed TCP127.0.0.1:8100 addition; before/during
+have none and no removals occur. Retain that observation accurately. The sealed
+host launcher kernel-denies owned IP sockets; no unrelated process was inspected
+or changed. Approximate400,000-token compression remains OPEN. This audit-only
+append preserves the measured ledger.

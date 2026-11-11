@@ -146373,3 +146373,35 @@ and byte round trip. package-admin-failure-ledger-5496dd30.json and eight files 
 host listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
+
+## 2026-11-11 — release SDK alignment; Android candidate input discovery
+
+The preceding actual-package authentication turn made progress. Select R-B5a/
+R-B7/R-B9/R-B10/R-B12 input alignment before another installed-settings scenario:
+canonical build-debian.sh still extracts stock Flutter3.24.5 and build.py invokes
+its stock Linux engine; accepted app6429f3cb instead uses Flutter3.47.5, local
+engine ddb1541d and a separately pinned project lock. Existing app and engine
+double-build evidence does not close this release-recipe mismatch. Inspect the
+actual canonical and candidate compiler paths, pins, lockfiles and TUF inputs.
+The candidate lock requires Dart>=3.11.0-0; the canonical lock requires>=3.5.0.
+The shared release SDK/lock cannot be switched only by changing the Linux pin;
+Android and Windows inputs/consumers must migrate coherently. R-B5a/section3.2
+still explicitly require3.24.5. Do not claim promotion or weaken that contract.
+
+Official Dart pub-get documentation requires an application lock and explains
+offline/enforced resolution; Flutter's tool and engine documentation require
+explicit local target/host engine selection and matched engine/compiler modes:
+https://dart.dev/tools/pub/cmd/pub-get
+https://raw.githubusercontent.com/flutter/flutter/master/docs/tool/README.md
+https://raw.githubusercontent.com/flutter/flutter/master/docs/engine/contributing/Compiling-the-engine.md
+Keep the already verified Linux SDK/engine available. The first concrete missing
+cross-platform input is the candidate Android Maven closure: embedding and both
+release ARM64 and runtime-test x86_64 engine objects at the pinned af7e796e
+revision. Extend the existing discovery entry rather than add another fetch path.
+It receives version/revision from pins.env, compares two downloads and the
+publisher SHA-1 sidecar, computes SHA-256, validates POM coordinates/dependencies
+and JAR/ELF architecture, and retains only the bounded receipt. One pair at a time
+uses at most128MiB plus a1KiB checksum; the existing256MiB tmpfs suffices. Use the
+4GiB/300-second acquisition VM admission instead of the generic20GiB/12-hour
+profile. Native discovery is pending. This does not acquire canonical inputs,
+promote SDK/lock pins, execute downloaded code or establish APK acceptance.

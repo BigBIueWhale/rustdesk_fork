@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Discover the exact Flutter 3.24.5 Android runtime Maven inputs.
+"""Discover Android runtime Maven inputs for the pinned Flutter SDK candidate.
 
 This maintenance helper never publishes build inputs.  It downloads each
 closed Google Storage object twice into private temporary storage, requires the
@@ -27,17 +27,18 @@ from typing import NoReturn
 from xml.etree import ElementTree
 
 
-ENGINE_REVISION = "a18df97ca57a249df5d8d68cd0820600223ce262"
-MAVEN_VERSION = f"1.0.0-{ENGINE_REVISION}"
 MAVEN_ROOT = "https://storage.googleapis.com/download.flutter.io/io/flutter"
 USER_AGENT = "rustdesk-fork-flutter-android-maven-discovery/1"
 DOWNLOAD_LIMIT = 64 * 1024 * 1024
 POM_LIMIT = 1024 * 1024
 ZIP_ENTRY_LIMIT = 10_000
 ZIP_EXPANDED_LIMIT = 256 * 1024 * 1024
-ARTIFACTS = ("flutter_embedding_release", "x86_64_release")
+NATIVE_ARTIFACTS = {
+    "arm64_v8a_release": ("lib/arm64-v8a/libflutter.so", 183),
+    "x86_64_release": ("lib/x86_64/libflutter.so", 62),
+}
+ARTIFACTS = ("flutter_embedding_release", *NATIVE_ARTIFACTS)
 EXTENSIONS = ("jar", "pom")
-LOWER_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class DiscoveryError(RuntimeError):
@@ -52,26 +53,23 @@ class ArtifactReceipt:
     size: int
     sha1: str
     sha256: str
+    publisher_sha1_url: str
     zip_entries: int | None
     zip_uncompressed_bytes: int | None
+    dependencies: list[dict[str, str]] | None
 
 
 def fail(message: str) -> NoReturn:
     raise DiscoveryError(message)
 
 
-def artifact_url(artifact: str, extension: str) -> str:
+def artifact_url(artifact: str, extension: str, maven_version: str) -> str:
     if artifact not in ARTIFACTS or extension not in EXTENSIONS:
         fail("Flutter Maven coordinate is outside the closed artifact set")
-    filename = f"{artifact}-{MAVEN_VERSION}.{extension}"
-    return f"{MAVEN_ROOT}/{artifact}/{MAVEN_VERSION}/{filename}"
-
-
-ALLOWED_URLS = frozenset(
-    artifact_url(artifact, extension)
-    for artifact in ARTIFACTS
-    for extension in EXTENSIONS
-)
+    if re.fullmatch(r"1\.0\.0-[0-9a-f]{40}", maven_version) is None:
+        fail("Flutter Maven version is not an exact engine revision")
+    filename = f"{artifact}-{maven_version}.{extension}"
+    return f"{MAVEN_ROOT}/{artifact}/{maven_version}/{filename}"
 
 
 class RejectRedirects(urllib.request.HTTPRedirectHandler):
@@ -102,10 +100,12 @@ def validate_private_directory(path: Path) -> tuple[int, int]:
 
 
 def download(
-    opener: urllib.request.OpenerDirector, url: str, output: Path
+    opener: urllib.request.OpenerDirector, url: str, output: Path,
+    allowed_urls: frozenset[str],
 ) -> tuple[int, str, str]:
-    if url not in ALLOWED_URLS:
+    if url not in allowed_urls:
         fail("download URL is outside the exact Flutter Maven allowlist")
+    byte_limit = 1024 if url.endswith(".sha1") else DOWNLOAD_LIMIT
     parent_identity = validate_private_directory(output.parent)
     if output.exists() or output.is_symlink():
         fail("download output is already occupied")
@@ -135,7 +135,7 @@ def download(
                 if re.fullmatch(r"[1-9][0-9]*", declared_text) is None:
                     fail("Flutter Maven Content-Length is malformed")
                 declared = int(declared_text)
-                if declared > DOWNLOAD_LIMIT:
+                if declared > byte_limit:
                     fail("Flutter Maven Content-Length exceeds its bound")
             descriptor = os.open(
                 output,
@@ -152,7 +152,7 @@ def download(
                 if not block:
                     break
                 received += len(block)
-                if received > DOWNLOAD_LIMIT:
+                if received > byte_limit:
                     fail("Flutter Maven input exceeds its byte bound")
                 sha1.update(block)
                 sha256.update(block)
@@ -207,7 +207,7 @@ def direct_text(root: ElementTree.Element, name: str) -> str:
     return value
 
 
-def validate_pom(path: Path, artifact: str) -> None:
+def validate_pom(path: Path, artifact: str, maven_version: str) -> list[dict[str, str]]:
     metadata = os.lstat(path)
     if metadata.st_size > POM_LIMIT:
         fail("Flutter Maven POM exceeds its byte bound")
@@ -221,7 +221,7 @@ def validate_pom(path: Path, artifact: str) -> None:
         "modelVersion": "4.0.0",
         "groupId": "io.flutter",
         "artifactId": artifact,
-        "version": MAVEN_VERSION,
+        "version": maven_version,
         "packaging": "jar",
     }
     for name, value in expected.items():
@@ -232,13 +232,25 @@ def validate_pom(path: Path, artifact: str) -> None:
     ]
     if len(dependencies) != 1:
         fail("Flutter Maven POM dependencies element is absent or duplicated")
-    dependency_count = sum(
-        child.tag.rsplit("}", 1)[-1] == "dependency" for child in dependencies[0]
-    )
-    if artifact == "x86_64_release" and dependency_count != 0:
-        fail("Flutter x86_64 engine POM unexpectedly has dependencies")
-    if artifact == "flutter_embedding_release" and not 1 <= dependency_count <= 64:
+    records = []
+    for dependency in dependencies[0]:
+        if dependency.tag.rsplit("}", 1)[-1] != "dependency":
+            fail("Flutter Maven dependency element differs")
+        record = {name: direct_text(dependency, name)
+                  for name in ("groupId", "artifactId", "version", "scope")}
+        if any(re.fullmatch(r"[A-Za-z0-9_.+-]{1,200}", value) is None
+               for value in record.values()):
+            fail("Flutter Maven dependency coordinate is not an exact literal")
+        if {child.tag.rsplit("}", 1)[-1] for child in dependency} != set(record):
+            fail("Flutter Maven dependency has unrecorded fields")
+        if record in records:
+            fail("Flutter Maven POM contains duplicate dependency coordinates")
+        records.append(record)
+    if artifact in NATIVE_ARTIFACTS and records:
+        fail("Flutter native engine POM unexpectedly has dependencies")
+    if artifact == "flutter_embedding_release" and not 1 <= len(records) <= 64:
         fail("Flutter embedding POM dependency count is outside its bound")
+    return records
 
 
 def validate_zip_name(name: str) -> None:
@@ -279,10 +291,10 @@ def validate_jar(path: Path, artifact: str) -> tuple[int, int]:
         bad = archive.testzip()
         if bad is not None:
             fail(f"Flutter Maven JAR member fails CRC validation: {bad}")
-        if artifact == "x86_64_release":
-            expected_name = "lib/x86_64/libflutter.so"
+        if artifact in NATIVE_ARTIFACTS:
+            expected_name, machine = NATIVE_ARTIFACTS[artifact]
             if regular_names != [expected_name]:
-                fail("Flutter x86_64 engine JAR inventory differs")
+                fail("Flutter native engine JAR inventory differs")
             with archive.open(expected_name) as stream:
                 header = stream.read(20)
             if (
@@ -290,9 +302,9 @@ def validate_jar(path: Path, artifact: str) -> tuple[int, int]:
                 or header[:4] != b"\x7fELF"
                 or header[4] != 2
                 or header[5] != 1
-                or int.from_bytes(header[18:20], "little") != 62
+                or int.from_bytes(header[18:20], "little") != machine
             ):
-                fail("Flutter x86_64 engine is not one little-endian ELF64 EM_X86_64")
+                fail("Flutter native engine ELF64 architecture differs")
         else:
             required = {
                 "META-INF/MANIFEST.MF",
@@ -314,13 +326,15 @@ def inspect_download(
     url: str,
     path: Path,
     observation: tuple[int, str, str],
+    maven_version: str,
 ) -> ArtifactReceipt:
     size, sha1, sha256 = observation
     if extension == "pom":
-        validate_pom(path, artifact)
+        dependencies = validate_pom(path, artifact, maven_version)
         entries = None
         expanded = None
     else:
+        dependencies = None
         entries, expanded = validate_jar(path, artifact)
     return ArtifactReceipt(
         artifact=artifact,
@@ -329,13 +343,18 @@ def inspect_download(
         size=size,
         sha1=sha1,
         sha256=sha256,
+        publisher_sha1_url=url + ".sha1",
         zip_entries=entries,
         zip_uncompressed_bytes=expanded,
+        dependencies=dependencies,
     )
 
 
-def discover() -> list[ArtifactReceipt]:
+def discover(maven_version: str) -> list[ArtifactReceipt]:
     opener = downloader()
+    allowed_urls = frozenset(artifact_url(artifact, extension, maven_version) + suffix
+                            for artifact in ARTIFACTS for extension in EXTENSIONS
+                            for suffix in ("", ".sha1"))
     with tempfile.TemporaryDirectory(prefix="rustdesk-flutter-maven-a.") as first_name:
         with tempfile.TemporaryDirectory(prefix="rustdesk-flutter-maven-b.") as second_name:
             first_root = Path(first_name)
@@ -345,23 +364,34 @@ def discover() -> list[ArtifactReceipt]:
             receipts: list[ArtifactReceipt] = []
             for artifact in ARTIFACTS:
                 for extension in EXTENSIONS:
-                    url = artifact_url(artifact, extension)
-                    filename = f"{artifact}-{MAVEN_VERSION}.{extension}"
+                    url = artifact_url(artifact, extension, maven_version)
+                    filename = f"{artifact}-{maven_version}.{extension}"
                     first_path = first_root / filename
                     second_path = second_root / filename
-                    first = download(opener, url, first_path)
-                    second = download(opener, url, second_path)
+                    checksum_path = first_root / (filename + ".sha1")
+                    download(opener, url + ".sha1", checksum_path, allowed_urls)
+                    publisher_sha1 = checksum_path.read_text(encoding="ascii").strip()
+                    if re.fullmatch(r"[0-9a-f]{40}", publisher_sha1) is None:
+                        fail("publisher SHA-1 sidecar is not one exact checksum")
+                    first = download(opener, url, first_path, allowed_urls)
+                    second = download(opener, url, second_path, allowed_urls)
                     if first != second:
                         fail("independent Flutter Maven downloads disagree")
+                    if first[1] != publisher_sha1:
+                        fail("Flutter Maven bytes differ from the publisher SHA-1")
                     first_receipt = inspect_download(
-                        artifact, extension, url, first_path, first
+                        artifact, extension, url, first_path, first, maven_version
                     )
                     second_receipt = inspect_download(
-                        artifact, extension, url, second_path, second
+                        artifact, extension, url, second_path, second, maven_version
                     )
                     if first_receipt != second_receipt:
                         fail("independent Flutter Maven validations disagree")
                     receipts.append(first_receipt)
+                    # Retain at most one independently checked pair in bounded scratch.
+                    first_path.unlink()
+                    second_path.unlink()
+                    checksum_path.unlink()
             return receipts
 
 
@@ -382,15 +412,15 @@ def write_test_file(path: Path, payload: bytes) -> None:
         os.close(descriptor)
 
 
-def self_test() -> None:
+def self_test(maven_version: str) -> None:
     expected = (
         "https://storage.googleapis.com/download.flutter.io/io/flutter/"
-        f"x86_64_release/{MAVEN_VERSION}/x86_64_release-{MAVEN_VERSION}.jar"
+        f"x86_64_release/{maven_version}/x86_64_release-{maven_version}.jar"
     )
-    if artifact_url("x86_64_release", "jar") != expected:
+    if artifact_url("x86_64_release", "jar", maven_version) != expected:
         fail("self-test exact URL construction failed")
     try:
-        artifact_url("../escape", "jar")
+        artifact_url("../escape", "jar", maven_version)
     except DiscoveryError:
         pass
     else:
@@ -405,21 +435,62 @@ def self_test() -> None:
                 '<?xml version="1.0"?><project xmlns="http://maven.apache.org/POM/4.0.0">'
                 "<modelVersion>4.0.0</modelVersion><groupId>io.flutter</groupId>"
                 "<artifactId>x86_64_release</artifactId>"
-                f"<version>{MAVEN_VERSION}</version><packaging>jar</packaging>"
+                f"<version>{maven_version}</version><packaging>jar</packaging>"
                 "<dependencies></dependencies></project>"
             ).encode("ascii"),
         )
-        validate_pom(pom, "x86_64_release")
-        jar = root / "engine.jar"
-        elf = bytearray(20)
-        elf[:6] = b"\x7fELF\x02\x01"
-        elf[18:20] = (62).to_bytes(2, "little")
-        with zipfile.ZipFile(jar, "w", compression=zipfile.ZIP_DEFLATED) as archive:
-            archive.writestr("lib/x86_64/libflutter.so", bytes(elf))
-        os.chmod(jar, 0o400)
-        if validate_jar(jar, "x86_64_release") != (1, 20):
-            fail("self-test engine JAR validation receipt differs")
-    print("FLUTTER_ANDROID_MAVEN_DISCOVERY_SELF_TEST=pass")
+        if validate_pom(pom, "x86_64_release", maven_version) != []:
+            fail("self-test native POM dependency receipt differs")
+        for artifact, (member, machine) in NATIVE_ARTIFACTS.items():
+            for observed in (machine, 0):
+                jar = root / f"{artifact}-{observed}.jar"
+                elf = bytearray(20)
+                elf[:6] = b"\x7fELF\x02\x01"
+                elf[18:20] = observed.to_bytes(2, "little")
+                with zipfile.ZipFile(jar, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                    archive.writestr(member, bytes(elf))
+                os.chmod(jar, 0o400)
+                if observed == machine:
+                    if validate_jar(jar, artifact) != (1, 20):
+                        fail("self-test engine JAR validation receipt differs")
+                else:
+                    try:
+                        validate_jar(jar, artifact)
+                    except DiscoveryError:
+                        pass
+                    else:
+                        fail("self-test accepted the wrong ELF machine")
+        try:
+            validate_pom(pom, "arm64_v8a_release", maven_version)
+        except DiscoveryError:
+            pass
+        else:
+            fail("self-test accepted a POM for the wrong architecture")
+        expected_dependency = {"groupId": "androidx.lifecycle", "artifactId": "lifecycle-common",
+                               "version": "2.7.0", "scope": "compile"}
+        dependency = "".join(f"<{key}>{value}</{key}>"
+                             for key, value in expected_dependency.items())
+        for case, version, extra in (("valid", maven_version, ""),
+                                     ("wrong-version", "1.0.0-other", ""),
+                                     ("unrecorded", maven_version, "<optional>true</optional>")):
+            embedding = root / (case + ".pom")
+            write_test_file(embedding, (
+                '<project><modelVersion>4.0.0</modelVersion><groupId>io.flutter</groupId>'
+                '<artifactId>flutter_embedding_release</artifactId>'
+                f'<version>{version}</version><packaging>jar</packaging>'
+                f'<dependencies><dependency>{dependency}{extra}</dependency></dependencies>'
+                '</project>'
+            ).encode("ascii"))
+            try:
+                result = validate_pom(embedding, "flutter_embedding_release", maven_version)
+            except DiscoveryError:
+                if case == "valid":
+                    raise
+            else:
+                if case != "valid" or result != [expected_dependency]:
+                    fail("self-test embedding dependency acceptance differs")
+    print("FLUTTER_ANDROID_MAVEN_DISCOVERY_SELF_TEST=pass architectures=arm64-v8a,x86_64 "
+          "dependencies=exact version=exact wrong_machine=refused")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -427,21 +498,29 @@ def parse_arguments() -> argparse.Namespace:
     operation = parser.add_mutually_exclusive_group(required=True)
     operation.add_argument("--self-test", action="store_true")
     operation.add_argument("--discover", action="store_true")
+    parser.add_argument("--engine-revision", required=True)
+    parser.add_argument("--flutter-version", required=True)
     return parser.parse_args()
 
 
 def main() -> int:
     arguments = parse_arguments()
     try:
+        if re.fullmatch(r"[0-9a-f]{40}", arguments.engine_revision) is None:
+            fail("engine revision must be the full pinned lowercase commit")
+        if re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", arguments.flutter_version) is None:
+            fail("Flutter version must be an exact release")
+        maven_version = f"1.0.0-{arguments.engine_revision}"
         if arguments.self_test:
-            self_test()
+            self_test(maven_version)
         else:
-            receipts = discover()
+            receipts = discover(maven_version)
             if len(receipts) != len(ARTIFACTS) * len(EXTENSIONS):
                 fail("Flutter Maven discovery receipt cardinality differs")
             value = {
-                "engine_revision": ENGINE_REVISION,
-                "maven_version": MAVEN_VERSION,
+                "flutter_version": arguments.flutter_version,
+                "engine_revision": arguments.engine_revision,
+                "maven_version": maven_version,
                 "observations": 2,
                 "artifacts": [asdict(receipt) for receipt in receipts],
             }

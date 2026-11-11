@@ -2833,12 +2833,16 @@ maintenance_discover_flutter_android_maven() {
         --mount "type=bind,source=$FLUTTER_ANDROID_MAVEN_DISCOVERY_HELPER,target=/authority/discover-flutter-android-maven.py,readonly,bind-recursive=disabled" \
         "$(online_fetch_builder_runtime_ref "$builder")" \
         /usr/bin/python3 -I -S /authority/discover-flutter-android-maven.py \
-            --self-test
+            --self-test \
+            --engine-revision "$FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION" \
+            --flutter-version "$FLUTTER_PRESENTATION_CANDIDATE_VERSION"
     online_docker_run_archive_acquisition \
         --mount "type=bind,source=$FLUTTER_ANDROID_MAVEN_DISCOVERY_HELPER,target=/authority/discover-flutter-android-maven.py,readonly,bind-recursive=disabled" \
         "$(online_fetch_builder_runtime_ref "$builder")" \
         /usr/bin/python3 -I -S /authority/discover-flutter-android-maven.py \
-            --discover
+            --discover \
+            --engine-revision "$FLUTTER_PRESENTATION_CANDIDATE_ENGINE_REVISION" \
+            --flutter-version "$FLUTTER_PRESENTATION_CANDIDATE_VERSION"
 }
 
 stage_vcpkg_fixed_archives() {

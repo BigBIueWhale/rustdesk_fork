@@ -266,7 +266,7 @@ def administrator_units(source, archive, version, settings, receiver):
 
 
 def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before,
-                      uncertain=False):
+                      uncertain=False, admin_failure=False):
     desktop_runtime(settings, prepared)
     require(not Path('/etc/ld.so.conf.d/rustdesk-settings-fixture.conf').exists()
             and not Path('/usr/local/lib/rustdesk-settings-fixture').exists(),
@@ -308,12 +308,14 @@ def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_arc
                 receiver, probe_sha, graphical=(actor, session, pam), network_before=network_before),
                 settings=True, session_controller=True)
         else:
-            scenario = settings.uncertain_scenario if uncertain else settings.scenario
+            scenario = (settings.admin_failure_scenario if admin_failure else
+                        settings.uncertain_scenario if uncertain else settings.scenario)
             receiver.installed_desktop(lambda: scenario(receiver, probe_sha, network_before), settings=True)
         settings.service_absent()
         require(settings.run(['/usr/bin/dpkg', '--verify', 'rustdesk']) == '',
                 'settings workflow changed the installed package')
         label, cases = (('GRAPHICAL', 5) if agent_archive_sha is not None else
+                        ('ADMIN_FAILURE', 3) if admin_failure else
                         ('UNCERTAIN', 3) if uncertain else ('FAILURE', 8))
         print(f'LINUX_DEBIAN_{label}_WORKFLOW=pass cases={cases} libraries=apt policy=package '
               'unit=vendor authorization=polkit-pam profile=unchanged cleanup=joined', flush=True)
@@ -579,7 +581,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             require(receiver.credential() == credential, 'drained credential did not survive restart')
         elif agent_archive_sha is not None or settings_mode is not None:
             settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before,
-                              uncertain=settings_mode == 'uncertain')
+                              uncertain=settings_mode == 'uncertain', admin_failure=settings_mode == 'admin-failure')
             require(select.select([first], [], [], 0)[0] == [first],
                     'settings workflow did not retire the original package supervisor')
             credential = receiver.credential()
@@ -745,6 +747,12 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
               'service=actual queued=2 shutdown=package-prerm barrier=ptrace stop_deadline=extended '
               'outcomes=Applied post_stop=refused restart=retained cpace=3 stale_refusals=1 '
               'reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
+    elif settings_mode == 'admin-failure':
+        print(f'LINUX_DEBIAN_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired '
+              'ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam '
+              'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
+              'cpace=4 stale_refusals=1 cleanup=joined', flush=True)
     elif settings_mode == 'uncertain':
         print(f'LINUX_DEBIAN_SETTINGS_UNCERTAIN_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired '
@@ -771,12 +779,13 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 
 if __name__ == '__main__':
     require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
-            or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-concurrent-stop',
+            or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop',
                                                      '--run-upgrade', '--run-conffiles')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
          sys.argv[8] if len(sys.argv) == 9 else None,
          settings_mode={'--run-settings': 'failure', '--run-uncertain': 'uncertain',
+                        '--run-admin-failure': 'admin-failure',
                         '--run-concurrent-stop': 'concurrent-stop'}.get(sys.argv[1]),
          upgrade=sys.argv[1] == '--run-upgrade', conffiles=sys.argv[1] == '--run-conffiles')

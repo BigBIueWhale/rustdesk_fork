@@ -146298,3 +146298,32 @@ bytes match both hosts. QEMU3975673 joins zero after 30.765 seconds; three host
 listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
+
+## 2026-11-11 — incorrect administrator password and retry in the actual package
+
+The preceding actual-package drain acceptance is progress. Select mode 3's
+remaining direct-layout authorization evidence under R-S0/R-S11b/R-S11i before
+another successful lifecycle case: wrong administrator credentials must leave
+protected state unchanged, and the same actual GUI must complete a fresh correct
+challenge without profile fallback. Reuse app6429f3cb and the authenticated
+dependency-complete package; no application build or product edit is needed.
+
+Review Bookworm pkcheck(1) and pkttyagent(1): receiver authorization uses the
+kernel-derived PID/start/UID subject, only exit0 grants, and the agent's exact
+PID/start plus notification-descriptor closure establish registration. Sources:
+https://manpages.debian.org/bookworm/polkitd/pkcheck.1.en.html
+https://manpages.debian.org/bookworm/polkitd/pkttyagent.1.en.html
+Retain the three cases/eleven Flutter stages, real wrong-password PAM failure,
+exact helper exit/reap, unchanged protected/profile credentials, same GUI/agent
+correct retry, no-agent denial, four CPace controls and stale-password refusal.
+The registered agent is pkttyagent; this does not claim wrong-password interaction
+with the graphical OS-agent dialog, whose cancellation workflow is separate.
+
+Route mode 3 through real APT/dpkg installation and the common package lifecycle.
+Require package-owned unit/policy and ordinary APT product libraries at every GUI
+stage. Provision before selecting a serving child, as required by R-S9 parking.
+Remove the last direct-layout installer, copied-library preparation, ldconfig
+injection and session runtime branch; all remaining installed settings modes now
+use the actual package. Move the six real-file log-snapshot controls into package
+settings preparation so their coverage survives deletion. Native acceptance is
+pending; final artifacts, other authority/lifecycle paths and R-S0 remain OPEN.

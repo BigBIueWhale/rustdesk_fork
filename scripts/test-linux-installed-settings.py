@@ -11,7 +11,6 @@ import json
 import os
 from pathlib import Path
 import pty
-import pwd
 import re
 import runpy
 import select
@@ -115,66 +114,6 @@ def prepare_drivers(graphical=False):
                  '/work/scripts/linux-polkit-dialog-x11.c', *flags, '-o', f'/out/agent-driver-{copy}'], timeout=60)
         if digest('/out/agent-driver-first') != digest('/out/agent-driver-second'):
             raise RuntimeError('repeated graphical-agent driver builds differ')
-
-
-def prepare():
-    if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
-        raise RuntimeError('settings runtime preparation requires the ordinary isolated container')
-    print(run(['/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-installed-settings-log.py']),
-          end='', flush=True)
-    for kind in ('xvfb', 'atspi'):
-        print(run(['/bin/bash', f'/work/scripts/smoke-{kind}-prepare.sh'], timeout=60), end='', flush=True)
-    prepare_drivers()
-    libraries = Path('/out/libraries')
-    libraries.mkdir()
-    roots = []
-    for path in Path('/app/bundle').rglob('*'):
-        if path.is_file():
-            with path.open('rb') as stream:
-                if stream.read(4) == b'\x7fELF':
-                    roots.append(path)
-    roots += [Path('/out/driver-first'), Path('/xvfb-root/usr/bin/Xvfb'),
-              Path('/xvfb-root/usr/bin/xkbcomp'), Path('/usr/bin/dbus-daemon'), Path('/usr/bin/fc-match'),
-              Path('/atspi-root/usr/libexec/at-spi-bus-launcher'),
-              Path('/atspi-root/usr/libexec/at-spi2-registryd')]
-    dynamic = [Path('/usr/lib/x86_64-linux-gnu') / name for name in
-               ('dri/swrast_dri.so', 'libEGL_mesa.so.0', 'libGLX_mesa.so.0',
-                'libEGL.so.1', 'libGLESv2.so.2', 'libGL.so.1', 'libGLX.so.0')]
-    if not all(p.is_file() for p in dynamic):
-        raise RuntimeError('pinned image lacks the software renderer closure')
-    roots += dynamic
-    environment = {**ENV, 'LD_LIBRARY_PATH': '/app/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu'}
-    for executable in roots:
-        listing = run(['/usr/bin/ldd', str(executable)], env=environment)
-        if 'not found' in listing:
-            raise RuntimeError(f'missing settings runtime dependency: {listing}')
-        dependencies = [Path(m) for m in re.findall(r'(?:=>\s+|^\s*)(/\S+)\s+\(', listing, re.M)]
-        if executable in dynamic:
-            dependencies.append(executable)
-        for source in dependencies:
-            if str(source).startswith('/app/'):
-                continue
-            target = libraries / source.name
-            if target.exists():
-                if digest(target) != digest(source):
-                    raise RuntimeError(f'runtime dependency basename collision: {source.name}')
-            else:
-                shutil.copyfile(source, target)
-    for source, name in (('/usr/share/X11/xkb', 'xkb'),
-                         ('/usr/share/fonts/truetype/dejavu', 'fonts'), ('/etc/fonts', 'fontconfig')):
-        shutil.copytree(source, '/out/' + name)
-    shutil.copyfile('/usr/bin/fc-match', '/out/fc-match')
-    vendor = Path('/usr/share/glvnd/egl_vendor.d/50_mesa.json')
-    if json.loads(vendor.read_text()) != {'file_format_version': '1.0.0',
-                                         'ICD': {'library_path': 'libEGL_mesa.so.0'}}:
-        raise RuntimeError('pinned Mesa vendor discovery differs')
-    shutil.copyfile(vendor, '/out/50_mesa.json')
-    records = {str(p.relative_to('/out')): {'sha256': digest(p), 'bytes': p.stat().st_size}
-               for p in Path('/out').rglob('*') if p.is_file()}
-    if sum(r['bytes'] for r in records.values()) > 268435456:
-        raise RuntimeError('settings runtime closure exceeds 256 MiB')
-    Path('/out/manifest.json').write_text(json.dumps(records, sort_keys=True))
-    print(f'LINUX_INSTALLED_SETTINGS_PREPARED=pass driver_builds=2 equality=bytes runtime_files={len(records)}', flush=True)
 
 
 def upgrade_manifest(source, inputs):
@@ -312,6 +251,8 @@ def prepare_package(single=False, graphical=False, settings=False, upgrade=False
         print(run(['/bin/bash', '/work/scripts/smoke-xvfb-prepare.sh'], timeout=60), end='', flush=True)
         shutil.copytree('/usr/share/X11/xkb', '/out/xkb')
     if graphical or settings:
+        print(run(['/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-installed-settings-log.py']),
+              end='', flush=True)
         prepare_drivers(graphical=graphical)
         print(run(['/bin/bash', '/work/scripts/smoke-atspi-prepare.sh'], timeout=60), end='', flush=True)
     records = {str(p.relative_to('/out')): {'sha256': digest(p), 'bytes': p.stat().st_size}
@@ -321,7 +262,7 @@ def prepare_package(single=False, graphical=False, settings=False, upgrade=False
     Path('/out/manifest.json').write_text(json.dumps(records, sort_keys=True))
 
 
-def prepare_runtime(source, execution, image, client, sock, config, graphical=False, package=False,
+def prepare_runtime(source, execution, image, client, sock, config, graphical=False,
                     package_install=False, settings=False, upgrade=False, conffiles=False):
     prepared = WORK / 'prepared'
     prepared.mkdir(mode=0o700)
@@ -332,8 +273,7 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
         mounts.append((str(MEDIA / 'debian-upgrade'), '/upgrade-input', True))
     if conffiles:
         mounts.append((str(MEDIA / 'debian-conffiles'), '/conffile-input', True))
-    for kind in (('xvfb', 'atspi') if graphical or settings else ('xvfb',) if package_install
-                 else () if package else ('xvfb', 'atspi')):
+    for kind in (('xvfb', 'atspi') if graphical or settings else ('xvfb',) if package_install else ()):
         mounts.append((str(source / 'online/inputs' / (kind + '-debs')), f'/{kind}-inputs', True))
         for suffix in ('debs', 'root'):
             path = WORK / f'{kind}-{suffix}'
@@ -358,7 +298,7 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
              else '--prepare-package-graphical' if graphical
              else '--prepare-package-settings' if settings
              else '--prepare-package-install' if package_install
-             else '--prepare-package' if package else '--prepare']
+             else '--prepare-package']
     container = docker(args).strip()
     if re.fullmatch('[0-9a-f]{64}', container) is None:
         raise RuntimeError('settings preparation container identity differs')
@@ -389,41 +329,6 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
         if path.is_symlink() or path.stat().st_size != record['bytes'] or digest(path) != record['sha256']:
             raise RuntimeError('prepared runtime bytes changed')
     return prepared
-
-
-def install_runtime(prepared):
-    runtime = Path('/usr/local/lib/rustdesk-settings-fixture')
-    runtime.mkdir(mode=0o755)
-    runtime.chmod(0o755)
-    for library in (prepared / 'libraries').iterdir():
-        if re.match(r'^(ld-linux|lib(c|m|pthread|dl|rt|util|anl|resolv)\.so\.)', library.name):
-            continue  # The signed OS packages own libc and its matching interpreter.
-        install(library, runtime / library.name)
-    Path('/etc/ld.so.conf.d/rustdesk-settings-fixture.conf').write_text(str(runtime) + '\n')
-    for path in (WORK / 'atspi-root/usr').rglob('*'):
-        if path.is_file():
-            relative = path.relative_to(WORK / 'atspi-root')
-            install(path, Path('/') / relative, 0o755 if 'libexec' in path.parts else 0o644)
-    install(WORK / 'xvfb-root/usr/bin/Xvfb', WORK / 'Xvfb', 0o755)
-    install(WORK / 'xvfb-root/usr/bin/xkbcomp', '/usr/bin/xkbcomp', 0o755)
-    for path in (WORK / 'xvfb-root/usr/lib').rglob('*.so*'):
-        if path.is_file():
-            install(path, runtime / path.name)
-    for name, destination in (('xkb', WORK / 'xkb'),
-                              ('fonts', Path('/usr/share/fonts/truetype/dejavu')),
-                              ('fontconfig', Path('/etc/fonts'))):
-        for path in (prepared / name).rglob('*'):
-            if path.is_file():
-                install(path, destination / path.relative_to(prepared / name))
-    install(prepared / 'fc-match', WORK / 'fc-match', 0o755)
-    install(prepared / 'driver-first', WORK / 'settings-driver', 0o755)
-    install(prepared / '50_mesa.json', '/usr/share/glvnd/egl_vendor.d/50_mesa.json')
-    # Xvfb starts with the receiver's closed environment, before the GUI environment.
-    install(prepared / 'libraries/swrast_dri.so', '/usr/lib/x86_64-linux-gnu/dri/swrast_dri.so')
-    run(['/usr/sbin/ldconfig'])
-    listing = run([*ordinary(4001), '/usr/bin/ldd', str(WORK / 'Xvfb')])
-    if 'not found' in listing:
-        raise RuntimeError(f'ordinary desktop cannot load its installed runtime: {listing}')
 
 
 def retire_children():
@@ -481,7 +386,7 @@ def install_graphical_agent(archive_sha):
     print(f'LINUX_INSTALLED_GRAPHICAL_AGENT=pass package=0.105-8 sha256={GRAPHICAL_AGENT_SHA}', flush=True)
 
 
-def session(restarted=False, uncertain=False, admin_failure=False, graphical=False, packaged=False):
+def session(restarted=False, uncertain=False, admin_failure=False, graphical=False):
     guard(4001)
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), 'cannot retain GUI descendants')
@@ -490,12 +395,9 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
                    'XDG_RUNTIME_DIR': '/run/user/4001', 'XDG_SESSION_TYPE': 'x11',
                    'XDG_DATA_DIRS': '/usr/local/share:/usr/share', 'GDK_BACKEND': 'x11',
                    'LIBGL_ALWAYS_SOFTWARE': '1'}
-    if not packaged:
-        environment['LIBGL_DRIVERS_PATH'] = '/usr/local/lib/rustdesk-settings-fixture'
     bus = app = agent = None
     try:
-        font = run(['/usr/bin/fc-match' if packaged else str(WORK / 'fc-match'),
-                    '-f', '%{file}', 'sans-serif'], env=environment).strip()
+        font = run(['/usr/bin/fc-match', '-f', '%{file}', 'sans-serif'], env=environment).strip()
         if not font.startswith('/usr/share/fonts/truetype/dejavu/') or not Path(font).is_file():
             raise RuntimeError(f'ordinary desktop has no installed sans-serif font: {font}')
         print(f'LINUX_INSTALLED_SETTINGS_FONT=pass path={font} sha256={digest(font)}',
@@ -1089,17 +991,8 @@ def pending_graphical_pam(agent_identity):
         time.sleep(0.01)
 
 
-def admin_failure_scenario(receiver, probe_sha, graphical=None, network_before=None):
-    unit = Path('/etc/systemd/system/rustdesk.service')
-    if os.path.lexists(unit):
-        raise RuntimeError('administrator failure scenario requires absent initial service state')
-    if graphical is None:
-        install(MEDIA / 'repo/res/rustdesk.service', unit)
-        run(['/usr/bin/systemctl', 'daemon-reload'])
-    else:
-        package_unit()
-    if network_before is None:
-        network_before = network_state()
+def admin_failure_scenario(receiver, probe_sha, network_before, graphical=None):
+    package_unit()
     authorization = ExitStack()
     process = None
     requester = committed = profile_before = authority = None
@@ -1112,8 +1005,8 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None, network_before=N
     cancellations = 0
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
-        record = receiver.ready()
         receiver.change(0, BASELINE_PASSWORD, True)
+        record = receiver.ready(serving=True)
         before = receiver.credential()
         receiver.keyed(BASELINE_PASSWORD, 'gui-admin-failure-baseline', record, probe_sha)
         listener = receiver.direct_listener(record)
@@ -1154,9 +1047,9 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None, network_before=N
                                                  'current_record': current_record, 'expected_listener': listener,
                                                  'current_listener': current_listener}, sort_keys=True))
             requester = identity
+            for pid in (requester[0], record['supervisor'], record['pid']):
+                package_process(pid)
             if graphical is not None:
-                for pid in (requester[0], record['supervisor'], record['pid']):
-                    package_process(pid)
                 if (proc / 'cgroup').read_text() != session_cgroup:
                     raise RuntimeError('GUI left the native desktop session')
                 if committed is None or stage == 'applied':
@@ -1773,13 +1666,12 @@ def concurrent_stop_scenario(receiver, probe_sha, archive, network_before):
 
 
 def main(arguments, uncertain=False, admin_failure=False, graphical=False, concurrent_stop=False, package=False,
-         package_install=False, settings=False, upgrade=False, conffiles=False):
+         settings=False, upgrade=False, conffiles=False):
     guard()
     agent_archive_sha = None
     if graphical:
         arguments, agent_archive_sha = arguments[:-1], arguments[-1]
-    if graphical or settings or uncertain or concurrent_stop or upgrade or conffiles:
-        package_install = True
+    package_install = not package
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
     source, app_input, provider = Path(source), Path(app_input), Path(provider)
@@ -1801,8 +1693,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
         raise RuntimeError('materialized app destination differs')
     execution = Path(execution)
     prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical,
-                               package=package or package_install, package_install=package_install,
-                               settings=settings or uncertain, upgrade=upgrade, conffiles=conffiles)
+                               package_install=package_install, settings=settings or uncertain or admin_failure,
+                               upgrade=upgrade, conffiles=conffiles)
     if not package:
         probe_manifest = MEDIA / 'settings-probe/peer-manifest.json'
         probe = MEDIA / 'settings-probe/probe_client'
@@ -1817,7 +1709,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-concurrent-stop' if concurrent_stop else '--run-conffiles' if conffiles
+                        '--run-admin-failure' if admin_failure else '--run-concurrent-stop' if concurrent_stop
+                        else '--run-conffiles' if conffiles
                         else '--run-upgrade' if upgrade else '--run-uncertain' if uncertain
                         else '--run-settings' if settings else '--run', str(source),
                         str(prepared), str(app_input), manifest_sha, commit, probe_sha,
@@ -1829,54 +1722,10 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
               'packages=2 equality=bytes constructor=production archive=validated payloads=unchanged '
               'install=unexecuted app_build=absent cleanup=joined', flush=True)
         return
-    receiver.install_polkit(archive_sha, polkit_manifest)
-    install_runtime(prepared)
-    manifest = json.loads((app_input / 'app-manifest.json').read_text())
-    if digest(app_input / 'app-manifest.json') != manifest_sha or manifest['context'] != json.loads(context):
-        raise RuntimeError('installed app manifest changed')
-    bundle = Path('/usr/share/rustdesk')
-    if bundle.exists():
-        raise RuntimeError('installed app destination was occupied')
-    for name, record in manifest['files'].items():
-        path = execution / name
-        if path.stat().st_size != record['bytes'] or digest(path) != record['sha256']:
-            raise RuntimeError('materialized payload differs before installation')
-        if name.startswith('bundle/'):
-            install(path, bundle / name[len('bundle/'):], 0o755 if name == 'bundle/rustdesk' else 0o644)
-    for path in [bundle, *(p for p in bundle.rglob('*') if p.is_dir())]:
-        path.chmod(0o755)
-    install(bundle / 'rustdesk', bundle / 'rustdesk-service-child', 0o711)
-    Path('/usr/bin/rustdesk').symlink_to('../share/rustdesk/rustdesk')
-    install(provider / 'libxdo.so.3', '/usr/lib/rustdesk-fork/libxdo.so.3')
-    Path('/usr/lib/rustdesk-fork').chmod(0o755)
-    try:
-        pwd.getpwuid(4003)
-    except KeyError:
-        run(['/usr/sbin/useradd', '--uid', '4003', '--user-group', '--create-home',
-             '--shell', '/usr/sbin/nologin', '--groups', 'sudo', 'rdreceiver4003'])
-    else:
-        raise RuntimeError('fixture administrator UID already exists')
-    try:
-        receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
-        receiver.installed_desktop(lambda: admin_failure_scenario(receiver, probe_sha), settings=True)
-    finally:
-        run(['/usr/sbin/userdel', 'rdreceiver4003'])
-    for name, record in manifest['files'].items():
-        if name.startswith('bundle/') and digest(bundle / name[len('bundle/'):]) != record['sha256']:
-            raise RuntimeError('installed application changed during execution')
-    if digest(receiver.PROBE) != probe_sha:
-        raise RuntimeError('CPace probe changed during the installed workflow')
-    if admin_failure:
-        print(f'LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
-              'ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam '
-              'helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent '
-              'cpace=4 stale_refusals=1 cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':
-    if sys.argv[1:] == ['--prepare']:
-        prepare()
-    elif sys.argv[1:] == ['--prepare-package-graphical']:
+    if sys.argv[1:] == ['--prepare-package-graphical']:
         prepare_package(single=True, graphical=True)
     elif sys.argv[1:] == ['--prepare-package-settings']:
         prepare_package(single=True, settings=True)
@@ -1889,21 +1738,21 @@ if __name__ == '__main__':
     elif sys.argv[1:] == ['--prepare-package-conffiles']:
         prepare_package(single=True, conffiles=True)
     elif sys.argv[1:] == ['--session']:
-        session(packaged=True)
+        session()
     elif sys.argv[1:] == ['--session-restart']:
-        session(restarted=True, packaged=True)
+        session(restarted=True)
     elif sys.argv[1:] == ['--session-uncertain']:
-        session(uncertain=True, packaged=True)
+        session(uncertain=True)
     elif sys.argv[1:] == ['--session-admin-failure']:
         session(admin_failure=True)
     elif sys.argv[1:] == ['--session-graphical']:
-        session(admin_failure=True, graphical=True, packaged=True)
+        session(admin_failure=True, graphical=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
     elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
-             package=sys.argv[1] == '--run-package', package_install=sys.argv[1] == '--run-package-install',
+             package=sys.argv[1] == '--run-package',
              settings=sys.argv[1] == '--run', upgrade=sys.argv[1] == '--run-package-upgrade',
              conffiles=sys.argv[1] == '--run-package-conffiles')
     else:

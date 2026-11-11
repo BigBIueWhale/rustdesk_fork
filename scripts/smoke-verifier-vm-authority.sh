@@ -1804,7 +1804,8 @@ installed_settings_input_inventory() {
     fi
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ] \
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
         local runtime=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz
         [ -d "${runtime%/*}" ] && [ ! -L "${runtime%/*}" ] \
             && [ "$(/usr/bin/readlink -f -- "${runtime%/*}")" = "${runtime%/*}" ] \
@@ -1835,7 +1836,8 @@ installed_settings_input_inventory() {
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ] \
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
         # These four scripts are consumed by the current package constructor,
         # not compiled into the retained app. The archive validator exact-matches them.
         for file in preinst postinst prerm postrm; do
@@ -5314,7 +5316,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         fi
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] \
-           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ]; then
+           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ] \
+           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
             lifecycle_payload_grafts+=(
                 "debian-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz"
                 "repo/scripts/test-linux-debian-install.py=$SCRIPT_DIR/test-linux-debian-install.py"
@@ -9468,8 +9471,8 @@ elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
             'dependency-complete packaged graphical cancellation and fresh authorized retry'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
         require_exact_fixed_receipt \
-            "LINUX_INSTALLED_SETTINGS_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent cpace=4 stale_refusals=1 cleanup=joined" \
-            'installed GUI incorrect administrator password and fresh authorized retry'
+            "LINUX_DEBIAN_ADMIN_FAILURE_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired ui=actual service=actual denial=incorrect-admin-password authorization=polkit-pam helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent cpace=4 stale_refusals=1 cleanup=joined" \
+            'dependency-complete packaged GUI incorrect administrator password and fresh authorized retry'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
         require_exact_fixed_receipt \
             "LINUX_DEBIAN_SETTINGS_UNCERTAIN_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired ui=actual service=actual authorization=polkit-pam child=kernel-stopped deadline=600 outcome=Uncertain durable=committed recovery=same-generation cpace=5 stale_refusals=2 restart=service cleanup=joined" \

@@ -146731,3 +146731,12 @@ matching Gradle/plugin inputs. online-gradle-output.py currently insists on an
 archive. The canonical warmer also builds against the old SDK/lock and replaces
 canonical cache state, so it is not yet a candidate producer. Keep the actual APK
 and coherent promotion OPEN; update the existing ledger and obtain its count.
+
+Fresh count tJRlM3gMLk at 7384e3e3/tool14364 exits zero: 406,936 tokens /
+1,857,766 bytes, SHA-256 265699a7cf4f93846a86ed1a38bac986b67a5d301d84a18aae8aafa6c65a441a.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and byte round trip. android-build-tools-ledger-7384e3e3.json and eight files /
+116,331 bytes match CTE/TUF. QEMU4015040 joins zero after 30.384 seconds, RAM
+scratch peaks at 403,005,440 bytes, three host listener deltas are zero and
+private/RAM roots are absent. The approximate 400,000-token compression obligation
+remains OPEN; this audit-only append preserves the measured ledger.

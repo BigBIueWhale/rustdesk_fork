@@ -1,18 +1,21 @@
 #!/usr/bin/env python3
 """Discover Android runtime Maven inputs for the pinned Flutter SDK candidate.
 
-This maintenance helper never publishes build inputs.  It downloads each
-closed Google Storage object twice into private temporary storage, requires the
-two observations to agree, validates the Maven coordinates and archive
-structure, and prints a bounded receipt whose pins can be reviewed separately.
-An absent publisher checksum is recorded as missing provenance, never as a
-verified checksum or permission to publish canonical inputs.
+This maintenance helper never publishes build inputs. It requires stable Google
+object metadata, a generation-bound publisher download, and matching bytes from
+the separately operated CFUG mirror. Publisher MD5 is an integrity observation;
+SHA-256 equality across both content paths supplies the independent cross-check.
+Maven coordinates and archive structure are validated before printing a bounded
+receipt whose pins can be reviewed separately. Downloaded code is never executed.
 """
 
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import hashlib
+import io
 import json
 import os
 import re
@@ -21,6 +24,7 @@ import stat
 import sys
 import tempfile
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from dataclasses import asdict, dataclass
@@ -30,9 +34,12 @@ from xml.etree import ElementTree
 
 
 MAVEN_ROOT = "https://storage.googleapis.com/download.flutter.io/io/flutter"
+MIRROR_ROOT = "https://storage.flutter-io.cn/download.flutter.io/io/flutter"
+METADATA_ROOT = "https://storage.googleapis.com/storage/v1/b/download.flutter.io/o/"
 USER_AGENT = "rustdesk-fork-flutter-android-maven-discovery/1"
 DOWNLOAD_LIMIT = 64 * 1024 * 1024
 POM_LIMIT = 1024 * 1024
+METADATA_LIMIT = 64 * 1024
 ZIP_ENTRY_LIMIT = 10_000
 ZIP_EXPANDED_LIMIT = 256 * 1024 * 1024
 NATIVE_ARTIFACTS = {
@@ -47,8 +54,12 @@ class DiscoveryError(RuntimeError):
     """An upstream response or artifact violated the closed contract."""
 
 
-class ChecksumAbsent(DiscoveryError):
-    """The publisher returned 404 for the exact checksum sidecar."""
+@dataclass(frozen=True)
+class PublisherProvenance:
+    content_url: str
+    metadata_url: str
+    metadata_sha256: str
+    metadata: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -59,8 +70,8 @@ class ArtifactReceipt:
     size: int
     sha1: str
     sha256: str
-    publisher_sha1_url: str
-    publisher_sha1: str | None
+    publisher: PublisherProvenance
+    mirror_url: str
     zip_entries: int | None
     zip_uncompressed_bytes: int | None
     dependencies: list[dict[str, str]] | None
@@ -77,6 +88,67 @@ def artifact_url(artifact: str, extension: str, maven_version: str) -> str:
         fail("Flutter Maven version is not an exact engine revision")
     filename = f"{artifact}-{maven_version}.{extension}"
     return f"{MAVEN_ROOT}/{artifact}/{maven_version}/{filename}"
+
+
+def object_name(artifact: str, extension: str, maven_version: str) -> str:
+    url = artifact_url(artifact, extension, maven_version)
+    return url.removeprefix("https://storage.googleapis.com/download.flutter.io/")
+
+
+def unique_json_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            fail("publisher metadata contains a duplicate JSON key")
+        result[key] = value
+    return result
+
+
+def parse_metadata(data: bytes, expected_name: str) -> dict[str, object]:
+    if not 0 < len(data) <= METADATA_LIMIT:
+        fail("publisher metadata exceeds its byte bound")
+    try:
+        value = json.loads(
+            data, object_pairs_hook=unique_json_object,
+            parse_constant=lambda value: fail(f"publisher metadata has invalid constant {value}"),
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as error:
+        fail(f"publisher metadata is not valid JSON: {error}")
+    if not isinstance(value, dict):
+        fail("publisher metadata is not one object")
+    if (value.get("kind"), value.get("bucket"), value.get("name")) != (
+        "storage#object", "download.flutter.io", expected_name
+    ):
+        fail("publisher metadata object identity differs")
+    for key in ("generation", "metageneration", "size"):
+        if not isinstance(value.get(key), str) or re.fullmatch(
+            r"[1-9][0-9]{0,19}", value[key]
+        ) is None:
+            fail(f"publisher metadata {key} is not bounded canonical decimal")
+    if int(value["size"]) > DOWNLOAD_LIMIT:
+        fail("publisher metadata size exceeds the download bound")
+    if value.get("contentEncoding") not in (None, "identity"):
+        fail("publisher metadata requests transformed content")
+    checksum = value.get("md5Hash")
+    if not isinstance(checksum, str):
+        fail("publisher metadata lacks an MD5 checksum")
+    try:
+        decoded = base64.b64decode(checksum, validate=True)
+    except (ValueError, binascii.Error) as error:
+        fail(f"publisher MD5 is not base64: {error}")
+    if len(decoded) != 16 or base64.b64encode(decoded).decode("ascii") != checksum:
+        fail("publisher MD5 is not one canonical 16-byte checksum")
+    return value
+
+
+def check_observations(
+    publisher: dict[str, object], first: tuple[int, str, str, str],
+    second: tuple[int, str, str, str],
+) -> None:
+    if first != second:
+        fail("publisher and mirror Flutter Maven downloads disagree")
+    if first[0] != int(publisher["size"]) or first[3] != publisher["md5Hash"]:
+        fail("Flutter Maven bytes differ from publisher size or MD5")
 
 
 class RejectRedirects(urllib.request.HTTPRedirectHandler):
@@ -108,11 +180,12 @@ def validate_private_directory(path: Path) -> tuple[int, int]:
 
 def download(
     opener: urllib.request.OpenerDirector, url: str, output: Path,
-    allowed_urls: frozenset[str],
-) -> tuple[int, str, str]:
+    allowed_urls: frozenset[str], byte_limit: int = DOWNLOAD_LIMIT,
+) -> tuple[int, str, str, str]:
     if url not in allowed_urls:
         fail("download URL is outside the exact Flutter Maven allowlist")
-    byte_limit = 1024 if url.endswith(".sha1") else DOWNLOAD_LIMIT
+    if not 0 < byte_limit <= DOWNLOAD_LIMIT:
+        fail("Flutter Maven download bound is invalid")
     parent_identity = validate_private_directory(output.parent)
     if output.exists() or output.is_symlink():
         fail("download output is already occupied")
@@ -125,8 +198,6 @@ def download(
         response = opener.open(request, timeout=120)
     except urllib.error.HTTPError as error:
         error.close()
-        if error.code == 404 and url.endswith(".sha1"):
-            raise ChecksumAbsent(f"publisher checksum absent: {url}") from error
         fail(f"cannot open Flutter Maven input {url}: {error}")
     except (OSError, urllib.error.URLError) as error:
         fail(f"cannot open Flutter Maven input {url}: {error}")
@@ -158,6 +229,7 @@ def download(
             identity = created.st_dev, created.st_ino
             sha1 = hashlib.sha1(usedforsecurity=False)
             sha256 = hashlib.sha256()
+            md5 = hashlib.md5(usedforsecurity=False)
             received = 0
             while True:
                 block = response.read(1024 * 1024)
@@ -168,6 +240,7 @@ def download(
                     fail("Flutter Maven input exceeds its byte bound")
                 sha1.update(block)
                 sha256.update(block)
+                md5.update(block)
                 view = memoryview(block)
                 while view:
                     written = os.write(descriptor, view)
@@ -193,7 +266,8 @@ def download(
                 fail("Flutter Maven output identity or metadata changed")
             os.close(descriptor)
             descriptor = -1
-            return received, sha1.hexdigest(), sha256.hexdigest()
+            return (received, sha1.hexdigest(), sha256.hexdigest(),
+                    base64.b64encode(md5.digest()).decode("ascii"))
     except BaseException:
         if descriptor >= 0:
             os.close(descriptor)
@@ -337,11 +411,12 @@ def inspect_download(
     extension: str,
     url: str,
     path: Path,
-    observation: tuple[int, str, str],
+    observation: tuple[int, str, str, str],
     maven_version: str,
-    publisher_sha1: str | None,
+    publisher: PublisherProvenance,
+    mirror_url: str,
 ) -> ArtifactReceipt:
-    size, sha1, sha256 = observation
+    size, sha1, sha256, _md5 = observation
     if extension == "pom":
         dependencies = validate_pom(path, artifact, maven_version)
         entries = None
@@ -356,8 +431,8 @@ def inspect_download(
         size=size,
         sha1=sha1,
         sha256=sha256,
-        publisher_sha1_url=url + ".sha1",
-        publisher_sha1=publisher_sha1,
+        publisher=publisher,
+        mirror_url=mirror_url,
         zip_entries=entries,
         zip_uncompressed_bytes=expanded,
         dependencies=dependencies,
@@ -366,9 +441,6 @@ def inspect_download(
 
 def discover(maven_version: str) -> list[ArtifactReceipt]:
     opener = downloader()
-    allowed_urls = frozenset(artifact_url(artifact, extension, maven_version) + suffix
-                            for artifact in ARTIFACTS for extension in EXTENSIONS
-                            for suffix in ("", ".sha1"))
     with tempfile.TemporaryDirectory(prefix="rustdesk-flutter-maven-a.") as first_name:
         with tempfile.TemporaryDirectory(prefix="rustdesk-flutter-maven-b.") as second_name:
             first_root = Path(first_name)
@@ -379,38 +451,57 @@ def discover(maven_version: str) -> list[ArtifactReceipt]:
             for artifact in ARTIFACTS:
                 for extension in EXTENSIONS:
                     url = artifact_url(artifact, extension, maven_version)
+                    mirror_url = MIRROR_ROOT + url.removeprefix(MAVEN_ROOT)
+                    name = object_name(artifact, extension, maven_version)
+                    metadata_base = METADATA_ROOT + urllib.parse.quote(name, safe="")
+                    metadata_url = metadata_base + "?projection=noAcl"
                     filename = f"{artifact}-{maven_version}.{extension}"
                     first_path = first_root / filename
                     second_path = second_root / filename
-                    checksum_path = first_root / (filename + ".sha1")
-                    try:
-                        download(opener, url + ".sha1", checksum_path, allowed_urls)
-                    except ChecksumAbsent:
-                        publisher_sha1 = None
-                    else:
-                        publisher_sha1 = checksum_path.read_text(encoding="ascii").strip()
-                        if re.fullmatch(r"[0-9a-f]{40}", publisher_sha1) is None:
-                            fail("publisher SHA-1 sidecar is not one exact checksum")
-                    first = download(opener, url, first_path, allowed_urls)
-                    second = download(opener, url, second_path, allowed_urls)
-                    if first != second:
-                        fail("independent Flutter Maven downloads disagree")
-                    if publisher_sha1 is not None and first[1] != publisher_sha1:
-                        fail("Flutter Maven bytes differ from the publisher SHA-1")
+                    metadata_path = first_root / (filename + ".metadata")
+                    metadata_observation = download(
+                        opener, metadata_url, metadata_path, frozenset((metadata_url,)),
+                        METADATA_LIMIT,
+                    )
+                    metadata = parse_metadata(metadata_path.read_bytes(), name)
+                    print("FLUTTER_ANDROID_MAVEN_PUBLISHER_METADATA=" + json.dumps({
+                        "artifact": artifact, "extension": extension,
+                        "url": metadata_url, "sha256": metadata_observation[2],
+                        "metadata": metadata, "content_cross_check_complete": False,
+                    }, sort_keys=True, separators=(",", ":")), flush=True)
+                    content_url = metadata_base + "?" + urllib.parse.urlencode({
+                        "alt": "media", "generation": metadata["generation"],
+                        "ifGenerationMatch": metadata["generation"],
+                        "ifMetagenerationMatch": metadata["metageneration"],
+                    })
+                    allowed_urls = frozenset((content_url, mirror_url, metadata_url))
+                    limit = POM_LIMIT if extension == "pom" else DOWNLOAD_LIMIT
+                    first = download(opener, content_url, first_path, allowed_urls, limit)
+                    second = download(opener, mirror_url, second_path, allowed_urls, limit)
+                    check_observations(metadata, first, second)
+                    publisher = PublisherProvenance(
+                        content_url, metadata_url, metadata_observation[2], metadata
+                    )
                     first_receipt = inspect_download(
-                        artifact, extension, url, first_path, first, maven_version, publisher_sha1
+                        artifact, extension, url, first_path, first, maven_version,
+                        publisher, mirror_url,
                     )
                     second_receipt = inspect_download(
-                        artifact, extension, url, second_path, second, maven_version, publisher_sha1
+                        artifact, extension, url, second_path, second, maven_version,
+                        publisher, mirror_url,
                     )
                     if first_receipt != second_receipt:
                         fail("independent Flutter Maven validations disagree")
+                    metadata_after = second_root / (filename + ".metadata")
+                    download(opener, metadata_url, metadata_after, allowed_urls, METADATA_LIMIT)
+                    if parse_metadata(metadata_after.read_bytes(), name) != metadata:
+                        fail("publisher metadata changed during the content cross-check")
                     receipts.append(first_receipt)
                     # Retain at most one independently checked pair in bounded scratch.
                     first_path.unlink()
                     second_path.unlink()
-                    if publisher_sha1 is not None:
-                        checksum_path.unlink()
+                    metadata_path.unlink()
+                    metadata_after.unlink()
             return receipts
 
 
@@ -444,9 +535,71 @@ def self_test(maven_version: str) -> None:
         pass
     else:
         fail("self-test accepted an escaping coordinate")
+    name = object_name("x86_64_release", "jar", maven_version)
+    metadata = {
+        "kind": "storage#object", "bucket": "download.flutter.io", "name": name,
+        "generation": "123", "metageneration": "1", "size": "3",
+        "md5Hash": "kAFQmDzST7DWlj99KOF/cg==",
+    }
+    valid_json = json.dumps(metadata).encode("ascii")
+    if parse_metadata(valid_json, name) != metadata:
+        fail("self-test rejected valid publisher metadata")
+    invalid_metadata = [json.dumps({**metadata, key: value}).encode("ascii")
+                        for key, value in (
+                            ("bucket", "other"), ("name", name + ".other"),
+                            ("generation", "01"), ("metageneration", 1),
+                            ("size", str(DOWNLOAD_LIMIT + 1)), ("md5Hash", None),
+                            ("md5Hash", "AAAA"), ("contentEncoding", "gzip"),
+                        )]
+    invalid_metadata.extend((b"[]", b"{", b" " * (METADATA_LIMIT + 1),
+                             valid_json[:-1] + b',"size":"3"}',
+                             valid_json[:-1] + b',"unknown":NaN}'))
+    for invalid in invalid_metadata:
+        try:
+            parse_metadata(invalid, name)
+        except DiscoveryError:
+            pass
+        else:
+            fail("self-test accepted malformed publisher metadata")
     with tempfile.TemporaryDirectory(prefix="rustdesk-flutter-maven-test.") as name:
         root = Path(name)
         validate_private_directory(root)
+
+        class FixtureResponse(io.BytesIO):
+            headers = {"Content-Length": "3"}
+
+            def getcode(self):
+                return 200
+
+            def geturl(self):
+                return expected
+
+        class FixtureOpener:
+            def open(self, request, timeout):
+                if request.full_url != expected or timeout != 120:
+                    fail("self-test request URL or deadline differs")
+                return FixtureResponse(b"abc")
+
+        observed = download(FixtureOpener(), expected, root / "download",
+                            frozenset((expected,)))
+        known = (3, "a9993e364706816aba3e25717850c26c9cd0d89d",
+                 "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                 metadata["md5Hash"])
+        if observed != known or (root / "download").read_bytes() != b"abc":
+            fail("self-test downloaded bytes or digests differ")
+        check_observations(metadata, observed, observed)
+        for publisher, first, second in (
+            (metadata, observed, (4, *observed[1:])),
+            (metadata, observed, (3, observed[1], "0" * 64, observed[3])),
+            ({**metadata, "size": "4"}, observed, observed),
+            ({**metadata, "md5Hash": "1B2M2Y8AsgTpgAmY7PhCfg=="}, observed, observed),
+        ):
+            try:
+                check_observations(publisher, first, second)
+            except DiscoveryError:
+                pass
+            else:
+                fail("self-test accepted a publisher or mirror mismatch")
         pom = root / "engine.pom"
         write_test_file(
             pom,
@@ -509,7 +662,8 @@ def self_test(maven_version: str) -> None:
                 if case != "valid" or result != [expected_dependency]:
                     fail("self-test embedding dependency acceptance differs")
     print("FLUTTER_ANDROID_MAVEN_DISCOVERY_SELF_TEST=pass architectures=arm64-v8a,x86_64 "
-          "dependencies=exact version=exact wrong_machine=refused")
+          "dependencies=exact version=exact wrong_machine=refused "
+          "publisher_metadata=validated download_digests=known-answer mismatches=refused")
 
 
 def parse_arguments() -> argparse.Namespace:
@@ -541,8 +695,7 @@ def main() -> int:
                 "engine_revision": arguments.engine_revision,
                 "maven_version": maven_version,
                 "observations": 2,
-                "publisher_checksums_complete": all(receipt.publisher_sha1 is not None
-                                                    for receipt in receipts),
+                "provenance": "google-generation-md5-and-cfug-sha256-cross-check",
                 "canonical_inputs_published": False,
                 "artifacts": [asdict(receipt) for receipt in receipts],
             }

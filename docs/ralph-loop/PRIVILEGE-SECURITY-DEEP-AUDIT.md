@@ -146465,3 +146465,36 @@ and byte round trip. flutter-candidate-maven-ledger-7103f39c.json and eight file
 host listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
+
+## 2026-11-11 — candidate Android input publisher provenance
+
+The preceding turn made progress: six available Android Maven objects and exact
+dependency coordinates, with absent SHA-1 sidecars explicitly unresolved. Continue
+the selected release SDK alignment prerequisite before further package scenarios.
+Current CTE/TUF source is clean cc08ad46; the existing password SSH master works
+and TUF has 43 GiB available memory. No new authentication setup is needed.
+
+Google's object API separately publishes object identity, generation, size and
+base64 MD5, and supports generation/metageneration-conditional content retrieval:
+https://docs.cloud.google.com/storage/docs/json_api/v1/objects
+https://docs.cloud.google.com/storage/docs/json_api/v1/objects/get
+Flutter's official guide identifies CFUG's separately operated storage.flutter-io.cn
+mirror, while explicitly declining to guarantee mirror security or availability:
+https://docs.flutter.dev/community/china
+Use that mirror only as an independent byte comparison against Google's exact
+publisher generation and checksum. Do not treat MD5 as a signature or collision-
+resistant content identity; retain SHA-256 equality across both content paths.
+
+The existing discovery entry now requires bounded, duplicate-key-free metadata
+for the exact object, stable metadata before/after, a conditional publisher
+download and identical size/SHA-1/SHA-256/MD5 from the mirror. The obsolete optional
+sidecar branch is removed. A receipt retains the publisher metadata, its raw hash,
+both URLs and structural/dependency results; partial metadata explicitly reports
+an incomplete content cross-check. No response chooses an arbitrary URL. Missing
+metadata, unavailable mirror, redirects, checksum disagreement or generation
+change fail. Existing 4 GiB/300-second VM and 256 MiB container scratch suffice:
+one pair of at most 64 MiB plus two 64 KiB metadata files, retired per object.
+Native controls add actual temporary-file downloader digest checks, malformed
+metadata refusal and publisher/mirror disagreement; existing POM/JAR cases remain.
+AST parsing and diff hygiene pass; isolated execution is pending. No canonical
+pin, requirement, input cache, release build or product behavior is changed.

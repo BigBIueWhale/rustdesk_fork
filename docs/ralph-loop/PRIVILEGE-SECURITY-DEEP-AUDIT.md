@@ -125353,6 +125353,15 @@ drop-ins through install/remove/purge under R-S11by; broader release acceptance
 and canonical Flutter input promotion remain OPEN. Update the current ledger
 and perform its required fresh isolated count before ending this checkpoint.
 
+Fresh isolated count 7lR64kiuKw at cc493861 exits zero (tool46252): 405,364 tokens /
+1,850,547 bytes, SHA-256 f889beee657cd87acacab0496705c2ccc4db3a386695d39151748857048d985e.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes all seven
+controls and the byte round trip. package-bootstrap-ledger-cc493861.json and
+eight files/115,811 bytes match CTE/TUF. QEMU3936806 joins zero after 30.532
+seconds; three host listener deltas are zero, and private/RAM roots retire.
+Whole-ledger compression to the approximate 400,000-token target remains OPEN.
+This audit-only append preserves the counted ledger bytes.
+
 ## 2026-10-31 — user pivot; native Linux clipboard text transfer
 
 The user directs work to another aspect. Network-impairment/recovery diagnostics

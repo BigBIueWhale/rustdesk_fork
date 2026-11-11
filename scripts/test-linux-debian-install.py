@@ -265,7 +265,7 @@ def administrator_units(source, archive, version, settings, receiver):
     print('LINUX_DEBIAN_ADMIN_UNITS=' + json.dumps(completed, sort_keys=True), flush=True)
 
 
-def graphical_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before):
+def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before):
     desktop_runtime(settings, prepared)
     require(not Path('/etc/ld.so.conf.d/rustdesk-settings-fixture.conf').exists()
             and not Path('/usr/local/lib/rustdesk-settings-fixture').exists(),
@@ -281,17 +281,20 @@ def graphical_workflow(source, prepared, settings, receiver, probe_sha, agent_ar
         packages.append(str(path))
     require(len(packages) == 2, 'desktop accessibility package closure differs')
     command(['/usr/bin/dpkg', '--install', *packages], 'desktop-accessibility')
-    settings.install_graphical_agent(agent_archive_sha)
+    versions = {'at-spi2-core': ('2.46.0-5', 'install ok installed'),
+                'gsettings-desktop-schemas': ('43.0-1', 'install ok installed')}
+    drivers = [('driver-first', 'settings-driver')]
+    if agent_archive_sha is not None:
+        settings.install_graphical_agent(agent_archive_sha)
+        versions['policykit-1-gnome'] = ('0.105-8', 'install ok installed')
+        drivers.append(('agent-driver-first', 'agent-driver'))
     installed = command(['/usr/bin/dpkg-query', '--show', '--showformat=${Package}\t${Version}\t${Status}\n',
-                         'at-spi2-core', 'gsettings-desktop-schemas', 'policykit-1-gnome'],
+                         *versions],
                         'desktop-runtime-inventory')
     require(dict((name, (version, status)) for name, version, status in
-                 (line.split('\t') for line in installed.splitlines())) == {
-                     'at-spi2-core': ('2.46.0-5', 'install ok installed'),
-                     'gsettings-desktop-schemas': ('43.0-1', 'install ok installed'),
-                     'policykit-1-gnome': ('0.105-8', 'install ok installed')},
+                 (line.split('\t') for line in installed.splitlines())) == versions,
             'desktop accessibility or agent package is not configured')
-    for name, target in (('driver-first', 'settings-driver'), ('agent-driver-first', 'agent-driver')):
+    for name, target in drivers:
         settings.install(prepared / name, WORK / target, 0o755)
         require('not found' not in settings.run(['/usr/bin/ldd', str(WORK / target)]),
                 'package settings driver has an unresolved dependency')
@@ -299,19 +302,23 @@ def graphical_workflow(source, prepared, settings, receiver, probe_sha, agent_ar
              '--shell', '/usr/sbin/nologin', '--groups', 'sudo', 'rdreceiver4003'], 'desktop-administrator')
     try:
         receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
-        receiver.installed_desktop(lambda actor, session, pam: settings.admin_failure_scenario(
-            receiver, probe_sha, graphical=(actor, session, pam), network_before=network_before),
-            settings=True, session_controller=True)
+        if agent_archive_sha is not None:
+            receiver.installed_desktop(lambda actor, session, pam: settings.admin_failure_scenario(
+                receiver, probe_sha, graphical=(actor, session, pam), network_before=network_before),
+                settings=True, session_controller=True)
+        else:
+            receiver.installed_desktop(lambda: settings.scenario(receiver, probe_sha, network_before), settings=True)
         settings.service_absent()
         require(settings.run(['/usr/bin/dpkg', '--verify', 'rustdesk']) == '',
-                'graphical settings changed the installed package')
-        print('LINUX_DEBIAN_GRAPHICAL_WORKFLOW=pass cases=5 libraries=apt policy=package '
+                'settings workflow changed the installed package')
+        label, cases = ('GRAPHICAL', 5) if agent_archive_sha is not None else ('FAILURE', 8)
+        print(f'LINUX_DEBIAN_{label}_WORKFLOW=pass cases={cases} libraries=apt policy=package '
               'unit=vendor authorization=polkit-pam profile=unchanged cleanup=joined', flush=True)
     finally:
         command(['/usr/sbin/userdel', 'rdreceiver4003'], 'retire-desktop-administrator')
 
 
-def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None):
+def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None, settings_failure=False):
     require(Path(__file__).resolve() == SCRIPT, 'package test entry differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
@@ -422,14 +429,14 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             return fd
 
         first = installed_state('installed')
-        if agent_archive_sha is not None:
-            graphical_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before)
+        if agent_archive_sha is not None or settings_failure:
+            settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before)
             require(select.select([first], [], [], 0)[0] == [first],
-                    'graphical workflow did not retire the original package supervisor')
+                    'settings workflow did not retire the original package supervisor')
             credential = receiver.credential()
             settings.run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
-            installed_state('after-graphical')
-            require(receiver.credential() == credential, 'graphical credential did not survive service restart')
+            installed_state('after-settings' if settings_failure else 'after-graphical')
+            require(receiver.credential() == credential, 'settings credential did not survive service restart')
         else:
             sessionless_snapshot('before-password')
             started = time.monotonic()
@@ -501,7 +508,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
         command(['/usr/bin/dpkg', '--purge', 'rustdesk'], 'purge')
         require(not any(os.path.lexists(p) for p in ('/root/.config/rustdesk', '/root/.config/RustDesk',
                     '/etc/init.d/rustdesk')), 'purge retained package-owned state')
-        if agent_archive_sha is None:
+        if agent_archive_sha is None and not settings_failure:
             administrator_units(source, archive, version, settings, receiver)
         command([*apt, 'check'], 'final-dependencies')
         require(command(['/usr/bin/dpkg', '--audit'], 'final-dpkg-audit') == '', 'final dpkg state is incomplete')
@@ -537,7 +544,12 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if agent_archive_sha is not None:
+    if settings_failure:
+        print(f'LINUX_DEBIAN_SETTINGS_FAILURE_NATIVE=pass cases=8 app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired '
+              'ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam '
+              'cpace=7 stale_refusals=3 restart=service-and-gui failure=service-unavailable cleanup=joined', flush=True)
+    elif agent_archive_sha is not None:
         print(f'LINUX_DEBIAN_SETTINGS_NATIVE=pass cases=5 app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired '
               'ui=actual service=actual cancellation=gtk-selection-and-password authorization=polkit-pam '
@@ -551,7 +563,9 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 
 
 if __name__ == '__main__':
-    require(len(sys.argv) in (8, 9) and sys.argv[1] == '--run', 'closed Debian installation arguments required')
+    require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
+            or (len(sys.argv) == 8 and sys.argv[1] == '--run-settings'),
+            'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
-         sys.argv[8] if len(sys.argv) == 9 else None)
+         sys.argv[8] if len(sys.argv) == 9 else None, settings_failure=sys.argv[1] == '--run-settings')

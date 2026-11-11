@@ -145826,3 +145826,33 @@ and its byte round trip. package-graphical-ledger-37c72f22.json and eight files 
 host listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
+
+## 2026-11-11 — normal-package settings failure and recovery preparation
+
+The preceding turn is progress: normal-package graphical cancellation/concurrency
+passed and its evidence was reconciled. Continue with the existing eight-case
+settings workflow before upgrades: actual Failed reporting during service absence,
+same-GUI recovery/refusal and credential persistence remain direct-layout evidence.
+Both hosts are clean at a0d54e74; the existing TUF password master works, no private
+run remains and available memory is about 43 GiB. Reuse app6429f3cb and the same
+authenticated dependency closure, constructor and package bytes.
+
+Review the actual UI stage controller, exact helper ownership, service pidfd stop,
+credential/network checks and Bookworm pkttyagent(1)/pkcheck(1). Agent registration
+must bind PID/start time and its notification descriptor; authorization checks
+bind kernel UID as well. Absent-agent refusal and checked authorization outcomes
+remain distinct from unavailable-service failure. The existing real pkttyagent/PAM
+path already checks these identities and exact packaged bytes; preserve it.
+https://manpages.debian.org/bookworm/polkitd/pkttyagent.1.en.html
+https://manpages.debian.org/bookworm/polkitd/pkcheck.1.en.html
+
+Move the ordinary installed-settings mode onto the same package/desktop transaction
+as graphical acceptance. Share only the required driver/accessibility preparation,
+vendor-unit and process-library observations; the graphical GTK agent remains
+specific to its existing mode. Preserve all sixteen initial UI stages and seven
+restarted-UI stages, seven mutual CPace controls and three stale-password refusals.
+The package owns unit/policy/dependencies, and the application receives no fixture
+library override. The outer preinstallation network baseline owns cleanup. After
+the scenario, check normal restart and live unauthorized-user refusal, then
+reinstall/removal/purge. The previous direct-layout path for this ordinary mode is
+removed. No product change is selected before the normal-package result.

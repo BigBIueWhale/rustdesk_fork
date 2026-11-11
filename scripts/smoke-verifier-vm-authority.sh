@@ -1771,7 +1771,8 @@ installed_settings_input_inventory() {
              "$HOST_UID:$HOST_GID:400:1:$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
         || fail 'installed settings runtime archive authority differs'
     verify_sha256 "$archive" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
         local runtime=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz
         [ -d "${runtime%/*}" ] && [ ! -L "${runtime%/*}" ] \
             && [ "$(/usr/bin/readlink -f -- "${runtime%/*}")" = "${runtime%/*}" ] \
@@ -1800,7 +1801,7 @@ installed_settings_input_inventory() {
         /usr/bin/sha256sum -- "$SCRIPT_DIR/linux-polkit-dialog-x11.c"
     fi
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
         # These four scripts are consumed by the current package constructor,
         # not compiled into the retained app. The archive validator exact-matches them.
         for file in preinst postinst prerm postrm; do
@@ -5252,7 +5253,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_PEER_SOURCE_ARCHIVE")
     if [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
+           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ]; then
             lifecycle_payload_grafts+=(
                 "debian-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz"
                 "repo/scripts/test-linux-debian-install.py=$SCRIPT_DIR/test-linux-debian-install.py"
@@ -9408,8 +9410,8 @@ elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
         'LINUX_INSTALLED_SETTINGS_FAILURE=pass outcome=Failed service=absent protected=unchanged profile=unchanged recovery=same-gui-denied cleanup=joined' \
         'installed GUI unavailable-service failure and recovery'
     require_exact_fixed_receipt \
-        "LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=8 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam cpace=7 stale_refusals=3 restart=service-and-gui failure=service-unavailable cleanup=joined" \
-        'installed Flutter password settings result'
+        "LINUX_DEBIAN_SETTINGS_FAILURE_NATIVE=pass cases=8 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam cpace=7 stale_refusals=3 restart=service-and-gui failure=service-unavailable cleanup=joined" \
+        'dependency-complete packaged Flutter password failure and recovery'
     fi
     require_exact_fixed_receipt \
         "LINUX_INSTALLED_SETTINGS_VM=pass harness=$FLUTTER_PEER_SOURCE_COMMIT manifest=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 network=none root=disposable-guest-only app_build=absent cleanup=joined" \

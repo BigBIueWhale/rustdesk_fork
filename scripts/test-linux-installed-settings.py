@@ -177,7 +177,7 @@ def prepare():
     print(f'LINUX_INSTALLED_SETTINGS_PREPARED=pass driver_builds=2 equality=bytes runtime_files={len(records)}', flush=True)
 
 
-def prepare_package(single=False, graphical=False):
+def prepare_package(single=False, graphical=False, settings=False):
     if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
         raise RuntimeError('candidate packaging requires the ordinary isolated container')
     os.chdir('/work')
@@ -221,8 +221,8 @@ def prepare_package(single=False, graphical=False):
     if single:
         print(run(['/bin/bash', '/work/scripts/smoke-xvfb-prepare.sh'], timeout=60), end='', flush=True)
         shutil.copytree('/usr/share/X11/xkb', '/out/xkb')
-    if graphical:
-        prepare_drivers(graphical=True)
+    if graphical or settings:
+        prepare_drivers(graphical=graphical)
         print(run(['/bin/bash', '/work/scripts/smoke-atspi-prepare.sh'], timeout=60), end='', flush=True)
     records = {str(p.relative_to('/out')): {'sha256': digest(p), 'bytes': p.stat().st_size}
                for p in Path('/out').rglob('*') if p.is_file()}
@@ -231,13 +231,14 @@ def prepare_package(single=False, graphical=False):
     Path('/out/manifest.json').write_text(json.dumps(records, sort_keys=True))
 
 
-def prepare_runtime(source, execution, image, client, sock, config, graphical=False, package=False, package_install=False):
+def prepare_runtime(source, execution, image, client, sock, config, graphical=False, package=False,
+                    package_install=False, settings=False):
     prepared = WORK / 'prepared'
     prepared.mkdir(mode=0o700)
     os.chown(prepared, 1000, 1000)
     mounts = [(str(source), '/work', True), (str(execution), '/app', True),
               (str(prepared), '/out', False)]
-    for kind in (('xvfb', 'atspi') if graphical else ('xvfb',) if package_install
+    for kind in (('xvfb', 'atspi') if graphical or settings else ('xvfb',) if package_install
                  else () if package else ('xvfb', 'atspi')):
         mounts.append((str(source / 'online/inputs' / (kind + '-debs')), f'/{kind}-inputs', True))
         for suffix in ('debs', 'root'):
@@ -259,7 +260,8 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
     for host, target, readonly in mounts:
         args += ['--mount', f'type=bind,source={host},target={target},bind-recursive=disabled' + (',readonly' if readonly else '')]
     args += [image, '/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-linux-installed-settings.py',
-             '--prepare-package-graphical' if graphical else '--prepare-package-install' if package_install
+             '--prepare-package-graphical' if graphical else '--prepare-package-settings' if settings
+             else '--prepare-package-install' if package_install
              else '--prepare-package' if package else '--prepare']
     container = docker(args).strip()
     if re.fullmatch('[0-9a-f]{64}', container) is None:
@@ -383,7 +385,7 @@ def install_graphical_agent(archive_sha):
     print(f'LINUX_INSTALLED_GRAPHICAL_AGENT=pass package=0.105-8 sha256={GRAPHICAL_AGENT_SHA}', flush=True)
 
 
-def session(restarted=False, uncertain=False, admin_failure=False, graphical=False):
+def session(restarted=False, uncertain=False, admin_failure=False, graphical=False, packaged=False):
     guard(4001)
     if ctypes.CDLL(None, use_errno=True).prctl(36, 1, 0, 0, 0) != 0:
         raise OSError(ctypes.get_errno(), 'cannot retain GUI descendants')
@@ -392,11 +394,11 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
                    'XDG_RUNTIME_DIR': '/run/user/4001', 'XDG_SESSION_TYPE': 'x11',
                    'XDG_DATA_DIRS': '/usr/local/share:/usr/share', 'GDK_BACKEND': 'x11',
                    'LIBGL_ALWAYS_SOFTWARE': '1'}
-    if not graphical:
+    if not packaged:
         environment['LIBGL_DRIVERS_PATH'] = '/usr/local/lib/rustdesk-settings-fixture'
     bus = app = agent = None
     try:
-        font = run(['/usr/bin/fc-match' if graphical else str(WORK / 'fc-match'),
+        font = run(['/usr/bin/fc-match' if packaged else str(WORK / 'fc-match'),
                     '-f', '%{file}', 'sans-serif'], env=environment).strip()
         if not font.startswith('/usr/share/fonts/truetype/dejavu/') or not Path(font).is_file():
             raise RuntimeError(f'ordinary desktop has no installed sans-serif font: {font}')
@@ -787,15 +789,28 @@ def stop_service(receiver, record):
             os.close(fd)
 
 
-def scenario(receiver, probe_sha):
+def package_unit():
     unit = Path('/etc/systemd/system/rustdesk.service')
-    if unit.exists():
-        raise RuntimeError('installed settings require absent initial service state')
-    install(MEDIA / 'repo/res/rustdesk.service', unit)
-    run(['/usr/bin/systemctl', 'daemon-reload'])
+    if (os.path.lexists(unit)
+            or digest('/usr/lib/systemd/system/rustdesk.service') != digest(MEDIA / 'repo/res/rustdesk.service')
+            or run(['/usr/bin/dpkg-query', '--search', '/usr/lib/systemd/system/rustdesk.service']).strip()
+            != 'rustdesk: /usr/lib/systemd/system/rustdesk.service'):
+        raise RuntimeError('settings workflow requires the package-owned vendor unit')
+
+
+def package_process(pid):
+    product = Path('/proc') / str(pid)
+    if (any(path in (product / 'maps').read_text() for path in
+            (str(WORK / 'debian-x11'), '/usr/local/lib/rustdesk-settings-fixture'))
+            or any(value.startswith((b'LD_LIBRARY_PATH=', b'LD_PRELOAD=', b'LIBGL_DRIVERS_PATH='))
+                   for value in (product / 'environ').read_bytes().split(b'\0'))):
+        raise RuntimeError('packaged product loaded or inherited a private fixture runtime')
+
+
+def scenario(receiver, probe_sha, network_before):
+    package_unit()
     process = None
     authorization = ExitStack()
-    network_before = network_state()
     record = before = None
     try:
         run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
@@ -829,6 +844,8 @@ def scenario(receiver, probe_sha):
             if requester is not None and requester != identity:
                 raise RuntimeError('installed GUI requester generation changed')
             requester = identity
+            for pid in (identity[0], record['supervisor'], record['pid']):
+                package_process(pid)
             status = dict(line.split(':', 1) for line in Path(f'/proc/{identity[0]}/status').read_text().splitlines() if ':' in line)
             if (status['Uid'].split() != ['4001'] * 4 or status['NoNewPrivs'].strip() != '1'
                     or any(int(status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))
@@ -879,6 +896,10 @@ def scenario(receiver, probe_sha):
             if restarted_requester is not None and identity != restarted_requester:
                 raise RuntimeError('GUI generation changed across the service outage')
             restarted_requester = identity
+            package_process(identity[0])
+            if not stopped:
+                for pid in (restarted['supervisor'], restarted['pid']):
+                    package_process(pid)
             if stopped:
                 service_absent()
                 if user_credential() != profile_before:
@@ -979,10 +1000,8 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None, network_before=N
     if graphical is None:
         install(MEDIA / 'repo/res/rustdesk.service', unit)
         run(['/usr/bin/systemctl', 'daemon-reload'])
-    elif (digest('/usr/lib/systemd/system/rustdesk.service') != digest(MEDIA / 'repo/res/rustdesk.service')
-          or run(['/usr/bin/dpkg-query', '--search', '/usr/lib/systemd/system/rustdesk.service']).strip()
-          != 'rustdesk: /usr/lib/systemd/system/rustdesk.service'):
-        raise RuntimeError('graphical workflow requires the package-owned vendor unit')
+    else:
+        package_unit()
     if network_before is None:
         network_before = network_state()
     authorization = ExitStack()
@@ -1041,12 +1060,7 @@ def admin_failure_scenario(receiver, probe_sha, graphical=None, network_before=N
             requester = identity
             if graphical is not None:
                 for pid in (requester[0], record['supervisor'], record['pid']):
-                    product = Path('/proc') / str(pid)
-                    if (any(path in (product / 'maps').read_text() for path in
-                            (str(WORK / 'debian-x11'), '/usr/local/lib/rustdesk-settings-fixture'))
-                            or any(value.startswith((b'LD_LIBRARY_PATH=', b'LD_PRELOAD=', b'LIBGL_DRIVERS_PATH='))
-                                   for value in (product / 'environ').read_bytes().split(b'\0'))):
-                        raise RuntimeError('packaged product loaded or inherited a private fixture runtime')
+                    package_process(pid)
                 if (proc / 'cgroup').read_text() != session_cgroup:
                     raise RuntimeError('GUI left the native desktop session')
                 if committed is None or stage == 'applied':
@@ -1630,11 +1644,12 @@ def concurrent_stop_scenario(receiver, probe_sha):
 
 
 def main(arguments, uncertain=False, admin_failure=False, graphical=False, concurrent_stop=False, package=False,
-         package_install=False):
+         package_install=False, settings=False):
     guard()
     agent_archive_sha = None
     if graphical:
         arguments, agent_archive_sha = arguments[:-1], arguments[-1]
+    if graphical or settings:
         package_install = True
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
@@ -1657,7 +1672,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
         raise RuntimeError('materialized app destination differs')
     execution = Path(execution)
     prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical,
-                               package=package or package_install, package_install=package_install)
+                               package=package or package_install, package_install=package_install, settings=settings)
     if not package:
         probe_manifest = MEDIA / 'settings-probe/peer-manifest.json'
         probe = MEDIA / 'settings-probe/probe_client'
@@ -1671,7 +1686,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
         install(probe, receiver.PROBE, 0o755)
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
-                        str(SCRIPT.with_name('test-linux-debian-install.py')), '--run', str(source),
+                        str(SCRIPT.with_name('test-linux-debian-install.py')),
+                        '--run-settings' if settings else '--run', str(source),
                         str(prepared), str(app_input), manifest_sha, commit, probe_sha,
                         *([agent_archive_sha] if graphical else [])],
                        env=ENV, check=True, timeout=600)
@@ -1711,7 +1727,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     try:
         receiver.run(['/usr/sbin/chpasswd'], input=f'rdreceiver4003:{receiver.ADMIN_PASSWORD}\n')
         scenario_function = (concurrent_stop_scenario if concurrent_stop else admin_failure_scenario if admin_failure
-                             else uncertain_scenario if uncertain else scenario)
+                             else uncertain_scenario)
         receiver.installed_desktop(lambda: scenario_function(receiver, probe_sha), settings=True)
     finally:
         run(['/usr/sbin/userdel', 'rdreceiver4003'])
@@ -1735,10 +1751,6 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
               'ui=actual service=actual authorization=polkit-pam child=kernel-stopped deadline=600 '
               'outcome=Uncertain durable=committed recovery=same-generation cpace=5 stale_refusals=2 '
               'restart=service cleanup=joined', flush=True)
-    else:
-        print(f'LINUX_INSTALLED_SETTINGS_NATIVE=pass cases=8 app_commit={commit} manifest_sha256={manifest_sha} '
-              'ui=actual service=actual cancellation=before-submit denial=no-agent authorization=polkit-pam '
-              'cpace=7 stale_refusals=3 restart=service-and-gui failure=service-unavailable cleanup=joined', flush=True)
 
 
 if __name__ == '__main__':
@@ -1746,25 +1758,28 @@ if __name__ == '__main__':
         prepare()
     elif sys.argv[1:] == ['--prepare-package-graphical']:
         prepare_package(single=True, graphical=True)
+    elif sys.argv[1:] == ['--prepare-package-settings']:
+        prepare_package(single=True, settings=True)
     elif sys.argv[1:] == ['--prepare-package']:
         prepare_package()
     elif sys.argv[1:] == ['--prepare-package-install']:
         prepare_package(single=True)
     elif sys.argv[1:] == ['--session']:
-        session()
+        session(packaged=True)
     elif sys.argv[1:] == ['--session-restart']:
-        session(restarted=True)
+        session(restarted=True, packaged=True)
     elif sys.argv[1:] == ['--session-uncertain']:
         session(uncertain=True)
     elif sys.argv[1:] == ['--session-admin-failure']:
         session(admin_failure=True)
     elif sys.argv[1:] == ['--session-graphical']:
-        session(admin_failure=True, graphical=True)
+        session(admin_failure=True, graphical=True, packaged=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
     elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
-             package=sys.argv[1] == '--run-package', package_install=sys.argv[1] == '--run-package-install')
+             package=sys.argv[1] == '--run-package', package_install=sys.argv[1] == '--run-package-install',
+             settings=sys.argv[1] == '--run')
     else:
         raise SystemExit('closed installed-settings arguments required')

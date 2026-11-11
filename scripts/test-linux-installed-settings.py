@@ -822,8 +822,10 @@ def admin_failure_scenario(receiver, probe_sha):
         record = receiver.ready()
         receiver.change(0, BASELINE_PASSWORD, True)
         before = receiver.credential()
-        listener = receiver.direct_listener(record)
         receiver.keyed(BASELINE_PASSWORD, 'gui-admin-failure-baseline', record, probe_sha)
+        listener = receiver.direct_listener(record)
+        if listener is None:
+            raise RuntimeError('administrator failure baseline has no ready listener')
         process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
                                     str(SCRIPT), '--session-admin-failure'],
                                    env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
@@ -837,12 +839,18 @@ def admin_failure_scenario(receiver, probe_sha):
             proc = Path(f'/proc/{event["pid"]}')
             identity = (event['pid'], int((proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]))
             status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+            current_record = receiver.child_record()
+            current_listener = receiver.direct_listener(record)
             if (event.get('stage') != stage or (requester is not None and requester != identity)
                     or status['Uid'].split() != ['4001'] * 4 or status['NoNewPrivs'].strip() != '1'
                     or any(int(status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))
                     or not (proc / 'exe').samefile('/usr/share/rustdesk/rustdesk')
-                    or receiver.child_record() != record or receiver.direct_listener(record) != listener):
-                raise RuntimeError('administrator failure lost the ordinary GUI or exact service generation')
+                    or current_record != record or current_listener != listener):
+                raise RuntimeError('administrator failure lost the ordinary GUI or exact service generation: '
+                                   + json.dumps({'event': event, 'requester': requester, 'identity': identity,
+                                                 'status': status, 'expected_record': record,
+                                                 'current_record': current_record, 'expected_listener': listener,
+                                                 'current_listener': current_listener}, sort_keys=True))
             requester = identity
             if stage == 'applied':
                 committed = receiver.credential()

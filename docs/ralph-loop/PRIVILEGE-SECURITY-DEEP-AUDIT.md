@@ -144767,3 +144767,15 @@ aborts on terminal EOF at its password prompt. Therefore EOF/agent death is not
 used as evidence for user dismissal; actual authentication-dialog cancellation
 and graphical OS-agent interaction remain separate open acceptance work.
 The new native scenario is prepared, not yet accepted.
+
+First replay `uA27HrJp9T` at `a1cab68b` stops at the combined identity/listener
+precondition after opening the dialog, before password submission. Baseline CPace
+passed. Inspection finds the new fixture captured `direct_listener()` before
+`keyed()`'s readiness wait; absence can therefore become its expected listener.
+Move that capture after successful baseline keying, require a present listener,
+and retain failed predicate inputs. The old combined error did not identify its
+individual predicate, so no product failure or exact retrospective cause is claimed.
+The failed run's complete guest/console evidence is retained in
+`linux-admin-failure-precondition-a1cab68b.json`; ten files / 125,099 bytes match
+CTE/TUF. QEMU3840173 joins with zero, private/RAM state retire and all four endpoint
+deltas are zero. Runtime is 123.575 seconds; RAM workspace peak 3,839,270,912 bytes.

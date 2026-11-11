@@ -146524,3 +146524,15 @@ are candidate pins only; canonical Flutter 3.24.5 and release consumers are
 unchanged. The next necessary step is their matched offline Android dependency
 closure and build integration, followed by coherent cross-platform promotion.
 Update the existing ledger entry, then obtain its fresh isolated token count.
+
+All six candidate size/SHA-256/generation triples match the accepted native JSON;
+pin names are unique, shell syntax and diff hygiene pass, canonical SDK remains
+3.24.5, and the prior audit prefix is byte-identical. Fresh count 9Q20gMu5JR at
+368c66ba exits zero (tool 20061): 406,371 tokens / 1,855,608 bytes, SHA-256
+aeb4c0fd4a9699d9fa3330692b92b909fe25c65249c462e8df3e7591e401f845.
+The fixed tiktoken 0.12.0/cl100k_base/encode_ordinary method passes seven controls
+and byte round trip. flutter-maven-provenance-ledger-368c66ba.json and eight files /
+115,540 bytes match CTE/TUF. QEMU 3992882 joins zero after 30.757 seconds; three
+host listener deltas are zero and private/RAM roots are absent. The approximate
+400,000-token compression obligation remains OPEN. This audit-only append
+preserves the measured ledger.

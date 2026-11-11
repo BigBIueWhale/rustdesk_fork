@@ -129,12 +129,12 @@ OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
 below retains the required authorized behavior.
 
-**Current Linux build verified (2026-11-06).** Build `xLuFhVIKA8` at `d1bf0877`
+**Current Linux build verified (2026-11-11).** Build `SVoK2UEeoN` at `53f66299`
 passes fresh bridges, the complete Rust/Flutter build, thirteen widget/two native
-command controls and all 73 payload hashes. `installed-gui-build-d1bf0877.json`
+command controls and all 73 payload hashes. `password-outcome-build-53f66299.json`
 binds exact cleanup and four zero listener deltas. That full bundle now passes
-installed-GUI cancellation/refusal, administrator-authorized password change and
-service/GUI restart persistence (`installed-settings-authorized-9d41fc4e.json`);
+installed-GUI cancellation, explicit Denied reporting, administrator-authorized
+Applied and restart persistence (`password-outcome-installed-c1375436.json`);
 the installed section records scope.
 The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
@@ -7334,8 +7334,8 @@ R-S0/R-F5 and release acceptance remain OPEN.
 | Coordinator and raw v2 | `e69129bc` passed seven coordinator/23 raw-module cases in five groups: actual AF_UNIX readiness before disclosure, canonical/fragmented/empty/max/auth bodies, malformed/truncated/expired input, wiping, half-close, replay, expiry and shutdown. Pre-write refusal is NotSent; a started write is uncertain. `linux-wire-v2-accepted-e69129bc.json` retains exact scope. Two wording-only tests were later deleted; the current seven coordinator/21 protocol cases are not thereby validated. |
 | Current coordinator execution gap | At `04c7e32e`, the 28-case attempt refused before QEMU: admission required 39,936 MiB with 23,531 MiB available. No case ran. `login-inventory-role.json` retains the refusal. Guest/scratch admission and the no-disk-fallback rule remain binding. |
 
-**Full installed-layout GUI — password change and restart accepted (2026-11-06).**
-TUF `7GwNLAn3ag` at `9d41fc4e` reuses optimized bundle `d1bf0877` with the shipped
+**Full installed-layout GUI — Applied/Denied and restart accepted (2026-11-11).**
+TUF `JuDHUtbhR2` at `c1375436` reuses optimized bundle `53f66299` with the shipped
 service/policy and actual PAM/logind/polkit. Six cases/eighteen actual GUI stages
 cover entered-text cancellation, two initial no-agent refusals, administrator-
 approved change, a fresh no-agent refusal and service/GUI restart. The ordinary
@@ -7346,11 +7346,23 @@ mutual CPace exchanges and two exact child-log-confirmed old-password refusals
 prove the network credential before/after restart. Three refusals correlate with
 the root supervisor's held log and exact GUI identity. App payloads are unchanged;
 processes, agent, cgroup and RAM retire, guest network returns to baseline and four
-host endpoint deltas are zero. Capsule: `installed-settings-authorized-9d41fc4e.json`.
-The earlier cancellation/refusal capsule remains valid. No product change was
-needed for these cases. Graphical OS-agent interaction, cancellation during
-authorization, concurrency, final packages and complete R-S0 remain OPEN. The
-Boolean result API still collapses denied/failed/uncertain outcomes.
+host endpoint deltas are zero. Capsule: `password-outcome-installed-c1375436.json`.
+The agent remains alive through observed Applied and retires before the final
+refusal; the preceding early-agent-exit attempt failed after PAM completion.
+The older `d1bf0877` acceptance remains valid for its own artifact.
+
+`d9fc6405`/`53f66299` replace the Boolean native/Flutter password result with
+Applied/Denied/Failed/Uncertain, retain bounded-recovery expiry as Uncertain,
+and distinguish derivation failure from policy refusal. The dialog explains that
+an unconfirmed change may already have applied and never automatically retries.
+All 120 rendered cases, including seven password-dialog cases, and three selected
+parser controls pass at `750883af`; an intermediate stale count rejects that outer
+run. `d365011d` corrects the remaining count, whose fresh outer acceptance is OPEN.
+The full bundle above proves native Applied/Denied through the actual UI; controlled
+widget results do not prove native Failed/Uncertain or receiver-restart recovery.
+Those scenarios, native macOS outcome classification, graphical OS-agent interaction,
+cancellation during authorization, concurrency, other platforms, final packages
+and complete R-S0 remain OPEN.
 
 All installed rows below are debug/headless seatless-X11 fixtures using the shipped
 policy/unit, supervised active-user child and actual pinned polkit/PAM/logind where

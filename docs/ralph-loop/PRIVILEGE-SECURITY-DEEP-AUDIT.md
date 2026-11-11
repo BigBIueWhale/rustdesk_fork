@@ -144294,3 +144294,23 @@ failed run, not an established product diagnosis. Reuse the exact app for the re
 127.151 seconds, 3,839,115,264-byte peak RAM scratch, four zero endpoint deltas,
 exact QEMU/private/RAM retirement and guest network restored to baseline.
 Ten files / 283,500 bytes match CTE/TUF. Complete installed acceptance remains OPEN.
+
+**Typed Applied/Denied installed checkpoint accepted.** `JuDHUtbhR2` at `c1375436`
+exits zero on the unchanged `53f66299` bundle. All eighteen GUI stages, real
+administrator approval, three exact root-log-correlated refusals, five mutual CPace
+exchanges and two child-confirmed old-password refusals pass. The new explicit
+Denied message is required by the actual AT-SPI observer. Credential persistence
+survives the service generation and GUI process replacement. The agent remains
+owned through observed Applied, then joins before the final no-agent request.
+This supports the fixture-lifetime explanation without reconstructing the missing
+failure-time service log of the earlier run.
+
+`password-outcome-installed-c1375436.json` is 12,104 bytes, SHA-256
+`4295913611dc6413bad2c2bf7dedb843a1b78e9aef06e37f4f1ea068bea5c8bd`.
+Nine files / 110,215 bytes match both hosts; 143.718 seconds, 3,839,201,280-byte peak
+RAM scratch, four zero endpoint deltas, exact QEMU/private/RAM retirement and guest
+network restoration pass. Update the ledger's stale Boolean API/build entries.
+Native Failed/Uncertain, receiver-restart recovery, macOS result classification,
+authorization cancellation/concurrency and final packages remain OPEN. The next
+decisive work is actual failure/uncertainty reporting on this retained bundle,
+preserving the demonstrated authorized workflow and exact operation ownership.

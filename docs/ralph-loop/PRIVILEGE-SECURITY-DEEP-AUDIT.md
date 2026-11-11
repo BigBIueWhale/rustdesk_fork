@@ -144577,3 +144577,13 @@ The failed run's complete guest/console logs are retained; its outer tool excerp
 was truncated and is labeled accordingly. `launcher-ledger-inventory-65ddb2d5.json`
 and the retirement record bind exact QEMU3813808/private/RAM closure and three
 zero endpoint deltas. Nine files / 88,946 bytes match both hosts before the repair.
+
+Fresh `K8JInUtOdM` at `bde42ba6` passes the selector, including the launcher-to-
+compiler-storage mapping, and the complete ledger count: 403,024 tokens /
+1,839,562 bytes, SHA-256
+`bec5f09bbe31bb1087d09b757f2fd7ae2fbd6ed2ed56454b8a3f07d35a075598`.
+The fixed tokenizer method, seven controls and whole-input round trip pass.
+QEMU3815449 joins with zero; private/RAM state disappear and three endpoint deltas
+are zero. `launcher-native-ledger-bde42ba6.json` binds eight matching CTE/TUF
+files / 115,645 bytes. The approximate 400,000-token target remains exceeded;
+compression stays open. No complete-app recovery acceptance is added by this count.

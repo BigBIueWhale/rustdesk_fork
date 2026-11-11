@@ -125298,6 +125298,27 @@ https://manpages.debian.org/bookworm/xvfb/Xvfb.1.en.html
 https://manpages.debian.org/bookworm/libpam-systemd/pam_systemd.8.en.html
 https://manpages.debian.org/bookworm/manpages/ld.so.8.en.html
 
+EtHL48kttJ at af9e5595 completes the native package scenario, including the new
+desktop bootstrap, two mutual CPace exchanges, receiver-confirmed wrong-password
+refusal, child7464 exit/reap, unchanged supervisor7372 and credential, ordinary
+user refusal and reinstall/remove/purge. The outer guest network comparison then
+fails; overall acceptance is not claimed. Its residual records were not retained,
+so TIME_WAIT is a hypothesis rather than an observed diagnosis. Code inspection
+finds this newly network-active package scenario omits the existing installed-
+settings network-retirement wait. Reuse that exact bounded helper: only inode-zero
+loopback probe TIME_WAIT rows with the expected kernel timer may drain, and exact
+baseline equality remains mandatory. No listener or live socket is exempted.
+
+Tool71510 exits 1. QEMU3932789 joins zero after 80.382 seconds; RAM peak is
+4,079,534,080 bytes and workspace is absent. All four host listener deltas are
+zero. Under the free shared lock, verify diagnostic identity66306:80656079,
+capture hashes, no owned handles/Unix sockets and clean pushed source, then retire
+that exact private tree with the existing descriptor-owned remover. Capsule
+package-bootstrap-af9e5595.json plus nine files/167,945 bytes match CTE/TUF.
+The original outer byte stream is preserved exactly; an initial newline-normalized
+evidence copy was replaced after checking its hash. Rerun the same application
+with the missing retirement wait and its actual pending-inventory observation.
+
 ## 2026-10-31 — user pivot; native Linux clipboard text transfer
 
 The user directs work to another aspect. Network-impairment/recovery diagnostics

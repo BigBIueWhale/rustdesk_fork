@@ -175,6 +175,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
     user_created = False
     pidfds = []
     supervisors = []
+    network_before = settings.network_state()
 
     def sessionless_snapshot(phase):
         pid = supervisors[-1]
@@ -345,6 +346,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha):
                 os.close(fd)
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
+    settings.wait_network_retirement(network_before)
     print(f'LINUX_DEBIAN_INSTALL_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
           'dependencies=apt-checked install=dpkg reinstall=same-version service=actual credential=preserved '
           'remove=preserved purge=retired desktop=credential-bootstrap cpace=2 wrong_password=refused cleanup=joined', flush=True)

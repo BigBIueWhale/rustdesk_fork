@@ -147286,3 +147286,12 @@ platforms, installed artifacts, filesystem crash durability and broader release
 requirements remain OPEN. The exact saved PNG was observed during the run and
 then removed by the owned scenario; its digest/counter evidence is retained.
 Update the current ledger and count it once with the fixed tokenizer.
+
+Fresh count at 154b4649/NqSim18WST/tool4100 passes: 408,112 tokens /
+1,862,575 bytes, SHA-256
+4cf9363bb78e213495b6335eac645c10ea3603e781961aee62638d982646f3b9.
+The fixed tokenizer, seven controls and whole-input round trip pass. Eight files /
+117,117 bytes in selector-ledger-154b4649.json match both hosts. QEMU 261612
+joins zero after 29.872 seconds, peak scratch 402,964,480 bytes, three zero
+listener deltas and exact private/RAM cleanup. The approximate 400,000-token
+compression remains OPEN. This audit-only append leaves the measured ledger intact.

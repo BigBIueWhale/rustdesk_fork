@@ -5,6 +5,8 @@ export PATH=/usr/bin:/bin
 export LC_ALL=C
 
 [ "$#" -eq 1 ] && [ "$1" = /outputs ] || exit 2
+readonly PACKAGE="${POLKIT_PACKAGE:-polkitd}"
+case "$PACKAGE" in polkitd|policykit-1-gnome) ;; *) exit 2 ;; esac
 [ "$(dpkg --print-architecture)" = amd64 ] \
     || { echo 'polkit acquisition requires the pinned amd64 runtime' >&2; exit 1; }
 [ "$(id -u)" = "${POLKIT_RUNTIME_UID:?}" ] \
@@ -57,19 +59,28 @@ readonly -a APT_OPTIONS=(
 )
 env -i PATH=/usr/bin:/bin HOME="$APT_ROOT" LC_ALL=C \
     apt-get "${APT_OPTIONS[@]}" -o APT::Update::Error-Mode=any update -qq
-env -i PATH=/usr/bin:/bin HOME="$APT_ROOT" LC_ALL=C \
-    apt-get "${APT_OPTIONS[@]}" --yes --download-only --no-install-recommends \
-    install "polkitd=$POLKIT_VERSION"
+if [ "$PACKAGE" = polkitd ]; then
+    env -i PATH=/usr/bin:/bin HOME="$APT_ROOT" LC_ALL=C \
+        apt-get "${APT_OPTIONS[@]}" --yes --download-only --no-install-recommends \
+        install "polkitd=$POLKIT_VERSION"
+else
+    # The installed-GUI fixture already supplies GTK and the polkit runtime.
+    # Acquire only the agent, authenticated by signed APT metadata and its publisher pin.
+    (cd /outputs/packages && env -i PATH=/usr/bin:/bin HOME="$APT_ROOT" LC_ALL=C \
+        apt-get "${APT_OPTIONS[@]}" download "$PACKAGE=$POLKIT_VERSION")
+fi
 
 shopt -s nullglob
 packages=(/outputs/packages/*.deb)
 [ "${#packages[@]}" -gt 0 ] && [ "${#packages[@]}" -le 96 ] \
     || { echo 'polkit package closure cardinality is invalid' >&2; exit 1; }
-polkit_file="/outputs/packages/polkitd_${POLKIT_VERSION}_amd64.deb"
+[ "$PACKAGE" = polkitd ] || [ "${#packages[@]}" -eq 1 ] \
+    || { echo 'graphical agent acquisition must contain exactly one package' >&2; exit 1; }
+polkit_file="/outputs/packages/${PACKAGE}_${POLKIT_VERSION}_amd64.deb"
 [ -f "$polkit_file" ] && [ ! -L "$polkit_file" ] \
     && [ "$(stat -c '%s' "$polkit_file")" = "$POLKIT_SIZE" ] \
     && [ "$(sha256sum "$polkit_file" | cut -d' ' -f1)" = "$POLKIT_SHA256" ] \
-    || { echo 'signed polkitd package differs from the publisher pin' >&2; exit 1; }
+    || { echo 'signed polkit package differs from the publisher pin' >&2; exit 1; }
 total=0
 for package in "${packages[@]}"; do
     [ -f "$package" ] && [ ! -L "$package" ] \
@@ -92,9 +103,15 @@ for package in "${packages[@]}"; do
         "${package##*/}" "$size" "$(sha256sum "$package" | cut -d' ' -f1)"
     chmod 0400 "$package"
 done | sort > /outputs/manifest.tsv
-printf 'base=%s\ndebian_snapshot=%s\nsecurity_snapshot=%s\npolkitd=%s\nclosure=empty-dpkg-status\n' \
-    "$POLKIT_DEV_CHECK_IMAGE_ID" "$POLKIT_DEBIAN_SNAPSHOT" \
-    "$POLKIT_SECURITY_SNAPSHOT" "$POLKIT_VERSION" > /outputs/contract
+if [ "$PACKAGE" = polkitd ]; then
+    printf 'base=%s\ndebian_snapshot=%s\nsecurity_snapshot=%s\npolkitd=%s\nclosure=empty-dpkg-status\n' \
+        "$POLKIT_DEV_CHECK_IMAGE_ID" "$POLKIT_DEBIAN_SNAPSHOT" \
+        "$POLKIT_SECURITY_SNAPSHOT" "$POLKIT_VERSION" > /outputs/contract
+else
+    printf 'base=%s\ndebian_snapshot=%s\nsecurity_snapshot=%s\npolicykit-1-gnome=%s\nscope=agent-only-installed-settings-fixture\n' \
+        "$POLKIT_DEV_CHECK_IMAGE_ID" "$POLKIT_DEBIAN_SNAPSHOT" \
+        "$POLKIT_SECURITY_SNAPSHOT" "$POLKIT_VERSION" > /outputs/contract
+fi
 printf 'keyring_sha256=%s\n' \
     "$(sha256sum /usr/share/keyrings/debian-archive-keyring.gpg | cut -d' ' -f1)" \
     >> /outputs/contract

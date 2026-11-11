@@ -144813,3 +144813,29 @@ files / 115,077 bytes. The approximate 400,000-token compression obligation
 remains open. This completed installed workflow needs no repetition absent a
 relevant change; actual OS authentication-dialog dismissal remains the next
 unproved GUI authorization outcome.
+
+## 2026-11-11 — Graphical OS-agent prerequisite for actual user dismissal
+
+Previous turn made progress: installed incorrect-password Denied and same-GUI/
+agent authorized retry are accepted. Continue R-S0/R-S11ie with actual user
+dismissal. No installed graphical polkit agent is present in the recorded fixture;
+the text agent cannot prove this outcome. The smallest useful prerequisite is one
+authenticated GTK agent package, then the real Cancel action and subsequent grant
+on the retained application. Existing task authorization covers acquisition and
+the disposable native workflow; no host installation or new SSH persistence.
+
+The [polkit agent contract](https://polkit.pages.freedesktop.org/polkit/eggdbus-interface-org.freedesktop.PolicyKit1.AuthenticationAgent.html)
+requires user dismissal to return its Cancelled error. Debian's
+[bookworm package record](https://packages.debian.org/bookworm/policykit-1-gnome)
+identifies the GTK agent and its GTK/GLib/polkit dependencies, already supplied by
+the installed-settings fixture. Its [publisher download record](https://packages.debian.org/bookworm/amd64/policykit-1-gnome/download)
+pins `0.105-8`, amd64, 64,908 bytes, SHA-256
+`e6694d1c1ad3c81c4803882fe797497668adbc2f0735651f20a02ff656475fb5`.
+Reuse the existing signed-snapshot polkit acquisition with a closed agent-only
+operation, separate candidate directory and 1-MiB archive ceiling. Debian's
+[apt-get contract](https://manpages.debian.org/bookworm/apt/apt-get.8.en.html)
+documents authenticated package download without installation. Signed snapshot
+metadata must independently agree with the publisher pin before publication.
+The existing runtime closure, cached app and resource/isolation policy remain.
+Acquisition is prepared, not accepted; actual graphical dependency loading,
+session-agent registration, Cancel/Denied and fresh successful retry remain open.

@@ -3370,16 +3370,33 @@ maintenance_stage_ledger_tokenizer() {
 
 maintenance_stage_polkit_runtime_candidate() {
     require_devcheck_image_pins
-    require_image_pin POLKIT_RUNTIME_VERSION
-    require_image_pin POLKIT_RUNTIME_SIZE
-    require_image_pin POLKIT_RUNTIME_SHA256
-    local output="$ONLINE_FETCH_TMP/polkit-runtime-output"
-    local parent="$ONLINE_CANDIDATE_ROOT/polkit-runtime"
-    local part="$parent/.polkit-runtime-candidate.tar.gz.part"
-    local candidate="$parent/polkit-runtime-candidate.tar.gz"
+    local kind=${1:-runtime} package version size sha limit receipt=POLKIT_RUNTIME_CANDIDATE
+    case "$kind" in
+        runtime)
+            require_image_pin POLKIT_RUNTIME_VERSION
+            require_image_pin POLKIT_RUNTIME_SIZE
+            require_image_pin POLKIT_RUNTIME_SHA256
+            package=polkitd version=$POLKIT_RUNTIME_VERSION size=$POLKIT_RUNTIME_SIZE sha=$POLKIT_RUNTIME_SHA256
+            limit=134217728
+            [ "$size" = 112024 ] || die 'polkitd size differs from publisher discovery'
+            ;;
+        agent)
+            require_image_pin POLKIT_AGENT_VERSION
+            require_image_pin POLKIT_AGENT_SIZE
+            require_image_pin POLKIT_AGENT_SHA256
+            package=policykit-1-gnome version=$POLKIT_AGENT_VERSION size=$POLKIT_AGENT_SIZE sha=$POLKIT_AGENT_SHA256
+            limit=1048576
+            receipt=POLKIT_AGENT_CANDIDATE
+            [ "$size" = 64908 ] || die 'polkit agent size differs from publisher discovery'
+            ;;
+        *) die 'unknown polkit candidate kind' ;;
+    esac
+    local output="$ONLINE_FETCH_TMP/polkit-$kind-output"
+    local parent="$ONLINE_CANDIDATE_ROOT/polkit-$kind"
+    local part="$parent/.polkit-$kind-candidate.tar.gz.part"
+    local candidate="$parent/polkit-$kind-candidate.tar.gz"
     local archive_size archive_sha package_count
-    [ "$POLKIT_RUNTIME_SIZE" = 112024 ] \
-        && [[ "$POLKIT_RUNTIME_VERSION" =~ ^[0-9A-Za-z.+:~\-]+$ ]] \
+    [[ "$version" =~ ^[0-9A-Za-z.+:~\-]+$ ]] \
         || die 'polkit package version or size pin differs from publisher discovery'
     for directory in "$ONLINE_CANDIDATE_ROOT" "$parent"; do
         if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
@@ -3403,9 +3420,10 @@ maintenance_stage_polkit_runtime_candidate() {
         --env "POLKIT_DEV_CHECK_IMAGE_ID=$DEV_CHECK_IMAGE_ID" \
         --env "POLKIT_DEBIAN_SNAPSHOT=$DEV_CHECK_DEBIAN_SNAPSHOT" \
         --env "POLKIT_SECURITY_SNAPSHOT=$DEV_CHECK_SECURITY_SNAPSHOT" \
-        --env "POLKIT_VERSION=$POLKIT_RUNTIME_VERSION" \
-        --env "POLKIT_SIZE=$POLKIT_RUNTIME_SIZE" \
-        --env "POLKIT_SHA256=$POLKIT_RUNTIME_SHA256" \
+        --env "POLKIT_PACKAGE=$package" \
+        --env "POLKIT_VERSION=$version" \
+        --env "POLKIT_SIZE=$size" \
+        --env "POLKIT_SHA256=$sha" \
         "$DEV_CHECK_IMAGE_ID" \
         /bin/bash --noprofile --norc /stage-polkit-runtime-candidate.sh /outputs \
         || die 'signed polkit package candidate acquisition failed'
@@ -3418,6 +3436,8 @@ maintenance_stage_polkit_runtime_candidate() {
     [ "$package_count" -gt 0 ] && [ "$package_count" -le 96 ] \
         && [ "$package_count" -eq "$(/usr/bin/wc -l < "$output/manifest.tsv")" ] \
         || die 'polkit candidate manifest cardinality differs'
+    [ "$kind" = runtime ] || [ "$package_count" -eq 1 ] \
+        || die 'polkit agent candidate contains more than its fixed package'
     (
         cd "$output"
         /usr/bin/tar --sort=name --format=gnu \
@@ -3427,15 +3447,15 @@ maintenance_stage_polkit_runtime_candidate() {
     ) | /usr/bin/gzip -n >"$part" \
         || die 'polkit candidate archive creation failed'
     archive_size="$(/usr/bin/stat -c '%s' "$part")"
-    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le 134217728 ] \
+    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le "$limit" ] \
         || die 'polkit candidate archive size is outside its bound'
     archive_sha="$(/usr/bin/sha256sum "$part" | /usr/bin/cut -d' ' -f1)"
     /usr/bin/chmod 0400 -- "$part"
     online_image_provenance maintenance-rename-noreplace \
         --source "$part" --destination "$candidate" \
         || die 'polkit candidate publication failed'
-    /usr/bin/printf 'POLKIT_RUNTIME_CANDIDATE=staged base=%s packages=%s bytes=%s sha256=%s path=%s\n' \
-        "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
+    /usr/bin/printf '%s=staged base=%s packages=%s bytes=%s sha256=%s path=%s\n' \
+        "$receipt" "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
 }
 
 maintenance_stage_window_manager_candidate() {
@@ -8639,6 +8659,11 @@ main() {
         --maintenance-stage-polkit-runtime-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-stage-polkit-runtime-candidate takes no arguments"
             maintenance_stage_polkit_runtime_candidate
+            return 0
+            ;;
+        --maintenance-stage-polkit-agent-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-stage-polkit-agent-candidate takes no arguments"
+            maintenance_stage_polkit_runtime_candidate agent
             return 0
             ;;
         --maintenance-stage-ledger-tokenizer)

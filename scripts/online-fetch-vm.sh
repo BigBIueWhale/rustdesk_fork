@@ -49,7 +49,7 @@ case "$#:${1:-}" in
     1:--maintenance-build-win-helper-certified-candidate|\
     1:--maintenance-promote-win-helper-certified-candidate|\
     1:--maintenance-discover-devcheck-image|1:--maintenance-stage-pa-runtime-candidate|\
-    1:--maintenance-stage-polkit-runtime-candidate|1:--maintenance-stage-ledger-tokenizer|\
+    1:--maintenance-stage-polkit-runtime-candidate|1:--maintenance-stage-polkit-agent-candidate|1:--maintenance-stage-ledger-tokenizer|\
     1:--maintenance-stage-xrandr-runtime-candidate|1:--maintenance-stage-window-manager-candidate|\
     1:--maintenance-build-devcheck-image-candidate|\
     1:--maintenance-promote-devcheck-image-candidate|\
@@ -115,6 +115,7 @@ elif [ "$REQUEST" = --maintenance-discover-flutter-linux-engine-bootstrap ] \
     readonly OVERLAY_SIZE=16G
     readonly VM_MEMORY=4096
 elif [ "$REQUEST" = --maintenance-stage-polkit-runtime-candidate ] \
+     || [ "$REQUEST" = --maintenance-stage-polkit-agent-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ] \
      || [ "$REQUEST" = --maintenance-stage-xrandr-runtime-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-window-manager-candidate ]; then
@@ -659,6 +660,11 @@ if [ "$REQUEST" = --maintenance-stage-window-manager-candidate ]; then
     candidate="$REPO_ROOT/online/candidates/window-manager"
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
         || fail 'window-manager candidate is occupied; inspect it before another acquisition'
+fi
+if [ "$REQUEST" = --maintenance-stage-polkit-agent-candidate ]; then
+    candidate="$REPO_ROOT/online/candidates/polkit-agent"
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || fail 'polkit agent candidate is occupied; inspect it before another acquisition'
 fi
 if [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \
    || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-sysroots ]; then

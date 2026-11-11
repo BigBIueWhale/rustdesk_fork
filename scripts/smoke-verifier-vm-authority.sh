@@ -753,6 +753,7 @@ case "$#:${1:-}" in
                 --installed-settings-concurrent-stop) FLUTTER_INSTALLED_SETTINGS=5 ;;
                 --debian-candidate-package) FLUTTER_INSTALLED_SETTINGS=6 ;;
                 --debian-candidate-install) FLUTTER_INSTALLED_SETTINGS=7 ;;
+                --debian-candidate-upgrade) FLUTTER_INSTALLED_SETTINGS=8 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -1771,7 +1772,36 @@ installed_settings_input_inventory() {
              "$HOST_UID:$HOST_GID:400:1:$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
         || fail 'installed settings runtime archive authority differs'
     verify_sha256 "$archive" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ]; then
+        local previous=$REPO_ROOT/.harness-state/linux-flutter-app-artifacts/$DEBIAN_UPGRADE_APP_COMMIT
+        git_closed -C "$REPO_ROOT" merge-base --is-ancestor "$DEBIAN_UPGRADE_APP_COMMIT" "$FLUTTER_APP_COMMIT" \
+            || fail 'Debian upgrade baseline is not an ancestor of the selected app'
+        for file in "${previous%/*}" "$previous" "$previous/linux-x86_64-flutter-app" \
+            "$previous/linux-x86_64-flutter-app/bundle" "$previous/linux-x86_64-flutter-app/bundle/lib"; do
+            local mode=500
+            if [ "$file" = "${previous%/*}" ] || [ "$file" = "$previous" ]; then mode=700; fi
+            [ -d "$file" ] && [ ! -L "$file" ] && [ "$(/usr/bin/readlink -f -- "$file")" = "$file" ] \
+                && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$file")" = "$HOST_UID:$HOST_GID:$mode" ] \
+                || fail 'Debian upgrade baseline parent authority differs'
+            /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%y:%z' -- "$file"
+        done
+        [ -z "$(/usr/bin/findmnt -rn -o TARGET --submounts "$previous")" ] \
+            || fail 'Debian upgrade baseline contains a descendant mount'
+        for file in "$previous/linux-x86_64-flutter-app/app-manifest.json" \
+            "$previous/linux-x86_64-flutter-app/bundle/lib/librustdesk.so"; do
+            [ -f "$file" ] && [ ! -L "$file" ] \
+                && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$file")" = "$HOST_UID:$HOST_GID:400:1" ] \
+                || fail 'Debian upgrade baseline file authority differs'
+            /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$file"
+            /usr/bin/sha256sum -- "$file"
+        done
+        [ "$(/usr/bin/stat -c '%s' -- "$previous/linux-x86_64-flutter-app/app-manifest.json")" -le 524288 ] \
+            && [ "$(/usr/bin/stat -c '%s' -- "$previous/linux-x86_64-flutter-app/bundle/lib/librustdesk.so")" = "$DEBIAN_UPGRADE_CORE_SIZE" ] \
+            || fail 'Debian upgrade baseline size differs'
+        verify_sha256 "$previous/linux-x86_64-flutter-app/app-manifest.json" "$DEBIAN_UPGRADE_APP_MANIFEST_SHA256"
+        verify_sha256 "$previous/linux-x86_64-flutter-app/bundle/lib/librustdesk.so" "$DEBIAN_UPGRADE_CORE_SHA256"
+    fi
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
         local runtime=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz
         [ -d "${runtime%/*}" ] && [ ! -L "${runtime%/*}" ] \
@@ -1802,7 +1832,7 @@ installed_settings_input_inventory() {
     fi
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ]; then
         # These four scripts are consumed by the current package constructor,
         # not compiled into the retained app. The archive validator exact-matches them.
         for file in preinst postinst prerm postrm; do
@@ -3190,6 +3220,12 @@ if [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
             || fail "replay provider lacks its input contract: $replay_input_contract"
         [ "$app_input_blob" = "$provider_input_blob" ] \
             || fail "selected app and replay provider input contract differ: $replay_input_contract"
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ]; then
+            previous_input_blob="$(git_closed -C "$REPO_ROOT" rev-parse --verify "$DEBIAN_UPGRADE_APP_COMMIT:$replay_input_contract")" \
+                || fail "upgrade baseline lacks its input contract: $replay_input_contract"
+            [ "$previous_input_blob" = "$provider_input_blob" ] \
+                || fail "upgrade baseline and replay provider input contract differ: $replay_input_contract"
+        fi
     done
     printf 'LINUX_FLUTTER_REPLAY_INPUT_CONTRACT=pass app_commit=%s provider_commit=%s files=3 equality=git-blob\n' \
         "$FLUTTER_APP_COMMIT" "$FLUTTER_REPLAY_INPUT_SOURCE"
@@ -5254,7 +5290,13 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_PEER_SOURCE_ARCHIVE")
     if [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ]; then
+            lifecycle_payload_grafts+=(
+                "debian-upgrade/app-manifest.json=$REPO_ROOT/.harness-state/linux-flutter-app-artifacts/$DEBIAN_UPGRADE_APP_COMMIT/linux-x86_64-flutter-app/app-manifest.json"
+                "debian-upgrade/librustdesk.so=$REPO_ROOT/.harness-state/linux-flutter-app-artifacts/$DEBIAN_UPGRADE_APP_COMMIT/linux-x86_64-flutter-app/bundle/lib/librustdesk.so"
+            )
+        fi
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
             lifecycle_payload_grafts+=(
                 "debian-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz"
@@ -5600,7 +5642,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ]; then
+            guest_invocation+=' --debian-candidate-upgrade'
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
             guest_invocation+=' --debian-candidate-install'
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 6 ]; then
             guest_invocation+=' --debian-candidate-package'
@@ -9379,7 +9423,11 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_DEBIAN_UPGRADE_NATIVE=pass previous_app=$DEBIAN_UPGRADE_APP_COMMIT app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked upgrade=distinct-core-same-base service=actual old_processes=retired credential=preserved cpace=4 wrong_password=refused profile=unchanged reinstall=same-version remove=preserved purge=retired cleanup=joined" \
+            'actual Debian package replacement across retained application revisions'
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ]; then
         require_exact_fixed_receipt \
             "LINUX_DEBIAN_INSTALL_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg reinstall=same-version service=actual credential=preserved remove=preserved purge=retired desktop=credential-bootstrap cpace=2 wrong_password=refused admin_units=4 cleanup=joined" \
             'dependency-complete Debian package lifecycle'

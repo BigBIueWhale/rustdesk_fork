@@ -145979,3 +145979,48 @@ and its byte round trip. package-uncertain-ledger-fc0b7124.json and eight files 
 host listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
+
+## 2026-11-11 — distinct-application Debian replacement preparation
+
+The previous checkpoint is progress: actual-package prolonged uncertainty and
+recovery passed, with joined cleanup and matching bounded evidence. Continue
+package acceptance with R-S11by/bz's unproved replacement across real application
+revisions, ahead of repeating same-version settings or another application build.
+The existing password SSH master is usable; TUF is clean at c301744e with about
+43 GiB available memory. Preserve the no-NIC VM and bounded RAM orchestration.
+
+Debian Policy chapter 6 defines the old/new maintainer-script combination and
+failure handling; dpkg(1) supplies the command/state semantics. Exercise the real
+transaction and installed service, not extracted script simulation.
+https://www.debian.org/doc/debian-policy/ch-maintainerscripts.html
+https://manpages.debian.org/bookworm/dpkg/dpkg.1.en.html
+docs/VERSIONING.md deliberately keeps app/wire/package version 1.4.7 separate
+from FORK_VERSION. Do not manufacture a lower base or bump the fork release merely
+to label this a version upgrade. Both archives use the current production
+constructor/scripts; historical maintainer-script transitions, old edited
+conffiles, cross-upstream-version and final release upgrade acceptance stay OPEN.
+
+The retained app74b64685 manifest is SHA-256
+46bf7e2d3d47f6df0ef48ecfc766f672dd1424df5d8ef6a430efcdaa6738b6be.
+All 72 packaged files match app6429f3cb except lib/librustdesk.so: old 26,989,208
+bytes / ff7073c80eecf955d3a2516f26b99a3a7abe4fa4f5ca0345cfc3ae7311931fb1;
+new 26,993,304 bytes / 4c420b39cbac84821aedcd5d53e39709b0d118f6d87b0daea505e93da06c8bde.
+The directory inventories match; the separate smoke-readiness helper is outside
+the package. Verify old source ancestry and the same three input-provider contract
+blobs. Admit only the sealed previous manifest/core through the existing source
+ISO, with private parent/type/mode/link/mount/size/hash checks and before/after
+inventory. The ordinary preparation container reconstructs the previous bundle
+in writable private output and verifies every payload against its complete old
+manifest. Both generated archives pass the independent archive validator.
+
+APT installs the earlier app with its authenticated dependencies. In a real
+PAM/logind desktop, provision its protected credential and require two CPace
+exchanges plus wrong-password refusal. This intentionally does not repeat that
+old app's known sessionless provisioning failure. During the live desktop,
+dpkg installs the current archive; retained pidfds must prove both old processes
+exited, and actual supervisor/child mappings must match the new library inode
+and digest. Require a new service generation, unchanged protected/profile state,
+two fresh CPace exchanges and another wrong-password refusal. Close the desktop,
+then verify live ordinary-user refusal, current reinstall, removal preserving
+state, purge retiring it, dependency consistency and exact cleanup. No product
+correction is selected before execution; native acceptance remains pending.

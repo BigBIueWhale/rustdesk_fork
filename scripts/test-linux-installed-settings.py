@@ -177,7 +177,27 @@ def prepare():
     print(f'LINUX_INSTALLED_SETTINGS_PREPARED=pass driver_builds=2 equality=bytes runtime_files={len(records)}', flush=True)
 
 
-def prepare_package(single=False, graphical=False, settings=False):
+def upgrade_manifest(source, inputs):
+    pins = dict(re.findall(r'^([A-Z0-9_]+)="([^"]*)"', (source / 'scripts/pins.env').read_text(), re.M))
+    manifest = inputs / 'app-manifest.json'
+    core = inputs / 'librustdesk.so'
+    for path, limit in ((manifest, 524288), (core, int(pins['DEBIAN_UPGRADE_CORE_SIZE']))):
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= limit:
+            raise RuntimeError('Debian upgrade input type or size differs')
+    if (digest(manifest) != pins['DEBIAN_UPGRADE_APP_MANIFEST_SHA256']
+            or digest(core) != pins['DEBIAN_UPGRADE_CORE_SHA256']
+            or core.stat().st_size != int(pins['DEBIAN_UPGRADE_CORE_SIZE'])):
+        raise RuntimeError('Debian upgrade input identity differs')
+    previous = json.loads(manifest.read_text())
+    if (previous['context']['source_commit'] != pins['DEBIAN_UPGRADE_APP_COMMIT']
+            or previous['files']['bundle/lib/librustdesk.so'] != {
+                'bytes': core.stat().st_size, 'sha256': digest(core)}):
+        raise RuntimeError('Debian upgrade source manifest differs')
+    return previous
+
+
+def prepare_package(single=False, graphical=False, settings=False, upgrade=False):
     if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
         raise RuntimeError('candidate packaging requires the ordinary isolated container')
     os.chdir('/work')
@@ -188,25 +208,54 @@ def prepare_package(single=False, graphical=False, settings=False):
     version = module['get_version']()
     bundle = Path('/app/bundle')
     original = {str(p.relative_to(bundle)): digest(p) for p in bundle.rglob('*') if p.is_file()}
+    selected = [(name, bundle, original) for name in (('first',) if single else ('first', 'second'))]
+    if upgrade:
+        previous = upgrade_manifest(Path('/work'), Path('/upgrade-input'))
+        expected = {name[len('bundle/'):]: value for name, value in previous['files'].items()
+                    if name.startswith('bundle/')}
+        if (set(expected) != set(original)
+                or [name for name in original if original[name] != expected[name]['sha256']]
+                != ['lib/librustdesk.so']):
+            raise RuntimeError('upgrade baseline must differ in exactly its authenticated Rust core')
+        previous_bundle = Path('/out/previous-bundle')
+        shutil.copytree(bundle, previous_bundle)
+        previous_bundle.chmod(0o700)
+        for path in previous_bundle.rglob('*'):
+            path.chmod(0o700 if path.is_dir() else 0o600)
+        shutil.copyfile('/upgrade-input/librustdesk.so', previous_bundle / 'lib/librustdesk.so')
+        for name, record in expected.items():
+            path = previous_bundle / name
+            if path.stat().st_size != record['bytes'] or digest(path) != record['sha256']:
+                raise RuntimeError('reconstructed previous application differs from its complete manifest')
+        selected.append(('previous', previous_bundle, {name: r['sha256'] for name, r in expected.items()}))
     archives = []
-    for name in (('first',) if single else ('first', 'second')):
+    for name, selected_bundle, selected_files in selected:
         stage = Path('/out') / (name + '-stage')
         archive = Path('/out') / (name + '.deb')
-        module['package_flutter_deb'](version, bundle, stage, archive)
+        module['package_flutter_deb'](version, selected_bundle, stage, archive)
         print(run(['/usr/bin/python3', '-B', '-I', '-S',
                    '/work/scripts/verify-debian-package-authority.py', '--repo', '/work',
                    '--deb', str(archive)], timeout=60), end='', flush=True)
         extracted = Path('/out') / (name + '-extracted')
         run(['/usr/bin/dpkg-deb', '--extract', str(archive), str(extracted)], timeout=60)
-        for relative, expected in original.items():
-            if digest(extracted / 'usr/share/rustdesk' / relative) != expected:
+        for relative, expected_sha in selected_files.items():
+            if digest(extracted / 'usr/share/rustdesk' / relative) != expected_sha:
                 raise RuntimeError('candidate archive changed a retained application payload')
         child = extracted / 'usr/share/rustdesk/rustdesk-service-child'
-        if digest(child) != original['rustdesk'] or stat.S_IMODE(child.stat().st_mode) != 0o711:
+        if digest(child) != selected_files['rustdesk'] or stat.S_IMODE(child.stat().st_mode) != 0o711:
             raise RuntimeError('candidate service-child image differs')
         archives.append({'sha256': digest(archive), 'bytes': archive.stat().st_size})
         shutil.rmtree(stage)
         shutil.rmtree(extracted)
+    if upgrade:
+        shutil.rmtree(previous_bundle)
+        print('LINUX_DEBIAN_UPGRADE_PACKAGES=' + json.dumps({
+            'previous_app': previous['context']['source_commit'],
+            'previous_manifest_sha256': digest('/upgrade-input/app-manifest.json'),
+            'previous': archives[1], 'current': archives[0], 'version': version,
+            'application_files': len(original), 'changed_payloads': ['lib/librustdesk.so'],
+            'packaging': 'current-production-constructor',
+        }, sort_keys=True), flush=True)
     if not single and archives[0] != archives[1]:
         raise RuntimeError('independent packaging stages produced different archives')
     if original != {str(p.relative_to(bundle)): digest(p) for p in bundle.rglob('*') if p.is_file()}:
@@ -232,12 +281,14 @@ def prepare_package(single=False, graphical=False, settings=False):
 
 
 def prepare_runtime(source, execution, image, client, sock, config, graphical=False, package=False,
-                    package_install=False, settings=False):
+                    package_install=False, settings=False, upgrade=False):
     prepared = WORK / 'prepared'
     prepared.mkdir(mode=0o700)
     os.chown(prepared, 1000, 1000)
     mounts = [(str(source), '/work', True), (str(execution), '/app', True),
               (str(prepared), '/out', False)]
+    if upgrade:
+        mounts.append((str(MEDIA / 'debian-upgrade'), '/upgrade-input', True))
     for kind in (('xvfb', 'atspi') if graphical or settings else ('xvfb',) if package_install
                  else () if package else ('xvfb', 'atspi')):
         mounts.append((str(source / 'online/inputs' / (kind + '-debs')), f'/{kind}-inputs', True))
@@ -260,7 +311,8 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
     for host, target, readonly in mounts:
         args += ['--mount', f'type=bind,source={host},target={target},bind-recursive=disabled' + (',readonly' if readonly else '')]
     args += [image, '/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-linux-installed-settings.py',
-             '--prepare-package-graphical' if graphical else '--prepare-package-settings' if settings
+             '--prepare-package-upgrade' if upgrade else '--prepare-package-graphical' if graphical
+             else '--prepare-package-settings' if settings
              else '--prepare-package-install' if package_install
              else '--prepare-package' if package else '--prepare']
     container = docker(args).strip()
@@ -1643,12 +1695,12 @@ def concurrent_stop_scenario(receiver, probe_sha):
 
 
 def main(arguments, uncertain=False, admin_failure=False, graphical=False, concurrent_stop=False, package=False,
-         package_install=False, settings=False):
+         package_install=False, settings=False, upgrade=False):
     guard()
     agent_archive_sha = None
     if graphical:
         arguments, agent_archive_sha = arguments[:-1], arguments[-1]
-    if graphical or settings or uncertain:
+    if graphical or settings or uncertain or upgrade:
         package_install = True
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
@@ -1672,7 +1724,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     execution = Path(execution)
     prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical,
                                package=package or package_install, package_install=package_install,
-                               settings=settings or uncertain)
+                               settings=settings or uncertain, upgrade=upgrade)
     if not package:
         probe_manifest = MEDIA / 'settings-probe/peer-manifest.json'
         probe = MEDIA / 'settings-probe/probe_client'
@@ -1687,7 +1739,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-uncertain' if uncertain else '--run-settings' if settings else '--run', str(source),
+                        '--run-upgrade' if upgrade else '--run-uncertain' if uncertain
+                        else '--run-settings' if settings else '--run', str(source),
                         str(prepared), str(app_input), manifest_sha, commit, probe_sha,
                         *([agent_archive_sha] if graphical else [])],
                        env=ENV, check=True, timeout=840 if uncertain else 600)
@@ -1758,6 +1811,8 @@ if __name__ == '__main__':
         prepare_package()
     elif sys.argv[1:] == ['--prepare-package-install']:
         prepare_package(single=True)
+    elif sys.argv[1:] == ['--prepare-package-upgrade']:
+        prepare_package(single=True, upgrade=True)
     elif sys.argv[1:] == ['--session']:
         session(packaged=True)
     elif sys.argv[1:] == ['--session-restart']:
@@ -1770,10 +1825,10 @@ if __name__ == '__main__':
         session(admin_failure=True, graphical=True, packaged=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install'):
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
              package=sys.argv[1] == '--run-package', package_install=sys.argv[1] == '--run-package-install',
-             settings=sys.argv[1] == '--run')
+             settings=sys.argv[1] == '--run', upgrade=sys.argv[1] == '--run-package-upgrade')
     else:
         raise SystemExit('closed installed-settings arguments required')

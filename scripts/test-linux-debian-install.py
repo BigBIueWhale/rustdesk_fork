@@ -321,7 +321,8 @@ def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_arc
         command(['/usr/sbin/userdel', 'rdreceiver4003'], 'retire-desktop-administrator')
 
 
-def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None, settings_mode=None):
+def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None,
+         settings_mode=None, upgrade=False):
     require(Path(__file__).resolve() == SCRIPT, 'package test entry differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
@@ -335,21 +336,29 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
     manifest_path = app_input / 'app-manifest.json'
     require(digest(manifest_path) == manifest_sha, 'application manifest differs')
     manifest = json.loads(manifest_path.read_text())
+    previous = settings.upgrade_manifest(source, MEDIA / 'debian-upgrade') if upgrade else None
     archive = prepared / 'first.deb'
+    initial_archive = prepared / 'previous.deb' if upgrade else archive
     prepared_manifest = json.loads((prepared / 'manifest.json').read_text())
-    require(prepared_manifest['first.deb'] == {'bytes': archive.stat().st_size, 'sha256': digest(archive)},
-            'prepared package differs')
+    for candidate in (archive, initial_archive):
+        require(prepared_manifest[candidate.name] == {'bytes': candidate.stat().st_size, 'sha256': digest(candidate)},
+                'prepared package differs')
     runtime, records, control = runtime_inputs(source)
     controls = WORK / 'debian-control'
     command(['/usr/bin/dpkg-deb', '--control', str(archive), str(controls)], 'control')
     require((controls / 'control').read_bytes() == control, 'package and resolved dependency metadata differ')
+    if upgrade:
+        previous_controls = WORK / 'previous-debian-control'
+        command(['/usr/bin/dpkg-deb', '--control', str(initial_archive), str(previous_controls)], 'previous-control')
+        require((previous_controls / 'control').read_bytes() == control
+                and digest(initial_archive) != digest(archive), 'upgrade package identity or control differs')
     version, = re.findall(r'^Version: (.+)$', control.decode(), re.M)
     cache = runtime / 'packages'
     cached_application = cache / f'rustdesk_{version}_amd64.deb'
     require(not cached_application.exists(), 'application cache slot is occupied')
-    shutil.copyfile(archive, cached_application)
+    shutil.copyfile(initial_archive, cached_application)
     cached_application.chmod(0o400)
-    require(digest(cached_application) == digest(archive), 'cached application differs')
+    require(digest(cached_application) == digest(initial_archive), 'cached application differs')
     sources = runtime / 'sources.list'
     sources.write_text('')
     for directory in ('sources.list.d', 'lists', 'lists/partial', 'packages/partial'):
@@ -391,11 +400,11 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
         require(actual == {r['name']: (r['version'], 'ii ') for r in records.values()},
                 'installed dependency versions/status differ')
 
-        def installed_state(phase):
+        def installed_state(phase, expected_manifest=manifest, expected_archive=archive):
             require(settings.run(['/usr/bin/dpkg-query', '--show', '--showformat=${Status}\t${Version}', 'rustdesk'])
                     == 'install ok installed\t' + version, 'application package is not configured')
             require(settings.run(['/usr/bin/dpkg', '--verify', 'rustdesk']) == '', 'installed payload verification failed')
-            for name, record in manifest['files'].items():
+            for name, record in expected_manifest['files'].items():
                 if name.startswith('bundle/'):
                     path = Path('/usr/share/rustdesk') / name[len('bundle/'):]
                     require(path.stat().st_size == record['bytes'] and digest(path) == record['sha256'],
@@ -427,11 +436,32 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             require(pid > 1 and Path(f'/proc/{pid}/exe').samefile(receiver.PRIMARY)
                     and not select.select([fd], [], [], 0)[0], 'installed supervisor identity differs')
             print('LINUX_DEBIAN_INSTALL_STATE=' + json.dumps({'phase': phase, 'unit': props,
-                  'archive_sha256': digest(archive), 'application_files': sum(n.startswith('bundle/') for n in manifest['files'])},
+                  'archive_sha256': digest(expected_archive),
+                  'application_files': sum(n.startswith('bundle/') for n in expected_manifest['files'])},
                   sort_keys=True), flush=True)
             return fd
 
-        first = installed_state('installed')
+        def mapped_core(record, expected_manifest, phase):
+            core = Path('/usr/share/rustdesk/lib/librustdesk.so')
+            info = core.stat()
+            expected = expected_manifest['files']['bundle/lib/librustdesk.so']
+            require(core.stat().st_size == expected['bytes'] and digest(core) == expected['sha256'],
+                    'installed core differs from the selected application')
+            observations = []
+            for pid in (record['supervisor'], record['pid']):
+                settings.package_process(pid)
+                mappings = [line.split(maxsplit=5) for line in Path(f'/proc/{pid}/maps').read_text().splitlines()
+                            if 'librustdesk.so' in line]
+                require(mappings and all(len(fields) == 6 and fields[5] == str(core)
+                        and int(fields[4]) == info.st_ino
+                        and tuple(int(v, 16) for v in fields[3].split(':')) == (os.major(info.st_dev), os.minor(info.st_dev))
+                        for fields in mappings), 'service process is not executing the selected installed core')
+                observations.append({'pid': pid, 'segments': len(mappings)})
+            print('LINUX_DEBIAN_UPGRADE_CORE=' + json.dumps({
+                'phase': phase, 'sha256': expected['sha256'], 'inode': info.st_ino,
+                'processes': observations, **record}, sort_keys=True), flush=True)
+
+        first = installed_state('installed', previous if upgrade else manifest, initial_archive)
         if agent_archive_sha is not None or settings_mode is not None:
             settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before,
                               uncertain=settings_mode == 'uncertain')
@@ -443,18 +473,26 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             require(receiver.credential() == credential, 'settings credential did not survive service restart')
         else:
             sessionless_snapshot('before-password')
-            started = time.monotonic()
-            receiver.change(0, settings.BASELINE_PASSWORD, True)
-            print('LINUX_DEBIAN_INSTALL_PASSWORD_SECONDS=' + str(time.monotonic() - started), flush=True)
-            sessionless_snapshot('after-password')
-            credential = receiver.credential()
+            credential = None
+            if not upgrade:
+                started = time.monotonic()
+                receiver.change(0, settings.BASELINE_PASSWORD, True)
+                print('LINUX_DEBIAN_INSTALL_PASSWORD_SECONDS=' + str(time.monotonic() - started), flush=True)
+                sessionless_snapshot('after-password')
+                credential = receiver.credential()
             require(digest(receiver.PROBE) == probe_sha, 'installed CPace probe differs')
             desktop_runtime(settings, prepared)
 
             def desktop_bootstrap(actor, session, pam):
+                nonlocal credential
                 record = receiver.ready()
                 child_fd = os.pidfd_open(record['pid'])
+                active_supervisor = first
                 try:
+                    if upgrade:
+                        receiver.change(0, settings.BASELINE_PASSWORD, True)
+                        credential = receiver.credential()
+                        mapped_core(record, previous, 'before-upgrade')
                     require(receiver.child_record() == record and record['supervisor'] == supervisors[0]
                             and not select.select([first, child_fd], [], [], 0)[0]
                             and receiver.credential() == credential, 'desktop bootstrap changed its owner or credential')
@@ -466,6 +504,32 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                                 'product loaded or inherited the private desktop runtime')
                     settings.credential_network(receiver, record, probe_sha, 'package-desktop-bootstrap',
                                                 new=settings.BASELINE_PASSWORD, old='Wrong-bootstrap-password-2026!')
+                    if upgrade:
+                        old_record = record
+                        profile = settings.user_credential()
+                        command(['/usr/bin/dpkg', '--install', str(archive)], 'upgrade', timeout=90)
+                        active_supervisor = installed_state('upgraded')
+                        require(len(select.select([first, child_fd], [], [], 2)[0]) == 2,
+                                'package upgrade retained an old supervisor or child')
+                        record = receiver.ready(old_record)
+                        require(record['supervisor'] == supervisors[-1]
+                                and record['generation'] != old_record['generation']
+                                and receiver.credential() == credential
+                                and settings.user_credential() == profile,
+                                'package upgrade did not preserve credential or replace its service generation')
+                        next_child = os.pidfd_open(record['pid'])
+                        os.close(child_fd)
+                        child_fd = next_child
+                        mapped_core(record, manifest, 'after-upgrade')
+                        settings.credential_network(receiver, record, probe_sha, 'package-upgraded',
+                                                    new=settings.BASELINE_PASSWORD, old='Wrong-upgrade-password-2026!')
+                        require(settings.user_credential() == profile, 'upgraded authentication changed profile credentials')
+                        print('LINUX_DEBIAN_UPGRADE=' + json.dumps({
+                            'previous_app': previous['context']['source_commit'], 'current_app': commit,
+                            'previous_package': digest(initial_archive), 'current_package': digest(archive),
+                            'old': old_record, 'new': record, 'version': version, 'credential_sha256': credential,
+                            'old_processes': 'pidfd-exited', 'profile': 'unchanged',
+                        }, sort_keys=True), flush=True)
                     actor.stdin.write(b'close\n')
                     actor.stdin.flush()
                     require(pam.reply(actor) == {'session': session, 'phase': 'closed'},
@@ -477,7 +541,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                            or os.path.lexists('/run/rustdesk/service-child.record')):
                         require(time.monotonic() < deadline, 'desktop child or record was not retired')
                         time.sleep(0.05)
-                    require(not select.select([first], [], [], 0)[0] and receiver.credential() == credential,
+                    require(not select.select([active_supervisor], [], [], 0)[0] and receiver.credential() == credential,
                             'desktop retirement changed the supervisor or credential')
                     print('LINUX_DEBIAN_DESKTOP_BOOTSTRAP=' + json.dumps({
                         **record, 'session': session, 'credential_sha256': credential,
@@ -490,7 +554,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             receiver.installed_desktop(desktop_bootstrap, close_session=True)
             sessionless_snapshot('after-desktop')
             require(settings.run(['/usr/bin/systemctl', 'show', 'rustdesk.service',
-                    '--property=MainPID', '--value']).strip() == str(supervisors[0]),
+                    '--property=MainPID', '--value']).strip() == str(supervisors[-1]),
                     'package supervisor changed during desktop lifecycle')
         require(digest(receiver.PROBE) == probe_sha, 'desktop workflow changed the CPace probe')
         command(['/usr/sbin/useradd', '--uid', '4002', '--user-group', '--create-home',
@@ -512,7 +576,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
         command(['/usr/bin/dpkg', '--purge', 'rustdesk'], 'purge')
         require(not any(os.path.lexists(p) for p in ('/root/.config/rustdesk', '/root/.config/RustDesk',
                     '/etc/init.d/rustdesk')), 'purge retained package-owned state')
-        if agent_archive_sha is None and settings_mode is None:
+        if agent_archive_sha is None and settings_mode is None and not upgrade:
             administrator_units(source, archive, version, settings, receiver)
         command([*apt, 'check'], 'final-dependencies')
         require(command(['/usr/bin/dpkg', '--audit'], 'final-dpkg-audit') == '', 'final dpkg state is incomplete')
@@ -548,7 +612,13 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if settings_mode == 'uncertain':
+    if upgrade:
+        print(f'LINUX_DEBIAN_UPGRADE_NATIVE=pass previous_app={previous["context"]["source_commit"]} '
+              f'app_commit={commit} manifest_sha256={manifest_sha} dependencies=apt-checked '
+              'upgrade=distinct-core-same-base service=actual old_processes=retired credential=preserved '
+              'cpace=4 wrong_password=refused profile=unchanged reinstall=same-version remove=preserved '
+              'purge=retired cleanup=joined', flush=True)
+    elif settings_mode == 'uncertain':
         print(f'LINUX_DEBIAN_SETTINGS_UNCERTAIN_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired '
               'ui=actual service=actual authorization=polkit-pam child=kernel-stopped deadline=600 '
@@ -574,9 +644,10 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 
 if __name__ == '__main__':
     require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
-            or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain')),
+            or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-upgrade')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
          sys.argv[8] if len(sys.argv) == 9 else None,
-         settings_mode={'--run-settings': 'failure', '--run-uncertain': 'uncertain'}.get(sys.argv[1]))
+         settings_mode={'--run-settings': 'failure', '--run-uncertain': 'uncertain'}.get(sys.argv[1]),
+         upgrade=sys.argv[1] == '--run-upgrade')

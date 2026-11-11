@@ -129,16 +129,17 @@ OPEN. The source-confirmed rejected settings write remains unresolved;
 no product correction or installed Windows result is claimed. Its detailed entry
 below retains the required authorized behavior.
 
-**Current Linux build verified (2026-11-11).** Build `Bk1AusTf8r` at `83fa8494`
-includes the corrected SIGPIPE launcher and passes the complete Rust/Flutter build,
-thirteen widget/two native command controls and all 73 payload hashes. Two Cargo
-jobs and a 10-GiB compiler limit fit the admitted 14-GiB guest with zero OOM events;
-scratch/headroom limits remain unchanged. `linux-sigpipe-build-83fa8494.json`
-binds the artifact and joined cleanup. This bundle passes installed GUI
-Applied/Denied/Failed and restart controls (`linux-sigpipe-settings-a3c017a6.json`),
-plus actual ten-minute Uncertain reporting, same-child recovery and credential
-persistence (`linux-sigpipe-recovery-a3c017a6.json`). The installed section records
-the named schedules, predecessor failures and remaining acceptance scope.
+**Current Linux build verified (2026-11-11).** Build `kz2xxNctS5` at `74b64685`
+includes serialized credential convergence and the SIGPIPE correction. The complete
+Rust/Flutter build, thirteen widget/two native controls and all 73 payload hashes
+pass with two Cargo jobs, a 10-GiB compiler limit and zero OOM events. The admitted
+14-GiB guest and scratch/headroom limits are unchanged. Evidence:
+`linux-concurrent-build-74b64685.json`. This bundle passes installed GUI/root-CLI
+overlap, GTK cancellation/retry, no-agent refusal and two admitted CLI changes
+through normal systemd stop/restart. The installed section retains exact scope.
+Earlier app `83fa8494` separately passes GUI Applied/Denied/Failed/restart
+(`linux-sigpipe-settings-a3c017a6.json`) and actual ten-minute Uncertain reporting,
+same-child recovery and credential persistence (`linux-sigpipe-recovery-a3c017a6.json`).
 The separate 225-export ABI
 inspection remains bound to `2ae08e80` in `current-linux-abi-2ae08e80.json`.
 Flutter 3.47.5 remains a candidate. Installed/package, other-platform, final-release

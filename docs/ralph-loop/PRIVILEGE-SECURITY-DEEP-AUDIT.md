@@ -145165,3 +145165,11 @@ without another product correction. Other principals, failure/identity schedules
 final-package/platform acceptance and complete R-S0 remain open. This is a checkpoint
 for reassessing release priorities; do not repeat the passed overlap/drain scenarios
 without a relevant change or unresolved concern.
+
+Ledger count `nbcb2hMyk0` at `f7311bdd` passes: 404,271 tokens / 1,845,312 bytes,
+SHA-256 b79634f1eedd99c6a9fec98820cc8d14c43e8bbedaf50e78738fcf1047f4f1af.
+Fixed-method controls/round trip and joined QEMU3874291/private/RAM retirement
+pass with three zero endpoint deltas. `queued-stop-ledger-f7311bdd.json` and its
+eight-file 115,003-byte evidence set match CTE/TUF. Final current-verdict review
+found its build summary still labeled 83fa8494 current; update that summary to
+74b64685 while retaining earlier artifact scopes. Recount the changed final ledger.

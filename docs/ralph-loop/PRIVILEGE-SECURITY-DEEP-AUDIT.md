@@ -145411,3 +145411,23 @@ files/81,549 bytes, four zero listener deltas and QEMU3890822/private/RAM retire
 after 33.633 seconds. Its failure-description incorrectly says before compilation:
 source inspection locates this rejection after test execution. Full test output
 was not retained, so no individual test acceptance is credited from that run.
+
+TUF bvR33Qlnxy at 7cde2aca exits zero (tool1911). All four actual child-process
+cases and twenty existing UID/selector/kernel-identity controls pass in 0.18
+seconds. The held pre-exec child prevents absence before Command::spawn returns;
+failed exec/pre_exec releases its claim; signals alone do not release live-child
+ownership; cached repeated waits cannot retire another child; losing the wrapper
+does not establish absence. The exact production tracking module executes with
+std process/mutex APIs. The supplementary password source check passes.
+child-process-native-7cde2aca.json and nine files/114,802 bytes match CTE/TUF.
+QEMU3893424 joins zero after 34.247 seconds, RAM peak 3,403,616,256 bytes,
+four listener deltas are zero and exact private/RAM state is absent.
+
+Under the shared run lock, retire superseded app 83fa8494 after matching its
+manifest, all 73 payload hashes, closed inventory and owner/modes. Preserve
+74b64685 as the reproduced sessionless-package failure baseline plus designated
+7e6f6459 and pending 0ccb2a7e. The four-generation cap is unchanged. Exact
+descriptor-owned removal frees 70,561,792 allocated file bytes; three
+sessionless-retired-83fa8494 records/14,358 bytes match CTE/TUF. Canonical inputs,
+source and retained runtime evidence are untouched. Full corrected application
+build and package/native acceptance remain pending.

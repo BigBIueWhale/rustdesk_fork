@@ -370,12 +370,18 @@ payloads plus the byte-identical mode-0711 service child. Real maintainer script
 unit, policy, manager resources and freshly compiled XDO are packaged. The
 71.790-second no-NIC transaction retires its container/QEMU/private/RAM state
 with four zero listener deltas. `debian-candidate-18079460.json` retains provenance.
-This is construction from one retained application, not cold application A==B,
-installation or final-release acceptance. **OPEN:** dependency-complete dpkg
-install/upgrade and canonical input promotion. The Debian recipe still selects
-stock Flutter 3.24.5; the accepted app uses the 3.47.5 candidate and patched engine.
-The older final-package lifecycle fixture's forced dependency admission cannot
-establish dependency-complete installation. No dependency bypass is added.
+This is construction from one retained application, not cold application A==B.
+Normal dependency-complete installation now passes on that app: `bvrMolSDnR`
+at `844f49df` installs all 330 authenticated dependencies through APT without an
+override or network, verifies all payloads and starts the actual vendor service.
+The sessionless root password command then has no final outcome within 20 seconds;
+ordinary service stop exceeds 45 seconds. The VM eventually powers down and its
+owned processes/private/RAM state retire. `debian-install-sessionless-844f49df.json`
+retains the failure; durable mutation was not observed after timeout. Refusal,
+reinstall, removal and purge did not run. The child-absence correction below has
+component evidence; corrected full-app/package acceptance remains **OPEN**.
+Canonical input promotion also remains open: the Debian recipe selects stock
+Flutter 3.24.5 while the accepted app uses the 3.47.5 candidate and patched engine.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,
@@ -5023,6 +5029,19 @@ they and the audit retain exact timings, run IDs, hashes, observations and fixtu
 | Child crash recovery (`830acf07`, `fdbab046`) | Child-only pidfd SIGKILL retires the child and its prekey connection. The original supervisor/generation/unit and privileged sockets persist with zero systemd restarts; runtime/lease authority and credential remain. A fresh child/record/listener, logins before/after, stability observation and ordinary stop pass. The same-artifact supervisor-crash control retains exactly one automatic restart. | `linux-child-crash-830acf07.json`, `linux-crash-control-830acf07.json`. This does not prove continuous connection survival. |
 | Stopped-child shutdown (`7973c6f1`, `fdbab046`) | After CPace, exact-child SIGSTOP holds all fifteen threads. Ordinary stop remains deactivating with the same supervisor/child and unchanged record through four seconds of TERM pending, then retires the tree in 8.259 seconds with successful unit exit and zero restarts. A three-second stopped observation and explicit new startup preserve the credential and pass CPace/stop. | `linux-stopped-child-7973c6f1.json`. |
 | Post-reap cleanup correction (`e0c73321`) | A controlled root-only fault removes the record at successful wait4. The old binary sends numeric-PID TERM after reaping and gets ESRCH. Termination now checks the retained Child exit status before signaling; reaped children permit only record cleanup, and inspection/removal errors remain errors. The unchanged fault now causes zero post-reap TERM calls, service exit 1, unchanged credential and full cleanup after successful CPace. Same-artifact stopped-child regression retains four seconds of pending TERM, retires in 8.265 seconds, then passes fresh startup/login/stop. | `linux-record-cleanup-86c4fc22.json`, `linux-record-cleanup-build-e0c73321.json`, `linux-record-cleanup-accepted-e0c73321.json`, `linux-record-cleanup-stop-e0c73321.json`. No unprivileged record-write trigger or actual wrong-process signal is demonstrated. |
+
+**Sessionless credential completion — correction has component evidence.**
+`a815d684` replaces unconditional absent-child recovery with supervisor-owned
+process accounting, initialized after previous-child recovery. Every launch is
+counted before spawn and only the retained Child's observed exit releases it;
+lost wait ownership cannot establish absence. After durable commit/typed PRS read,
+no outstanding child completes the operation; later children bootstrap current
+root state. Existing children still require authenticated convergence. At
+`7cde2aca`, all four actual process cases and twenty existing identity/selector
+controls pass in 0.18 seconds, including a held pre-exec launch, failed exec,
+repeated waits and lost ownership. `child-process-native-7cde2aca.json` binds the
+34.247-second isolated run and joined cleanup. Full application, installed
+sessionless completion, desktop handoff and live-child regressions remain OPEN.
 
 **Still OPEN:** exact current release packages and upgrades; installed privileged
 action/settings authorization; genuine-image incumbents, non-root actors and

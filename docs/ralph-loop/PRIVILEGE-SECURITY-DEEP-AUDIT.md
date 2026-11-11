@@ -146770,3 +146770,38 @@ file identities; all cache/build bulk retires with the container and VM. An oute
 diagnostic completion is not compiler success. Observed dependency hashes are not
 independent first-pin authentication; no cache or APK is published. Native results
 remain pending. Shell syntax, embedded Python parsing and diff hygiene pass.
+
+Actual TUF et6yJHxkbq/tool61805 at 8ae6d8f8 exits zero. Gradle8.14.7/JDK17.0.20
+compiles the unchanged SDK plugin in 47 seconds and resolves the composite
+Flutter/AGP8.11.1/KGP2.2.21 fixture in 42 seconds; both captured exits are zero.
+The resulting gradle-1.0.0.jar is 223,706 bytes, contains FlutterPlugin.class,
+passes ZIP CRC, and has SHA-256
+225dfc490d5bbe93acc97da1bff30c663add47ef359c07cdecbad67058cf071d.
+Gradle warns about its embedded Kotlin2.0.21 versus the SDK's2.2.20; compilation
+still passes. This does not establish application/plugin runtime compatibility.
+The receipt inventories 507 Maven files / 251,649,334 bytes. Their observed
+hashes do not authenticate the dependency closure; all downloaded cache/build
+bulk retires, with no candidate cache, canonical input or APK publication.
+
+Success-v5 source/tree, raw serial, transaction stdout/stderr, capture and outer
+receipt hashes reconcile. QEMU4018473 joins zero after outer185 seconds /
+monitor220.075 seconds; bounded RAM scratch peaks at 3,070,537,728 bytes.
+The exact private/RAM roots, process and Unix endpoints are absent, with no
+added host listener. android-candidate-gradle-probe-8ae6d8f8.json and nine files /
+587,657 bytes match CTE/TUF. Preserve this pass; do not repeat it absent a
+relevant source/toolchain change or new concern.
+
+Read-only follow-up identifies a concrete Android migration prerequisite:
+candidate file_picker5.5.0 FilePickerPlugin.java lines120/248 and
+sqflite2.2.8+4 SqflitePlugin.java line89 refer to PluginRegistry.Registrar.
+Their source SHA-256 values are respectively
+f5567304ed3a61d621de64156f03fd80cd722491bcb409f7fd4728e410c343a3 and
+d6c70a177c56f343918b432cd094b5fa86c03390cc382ae88e727c4ce9a5f0b5.
+The authenticated af7e796e candidate embedding JAR includes PluginRegistry.class
+but not PluginRegistry$Registrar.class. Flutter documents removal in3.29 and
+explicitly directs plugins to remove this legacy registerWith API:
+https://docs.flutter.dev/release/breaking-changes/v1-android-embedding
+This is source compatibility evidence, not an executed APK compiler failure.
+Do not edit cached packages in place. Align the maintained plugin inputs and
+candidate lock, authenticate dependencies, compose the candidate SDK/cache and
+build the actual APK. Complete promotion and cross-platform acceptance stay OPEN.

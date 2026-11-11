@@ -487,9 +487,15 @@ matches the publisher/GitHub checksum and exact release-asset size. Archive CRC,
 inventory and final file authority pass; existing SDK and Maven identities are
 unchanged. `android-gradle-stage-55f04f1d.json` binds receipt and joined cleanup;
 `android-gradle-archive-tests-55f04f1d.json` retains the shared publisher's native
-transaction/refusal tests. Gradle has not executed. Next complete the matching
-plugin/compiler dependency closure and candidate build integration, then run
-isolated Gradle resolution and the APK build. Build Tools 35.0.0 staging passes at
+transaction/refusal tests. Actual candidate Gradle execution passes at `8ae6d8f8`,
+TUF `et6yJHxkbq`: the unchanged Flutter SDK Gradle plugin compiles to a valid JAR
+in 47 seconds; a composite fixture then resolves Flutter, AGP 8.11.1 and Kotlin
+2.2.21 plugins in 42 seconds. Both exits are zero under Gradle 8.14.7/JDK 17.0.20.
+`android-candidate-gradle-probe-8ae6d8f8.json` binds source, actual output, 507
+observed dependency files and joined VM/RAM cleanup. These downloaded hashes
+are observations, not independent first-pin authentication; no cache is retained
+or published. The fixture does not build the application or execute Build Tools.
+Build Tools 35.0.0 staging passes at
 `a14ea712`, TUF `lDfd553GVQ`: Google's exact Linux package size/SHA-1 and F-Droid's
 independent SHA-256 agree with all 61,958,799 downloaded bytes. Eleven metadata
 refusals, the nine-input publisher tests, ZIP CRC, 168-entry inventory and package
@@ -500,8 +506,14 @@ The shared Gradle cache validator also needs explicit support for the candidate
 binary distribution; it currently requires an `-all` ZIP. Cached plugins declare
 compile SDK 31–34; Flutter's
 default SDK 36 alone does not require changing the fork's compile/target SDK.
-SDK/lock/engine promotion, canonical build integration and cross-platform release
-acceptance remain **OPEN**.
+The candidate Pub cache's file_picker 5.5.0 and sqflite 2.2.8+4 still reference
+PluginRegistry.Registrar, absent from the authenticated candidate embedding JAR;
+Flutter's documented v1 embedding removal confirms the migration requirement.
+This is source compatibility evidence, pending compilation in the app build.
+Next align these plugin inputs, authenticate the resolved dependency closure and
+compose the candidate SDK/cache for an isolated APK build. SDK/lock/engine
+promotion, canonical build integration and cross-platform release acceptance
+remain **OPEN**.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,

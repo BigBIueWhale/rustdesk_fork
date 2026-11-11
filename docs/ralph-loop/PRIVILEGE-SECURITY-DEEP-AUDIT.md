@@ -146071,3 +146071,38 @@ and its byte round trip. package-upgrade-ledger-1a8edaf3.json and eight files /
 host listener deltas are zero and private/RAM roots are absent. The approximate
 400,000-token compression obligation remains OPEN. This audit-only append
 preserves the measured ledger.
+
+## 2026-11-11 — obsolete Debian conffile migration preparation
+
+The previous turn is progress: distinct-application replacement passed native
+execution and exact cleanup. Both hosts are clean at 6c61ea7a, password-master
+SSH works and TUF has about 43 GiB available RAM. Continue the adjacent explicit
+R-X14/Appendix C #108 installed obsolete-conffile obligation before unrelated
+settings repetition. No retained package predates resource removal, so separate
+the conffile-only predecessor fixture from full historical-release acceptance.
+
+Debian Policy 10.7.3 requires preservation of administrator changes/removal state
+and recommends retiring unmodified obsolete conffiles on upgrade. Dpkg does not
+remove them merely because a new archive omits them. dpkg-maintscript-helper(1)
+defines coordinated rm_conffile preparation, completion, abort restoration and
+purge, retaining edited content as .dpkg-bak. The remove-on-upgrade alternative
+would add retired entries to the conffiles inventory, contrary to this repository's
+explicit single-init-conffile contract. Current maintainer scripts have no
+migration; first exercise the expected result before selecting a correction.
+https://www.debian.org/doc/debian-policy/ch-files.html#behavior
+https://manpages.debian.org/bookworm/dpkg/dpkg-maintscript-helper.1.en.html
+https://manpages.debian.org/bookworm/dpkg-dev/deb-conffiles.5.en.html
+
+Pin the exact pre-removal c40612ab resource bytes (startwm SHA-256 86b65cf5;
+xorg SHA-256 1535f4b6) and materialize only those bounded inert inputs in admitted
+RAM/source ISO. The non-root guest container builds a conffile-only predecessor
+package with the unchanged base version 1.4.7; no former service or script executes.
+Real dpkg must register the exact historical path/md5 pairs and deploy their bytes.
+For unchanged, edited and deleted cases, install/reinstall the actual current
+package, verify all 72 app payloads and real vendor supervisor, then remove/purge.
+Observe twelve exact conffile states, preserving edited inode/ownership/mode/bytes
+and a separate administrator neighbor. Retained pidfds prove service retirement.
+Only obsolete-path conffile differences may appear in dpkg verification; every
+other verification difference remains fatal. The normal credential/bootstrap/
+CPace/refusal/package lifecycle also runs. Keep full historical maintainer-script,
+cross-base and final release acceptance OPEN. Native result is pending.

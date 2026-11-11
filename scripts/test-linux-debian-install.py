@@ -321,8 +321,93 @@ def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_arc
         command(['/usr/sbin/userdel', 'rdreceiver4003'], 'retire-desktop-administrator')
 
 
+def obsolete_conffiles(source, prepared, archive, settings, installed_state):
+    predecessor = prepared / 'conffile-predecessor.deb'
+    contents = settings.historical_conffiles(source, MEDIA / 'debian-conffiles')
+    manifest = json.loads((prepared / 'manifest.json').read_text())
+    require(manifest[predecessor.name] == {'bytes': predecessor.stat().st_size, 'sha256': digest(predecessor)},
+            'conffile predecessor archive changed')
+    root = Path('/etc/rustdesk')
+    require(not os.path.lexists(root), 'obsolete conffile fixture directory is occupied')
+    root.mkdir(mode=0o755)
+    neighbor = root / 'administrator-note'
+    neighbor.write_text('Preserve this separately owned administrator file.\n')
+    neighbor.chmod(0o600)
+
+    def snapshot(path):
+        if not os.path.lexists(path):
+            return None
+        info = path.lstat()
+        require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1, 'conffile object type differs')
+        return {'device': info.st_dev, 'inode': info.st_ino, 'uid': info.st_uid, 'gid': info.st_gid,
+                'mode': stat.S_IMODE(info.st_mode), 'bytes': info.st_size, 'sha256': digest(path)}
+
+    neighbor_before = snapshot(neighbor)
+    checks = []
+    try:
+        for case in ('unchanged', 'modified', 'deleted'):
+            command(['/usr/bin/dpkg', '--install', str(predecessor)], 'conffiles-' + case + '-predecessor')
+            registered = settings.run(['/usr/bin/dpkg-query', '--show', '--showformat=${Conffiles}', 'rustdesk'])
+            expected_registration = {('/etc/rustdesk/' + name, hashlib.md5(data).hexdigest())
+                                     for name, data in contents.items()}
+            require({tuple(line.split()) for line in registered.splitlines() if line.strip()} == expected_registration,
+                    'predecessor did not establish the exact historical dpkg conffiles')
+            originals = {}
+            for name, data in contents.items():
+                path = root / name
+                require(path.read_bytes() == data and snapshot(path)['uid'] == 0,
+                        'predecessor conffile bytes or owner differ')
+                if case == 'modified':
+                    with path.open('ab') as stream:
+                        stream.write(b'\n# Administrator customization retained by migration.\n')
+                elif case == 'deleted':
+                    path.unlink()
+                originals[name] = snapshot(path)
+            print('LINUX_DEBIAN_CONFFILES_INITIAL=' + json.dumps({
+                'case': case, 'files': originals, 'registration': registered,
+                'predecessor_sha256': digest(predecessor)}, sort_keys=True), flush=True)
+            previous_fd = None
+            for phase in ('upgrade', 'reinstall', 'remove', 'purge'):
+                arguments = (['/usr/bin/dpkg', '--install', str(archive)] if phase in ('upgrade', 'reinstall')
+                             else ['/usr/bin/dpkg', '--' + phase, 'rustdesk'])
+                command(arguments, 'conffiles-' + case + '-' + phase, timeout=90)
+                if phase in ('upgrade', 'reinstall'):
+                    current_fd = installed_state('conffiles-' + case + '-' + phase)
+                    if previous_fd is not None:
+                        require(select.select([previous_fd], [], [], 2)[0] == [previous_fd],
+                                'conffile reinstallation retained its predecessor service')
+                    previous_fd = current_fd
+                else:
+                    require(select.select([previous_fd], [], [], 2)[0] == [previous_fd],
+                            'conffile package removal retained its service')
+                    settings.service_absent()
+                observed = {}
+                expected = {}
+                for name in contents:
+                    for suffix in ('', '.dpkg-bak', '.dpkg-backup', '.dpkg-remove'):
+                        observed[name + suffix] = snapshot(root / (name + suffix))
+                        expected[name + suffix] = (originals[name] if case == 'modified'
+                                                  and suffix == '.dpkg-bak' and phase != 'purge' else None)
+                require(snapshot(neighbor) == neighbor_before, 'conffile migration changed administrator neighbor')
+                matches = observed == expected
+                checks.append(matches)
+                print('LINUX_DEBIAN_CONFFILES_STATE=' + json.dumps({
+                    'case': case, 'phase': phase, 'files': observed, 'expected': expected,
+                    'matches': matches, 'neighbor': neighbor_before,
+                }, sort_keys=True), flush=True)
+            require(not any(os.path.lexists(root / (name + suffix)) for name in contents
+                            for suffix in ('', '.dpkg-bak', '.dpkg-backup', '.dpkg-remove')),
+                    'purge retained obsolete conffile state')
+    finally:
+        require(snapshot(neighbor) == neighbor_before, 'administrator neighbor changed before fixture retirement')
+        neighbor.unlink()
+        if not any(root.iterdir()):
+            root.rmdir()
+    require(len(checks) == 12 and all(checks), 'obsolete conffile lifecycle differs; inspect recorded states')
+
+
 def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None,
-         settings_mode=None, upgrade=False):
+         settings_mode=None, upgrade=False, conffiles=False):
     require(Path(__file__).resolve() == SCRIPT, 'package test entry differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
@@ -403,7 +488,11 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
         def installed_state(phase, expected_manifest=manifest, expected_archive=archive):
             require(settings.run(['/usr/bin/dpkg-query', '--show', '--showformat=${Status}\t${Version}', 'rustdesk'])
                     == 'install ok installed\t' + version, 'application package is not configured')
-            require(settings.run(['/usr/bin/dpkg', '--verify', 'rustdesk']) == '', 'installed payload verification failed')
+            verification = settings.run(['/usr/bin/dpkg', '--verify', 'rustdesk'])
+            # Obsolete administrator conffiles may legitimately differ or be absent.
+            require(not verification or (conffiles and all(re.fullmatch(
+                r'(?:missing|[?5]{9}) +c /etc/rustdesk/(?:startwm\.sh|xorg\.conf)', line)
+                for line in verification.splitlines())), 'installed payload verification failed')
             for name, record in expected_manifest['files'].items():
                 if name.startswith('bundle/'):
                     path = Path('/usr/share/rustdesk') / name[len('bundle/'):]
@@ -576,7 +665,9 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
         command(['/usr/bin/dpkg', '--purge', 'rustdesk'], 'purge')
         require(not any(os.path.lexists(p) for p in ('/root/.config/rustdesk', '/root/.config/RustDesk',
                     '/etc/init.d/rustdesk')), 'purge retained package-owned state')
-        if agent_archive_sha is None and settings_mode is None and not upgrade:
+        if conffiles:
+            obsolete_conffiles(source, prepared, archive, settings, installed_state)
+        elif agent_archive_sha is None and settings_mode is None and not upgrade:
             administrator_units(source, archive, version, settings, receiver)
         command([*apt, 'check'], 'final-dependencies')
         require(command(['/usr/bin/dpkg', '--audit'], 'final-dpkg-audit') == '', 'final dpkg state is incomplete')
@@ -612,7 +703,11 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if upgrade:
+    if conffiles:
+        print(f'LINUX_DEBIAN_CONFFILES_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
+              'predecessor=conffile-only-fixture current=actual-package unmodified=removed modified=preserved '
+              'deleted=absent remove=preserved purge=retired neighbor=unchanged cleanup=joined', flush=True)
+    elif upgrade:
         print(f'LINUX_DEBIAN_UPGRADE_NATIVE=pass previous_app={previous["context"]["source_commit"]} '
               f'app_commit={commit} manifest_sha256={manifest_sha} dependencies=apt-checked '
               'upgrade=distinct-core-same-base service=actual old_processes=retired credential=preserved '
@@ -644,10 +739,10 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 
 if __name__ == '__main__':
     require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
-            or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-upgrade')),
+            or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-upgrade', '--run-conffiles')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
          sys.argv[8] if len(sys.argv) == 9 else None,
          settings_mode={'--run-settings': 'failure', '--run-uncertain': 'uncertain'}.get(sys.argv[1]),
-         upgrade=sys.argv[1] == '--run-upgrade')
+         upgrade=sys.argv[1] == '--run-upgrade', conffiles=sys.argv[1] == '--run-conffiles')

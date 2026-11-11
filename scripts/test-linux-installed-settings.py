@@ -197,7 +197,20 @@ def upgrade_manifest(source, inputs):
     return previous
 
 
-def prepare_package(single=False, graphical=False, settings=False, upgrade=False):
+def historical_conffiles(source, inputs):
+    pins = dict(re.findall(r'^([A-Z0-9_]+)="([^"]*)"', (source / 'scripts/pins.env').read_text(), re.M))
+    contents = {}
+    for name, key in (('startwm.sh', 'STARTWM'), ('xorg.conf', 'XORG')):
+        path = inputs / name
+        info = path.lstat()
+        if (not stat.S_ISREG(info.st_mode) or not 0 < info.st_size <= 8192
+                or digest(path) != pins['DEBIAN_CONFFILE_' + key + '_SHA256']):
+            raise RuntimeError('historical conffile input differs')
+        contents[name] = path.read_bytes()
+    return contents
+
+
+def prepare_package(single=False, graphical=False, settings=False, upgrade=False, conffiles=False):
     if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
         raise RuntimeError('candidate packaging requires the ordinary isolated container')
     os.chdir('/work')
@@ -267,6 +280,25 @@ def prepare_package(single=False, graphical=False, settings=False, upgrade=False
         'dpkg_deb_sha256': digest('/usr/bin/dpkg-deb'),
         'scope': 'retained-application-packaging-only', 'builds': len(archives),
     }, sort_keys=True), flush=True)
+    if conffiles:
+        contents = historical_conffiles(Path('/work'), Path('/conffile-input'))
+        stage = Path('/out/conffile-stage')
+        (stage / 'DEBIAN').mkdir(parents=True, mode=0o755)
+        (stage / 'etc/rustdesk').mkdir(parents=True, mode=0o755)
+        (stage / 'DEBIAN/control').write_text(
+            f'Package: rustdesk\nVersion: {version}\nArchitecture: amd64\n'
+            'Maintainer: RustDesk isolated fixture <nobody@example.invalid>\n'
+            'Description: conffile-only predecessor fixture\n')
+        (stage / 'DEBIAN/conffiles').write_text(''.join('/etc/rustdesk/' + name + '\n' for name in contents))
+        for name, data in contents.items():
+            (stage / 'etc/rustdesk' / name).write_bytes(data)
+        for path in [stage, *stage.rglob('*')]:
+            path.chmod(0o755 if path.is_dir() or path.name == 'startwm.sh' else 0o644)
+            os.utime(path, (int(epoch), int(epoch)))
+        module['build_debian_archive'](stage, Path('/out/conffile-predecessor.deb'))
+        if Path('/out/conffile-predecessor.deb').stat().st_size > 16384:
+            raise RuntimeError('conffile predecessor archive exceeds its bound')
+        shutil.rmtree(stage)
     if single:
         print(run(['/bin/bash', '/work/scripts/smoke-xvfb-prepare.sh'], timeout=60), end='', flush=True)
         shutil.copytree('/usr/share/X11/xkb', '/out/xkb')
@@ -281,7 +313,7 @@ def prepare_package(single=False, graphical=False, settings=False, upgrade=False
 
 
 def prepare_runtime(source, execution, image, client, sock, config, graphical=False, package=False,
-                    package_install=False, settings=False, upgrade=False):
+                    package_install=False, settings=False, upgrade=False, conffiles=False):
     prepared = WORK / 'prepared'
     prepared.mkdir(mode=0o700)
     os.chown(prepared, 1000, 1000)
@@ -289,6 +321,8 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
               (str(prepared), '/out', False)]
     if upgrade:
         mounts.append((str(MEDIA / 'debian-upgrade'), '/upgrade-input', True))
+    if conffiles:
+        mounts.append((str(MEDIA / 'debian-conffiles'), '/conffile-input', True))
     for kind in (('xvfb', 'atspi') if graphical or settings else ('xvfb',) if package_install
                  else () if package else ('xvfb', 'atspi')):
         mounts.append((str(source / 'online/inputs' / (kind + '-debs')), f'/{kind}-inputs', True))
@@ -311,7 +345,8 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
     for host, target, readonly in mounts:
         args += ['--mount', f'type=bind,source={host},target={target},bind-recursive=disabled' + (',readonly' if readonly else '')]
     args += [image, '/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-linux-installed-settings.py',
-             '--prepare-package-upgrade' if upgrade else '--prepare-package-graphical' if graphical
+             '--prepare-package-conffiles' if conffiles else '--prepare-package-upgrade' if upgrade
+             else '--prepare-package-graphical' if graphical
              else '--prepare-package-settings' if settings
              else '--prepare-package-install' if package_install
              else '--prepare-package' if package else '--prepare']
@@ -1695,12 +1730,12 @@ def concurrent_stop_scenario(receiver, probe_sha):
 
 
 def main(arguments, uncertain=False, admin_failure=False, graphical=False, concurrent_stop=False, package=False,
-         package_install=False, settings=False, upgrade=False):
+         package_install=False, settings=False, upgrade=False, conffiles=False):
     guard()
     agent_archive_sha = None
     if graphical:
         arguments, agent_archive_sha = arguments[:-1], arguments[-1]
-    if graphical or settings or uncertain or upgrade:
+    if graphical or settings or uncertain or upgrade or conffiles:
         package_install = True
     (source, app_input, context, manifest_sha, commit, provider, image, client, sock, config,
      archive_sha, polkit_manifest, probe_commit, probe_manifest_sha, probe_sha, probe_size) = arguments
@@ -1724,7 +1759,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     execution = Path(execution)
     prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical,
                                package=package or package_install, package_install=package_install,
-                               settings=settings or uncertain, upgrade=upgrade)
+                               settings=settings or uncertain, upgrade=upgrade, conffiles=conffiles)
     if not package:
         probe_manifest = MEDIA / 'settings-probe/peer-manifest.json'
         probe = MEDIA / 'settings-probe/probe_client'
@@ -1739,7 +1774,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-upgrade' if upgrade else '--run-uncertain' if uncertain
+                        '--run-conffiles' if conffiles else '--run-upgrade' if upgrade else '--run-uncertain' if uncertain
                         else '--run-settings' if settings else '--run', str(source),
                         str(prepared), str(app_input), manifest_sha, commit, probe_sha,
                         *([agent_archive_sha] if graphical else [])],
@@ -1813,6 +1848,8 @@ if __name__ == '__main__':
         prepare_package(single=True)
     elif sys.argv[1:] == ['--prepare-package-upgrade']:
         prepare_package(single=True, upgrade=True)
+    elif sys.argv[1:] == ['--prepare-package-conffiles']:
+        prepare_package(single=True, conffiles=True)
     elif sys.argv[1:] == ['--session']:
         session(packaged=True)
     elif sys.argv[1:] == ['--session-restart']:
@@ -1825,10 +1862,11 @@ if __name__ == '__main__':
         session(admin_failure=True, graphical=True, packaged=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade'):
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
              package=sys.argv[1] == '--run-package', package_install=sys.argv[1] == '--run-package-install',
-             settings=sys.argv[1] == '--run', upgrade=sys.argv[1] == '--run-package-upgrade')
+             settings=sys.argv[1] == '--run', upgrade=sys.argv[1] == '--run-package-upgrade',
+             conffiles=sys.argv[1] == '--run-package-conffiles')
     else:
         raise SystemExit('closed installed-settings arguments required')

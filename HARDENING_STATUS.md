@@ -506,14 +506,18 @@ The shared Gradle cache validator also needs explicit support for the candidate
 binary distribution; it currently requires an `-all` ZIP. Cached plugins declare
 compile SDK 31–34; Flutter's
 default SDK 36 alone does not require changing the fork's compile/target SDK.
-The candidate Pub cache's file_picker 5.5.0 and sqflite 2.2.8+4 still reference
-PluginRegistry.Registrar, absent from the authenticated candidate embedding JAR;
-Flutter's documented v1 embedding removal confirms the migration requirement.
-This is source compatibility evidence, pending compilation in the app build.
-Next align these plugin inputs, authenticate the resolved dependency closure and
-compose the candidate SDK/cache for an isolated APK build. SDK/lock/engine
-promotion, canonical build integration and cross-platform release acceptance
-remain **OPEN**.
+The existing file_picker/sqflite inputs still reference the removed Android
+Registrar API. Candidate migration now resolves at `2aa4157d`, TUF `8naCVfydhO`:
+file_selector 1.1.0 and sqflite 2.4.6 produce a 194-package lock, preserving 180
+records exactly, adding eleven, changing three and removing file_picker plus
+the unused lifecycle override/package. A separate no-NIC replay enforces the
+unchanged lock; Dart analysis accepts the required path-selection/SQLite APIs.
+`flutter-plugin-migration-2aa4157d.json` retains the exact manifest/lock, package
+metadata, output and joined cleanup. These are exploratory dependencies; the
+application and published caches remain unchanged. Next authenticate the fourteen
+new/changed archives, migrate both dialog calls and Windows/macOS secondary-window
+registrations, then compose the SDK/cache and build the APK. SDK/lock/engine
+promotion, actual dialog/Android behavior and cross-platform acceptance stay **OPEN**.
 
 **Peer-window dimensions — component correction verified (2026-11-03).**
 `e2ef87f6` fills missing peer width/height from the saved normal frame's dimensions,

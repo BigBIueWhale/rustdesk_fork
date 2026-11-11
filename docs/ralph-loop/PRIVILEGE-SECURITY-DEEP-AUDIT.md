@@ -146881,3 +146881,33 @@ stages to pass. QEMU4029965 joins zero after149.775seconds, scratch peaks at
 6,535,671,808bytes, listener inventories match, and exact private/RAM state
 retires under the same checks. flutter-plugin-migration-ebed4bea.json and15files /
 107,499bytes match both hosts. Repeat only to complete the missing lock/receipt.
+
+At 2aa4157d, TUF8naCVfydhO/tool73704 passes every stage and the complete outer
+transaction. The 45,699-byte discovered lock has SHA-256
+e03728db829b4d7e0fd100f3b3e9846caad0a2dcbeecba7ad142bb19c2972279;
+online output and separate no-NIC enforced replay preserve identical bytes.
+Actual Dart3.13.4 analysis accepts the destination-path, directory-selection and
+SQLite APIs. Independent record comparison finds185->194 packages:180 records
+unchanged, eleven additions, three updates (sqflite, sqflite_common, synchronized)
+and two removals (file_picker, flutter_plugin_android_lifecycle). The additions
+are eight file_selector facade/platform packages and the three federated SQLite
+packages; their exact published manifests are retained. Source/SDK postconditions
+pass, and no cache or application change is published.
+
+Success-v5 source/tree, serial/capture and stdout/stderr hashes reconcile.
+QEMU4033508 joins zero after outer119/monitor154.681seconds, scratch peaks at
+6,517,420,032bytes, no host listener is added and exact private/RAM roots and Unix
+endpoints are absent. flutter-plugin-migration-2aa4157d.json, its standalone
+pubspec.yaml/pubspec.lock and eleven files/525,432bytes match both hosts.
+Do not repeat the graph discovery; use its exact fourteen new/changed archive
+identities for independent first-pin authentication and bounded candidate cache
+staging. Preserve the existing published cache for source-bound accepted artifacts.
+
+Application migration must replace the two file_picker calls and their existing
+workflow doubles, preserve Rust-owned screenshot writing and cancellation/error/
+stale-session handling, and register the new native plugin in Windows/macOS
+secondary windows. Linux's maintained desktop_multi_window already calls
+fl_register_plugins for each new engine; adding a second registration is wrong.
+The macOS explicit SQLite registration must follow the sqflite_darwin module.
+Real dialogs, application compilation, Android native compilation/runtime and
+complete release acceptance remain OPEN. Update the existing ledger and count it.

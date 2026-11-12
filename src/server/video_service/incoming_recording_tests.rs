@@ -1,5 +1,6 @@
 use super::*;
 use crate::server::connection::{video_egress_channel, VideoEgressItem};
+use hbb_common::libc;
 use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
 
 struct RecordingDirectory(PathBuf);

@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 """Control the guest's vivid camera; observe the real server's retained handles."""
+from contextlib import contextmanager
+import errno
 import fcntl
 import os
 from pathlib import Path
@@ -58,7 +60,7 @@ def wait_for(pid, start, predicate, label, seconds=60):
     raise ValueError('camera deadline: ' + label)
 
 
-def control(fd, offset, name, value, menu=None):
+def control(fd, offset, name, value, menu=None, kind=2):
     # Linux v6.1 videodev2.h, x86_64: QUERYCTRL=68, QUERYMENU=44, CTRL=8.
     ident = 0x00f0f000 + offset
     query = bytearray(68)
@@ -66,9 +68,9 @@ def control(fd, offset, name, value, menu=None):
     fcntl.ioctl(fd, 0xc0445624, query, True)
     require(query[8:40].split(b'\0')[0].decode() == name,
             'vivid control name differs')
-    kind = struct.unpack_from('<I', query, 4)[0]
+    actual_kind = struct.unpack_from('<I', query, 4)[0]
     minimum, maximum = struct.unpack_from('<ii', query, 40)
-    require(kind == (3 if menu else 2) and minimum <= value <= maximum,
+    require(actual_kind == (3 if menu else kind) and minimum <= value <= maximum,
             'vivid control type or bounds differ')
     if menu:
         query = bytearray(44)
@@ -77,11 +79,14 @@ def control(fd, offset, name, value, menu=None):
         require(query[8:40].split(b'\0')[0].decode() == menu, 'vivid menu differs')
     data = bytearray(struct.pack('<Ii', ident, value))
     fcntl.ioctl(fd, 0xc008561c, data, True)
+    if kind == 4:
+        return  # Button controls have no persistent value to read back.
     fcntl.ioctl(fd, 0xc008561b, data, True)
     require(struct.unpack('<Ii', data) == (ident, value), 'vivid control readback differs')
 
 
-def color(index):
+@contextmanager
+def native_device():
     fd = os.open(NODE, os.O_RDWR | os.O_NONBLOCK | os.O_NOFOLLOW | os.O_CLOEXEC)
     try:
         info = os.fstat(fd)
@@ -91,12 +96,34 @@ def color(index):
         capability = bytearray(104)
         fcntl.ioctl(fd, 0x80685600, capability, True)
         require(capability[:16].split(b'\0')[0] == b'vivid', 'guest camera driver differs')
+        yield fd
+    finally:
+        os.close(fd)
+
+
+def color(index):
+    with native_device() as fd:
         control(fd, 1, 'OSD Text Mode', 2, 'None')
         control(fd, 4, 'Show Border', 0)
         control(fd, 5, 'Show Square', 0)
         control(fd, 0, 'Test Pattern', 7 + index, ('100% Red', '100% Green', '100% Blue')[index])
-    finally:
-        os.close(fd)
+
+
+def drop_frames(percentage):
+    with native_device() as fd:
+        control(fd, 64, 'Percentage of Dropped Buffers', percentage, kind=1)
+
+
+def disconnect():
+    with native_device() as fd:
+        control(fd, 65, 'Disconnect', 0, kind=4)
+        try:
+            fcntl.ioctl(fd, 0x80685600, bytearray(104), True)
+        except OSError as error:
+            require(error.errno == errno.ENODEV, 'camera disconnect errno differs')
+        else:
+            raise ValueError('camera disconnect did not reach the kernel')
+    print('FLUTTER_PEER_CAMERA_DISCONNECTED querycap=ENODEV control_handle=closed', flush=True)
 
 
 def descriptors(pid):
@@ -151,10 +178,38 @@ def main():
     retained(pid, start, 1, 'one-viewer')
     color(2)
     marker('camera.blue', True)
+    wait_for(pid, start, lambda: marker('camera.main.blue'), 'surviving blue viewer')
+    drop_frames(100)
+    # Let any buffer completed before the control drain before changing color.
+    time.sleep(0.5)
+    color(0)
+    marker('camera.stalled', True)
+    wait_for(pid, start, lambda: marker('camera.stall.observed'), 'withheld camera frames')
+    retained(pid, start, 1, 'stalled-viewer')
+    restored = time.monotonic_ns() // 1_000_000
+    drop_frames(0)
+    with (COORD / 'camera.restore-time').open('xb') as output:
+        os.fchmod(output.fileno(), 0o600)
+        output.write((str(restored) + '\n').encode())
+    marker('camera.restored', True)
+    wait_for(pid, start, lambda: marker('camera.recovered'), 'same-connection camera recovery')
+    retained(pid, start, 1, 'recovered-viewer')
+    disconnect()
+    marker('camera.disconnected', True)
+    wait_for(pid, start, lambda: marker('camera.loss.observed'), 'visible device loss and session retirement')
     wait_for(pid, start, lambda: marker('camera.main.closed'), 'last viewer joined')
     retained(pid, start, 0, 'no-viewers')
+    color(1)
+    marker('camera.reacquire.ready', True)
+    wait_for(pid, start, lambda: marker('camera.reacquire.green'), 'fresh authenticated green viewer')
+    retained(pid, start, 1, 'fresh-viewer')
+    color(2)
+    marker('camera.reacquire.blue', True)
+    wait_for(pid, start, lambda: marker('camera.reacquire.closed'), 'fresh viewer joined')
+    retained(pid, start, 0, 'fresh-viewer-closed')
     marker('camera.complete', True)
-    print('FLUTTER_PEER_CAMERA_SHARED_OK viewers=2 colors=3 first_close=survived '
+    print('FLUTTER_PEER_CAMERA_SHARED_OK viewers=2 generations=3 colors=3 first_close=survived '
+          'timeout=recovered loss=visible reacquisition=presented '
           'last_close=devices-retired server=preserved', flush=True)
 
 

@@ -71,7 +71,7 @@ def application_fixture(guest, contract, previous):
             'application camera module retirement incomplete')
     print('MEDIA_APPLICATION_FIXTURE=pass source=' + contract['source_commit']
           + ' kernel=' + guest.RELEASE
-          + ' native_node=2 viewers=2 module=retired cleanup=joined', flush=True)
+          + ' native_node=2 viewers=2 generations=3 module=retired cleanup=joined', flush=True)
     print('VERIFIER_VM_CLOUD_INIT=pass', flush=True)
 
 

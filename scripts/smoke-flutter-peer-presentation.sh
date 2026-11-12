@@ -275,7 +275,7 @@ elif [ "$PEER_SCENARIO" = camera-shared ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined camera_shared=main colors=3 stable_connection=true'
+  VIEWER_RESULT='viewer=joined xvfb=joined camera_shared=main generations=2 timeout=recovered loss=visible reacquisition=presented'
 elif [ "$PEER_SCENARIO" = camera-unavailable ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -1589,7 +1589,7 @@ cat "$SERVER_LOG"
 [ "$(input_provider_binding)" = "$INPUT_PROVIDER_BINDING" ] \
   || die 'protected private input provider changed during the peer cycle'
 if [ "$PEER_SCENARIO" = camera-shared ]; then
-  grep -Fxq 'FLUTTER_PEER_CAMERA_SHARED_OK viewers=2 colors=3 first_close=survived last_close=devices-retired server=preserved' \
+  grep -Fxq 'FLUTTER_PEER_CAMERA_SHARED_OK viewers=2 generations=3 colors=3 first_close=survived timeout=recovered loss=visible reacquisition=presented last_close=devices-retired server=preserved' \
     "$SERVER_LOG" || die 'shared camera ownership observation is absent'
 else
 for generation in $SERVER_GENERATIONS; do

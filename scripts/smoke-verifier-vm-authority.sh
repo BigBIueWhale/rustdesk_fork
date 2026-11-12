@@ -9625,7 +9625,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     if [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
         peer_scenario=camera-shared
         require_exact_fixed_receipt \
-            "MEDIA_APPLICATION_FIXTURE=pass source=$FLUTTER_PEER_SOURCE_COMMIT kernel=6.1.0-50-amd64 native_node=2 viewers=2 module=retired cleanup=joined" \
+            "MEDIA_APPLICATION_FIXTURE=pass source=$FLUTTER_PEER_SOURCE_COMMIT kernel=6.1.0-50-amd64 native_node=2 viewers=2 generations=3 module=retired cleanup=joined" \
             'native camera application lifecycle'
     fi
     [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || peer_scenario=viewer-soak

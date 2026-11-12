@@ -9328,9 +9328,21 @@ Only the Rust library and readiness helper differ from `4468059d`; the other 72
 payloads, inputs, engine and recipe match. `camera-catalog-app-b09f3420.json`
 binds ten files/327,550 bytes on both hosts, enforced compiler limits, four zero
 listener deltas and joined cleanup. Two preceding import-related compile failures
-and their fixes are preserved in the audit. Full authenticated ViewCamera,
+and their fixes are preserved in the audit. Positive authenticated ViewCamera,
 concurrent service subscriptions, physical hotplug/device loss and Windows
-acceptance remain OPEN. Next: execute those application paths on this retained app.
+acceptance remain OPEN.
+
+**Full application camera-absence path — PASS.** Replay `018f712b` on the retained
+`b09f3420` app completes real ViewCamera password entry, receiver-side camera
+acquisition refusal, visible selectable error text and connection retirement.
+The same unchanged server then accepts a fresh Remote login, presents four current
+frames (maximum observed age 318 ms) and supports ordinary session closure.
+Both viewer processes and all server/fixture owners join. TUF `VlVfdMpkJA` takes
+125.106 seconds including cleanup; `camera-unavailable-018f712b.json` binds nine
+files/103,524 bytes verified on both hosts, four zero listener deltas and retired
+RAM/private state. This is the no-camera failure path, not successful camera
+capture. Next: run the retained app on the admitted media kernel for positive
+ViewCamera and simultaneous-viewer/service-retirement acceptance.
 
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production

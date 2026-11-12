@@ -150148,3 +150148,50 @@ deltas and exact private/process/socket/RAM retirement pass. The approximate
 400,000-token target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,101,924-byte audit prefix, SHA-256
 8c03122dfcf8249a4a5d8976d9e4519e232f89ea18d58e3d2c49910607f12635.
+
+### 2026-11-12 — Actual ViewCamera refusal and subsequent Remote presentation
+
+Continue R-F1/R-S0 camera application acceptance after the retained Linux catalog
+and full build checkpoint. Reuse the exact b09f3420 app, manifest
+ac77e9c1b36a44bbb3144b121a6d32e32d6c7e09b3c3b6a5eed6b3f8f717f60e;
+no product rebuild or product edit. The ordinary replay kernel cannot supply
+V4L2 devices, so first execute the required absence/failure path. Positive camera
+acceptance still needs the media-kernel handoff connected to full-app replay.
+
+The --camera-unavailable scenario opens the shipped ViewCamera command, selects
+its exact PID/class/title window and types into the real password editor. It
+observes the exact error through AT-SPI Text inside the visible Alert, requires
+twenty successive zero-session-socket observations while the listener remains,
+and joins the viewer. A new Remote viewer then enters its password, presents four
+distinct current source frames and exercises ordinary session closure. The
+original server remains ready and records exactly one camera acquisition refusal;
+its identity and input-provider mapping are proved before clean shutdown.
+
+Final fixture 018f712b passes in TUF VlVfdMpkJA/tool81784. Remote's four observed
+frames have maximum capture-to-observation age 318 ms; this short control is not
+a latency-recovery or soak claim. Both viewer generations exit zero, the server
+has zero replacements, and all containers/guest owners join. QEMU 2682038 joins
+zero after 125.106 seconds; RAM scratch peaks at 3,028,103,168 bytes and retires.
+Four host listener comparisons have no additions or removals. Exact QEMU, private
+tree, Unix-socket and RAM absence pass. camera-unavailable-018f712b.json binds nine
+files/103,524 bytes SHA-verified on CTE/TUF; outer SHA-256
+8ae05a7924ba7bd6def70bcd5e94a218d40362429a221075d18ddabfd85959e1.
+
+Retain the four fixture failures as bounded evidence, with their exact private
+diagnostic trees removed only after joined QEMU/RAM/socket reconciliation:
+2fce68a7/QIR6hxEYZP appended a credential-scenario argument; d25dd55d/RWC2O53CTM
+selected the Remote title instead of View camera; 7f6dde4b/R3109qSfME and diagnostic
+3e585ae1/5wT393cnqk exposed the selectable body through Text rather than accessible
+name. The last diagnostic proves zero retained session sockets and a visible
+Alert with a text node whose name is empty. Matching actual Text fixes the observer
+without changing the app or relaxing exact error, process, window or cleanup
+requirements. Their camera-unavailable-<commit>.json capsules bind nine files each
+(126,464; 170,995; 144,962; 155,041 bytes) on both hosts. Every failed VM joins zero,
+retires RAM and has four zero listener deltas; duplicate failure bundles are removed.
+
+This closes the Linux application no-camera failure scenario only. Positive
+ViewCamera capture, overlapping authenticated viewers, last-owner service drain,
+physical hotplug/device loss and Windows remain OPEN. Continue with the retained
+app and guest-native media fixture; do not repeat this passed absence check without
+a relevant change. The prior 16,102,600-byte audit prefix is preserved, SHA-256
+d939e75ef3d5b82c2f9afd7c086af035d4ac08f3e3b563c3912bd440bb5e47e8.

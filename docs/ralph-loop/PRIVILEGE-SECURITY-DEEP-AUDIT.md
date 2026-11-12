@@ -150992,3 +150992,14 @@ regression for the observed retransmission state and post-deadline observation
 that preserves failure; installed bandwidth/jitter remains unexecuted.
 This append preserves the prior 16,155,328-byte audit prefix, SHA-256
 493162cc0f7f41735a30b043ea3a43381c846018b80006470a918ea5fd2b65f6.
+
+Fresh ledger count at 0f11cf14, Qa7zbjB0sA/tool60980, passes: 418,159 tokens /
+1,907,574 bytes, SHA-256
+52ab31d32edf8e8c5bc270a7f2ceff3b75b30e2ecd0062c8f4568d0a43f3c287.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+installed-loss-ledger-0f11cf14.json binds eight files/115,829 bytes on CTE/TUF.
+QEMU 3705609 joins zero after 30.469 seconds, with three zero listener deltas
+and exact private/process/socket/RAM retirement. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,159,154-byte audit prefix, SHA-256
+eba0ecbd4a19b4b9dbd47654c396ff72f4ed6252a1d3d4d9e7cf79a189a89369.

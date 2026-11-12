@@ -150741,3 +150741,48 @@ deltas and exact private/process/socket/RAM retirement. The approximate
 400,000-token target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,141,667-byte audit prefix, SHA-256
 a7e9a740542b688781855e4c591bbc0ecd0348435d8011a242df566b59def86c.
+
+### 2026-11-13 — Installed busy-camera ownership and recovery pass
+
+Close the installed path's missing acceptance for the previously corrected stream
+start failure. The V4L2 ownership contract assigns buffers to their allocating
+filehandle and returns EBUSY to competing acquisition:
+https://docs.kernel.org/6.1/userspace-api/media/v4l/open.html.
+REQBUFS zero releases that reservation; QUERYBUF observes its offset/length:
+https://docs.kernel.org/6.1/userspace-api/media/v4l/vidioc-reqbufs.html and
+https://docs.kernel.org/6.1/userspace-api/media/v4l/vidioc-querybuf.html.
+Fixture 21fc2dcb reuses the existing reservation/control code for a focused
+--installed-camera-busy normal-package scenario. The owner remains held until
+the actual viewer/observer join and root verifies zero service-child camera
+handles. The same child/listener/credential checks and normal package lifecycle
+remain. No product edit or full build; app 2eb7015e and manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a are reused.
+
+TUF ohhjaeeJKG/tool41085 passes. Root supervisor 7484 and PAM/logind-selected
+child 7607/start9288/generation0f501449-79e6-4696-b06f-8b050c740dc9 map the exact
+packaged core. The ordinary fixture reserves two buffers and proves EBUSY on a
+separate descriptor. Authenticated viewer 7707 visibly reports Camera capture
+failed and reaches zero connected sockets within five seconds, then exits zero.
+The owner still holds its reservation when root observes ten consecutive zero
+camera-handle samples in the child. Its original buffer identity is then checked
+before deliberate release. Fresh authenticated viewer 7850 presents green/blue:
+both colors match 24,000 pixels across three observations; viewer and observer
+exit zero. All four ten-sample descriptor phases follow 0/0/1/0. Listener inode
+25515, child identity and protected/user credential fields remain unchanged;
+the supervisor retains no camera handles at each check. Both observers exit zero.
+Desktop closure reaps the child. CPace/wrong-password/ordinary-user refusal,
+reinstall/remove/purge, dependency checks and final network equality pass; five
+inode-zero TIME_WAIT rows drain normally.
+
+camera-installed-busy-21fc2dcb.json binds nine files/223,187 bytes copied and
+hash-verified on CTE/TUF. QEMU 3419190 joins zero after 203.830 seconds; four host
+listener deltas are zero, peak scratch 4,733,599,744 bytes retires, and exact
+private/process/socket/RAM absence is verified. Source/inputs stayed frozen
+through evidence copy. No job remains live; the four retained apps are unchanged.
+This verifies installed Linux/vivid busy refusal and recovery with a reserved
+buffer owner, not uninterrupted capture by a competing application. Physical
+device/seat permissions, other native errors, Windows and broader network/
+long-session/release acceptance remain OPEN. Reassess remaining release priorities
+at this checkpoint; no new app build or repeat of passed camera cases is indicated.
+This append preserves the prior 16,142,344-byte audit prefix, SHA-256
+d7d0de3176532ed36582088fcba56e39e7ebc1336b7d798c8f53ce1fc6d2c9b2.

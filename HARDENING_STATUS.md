@@ -9417,6 +9417,19 @@ on CTE/TUF, 183.563 seconds, four zero listener deltas and joined private/RAM
 retirement. Physical devices/seat permissions, other start failures, Windows
 and broader network/long-session acceptance remain OPEN.
 
+**Installed busy-camera failure and reacquisition — PASS on the same app.**
+TUF `ohhjaeeJKG`, fixture `21fc2dcb`, reserves two native buffers and proves a
+competing allocation returns EBUSY. The authenticated viewer visibly fails and
+reaches zero connected sockets within five seconds. Its normal exit and zero
+child camera handles are observed before release; the original buffer identity
+remains intact. A fresh authenticated viewer then presents green/blue, each with
+three observations of 24,000 pixels. Four ten-sample handle phases follow 0/0/1/0;
+the child, listener inode and credential fields stay unchanged. Both viewers,
+desktop and package lifecycle retire normally. `camera-installed-busy-21fc2dcb.json`
+binds nine files/223,187 bytes on CTE/TUF, 203.830 seconds, four zero listener
+deltas and joined private/RAM cleanup. This tests buffer ownership, not ongoing
+capture by a competing application; broader camera and release obligations remain OPEN.
+
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production
 frame/pixel-buffer declarations. With only `/dev/video2`, product discovery

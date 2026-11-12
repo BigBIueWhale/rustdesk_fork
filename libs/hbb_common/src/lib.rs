@@ -410,6 +410,7 @@ fn file_logger(
 ) -> Result<flexi_logger::Logger, flexi_logger::FlexiLoggerError> {
     use flexi_logger::*;
     Ok(Logger::try_with_env_or_str("debug,rustls=warn")?
+        .panic_if_error_channel_is_broken(false)
         .log_to_file(FileSpec::default().directory(path))
         .write_mode(if is_async {
             WriteMode::Async

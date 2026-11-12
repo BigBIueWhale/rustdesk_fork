@@ -150552,3 +150552,14 @@ Windows, other start-failure classes and broader release acceptance remain OPEN;
 installed-service camera is the next camera acceptance gap. This append preserves
 the prior 16,125,445-byte audit prefix, SHA-256
 7620815fa783cedeb11ce099f9aebe68facb9b1387fa4b00facab1a6e805373c.
+
+Fresh ledger count at 3bdafff9, dimxBfaqPy/tool76307, passes: 416,423 tokens /
+1,900,087 bytes, SHA-256
+9642ea586eec8aec5aae1191ae93f16a9a20829fca74efb4fcfa2a9b8e7a90f8.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-busy-ledger-3bdafff9.json binds eight files/116,308 bytes on CTE/TUF.
+QEMU 3352185 joins zero after 30.487 seconds, with three zero listener deltas
+and exact private/process/socket/RAM retirement. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,129,796-byte audit prefix, SHA-256
+12f9f2a9ff45740a8f67c54a1d63b2b95b27b464cfdd30128463404f4e17919d.

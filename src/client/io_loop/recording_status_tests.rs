@@ -225,3 +225,186 @@ async fn recording_output_failure_stops_status_without_stopping_video() {
 async fn writable_recording_keeps_status_and_produces_output() {
     recording_status_case(false).await;
 }
+
+struct FileLimit {
+    original: hbb_common::libc::rlimit,
+    signal: hbb_common::libc::sighandler_t,
+}
+
+impl FileLimit {
+    fn zero() -> Self {
+        use hbb_common::libc;
+        let mut original = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_FSIZE, &mut original) }, 0);
+        assert!(original.rlim_cur >= 1024 * 1024);
+        let signal = unsafe { libc::signal(libc::SIGXFSZ, libc::SIG_IGN) };
+        assert_ne!(signal, libc::SIG_ERR);
+        let guard = Self { original, signal };
+        let zero = libc::rlimit { rlim_cur: 0, rlim_max: original.rlim_max };
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &zero) }, 0);
+        let mut actual = original;
+        assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_FSIZE, &mut actual) }, 0);
+        assert_eq!((actual.rlim_cur, actual.rlim_max), (0, original.rlim_max));
+        guard
+    }
+}
+
+impl Drop for FileLimit {
+    fn drop(&mut self) {
+        use hbb_common::libc;
+        assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &self.original) }, 0);
+        assert_ne!(unsafe { libc::signal(libc::SIGXFSZ, self.signal) }, libc::SIG_ERR);
+    }
+}
+
+async fn wait_recording(
+    remote: &mut Remote<ViewerPipelineUi>, peer: &mut Stream,
+    ready: impl Fn(&Remote<ViewerPipelineUi>) -> bool,
+) {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        assert!(remote.update_record_state(peer).await, "recording closed the connection");
+        if ready(remote) { return; }
+        assert!(Instant::now() < deadline, "recording did not converge: {:?}", remote.recording_status);
+        tokio::select! {
+            _ = remote.recording_changed.notified() => {}
+            command = time::timeout(Duration::from_millis(10), remote.receiver.recv()) => {
+                if let Ok(command) = command {
+                    assert!(remote.handle_msg_from_ui(command.unwrap().unwrap(), peer).await);
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn multi_writer_finalization_failure_preserves_pending_retry() {
+    use std::{collections::BTreeMap, io::Write};
+    const CHILD: &str = "RUSTDESK_RECORDING_LATE_FAILURE_CHILD";
+    const TEST: &str = "client::io_loop::recording_status_tests::multi_writer_finalization_failure_preserves_pending_retry";
+    if std::env::var_os(CHILD).is_none() {
+        // Resource limits and signal disposition are process-wide. Keep them
+        // outside the parent test process, even when its tests run concurrently.
+        let output = tokio::process::Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", TEST, "--test-threads=1", "--nocapture"])
+            .env(CHILD, "1").stdin(std::process::Stdio::null()).output().await.unwrap();
+        assert!(output.stdout.len() + output.stderr.len() <= 64 * 1024);
+        assert!(output.status.success(), "late recording failure child: {}\n{}\n{}",
+            output.status, String::from_utf8_lossy(&output.stdout), String::from_utf8_lossy(&output.stderr));
+        assert!(String::from_utf8_lossy(&output.stdout)
+            .contains("RECORDING_LATE_FAILURE=pass decoders=2 held_owners=2 retry=preserved children=joined"));
+        return;
+    }
+
+    let fixture = Fixture::new(false);
+    let mut handler = Session::<ViewerPipelineUi>::default();
+    handler.ui_handler = ViewerPipelineUi::with_display_count(2);
+    {
+        let mut config = handler.lc.write().unwrap();
+        config.id = "127.0.0.1".to_owned();
+        config.record_permission = true;
+        config.peer_info = Some(PeerInfo {
+            displays: vec![DisplayInfo { width: 640, height: 480, ..Default::default() }; 2],
+            ..Default::default()
+        });
+    }
+    let ui = handler.ui_handler.clone();
+    let (sender, receiver) = client::viewer_command_channel();
+    *handler.sender.write().unwrap() = Some(sender.clone());
+    let (refresh_sender, refresh) = viewer_video_refresh_channel();
+    *handler.video_refresh_sender.write().unwrap() = Some(refresh_sender);
+    let mut remote = Remote::new(handler, receiver, sender, refresh);
+    let files = || -> BTreeMap<PathBuf, Vec<u8>> {
+        std::fs::read_dir(fixture.root.join("recordings")).unwrap()
+            .map(|entry| { let path = entry.unwrap().path();
+                let bytes = std::fs::read(&path).unwrap(); (path, bytes) }).collect()
+    };
+    let result = AssertUnwindSafe(async {
+        let (mut viewer, _peer) = keyed_pair().await;
+        for display in 0..2 { assert!(remote.new_video_thread(display, &mut viewer).await); }
+        assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
+        let first = remote.recording.as_ref().unwrap().clone();
+        assert_eq!(first.snapshot().writers, 2);
+        let (frame, _) = client::video_handler_tests::visible_and_hidden_frames();
+        for display in 0..2 {
+            let mut frame = frame.clone(); frame.display = display as i32; frame.generation = 1;
+            assert_eq!(remote.video_threads[&display].media_thread.admit_received_frame(
+                frame, true, std::time::Instant::now()), VideoFrameAdmission::Queued);
+        }
+        wait_recording(&mut remote, &mut viewer, |remote| {
+            remote.recording_status == RecordingStatus::Active
+                && remote.video_threads.values().all(|video| *video.frame_count.read().unwrap() == 1)
+                && ui.recording_observation().1 == 2 && ui.recording_observation().2
+        }).await;
+        assert_eq!(files().len(), 2, "both actual decoder writers produced output");
+        assert!(ui.take_errors().is_empty());
+
+        // Retain one written owner and one queued reservation. Stop/retry must
+        // wait for both, including a finalization error from the written owner.
+        let mut late = first.writer(0).unwrap();
+        let pending = first.writer(1).unwrap();
+        assert!(late.write(frame.union.as_ref().unwrap(), 640, 480));
+        assert!(remote.handle_msg_from_ui(Data::RecordScreen(false), &mut viewer).await);
+        assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
+        wait_recording(&mut remote, &mut viewer, |_| first.snapshot().writers == 2).await;
+        assert_eq!(remote.recording_status, RecordingStatus::Stopping);
+        assert!(Arc::ptr_eq(remote.recording.as_ref().unwrap(), &first));
+        let retained = files(); assert_eq!(retained.len(), 3);
+        let mut canary = std::fs::File::create(fixture.root.join("limit-canary")).unwrap();
+        let limit = FileLimit::zero();
+        assert_eq!(canary.write_all(b"refused").unwrap_err().raw_os_error(), Some(hbb_common::libc::EFBIG));
+        drop(late);
+        drop(limit);
+        assert!(remote.update_record_state(&mut viewer).await);
+        assert_eq!(first.snapshot().writers, 1);
+        assert_eq!(remote.recording_status, RecordingStatus::Stopping);
+        assert!(remote.recording_requested, "late failure cancelled an already requested retry");
+        assert!(Arc::ptr_eq(remote.recording.as_ref().unwrap(), &first));
+        assert!(first.writer(0).is_none(), "retiring attempt admitted a new writer");
+        assert_eq!(ui.take_errors(), vec!["custom-error: Recording: Failed: Failed to finalize WebM recording"]);
+        assert!(remote.update_record_state(&mut viewer).await);
+        assert!(ui.take_errors().is_empty(), "late failure was reported twice");
+        assert_eq!(files(), retained, "failed finalization changed existing bytes");
+
+        drop(pending);
+        assert!(remote.update_record_state(&mut viewer).await);
+        let retry = remote.recording.as_ref().unwrap().clone();
+        assert!(!Arc::ptr_eq(&retry, &first));
+        assert_eq!(first.snapshot().writers, 0);
+        assert_eq!(retry.snapshot().writers, 2);
+        assert_eq!(remote.recording_status, RecordingStatus::Starting);
+        assert_eq!(files(), retained, "retry wrote before receiving a frame");
+        for display in 0..2 {
+            let mut frame = frame.clone(); frame.display = display as i32; frame.generation = 2;
+            assert_eq!(remote.video_threads[&display].media_thread.admit_received_frame(
+                frame, true, std::time::Instant::now()), VideoFrameAdmission::Queued);
+        }
+        wait_recording(&mut remote, &mut viewer, |remote| {
+            remote.recording_status == RecordingStatus::Active
+                && remote.video_threads.values().all(|video| *video.frame_count.read().unwrap() == 2)
+                && ui.recording_observation().1 == 4
+        }).await;
+        assert!(remote.handle_msg_from_ui(Data::RecordScreen(false), &mut viewer).await);
+        wait_recording(&mut remote, &mut viewer, |remote| remote.recording.is_none()).await;
+        assert_eq!(remote.recording_status, RecordingStatus::Stopped);
+        assert_eq!(retry.snapshot().writers, 0);
+        assert!(ui.take_errors().is_empty());
+        let complete = files(); assert_eq!(complete.len(), 5);
+        let Some(video_frame::Union::Vp8s(encoded)) = &frame.union else { panic!("native VP8 frame"); };
+        let encoded = &encoded.frames[0].data;
+        for (path, bytes) in &complete {
+            if !retained.contains_key(path) {
+                assert!(bytes.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]));
+                assert_eq!(bytes.windows(encoded.len()).filter(|data| *data == encoded.as_ref()).count(), 1,
+                    "retry output must contain its actual encoded frame");
+            }
+        }
+        for (path, bytes) in retained { assert_eq!(complete[&path], bytes); }
+        complete
+    }).catch_unwind().await;
+    remote.shutdown_workers().await;
+    let complete = result.unwrap_or_else(|panic| resume_unwind(panic));
+    assert!(remote.video_threads.is_empty());
+    assert_eq!(files(), complete, "shutdown changed finalized output");
+    println!("RECORDING_LATE_FAILURE=pass decoders=2 held_owners=2 retry=preserved children=joined");
+}

@@ -115,9 +115,15 @@ pub(crate) struct ViewerPipelineUi {
     file_size: Option<u64>,
     file_manifest: Option<Arc<Vec<(String, u64)>>>,
     expect_file_inspection_refusal: bool,
+    expected_display_count: Option<usize>,
 }
 
 impl ViewerPipelineUi {
+    pub(crate) fn with_display_count(count: usize) -> Self {
+        assert!(count > 0);
+        Self { expected_display_count: Some(count), ..Default::default() }
+    }
+
     pub(crate) fn file_transfer() -> Self {
         Self { file_transfer: true, ..Default::default() }
     }
@@ -381,7 +387,7 @@ impl InvokeUiSession for ViewerPipelineUi {
         let should_stall = {
             let (state, ready) = &*self.state;
             let mut state = state.lock().unwrap();
-            if display != 0 {
+            if display >= self.expected_display_count.unwrap_or(1) {
                 state.record_error(format!("unexpected published display {display}"));
             }
             let dimensions = (rgba.w, rgba.h);

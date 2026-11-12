@@ -149871,3 +149871,14 @@ No rerun is needed. RustDesk catalog/service-generation correctness, application
 ViewCamera logins and physical hotplug remain OPEN. The prior 16,082,745-byte
 audit prefix is preserved, SHA-256
 08f69907e2168cfbc0113aae3da2415d684001ef61a453180be0dca446da3085.
+
+Fresh ledger count at 085ca0ed, Tyt3ouFFov/tool68172, passes: 414,611 tokens /
+1,892,237 bytes, SHA-256
+c948f0be882e3e57d57c39de6fbeab7c2cdf5a7ebd39fcfc184f9413303f178c.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-owned-ledger-085ca0ed.json binds eight files/115,637 bytes verified on
+CTE/TUF. QEMU 2367205 joins zero; three zero listener deltas and exact private/
+process/socket/RAM retirement pass. The approximate 400,000-token target remains
+OPEN. This audit-only append preserves the counted ledger and prior
+16,084,425-byte audit prefix, SHA-256
+a59426306031d3e433c94bc321e9244f9b9bca0c175dd31ac2088965cc7d1ef2.

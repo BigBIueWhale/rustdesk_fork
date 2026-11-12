@@ -6774,11 +6774,28 @@ The authenticated vendor cache adds 702,300 source bytes per host; whole online
 closure repinning and complete cold-input reproduction remain OPEN. The retired
 `8543fa9e` app freed 70,606,848 allocated bytes; its manifest/evidence and the
 `7c58ad90` baseline remain. Writable-diagnostic intermediate controls remain in
-the audit. Next recording work is actual multiple-writer/late-failure finality.
+the audit.
 
-Multiple writers and late failures, broader full-UI finalization failures,
+**Multiple writers and late finalization — selected Linux native component ACCEPTED.**
+`4cf52642` adds a real two-decoder recording case with one retained written
+owner and one unwritten reservation. After Stop and a requested retry, actual
+EFBIG at the written owner's finalization reports the exact error once. The
+original attempt remains Stopping until the last reservation drops; it admits
+no new writer, preserves existing output and does not cancel the pending retry.
+Both decoders then record into the replacement attempt; all owners drain,
+workers join and shutdown preserves the files. This passes without a product
+change. Two older controls initially fail because they repeat timestamp zero
+but expect one epoch; `a1146e7c` supplies advancing timestamps while retaining
+their one-file/payload assertions. The complete profile then passes fourteen
+tests in five seconds after a 160-second native build. `recording-multi-a1146e7c.json`
+binds nine files/89,502 bytes verified on both hosts, four zero listener deltas
+and joined VM/RAM cleanup. The first run is retained in `recording-multi-4cf52642.json`.
+This is the production library with callback observation and retained-owner
+fixtures; multi-display Flutter UI and installed/root evidence remain OPEN.
+
+Full-UI multiple writers/late failures, broader full-UI finalization failures,
 blocked recording I/O, installed/root and other-platform recording remain OPEN.
-The controlled-side message wrapper still discards its write result. These
+Next: the controlled-side message wrapper still discards its write result. These
 results do not close R-S0/R-F5 or the complete recording/release requirements.
 
 **Transport verification classification — source-wording checks removed.**

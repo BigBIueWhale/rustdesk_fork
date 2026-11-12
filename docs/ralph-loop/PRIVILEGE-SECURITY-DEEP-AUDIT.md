@@ -148245,3 +148245,72 @@ absence are verified. The ledger shrinks by 127 tokens; the approximate
 400,000-token compression requirement remains OPEN. This audit-only append
 preserves the counted ledger and prior 15,971,191-byte audit prefix (SHA-256
 948dc24e8b61b6cec6e8744f04e4004abb724a7dccc2895f5a3dfabc8293d259).
+
+### 2026-11-12 — Multiple recording owners preserve retry after late failure
+
+Previous goal turn: progress, completing full Linux combined-write-failure UI
+acceptance. This slice closes its adjacent native ownership/finality evidence
+gap before another full application build. It exercises current production
+behavior; no new product correction is assumed. Prior audit prefix:
+15,971,947 bytes, SHA-256
+dc76a8c8b4bd168dc19212724e84939c7f9518698720803461aa29b573eef179.
+
+4cf5264294a1fa01c17a45b66088cbd54f7537dd adds the focused case to the existing
+production-parent viewer-video profile. Two actual decoder workers record native
+VP8 frames. One additional written owner and one unwritten reservation remain
+held while Stop and a new Start pass through the real Remote UI-command handler.
+The worker writers drain, while those two retained owners keep the old attempt
+Stopping. A zero soft RLIMIT_FSIZE and ignored SIGXFSZ cause the written owner's
+real WebM finalization to fail; an ordinary write independently proves EFBIG.
+The original hard limit is retained and the soft limit/disposition restore.
+Linux documents process-wide resource limits and signal dispositions:
+https://man7.org/linux/man-pages/man2/getrlimit.2.html
+https://man7.org/linux/man-pages/man7/signal.7.html
+Therefore the fault case runs in an exact self-executed child, joined by the
+parent test, rather than changing the parent suite's limits or signals.
+
+The real recording state machine reports the exact finalization error once,
+retains the old attempt while the final reservation remains, rejects another
+writer on that retiring attempt, and preserves the already requested retry.
+Only after the final reservation drops does it admit the replacement. Both
+decoders publish their second native frame and record its encoded payload into
+new files. The three old files remain byte-identical, all recording owners
+drain, native workers join, and all five files remain unchanged after shutdown.
+The callback fixture admits exactly the configured display range; its existing
+single-display default remains unchanged. Tests do not claim Flutter/compositor
+or installed-service execution. Profile receipts and exact expected test counts
+increase from thirteen to fourteen; no broader verifier catalogue is run.
+
+First run Qyqj3FQz9P/tool47908 compiles the actual Linux library in 166 seconds,
+artifact fd9620d0e88cb81a8a258acbe1005c13dbda659ed4491526d67cab04b9cbbf7c.
+The new case and eight decoder controls pass. Two older recording controls fail
+their single-file expectation: their reused frame carries timestamp zero twice,
+and the already accepted clock correction properly starts a second epoch.
+The three subsequent mailbox controls are not executed. Wrapper exit 1 remains
+a failure, not an aggregate pass. recording-multi-4cf52642.json binds nine
+files/110,133 bytes verified on both hosts. QEMU 2322193 joins zero after
+231.726 seconds; peak RAM scratch 5,332,500,480 bytes, four zero listener deltas.
+Private output/console match durable captures; bounded inventory and exact
+identity validation precede retirement of 3,395,584 allocated diagnostic bytes.
+Exact sockets/process/RAM workspace are absent. No uncertain run is restarted.
+
+a1146e7c17109f2ca4269e152c88f99633d65b80 changes only five fixture lines: the
+second healthy frame advances to 2,000 ms, and the retry uses 0/2,000 ms.
+Single-file and both-payload assertions remain, as does the new late-failure case.
+7hLsedkSFP/tool77795 then passes all fourteen tests: eight decoder, three recording
+and three mailbox cases. Native execution takes five seconds after a 160-second
+build. Artifact SHA-256
+a575e028fc3bdbd9deae1eb47f823ae232b13d3d13c6cc5a2ff88b059bb015d4
+is unchanged before/after execution. Rust 1.75.0, linux-pkg-config, authenticated
+vendor closure and unprivileged network-none container all remain pinned.
+recording-multi-a1146e7c.json binds nine files/89,502 bytes verified on both hosts.
+QEMU 2342387 joins zero after 227.123 seconds; peak RAM scratch 5,331,779,584 bytes.
+All four listener deltas are zero; exact private/sockets/process/RAM are absent.
+Shell syntax, diff hygiene and complete scoped-diff review pass.
+
+The existing product handles this native late-failure/retry case correctly.
+Full multi-display Flutter UI, blocked recording I/O, installed/root and other
+platforms remain OPEN. The next actionable recording gap is the controlled-side
+write_message wrapper discarding its write result at video_service.rs's caller;
+no correction or new runtime claim for that path is made here. Existing app
+dbd57c51 remains reusable; no full rebuild, cache expansion or instruction edit.

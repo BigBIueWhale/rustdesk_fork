@@ -6849,11 +6849,31 @@ are checked, and truncated files and the strict zero-prefix control are refused.
 listener deltas and joined VM/RAM cleanup. Six fixture/observation failures and their
 exact cleanup remain in the audit and named capsules; none is counted as a pass.
 
-Blocked recording I/O, full-UI multiple writers/late failures, broader finalization
-failures, installed/root settings/recording and other-platform recording remain OPEN.
-Next: isolate recording I/O from capture/presentation while retaining bounded ownership
-and truthful completion. These results do not close R-S0/R-F5 or complete recording
-and release acceptance.
+**Incoming recording storage isolation — Linux native component ACCEPTED.**
+`e3facd49` moves recorder construction, writes, epoch changes and finalization into
+owned workers. Capture admits at most eight queued batches per writer; the process
+retains at most 64 workers and 48 MiB of encoded payload, including in-flight writes.
+Overload closes recording admission and reports Writing failure while video continues.
+The outer video-service owner retains workers across capture restarts, closes all
+admissions at shutdown and joins every worker before releasing its slot. Status stays
+finishing through accepted-prefix drain and checked finalization; history survives.
+Baseline `d64bc142` produces zero subscriber frames during an actual recording write
+held for 1,001 ms. With the correction, twelve changing images decode while that
+syscall remains held; the full queue retires recording, completion stays pending,
+and release drains/joins with zero retained worker/byte credits. Another native case
+admits 64 idle workers, refuses the next and joins all even with producers still live.
+All nineteen focused tests pass, including EACCES/healthy retry, late finalization,
+status IPC and existing decoder/mailbox controls. `incoming-worker-e3facd49.json`
+binds nine files/89,662 bytes verified on both hosts, unchanged test-artifact hash,
+four zero listener deltas and joined VM/RAM cleanup. The reproduced baseline is
+retained separately in `incoming-blocked-baseline-d64bc142.json`.
+
+The earlier full-app/UI evidence uses `f4a55367` and does not validate these workers.
+Next: exercise aggregate byte-budget exhaustion and blocked finalization, then build
+the updated app and observe actual UI completion and decodable saved output after
+overload. Native spawn failure, full-UI multiple writers/late failures, broader
+finalization failures, installed/root settings/recording and other platforms remain
+OPEN. These component results do not close R-S0/R-F5 or complete release acceptance.
 
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,

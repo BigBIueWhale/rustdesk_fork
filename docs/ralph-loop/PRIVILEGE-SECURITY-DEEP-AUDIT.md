@@ -148586,3 +148586,73 @@ RAM absence are verified. Approximate 400,000-token compression remains OPEN.
 This audit-only append preserves the counted ledger and prior 15,994,142-byte
 audit prefix, SHA-256
 caf72f38ff4d33efcf84c828311ca99075ebcd89dcdbf7346472a5ee65d48df2.
+
+## 2026-11-12 — incoming recording storage no longer blocks native capture
+
+Prior iteration: progress. Continue the recording correctness boundary under
+R-S0/R-F5: slow storage must not stop capture, and completion must still wait for
+owned recording I/O. This follows the accepted local UI checkpoint and precedes
+another full-app build because the existing synchronous path needs a correction.
+The existing TUF password SSH master is usable; no authentication change is needed.
+
+d64bc142 adds a native Linux x86_64 fixture that holds an actual recording write
+with seccomp user notification. Only the test capture thread and its future children
+inherit the filter; the observer validates kernel structure sizes, notification IDs
+and the exact private output descriptor. It releases the syscall and joins before
+checking the outcome. This is an isolated delay fixture, not an authorization policy.
+Baseline NRfA0fBmsh/tool58951 exits 1 as expected: zero changing subscriber frames
+while the write is held for 1,001 ms; completion remains pending and release joins.
+The two existing recording controls pass. Build hash is
+ab05bc08a81720f954b037b0d9028d934513345e0a7e65e72fa872eb348de279;
+the failed run does not reach the after-execution artifact check.
+
+e3facd49 replaces capture-owned file I/O with a bounded producer and service-owned
+worker collection. Recorder construction, frame writes, epoch changes and finish
+execute on each worker. Eight queued batches plus one in flight per writer share
+a 48-MiB process-wide payload budget; existing native batch validation limits size
+and subframes. At most 64 workers retain slots until exact join. Queue overflow
+closes admission and retains Writing failure; accepted frames drain before finish.
+The video-service outer callback owns handles across capture restarts. Shutdown
+closes every admission before joining, including when producers remain live.
+Completion follows recorder destruction, and payload credits follow payload drop.
+No file I/O runs under the queue/status mutexes, and no worker is detached.
+
+Primary design references: Rust JoinHandle documents detachment on drop and exact
+join; Builder::spawn permits explicit spawn failure; Condvar requires a predicate
+loop; Rust destruction order determines truthful completion and credit release.
+https://doc.rust-lang.org/std/thread/struct.JoinHandle.html
+https://doc.rust-lang.org/std/thread/struct.Builder.html#method.spawn
+https://doc.rust-lang.org/std/sync/struct.Condvar.html
+https://doc.rust-lang.org/reference/destructors.html
+Linux write and seccomp notification semantics underpin the actual blocking test:
+https://man7.org/linux/man-pages/man2/write.2.html
+https://man7.org/linux/man-pages/man2/seccomp_unotify.2.html
+
+EaIl9i5R9r/tool88499 exits zero. All nineteen focused native tests pass in five
+seconds after a 160-second build; artifact
+c1a7c06ad7728611a15eab3c477e1761fb022ab1925e5057ee60f01b87ff89c9
+is unchanged before/after execution. Twelve changing VP8 images reach the real
+subscriber and decode while the recording syscall stays held. Frame index nine
+exhausts the eight queued slots plus one in flight; recording retires with one
+finishing writer and Writing history while video continues. Completion remains
+pending until release, then joins with zero retained workers/bytes. Another native
+case admits 64 idle workers, refuses the sixty-fifth, closes/joins all with producer
+handles still live and rejects their later frames. Actual EACCES/healthy retry,
+late finalization, retained history, IPC, decoder and mailbox controls also pass.
+
+The baseline capsule binds nine files/108,115 bytes; corrected
+incoming-worker-e3facd49.json binds nine files/89,662 bytes, copied and hash-verified
+on CTE/TUF. Baseline QEMU 2925904 and corrected QEMU 2957241 join zero after
+232.021/226.714 seconds; RAM scratch peaks are 5,333,483,520/5,333,508,096 bytes.
+Each has four zero listener deltas and exact private/QEMU/socket/RAM absence.
+The failed baseline private tree's 3,395,584 allocated bytes were inventoried and
+retired after durable-log verification. No disposable image or new app cache remains.
+
+This is Linux parent-library component acceptance. The prior f4a55367 full app
+predates the worker change. Aggregate byte-budget saturation, blocked finalization,
+actual spawn failure, updated full-app/UI execution and decoded saved-prefix output
+after overload remain OPEN, as do installed/root and other-platform recording.
+Next: exercise those bounded worker edge cases before the updated app checkpoint.
+Complete recording, privilege-immunity, R-S0/R-F5 and release claims remain OPEN.
+This append preserves the prior 15,994,890-byte audit prefix, SHA-256
+6239b09550a726a28d60e0ead64205fad775af4dbcba089dc8bb5520e000ab2d.

@@ -149846,3 +149846,28 @@ ordinal and service-generation correction remains OPEN; this component change
 does not establish application login, physical hotplug or release acceptance.
 The prior 16,081,038-byte audit prefix remains unchanged, SHA-256
 86d207ec52a82cf8e1ef4a8c7aad02d2dedf3b7175d5704cf272e96f88f7951b.
+
+Native acceptance at 2a3c3caf, TUF yvR9EYXNd5/tool66137, exits zero. The same
+four scenarios pass: nonzero capture/absent-zero refusal; two independent
+retained cameras; fresh replacement-device acquisition with both old/new
+handles independently usable; and competing-stream EBUSY while the original
+stream still produces frames, followed by successful fresh acquisition after
+retirement. Ten advancing samples decode forty 640x360 RGBA frames. Native
+handle counts/identities and final absence pass. The compiled 5,044,760-byte
+ELF SHA-256 is 5cece4f1f37fad3d7a9f37d9b2b462dbb9a84fb78d204d2dc7b039bfa3d6544f.
+Cargo selects the exact local backend; its normalized 136-package/31,897-byte
+lock has SHA-256 db0eb0544731cbee5d4c234d659f3ec9875737f4579429da906bc2ca8fd15e13.
+All approved package identities remain unchanged within the selected graph.
+
+camera-owned-2a3c3caf.json binds eight files/171,158 bytes copied and verified on
+both hosts; outer SHA-256
+553a71aae56feb4e4cc77a0d26cdf86ba203cf7e524c7dae860452f358994e5b.
+QEMU 2365396 joins zero after a 145.390-second transaction. Peak RAM scratch is
+6,685,474,816 bytes; three zero listener deltas and exact private/process/socket/
+RAM absence pass. Compiler container/daemon and native nodes/modules retire.
+Reconciliation reads the media console archive after the kexec handoff; the
+separate ordinary output archive contains only provisioning, not native results.
+No rerun is needed. RustDesk catalog/service-generation correctness, application
+ViewCamera logins and physical hotplug remain OPEN. The prior 16,082,745-byte
+audit prefix is preserved, SHA-256
+08f69907e2168cfbc0113aae3da2415d684001ef61a453180be0dca446da3085.

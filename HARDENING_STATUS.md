@@ -9307,14 +9307,14 @@ ViewCamera logins replace that process-wide catalog while `src/server.rs` keys c
 The correction must bind advertised metadata, the selected native handle, connection and service to one
 owned catalog/capture generation. An index cache alone cannot establish that lifetime.
 
-**Pinned supplier failures reproduced natively; correction OPEN.** The locked nokhwa revision
+**Pinned supplier failures reproduced natively; backend corrected below.** The locked nokhwa revision
 `c2f74662b6ce117f7f94301693fdfadc0b1ec91a` uses a process-global weak device cache keyed only by numeric
 index (`nokhwa-bindings-linux/src/lib.rs::new_shared_device`, lines 143–205). An existing live entry is
 returned without reopening the current node; a catalog refresh cannot establish fresh native identity.
 Its `devices.len() > 1` assertion compares a count from `windows(2)` with the full list length: that count
 is at most `len - 1`, so a successful second distinct retained-device open reaches an impossible assertion.
-The native probe now reproduces that assertion abort and stale-handle reuse; RustDesk application
-reachability and correction remain OPEN. Neither observation establishes a privilege escalation.
+The baseline native probe reproduces that assertion abort and stale-handle reuse; RustDesk application
+reachability and catalog correction remain OPEN. Neither observation establishes a privilege escalation.
 The [pinned supplier source](https://github.com/rustdesk-org/nokhwa/blob/c2f74662b6ce117f7f94301693fdfadc0b1ec91a/nokhwa-bindings-linux/src/lib.rs)
 contains both paths; the retained vendor file matches its Cargo checksum entry, SHA-256
 `9fb446f29bcc50a20e786704f9c91bcf404a744208a361264a7e4e0fc1573da4`.
@@ -9343,6 +9343,24 @@ its 117.467-second transaction joins QEMU and compiler ownership, retires
 6,650,687,488 bytes peak scratch and leaves three zero listener deltas.
 Capsule `camera-native-6c228547.json` binds the source, native observations,
 preparation failures and complete raw evidence. No camera product API is changed.
+
+**Linux backend ownership correction — native component accepted.** `2a3c3caf`
+replaces the supplier's global weak device cache with an independently opened
+device owned by each capture object. The application and probe select the same
+fork-owned `libs/nokhwa-bindings-linux` through Cargo's Git-package patch; the
+authenticated vendor closure and all other package identities stay unchanged.
+TUF `yvR9EYXNd5` passes nonzero capture/absent-zero refusal, two retained cameras,
+fresh acquisition of a replaced node while the original handle remains usable,
+and competing-stream EBUSY with preserved incumbent capture and a later
+successful fresh stream. Ten advancing samples decode forty 640×360 RGBA frames;
+all device handles, compiler owners and fixture nodes/modules retire.
+`camera-owned-2a3c3caf.json` binds eight files/171,158 bytes verified on CTE/TUF.
+The 145.390-second transaction joins QEMU 2365396 exit zero, retires
+6,685,474,816 bytes peak RAM scratch and records three zero host listener deltas.
+This closes the reproduced backend failures in the native component fixture.
+The RustDesk catalog/ordinal/service-generation correction and full-application
+ViewCamera acceptance, including overlapping logins and physical hotplug, remain
+OPEN. The native component result does not establish those application behaviors.
 
 **Fixture evidence retained.** The authenticated cloud base lacks `CONFIG_MEDIA_SUPPORT`; its complete
 config and observations remain in `.harness-state/verifier-vm/camera-kernel-inspection-61d8cb61-complete`.

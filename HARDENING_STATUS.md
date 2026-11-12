@@ -6862,18 +6862,24 @@ held for 1,001 ms. With the correction, twelve changing images decode while that
 syscall remains held; the full queue retires recording, completion stays pending,
 and release drains/joins with zero retained worker/byte credits. Another native case
 admits 64 idle workers, refuses the next and joins all even with producers still live.
-All nineteen focused tests pass, including EACCES/healthy retry, late finalization,
-status IPC and existing decoder/mailbox controls. `incoming-worker-e3facd49.json`
-binds nine files/89,662 bytes verified on both hosts, unchanged test-artifact hash,
-four zero listener deltas and joined VM/RAM cleanup. The reproduced baseline is
-retained separately in `incoming-blocked-baseline-d64bc142.json`.
+At `646ba50e`, all twenty-one focused tests pass, including EACCES/healthy retry,
+late finalization, status IPC and existing decoder/mailbox controls. Two independently
+stalled native writers retain exactly 48 MiB across in-flight frames and synthetic
+queued payloads; a third writer is refused. Injected write EIO releases every credit,
+and a fresh native recording succeeds. The synthetic payloads are discarded before
+muxing and establish only admission/accounting. A separate held finalization write
+preserves finishing status, unchanged file bytes and pending owner shutdown for
+100 ms, then joins with either successful finalization or an injected-EIO Finish
+failure. `incoming-worker-edges-646ba50e.json` binds nine files/89,816 bytes verified
+on both hosts, unchanged test-artifact hash, four zero listener deltas and joined
+VM/RAM cleanup. Initial correction and reproduced baseline evidence remain in
+`incoming-worker-e3facd49.json` and `incoming-blocked-baseline-d64bc142.json`.
 
 The earlier full-app/UI evidence uses `f4a55367` and does not validate these workers.
-Next: exercise aggregate byte-budget exhaustion and blocked finalization, then build
-the updated app and observe actual UI completion and decodable saved output after
-overload. Native spawn failure, full-UI multiple writers/late failures, broader
-finalization failures, installed/root settings/recording and other platforms remain
-OPEN. These component results do not close R-S0/R-F5 or complete release acceptance.
+Next: build the updated app and observe actual UI completion and decodable saved
+output after overload. Native spawn failure, full-UI multiple writers/late failures,
+broader finalization failures, installed/root settings/recording and other platforms
+remain OPEN. These component results do not close R-S0/R-F5 or complete release acceptance.
 
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,

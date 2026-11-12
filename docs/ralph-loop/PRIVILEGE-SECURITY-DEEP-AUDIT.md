@@ -148668,3 +148668,54 @@ private/QEMU/socket/RAM absence are verified. Approximate 400,000-token compress
 remains OPEN. This audit-only append preserves the counted ledger and prior
 15,999,648-byte audit prefix, SHA-256
 708d3950256eb1f8d712351a88e5167cd7f288de15d07a3782600c39ff4c00cb.
+
+## 2026-11-12 — native recording byte-budget exhaustion and finalization ownership
+
+Prior iteration: progress. Continue R-S0/R-F5 recording correctness by testing the
+two missing worker boundaries before rebuilding the application. Product code is
+unchanged from e3facd49. The existing seccomp notification fixture now supplies
+either CONTINUE or an explicit negative errno for an exact held file write; scoped
+owner shutdown closes admissions and joins after the observer releases the syscall.
+On test unwind, observer closure releases intercepted writes with ENOSYS and the
+shutdown channel wakes the owner before the scope joins. Primary references:
+https://man7.org/linux/man-pages/man2/seccomp_unotify.2.html
+https://man7.org/linux/man-pages/man2/write.2.html
+https://doc.rust-lang.org/std/thread/fn.scope.html
+
+646ba50e / nWpOCsydZn / tool67578 exits zero. All twenty-one focused native cases
+pass in five seconds after a 190-second build. The six incoming-recording cases
+finish in 0.34 seconds. Artifact
+04c88fb82258a4753820652264245c1e07aed48b002f38627413a73f99352e34
+is unchanged before/after execution. No product correction was needed for these
+new cases, and no old passed scenario was rerun outside the affected focused group.
+
+The budget test holds actual file writes from two distinct worker threads, each
+with a native VP8 frame in flight. One synthetic queued batch per writer fills the
+remaining shared budget to exactly 48 MiB, below the per-writer queue-count limit.
+A third writer refuses a valid native frame and records its own Writing failure
+without consuming more credits. Injected EIO at both held writes discards the
+synthetic queues before native muxing, leaves both files empty, and releases all
+worker/byte credits after join. A fresh owner then writes/finalizes the genuine VP8
+payload while preserving failure history. This tests production admission and
+ownership, not the decodability of synthetic filler or measured process RSS.
+
+The finalization test first observes active recording with no retained frame bytes,
+then closes the producer and owner. Its next actual file write therefore belongs
+to finalization. Holding that syscall for 100 ms preserves one finishing writer,
+one retained worker slot, unchanged file bytes and pending owner completion.
+CONTINUE permits finalization to change the file and preserves failure history;
+in the separate EIO case, bytes remain unchanged and Finish failure is retained.
+Both cases join and return live writer/worker/byte counts to zero. Existing blocked
+capture-progress, 64-worker admission/shutdown, EACCES, late-failure, IPC, decoder
+and mailbox controls also pass.
+
+incoming-worker-edges-646ba50e.json binds nine files/89,816 bytes copied and
+hash-verified on both hosts. QEMU 3106889 joins zero after 256.916 seconds; RAM
+scratch peaks at 5,369,331,712 bytes. Four listener deltas are zero and exact
+private/QEMU/socket/RAM absence is verified. No new application cache is retained.
+Next: build the updated full app and observe UI completion plus decoded saved
+output after overload. Actual thread-spawn failure, broader finalization/UI
+concurrency, installed/root and other-platform recording, and full R-S0/R-F5 and
+release acceptance remain OPEN. This append preserves the prior 16,000,399-byte
+audit prefix, SHA-256
+4f4b01c0cd39e00e690604ba25abd52202e737432d66aa71d33c817deb9ed3cd.

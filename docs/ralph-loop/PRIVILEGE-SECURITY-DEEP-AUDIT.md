@@ -149577,3 +149577,14 @@ installed Xvfb contention/retry scenario does not close requester exit,
 wrong/stale principals, broader failures, physical devices, other platforms or
 complete R-S0 acceptance. This append preserves the prior 16,061,894-byte audit
 prefix, SHA-256 02d64419415314b9bdeb8c27f75d9ac64f67a2447e91c90484910ad3d07dadd6.
+
+Fresh ledger count at 02d1f59f, 4hXjUA0ybU/tool40004 exits zero: 413,565 tokens /
+1,887,277 bytes, SHA-256
+70f803d0a1c8baa775a3f3dcdce4d29d615b4f14da02cffb43cf84f32551b98c.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+installed-recording-concurrent-ledger-02d1f59f.json binds eight files/115,618 bytes
+copied and verified on CTE/TUF. QEMU 1797584 joins zero; three zero host listener
+deltas and exact private/socket/RAM retirement pass. The approximate 400,000-token
+compression target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,064,815-byte audit prefix, SHA-256
+2fc52dc2a2e75fdcd708ee5d941f9ccf91b4d8b17c26612af10ae8e2ea2dc850.

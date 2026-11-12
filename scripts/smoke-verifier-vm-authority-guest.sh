@@ -345,6 +345,7 @@ case "$#:${8:-}" in
                 --installed-remote-network) FLUTTER_INSTALLED_SETTINGS=13 ;;
                 --installed-remote-loss) FLUTTER_INSTALLED_SETTINGS=14 ;;
                 --installed-remote-congestion) FLUTTER_INSTALLED_SETTINGS=15 ;;
+                --installed-remote-backoff) FLUTTER_INSTALLED_SETTINGS=16 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -14865,6 +14866,7 @@ run_flutter_peer_presentation() {
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 13 ] || settings_mode=--run-package-remote-network
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 14 ] || settings_mode=--run-package-remote-loss
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 15 ] || settings_mode=--run-package-remote-congestion
+        [ "$FLUTTER_INSTALLED_SETTINGS" -ne 16 ] || settings_mode=--run-package-remote-backoff
         settings_extra=()
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             settings_mode=--run-graphical

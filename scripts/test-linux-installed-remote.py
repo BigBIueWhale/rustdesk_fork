@@ -25,6 +25,7 @@ NETWORK_PROFILES = {
     'network': ['delay'] + ['loss'] * 8,
     'loss': ['random3', 'random8', 'burst'],
     'congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
+    'backoff': ['loss'],
 }
 
 
@@ -199,7 +200,8 @@ def session(network=False):
             driver = subprocess.Popen([str(settings.WORK / 'presentation-driver'), ':77', ':79',
                                        str(viewer.pid), start,
                                        {'network': '--network-impairment', 'loss': '--network-loss',
-                                        'congestion': '--network-congestion'}.get(network, '--viewer-suspend')],
+                                        'congestion': '--network-congestion',
+                                        'backoff': '--network-backoff'}.get(network, '--viewer-suspend')],
                                       env={**environment, 'XAUTHORITY': str(authority)},
                                       stdout=log('driver.log'), stderr=subprocess.STDOUT)
             processes.append(driver)
@@ -265,7 +267,8 @@ def scenario(settings, receiver, record, network=False):
             **record, **result, 'listener_inode': listener, 'credential': 'unchanged',
             'profile': 'unchanged', 'session_exit': 0,
             'scenario': network or 'suspend',
-            'holds_ms': NETWORK_HOLDS if network == 'network' else [20000] * 3 if network else [2000, 6000, 12000],
+            'holds_ms': NETWORK_HOLDS if network == 'network' else [18000] if network == 'backoff'
+                        else [20000] * 3 if network else [2000, 6000, 12000],
             'recovery_limit_ms': 2500, 'freshness_limit_ms': 1000,
         }, sort_keys=True), flush=True)
     finally:
@@ -280,7 +283,8 @@ def scenario(settings, receiver, record, network=False):
 
 
 if __name__ == '__main__':
-    require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion']),
+    require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion'],
+                            ['--session-backoff']),
             'closed installed Remote session request required')
     session(network={'--session-network': 'network', '--session-loss': 'loss',
-                     '--session-congestion': 'congestion'}.get(sys.argv[1], False))
+                     '--session-congestion': 'congestion', '--session-backoff': 'backoff'}.get(sys.argv[1], False))

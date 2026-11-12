@@ -2651,7 +2651,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-remote-' + remote if remote in ('network', 'loss', 'congestion') else '--run-remote' if remote
+                        '--run-remote-' + remote if remote in ('network', 'loss', 'congestion', 'backoff') else '--run-remote' if remote
                         else '--run-camera-busy' if camera == 'busy' else '--run-camera' if camera
                         else '--run-admin-failure' if admin_failure else '--run-concurrent-stop' if concurrent_stop
                         else '--run-conffiles' if conffiles
@@ -2697,7 +2697,7 @@ if __name__ == '__main__':
         session(admin_failure=True, graphical=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles', '--run-package-camera', '--run-package-camera-busy', '--run-package-remote', '--run-package-remote-network', '--run-package-remote-loss', '--run-package-remote-congestion'):
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles', '--run-package-camera', '--run-package-camera-busy', '--run-package-remote', '--run-package-remote-network', '--run-package-remote-loss', '--run-package-remote-congestion', '--run-package-remote-backoff'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
              package=sys.argv[1] == '--run-package',
@@ -2705,6 +2705,7 @@ if __name__ == '__main__':
              conffiles=sys.argv[1] == '--run-package-conffiles',
              camera={'--run-package-camera': 'recovery', '--run-package-camera-busy': 'busy'}.get(sys.argv[1], False),
              remote={'--run-package-remote': 'suspend', '--run-package-remote-network': 'network',
-                     '--run-package-remote-loss': 'loss', '--run-package-remote-congestion': 'congestion'}.get(sys.argv[1], False))
+                     '--run-package-remote-loss': 'loss', '--run-package-remote-congestion': 'congestion',
+                     '--run-package-remote-backoff': 'backoff'}.get(sys.argv[1], False))
     else:
         raise SystemExit('closed installed-settings arguments required')

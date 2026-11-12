@@ -149079,3 +149079,15 @@ identity-checked retirement, with exact QEMU/socket/RAM absence; their retiremen
 receipts are copied to CTE. No failed tree or bulk VM disk remains. This append
 preserves the prior 16,023,618-byte audit prefix, SHA-256
 844f1902c316005a1a46e1b15175870012e992f70b9a808632747efa47fc602f.
+
+Fresh ledger count at 97655c46, 4bcprlbYaw/tool84690 exits zero: 412,309 tokens /
+1,881,521 bytes, SHA-256
+fc52dd402d22d226cd2df7eaaac76a06a2d877069fccd652d9c03ecca047b6ed.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and full round
+trip pass. installed-recording-ledger-97655c46.json binds eight files/115,973 bytes
+verified on CTE/TUF. QEMU 3931899 joins zero after 30.246 seconds; RAM scratch peaks
+at 402,927,616 bytes. Three zero listener deltas and exact private/QEMU/socket/RAM
+absence pass. The approximate 400,000-token compression target remains OPEN.
+This audit-only append preserves the counted ledger and prior 16,030,439-byte
+audit prefix, SHA-256
+1d306cdf02e86bd7f5f8865ea979014598e0ca1805b38e62247abae360e294cc.

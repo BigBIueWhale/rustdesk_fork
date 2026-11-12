@@ -150924,3 +150924,14 @@ physical scanout, other platform/role combinations or complete R-F5/release
 acceptance. Continue with the remaining installed impairment profiles.
 This append preserves the prior 16,150,603-byte audit prefix, SHA-256
 791d34babb5f9902e23fe508988e6c3dcf6fdac8597b5f05633526f1967d3c0c.
+
+Fresh ledger count at bf0ee031, SrFmEKe1c5/tool85470, passes: 417,796 tokens /
+1,906,006 bytes, SHA-256
+d84a778d1e33a2463d528c1528147ec3572e8c281b227485c0ed2a4dc2550ceb.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+remote-network-ledger-bf0ee031.json binds eight files/116,211 bytes on CTE/TUF.
+QEMU 3655950 joins zero after 30.213 seconds with three zero listener deltas
+and exact private/process/socket/RAM retirement. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,154,662-byte audit prefix, SHA-256
+022e9024beffe000d67f02545c902e4a65d03779d68ac154b5b165441ab6a3df.

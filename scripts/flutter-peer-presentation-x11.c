@@ -7980,6 +7980,7 @@ static int incoming_archive_output(int *directory, const char *destination) {
     DIR *entries = scan < 0 ? NULL : fdopendir(scan);
     if (entries == NULL) { if (scan >= 0) close(scan); return -1; }
     int result = -1;
+    const char *phase = "files";
     unsigned int count = 0U;
     struct dirent *entry;
     errno = 0;
@@ -7994,10 +7995,14 @@ static int incoming_archive_output(int *directory, const char *destination) {
                entry->d_name, (long long)file.bytes, file.sha256, destination);
         errno = 0;
     }
-    if (errno != 0 || count == 0U ||
-        syscall(SYS_renameat2, AT_FDCWD, selected, AT_FDCWD, destination, 1U) != 0 ||
-        lstat(destination, &named) != 0 || named.st_dev != opened.st_dev ||
-        named.st_ino != opened.st_ino || mkdir(selected, 0700) != 0) goto out;
+    if (errno != 0 || count == 0U) goto out;
+    phase = "rename-directory";
+    if (syscall(SYS_renameat2, AT_FDCWD, selected, AT_FDCWD, destination, 1U) != 0) goto out;
+    phase = "renamed-identity";
+    if (lstat(destination, &named) != 0 || named.st_dev != opened.st_dev ||
+        named.st_ino != opened.st_ino) goto out;
+    phase = "new-directory";
+    if (mkdir(selected, 0700) != 0) goto out;
     int replacement = open(selected, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (replacement < 0) goto out;
     int retired = close(*directory);
@@ -8006,6 +8011,8 @@ static int incoming_archive_output(int *directory, const char *destination) {
         named.st_gid != getegid() || (named.st_mode & 07777) != 0700) goto out;
     result = 0;
 out:
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_INCOMING_ARCHIVE_FAIL phase=%s errno=%d files=%u\n", phase, errno, count);
     if (closedir(entries) != 0) result = -1;
     return result;
 }
@@ -8117,10 +8124,14 @@ static int run_incoming_owner(const char *pid_text, const char *start) {
         incoming_status_visible(pid, "Not recording", 1) != 0 || !viewer_pidfd_alive(pidfd) ||
         viewer_process_state(process, pid, start, &state) != 0) goto out;
     puts("FLUTTER_PEER_INCOMING_COMPLETE_OK active=0 finishing=0 history=writing ui=same-process");
+    phase = "archive-overload";
+    if (incoming_archive_output(&directory, "/tmp/recording-overload-retained") != 0) goto out;
+    phase = "finalization-baseline";
+    int failures = incoming_log_count(recording_log, incoming_finish_error);
+    printf("FLUTTER_PEER_INCOMING_FINISH_BASELINE failures=%d\n", failures);
+    if (failures != 0) goto out;
     phase = "finalization-session";
-    if (incoming_archive_output(&directory, "/tmp/recording-overload-retained") != 0 ||
-        incoming_log_count(recording_log, incoming_finish_error) != 0 ||
-        isolation_marker(coord, "incoming.finish.ready", 1) != 0 ||
+    if (isolation_marker(coord, "incoming.finish.ready", 1) != 0 ||
         wait_isolation_marker(coord, "incoming.finish.active.request", 60000U) != 0 ||
         incoming_status_visible(pid, "Recording: 1", 1) != 0 ||
         isolation_marker(coord, "incoming.finish.active.observed", 1) != 0 ||

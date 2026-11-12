@@ -7808,7 +7808,8 @@ static int incoming_status_visible(unsigned int pid, const char *live, int faile
     char expected[512];
     int length = snprintf(expected, sizeof(expected), "Recording\nIncoming recordings\n%s\n%sDirectory:\n/tmp/recording-selected-שלום",
         live,
-        failed ? "Last recording failure: Display 1 (Writing)\n" : "");
+        failed == 2 ? "Last recording failure: Display 1 (Finishing)\n" :
+        failed == 1 ? "Last recording failure: Display 1 (Writing)\n" : "");
     if (length <= 0 || (size_t)length >= sizeof(expected)) return -1;
     uint64_t deadline = monotonic_millis() + 10000U;
     unsigned int stable = 0U;
@@ -7851,7 +7852,11 @@ static int incoming_status_visible(unsigned int pid, const char *live, int faile
 
 /* Read the retained log descriptor: Writing history alone cannot distinguish
  * this new queue exhaustion from the preceding EACCES case. */
-static int incoming_overflow_count(int fd) {
+static const char incoming_overflow_error[] =
+    "Incoming recording stopped for Monitor display 0: Incoming recording storage cannot keep up with capture";
+static const char incoming_finish_error[] = "Failed to finalize incoming recording: Failed to finalize WebM recording";
+
+static int incoming_log_count(int fd, const char *failure) {
     char data[262145];
     struct stat metadata;
     if (fstat(fd, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
@@ -7867,10 +7872,9 @@ static int incoming_overflow_count(int fd) {
     }
     if (memchr(data, '\0', size) != NULL) return -1;
     data[size] = '\0';
-    const char failure[] = "Incoming recording stopped for Monitor display 0: Incoming recording storage cannot keep up with capture";
     unsigned int count = 0U;
     for (char *found = strstr(data, failure); found != NULL;
-         found = strstr(found + sizeof(failure) - 1U, failure)) {
+         found = strstr(found + strlen(failure), failure)) {
         if (++count > 1U) return -1;
     }
     return (int)count;
@@ -7962,6 +7966,50 @@ out:
     return result;
 }
 
+/* Retain each completed attempt separately. A failed file cannot contribute
+ * frames to the later healthy-recovery result. All moves stay in this private
+ * disposable container and require the exact directory and private files. */
+static int incoming_archive_output(int *directory, const char *destination) {
+    const char selected[] = "/tmp/recording-selected-שלום";
+    struct stat opened, named;
+    if (fstat(*directory, &opened) != 0 || lstat(selected, &named) != 0 ||
+        !S_ISDIR(opened.st_mode) || opened.st_uid != geteuid() || opened.st_gid != getegid() ||
+        (opened.st_mode & 07777) != 0700 || named.st_dev != opened.st_dev ||
+        named.st_ino != opened.st_ino) return -1;
+    int scan = openat(*directory, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    DIR *entries = scan < 0 ? NULL : fdopendir(scan);
+    if (entries == NULL) { if (scan >= 0) close(scan); return -1; }
+    int result = -1;
+    unsigned int count = 0U;
+    struct dirent *entry;
+    errno = 0;
+    while ((entry = readdir(entries)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        size_t length = strlen(entry->d_name);
+        ConfigFileState file = {0};
+        if (++count > 8U || length < 20U || strncmp(entry->d_name, "incoming_", 9U) != 0 ||
+            strcmp(entry->d_name + length - 5U, ".webm") != 0 ||
+            read_config_file(*directory, entry->d_name, &file) != 0) goto out;
+        printf("FLUTTER_PEER_INCOMING_ARCHIVE file=%s bytes=%lld sha256=%s destination=%s\n",
+               entry->d_name, (long long)file.bytes, file.sha256, destination);
+        errno = 0;
+    }
+    if (errno != 0 || count == 0U ||
+        syscall(SYS_renameat2, AT_FDCWD, selected, AT_FDCWD, destination, 1U) != 0 ||
+        lstat(destination, &named) != 0 || named.st_dev != opened.st_dev ||
+        named.st_ino != opened.st_ino || mkdir(selected, 0700) != 0) goto out;
+    int replacement = open(selected, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (replacement < 0) goto out;
+    int retired = close(*directory);
+    *directory = replacement;
+    if (retired != 0 || fstat(replacement, &named) != 0 || named.st_uid != geteuid() ||
+        named.st_gid != getegid() || (named.st_mode & 07777) != 0700) goto out;
+    result = 0;
+out:
+    if (closedir(entries) != 0) result = -1;
+    return result;
+}
+
 static int run_incoming_owner(const char *pid_text, const char *start) {
     char *end = NULL, process_path[64], state;
     errno = 0;
@@ -8039,13 +8087,13 @@ static int run_incoming_owner(const char *pid_text, const char *start) {
     phase = "hold-write";
     recording_log = open("/tmp/server-home/.local/share/logs/RustDesk/server/rustdesk_rCURRENT.log",
                          O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
-    if (recording_log < 0 || incoming_overflow_count(recording_log) != 0 ||
+    if (recording_log < 0 || incoming_log_count(recording_log, incoming_overflow_error) != 0 ||
         isolation_marker(coord, "incoming.write.arm", 1) != 0 ||
         wait_isolation_marker(coord, "incoming.write.held", 5000U) != 0) goto out;
     phase = "overload";
     uint64_t deadline = monotonic_millis() + 5000U;
     int overflow;
-    while ((overflow = incoming_overflow_count(recording_log)) == 0 && monotonic_millis() < deadline)
+    while ((overflow = incoming_log_count(recording_log, incoming_overflow_error)) == 0 && monotonic_millis() < deadline)
         if (sleep_millis(40U) != 0) goto out;
     if (overflow != 1 || incoming_status_visible(pid, "Finishing: 1", 1) != 0 ||
         isolation_marker(coord, "incoming.write.released", 0) != 0 ||
@@ -8061,7 +8109,7 @@ static int run_incoming_owner(const char *pid_text, const char *start) {
     uint64_t stopped = x11_frame_monotonic_us();
     phase = "saved-prefix";
     if (incoming_output(directory, started, stopped) != 0 ||
-        incoming_overflow_count(recording_log) != 1 ||
+        incoming_log_count(recording_log, incoming_overflow_error) != 1 ||
         isolation_marker(coord, "incoming.stall.complete", 1) != 0) goto out;
     puts("FLUTTER_PEER_INCOMING_OVERLOAD_COMPLETE_OK active=0 finishing=0 prefix=decoded viewer=connected");
     phase = "completion";
@@ -8069,6 +8117,47 @@ static int run_incoming_owner(const char *pid_text, const char *start) {
         incoming_status_visible(pid, "Not recording", 1) != 0 || !viewer_pidfd_alive(pidfd) ||
         viewer_process_state(process, pid, start, &state) != 0) goto out;
     puts("FLUTTER_PEER_INCOMING_COMPLETE_OK active=0 finishing=0 history=writing ui=same-process");
+    phase = "finalization-session";
+    if (incoming_archive_output(&directory, "/tmp/recording-overload-retained") != 0 ||
+        incoming_log_count(recording_log, incoming_finish_error) != 0 ||
+        isolation_marker(coord, "incoming.finish.ready", 1) != 0 ||
+        wait_isolation_marker(coord, "incoming.finish.active.request", 60000U) != 0 ||
+        incoming_status_visible(pid, "Recording: 1", 1) != 0 ||
+        isolation_marker(coord, "incoming.finish.active.observed", 1) != 0 ||
+        wait_isolation_marker(coord, "incoming.finish.request", 15000U) != 0 ||
+        isolation_marker(coord, "incoming.finish.held", 0) != 0 ||
+        isolation_marker(coord, "incoming.finish.arm", 1) != 0 ||
+        isolation_marker(coord, "incoming.finish.armed", 1) != 0) goto out;
+    phase = "finalization-held";
+    if (wait_isolation_marker(coord, "incoming.finish.held", 15000U) != 0 ||
+        incoming_status_visible(pid, "Finishing: 1", 1) != 0 ||
+        sleep_millis(200U) != 0 || incoming_status_visible(pid, "Finishing: 1", 1) != 0 ||
+        incoming_log_count(recording_log, incoming_finish_error) != 0 ||
+        isolation_marker(coord, "incoming.finish.failed", 0) != 0) goto out;
+    puts("FLUTTER_PEER_INCOMING_FINISH_HELD_OK active=0 finishing=1 completion=pending history=writing");
+    phase = "finalization-failure";
+    if (isolation_marker(coord, "incoming.finish.release", 1) != 0 ||
+        wait_isolation_marker(coord, "incoming.finish.failed", 5000U) != 0 ||
+        incoming_status_visible(pid, "Not recording", 2) != 0 ||
+        incoming_log_count(recording_log, incoming_finish_error) != 1 ||
+        incoming_log_count(recording_log, incoming_overflow_error) != 1 ||
+        wait_isolation_marker(coord, "incoming.closed.3", 15000U) != 0) goto out;
+    puts("FLUTTER_PEER_INCOMING_FINISH_FAILED_OK fault=EIO active=0 finishing=0 history=finishing ui=same-process");
+    phase = "finalization-recovery";
+    if (incoming_archive_output(&directory, "/tmp/recording-failure-retained") != 0) goto out;
+    started = x11_frame_monotonic_us();
+    if (isolation_marker(coord, "incoming.recovery.ready", 1) != 0 ||
+        wait_isolation_marker(coord, "incoming.recovery.request", 60000U) != 0 ||
+        incoming_status_visible(pid, "Recording: 1", 2) != 0 ||
+        isolation_marker(coord, "incoming.recovery.observed", 1) != 0 ||
+        wait_isolation_marker(coord, "incoming.closed.4", 15000U) != 0 ||
+        incoming_status_visible(pid, "Not recording", 2) != 0) goto out;
+    stopped = x11_frame_monotonic_us();
+    if (incoming_output(directory, started, stopped) != 0 ||
+        incoming_log_count(recording_log, incoming_finish_error) != 1 ||
+        incoming_log_count(recording_log, incoming_overflow_error) != 1 || !viewer_pidfd_alive(pidfd) ||
+        viewer_process_state(process, pid, start, &state) != 0) goto out;
+    puts("FLUTTER_PEER_INCOMING_FINISH_RECOVERY_OK active=0 finishing=0 history=finishing output=decoded ui=same-process");
     if (isolation_marker(coord, "incoming.complete", 1) != 0) goto out;
     result = 0;
 out:
@@ -8090,18 +8179,23 @@ out:
 
 static int exercise_incoming_viewer(Display *display, const ViewerWindow *viewer,
                                     SourceHistory *history, const ConnectionIdentity *connection,
-                                    int retry) {
+                                    unsigned int generation) {
     int coord = open("/coord", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     int result = -1;
     uint64_t fresh, age;
     ConnectionIdentity after = {{0}, {0}, 0UL};
-    if (coord < 0 || isolation_marker(coord, retry ? "incoming.retry.request" : "incoming.failure.request", 1) != 0 ||
-        wait_isolation_marker(coord, retry ? "incoming.retry.observed" : "incoming.failure.observed", 15000U) != 0 ||
+    const char *requests[] = {"incoming.failure.request", "incoming.retry.request",
+                             "incoming.finish.active.request", "incoming.recovery.request"};
+    const char *observations[] = {"incoming.failure.observed", "incoming.retry.observed",
+                                 "incoming.finish.active.observed", "incoming.recovery.observed"};
+    if (coord < 0 || generation < 1U || generation > 4U ||
+        isolation_marker(coord, requests[generation - 1U], 1) != 0 ||
+        wait_isolation_marker(coord, observations[generation - 1U], 15000U) != 0 ||
         wait_for_current_frames(display, viewer, history, 8000U, 12U, &fresh, &age) != 0 ||
         read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
     printf("FLUTTER_PEER_INCOMING_VIEWER_OK generation=%u fresh_pixels=12 maximum_age_ms=%llu stable_connection=true\n",
-           retry ? 2U : 1U, (unsigned long long)age);
-    if (retry) {
+           generation, (unsigned long long)age);
+    if (generation == 2U) {
         uint64_t held_age, released_age;
         if (isolation_marker(coord, "incoming.stall.request", 1) != 0 ||
             wait_isolation_marker(coord, "incoming.stall.observed", 15000U) != 0 ||
@@ -8116,6 +8210,10 @@ static int exercise_incoming_viewer(Display *display, const ViewerWindow *viewer
                "held_maximum_age_ms=%llu released_maximum_age_ms=%llu stable_connection=true\n",
                (unsigned long long)held_age, (unsigned long long)released_age);
     }
+    if (generation == 3U &&
+        (isolation_marker(coord, "incoming.finish.request", 1) != 0 ||
+         wait_isolation_marker(coord, "incoming.finish.armed", 5000U) != 0 ||
+         isolation_marker(coord, "incoming.finish.held", 0) != 0)) goto out;
     result = 0;
 out:
     if (coord >= 0 && close(coord) != 0) result = -1;
@@ -8657,6 +8755,8 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--recording-restore") != 0 &&
                                     strcmp(argv[5], "--incoming-failure") != 0 &&
                                     strcmp(argv[5], "--incoming-retry") != 0 &&
+                                    strcmp(argv[5], "--incoming-finish") != 0 &&
+                                    strcmp(argv[5], "--incoming-recovery") != 0 &&
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--image-quality") != 0 &&
                                     strcmp(argv[5], "--quality-best") != 0 &&
@@ -9087,9 +9187,14 @@ int main(int argc, char **argv) {
     }
 
     if (argc == 6 && (strcmp(argv[5], "--incoming-failure") == 0 ||
-                      strcmp(argv[5], "--incoming-retry") == 0)) {
+                      strcmp(argv[5], "--incoming-retry") == 0 ||
+                      strcmp(argv[5], "--incoming-finish") == 0 ||
+                      strcmp(argv[5], "--incoming-recovery") == 0)) {
+        unsigned int generation = strcmp(argv[5], "--incoming-failure") == 0 ? 1U :
+            strcmp(argv[5], "--incoming-retry") == 0 ? 2U :
+            strcmp(argv[5], "--incoming-finish") == 0 ? 3U : 4U;
         int result = exercise_incoming_viewer(display, &viewer, &history, &current_connection,
-                                               strcmp(argv[5], "--incoming-retry") == 0);
+                                               generation);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

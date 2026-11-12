@@ -298,7 +298,7 @@ elif [ "$PEER_SCENARIO" = incoming-recording ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
-  VIEWER_RESULT='viewer=joined xvfb=joined incoming_recording=passed generations=2 failure=visible retry=recorded completion=visible output=decoded pixels=fresh'
+  VIEWER_RESULT='viewer=joined xvfb=joined incoming_recording=passed generations=4 failure=visible retry=recorded completion=visible output=decoded pixels=fresh finalization_failure=visible recovery=decoded'
 elif [ "$PEER_SCENARIO" = recording-directory ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

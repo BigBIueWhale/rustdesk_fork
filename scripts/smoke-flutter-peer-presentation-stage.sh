@@ -1623,6 +1623,8 @@ PY
       cat /tmp/incoming-observer.log
       grep -E '^FLUTTER_PEER_INCOMING_WRITE_RELEASED bytes=[0-9]+ held_ms=[0-9]+ file_unchanged=true result=[0-9]+$' \
         "$SERVER_LOG" || fail 'incoming recording write was not held and released'
+      grep -E '^FLUTTER_PEER_INCOMING_FINISH_FAULT offset=[0-9]+ file_bytes=[0-9]+ held_ms=[0-9]+ header=duration file_unchanged=true result=-1 errno=EIO$' \
+        "$SERVER_LOG" || fail 'incoming recording finalization fault is absent'
       cleanup_incoming_ui || fail 'controlled UI cleanup failed'
       echo 'FLUTTER_PEER_INCOMING_UI_JOINED ui=true observer=true xvfb=true'
     fi
@@ -1772,7 +1774,7 @@ PY
       viewer_generations=2
       mkdir -m 700 -- /tmp/recording-selected-שלום /tmp/recording-cancelled
     fi
-    [ "$PEER_SCENARIO" != incoming-recording ] || viewer_generations=2
+    [ "$PEER_SCENARIO" != incoming-recording ] || viewer_generations=4
     [ "$PEER_SCENARIO" != credential-restart ] || viewer_generations=2
     [ "$ROTATE_CREDENTIAL" -eq 0 ] || viewer_generations=3
     [ "$PEER_SCENARIO" != credential-menu ] || viewer_generations=3
@@ -1886,7 +1888,7 @@ PY
       recording_phases=(directory restore)
       controller_args+=("--recording-${recording_phases[viewer_generation - 1]}")
     elif [ "$PEER_SCENARIO" = incoming-recording ]; then
-      incoming_phases=(failure retry)
+      incoming_phases=(failure retry finish recovery)
       controller_args+=("--incoming-${incoming_phases[viewer_generation - 1]}")
     elif [ "$PEER_SCENARIO" = quality-restart ]; then
       quality_phases=(best low balanced restore)
@@ -2086,7 +2088,7 @@ PY
         grep -Eq '^FLUTTER_PEER_INCOMING_OVERLOAD_VIEWER_OK held_fresh=12 released_fresh=12 held_maximum_age_ms=[0-9]+ released_maximum_age_ms=[0-9]+ stable_connection=true$' \
           <<<"$controller_output" || fail 'incoming recording overload viewer observation is absent'
       fi
-      viewer_result='viewer=joined xvfb=joined incoming_recording=passed generations=2 failure=visible retry=recorded completion=visible output=decoded pixels=fresh'
+      viewer_result='viewer=joined xvfb=joined incoming_recording=passed generations=4 failure=visible retry=recorded completion=visible output=decoded pixels=fresh finalization_failure=visible recovery=decoded'
     elif [ "$PEER_SCENARIO" = recording-directory ]; then
       grep -Eq "^FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=$viewer_generation cancel=unchanged path=exact fresh_pixels=4 maximum_age_ms=[0-9]+ stable_connection=true$" \
         <<<"$controller_output" || fail 'native recording directory result is absent'
@@ -2586,6 +2588,10 @@ PY
       mv "$COORD/incoming.closed.$viewer_generation.tmp" "$COORD/incoming.closed.$viewer_generation"
       if [ "$viewer_generation" -eq 1 ]; then
         wait_incoming_marker incoming.retry.ready
+      elif [ "$viewer_generation" -eq 2 ]; then
+        wait_incoming_marker incoming.finish.ready
+      elif [ "$viewer_generation" -eq 3 ]; then
+        wait_incoming_marker incoming.recovery.ready
       else
         wait_incoming_marker incoming.complete
       fi

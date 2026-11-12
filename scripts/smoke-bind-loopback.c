@@ -50,6 +50,7 @@ int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
 
 typedef ssize_t (*write_fn)(int, const void *, size_t);
 static atomic_int recording_claimed;
+static atomic_int recording_finish_claimed;
 
 static int recording_marker(int coord, const char *name, int publish, write_fn next) {
     char temporary[64], data[7];
@@ -82,13 +83,124 @@ static uint64_t recording_millis(void) {
     return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
 }
 
-/* Only the incoming-recording fixture compiles this interposer. It holds one
- * payload-sized write to its exact private output directory, without another
- * thread or process. The real write result is preserved; expiry fails the test. */
+static int recording_header_vint(const unsigned char *data, size_t limit, size_t *at,
+                                 int identifier, uint64_t *value) {
+    if (*at >= limit || data[*at] == 0U) return -1;
+    unsigned int length = 1U, marker = 128U;
+    while ((data[*at] & marker) == 0U) { ++length; marker >>= 1U; }
+    if (length > (identifier ? 4U : 8U) || length > limit - *at) return -1;
+    *value = data[(*at)++];
+    if (!identifier) *value &= marker - 1U;
+    for (unsigned int i = 1U; i < length; ++i) *value = (*value << 8U) | data[(*at)++];
+    return 0;
+}
+
+/* The pinned muxer reserves a float32 Duration=1 in Segment/Info. Only
+ * SegmentInfo::Finalize rewrites it. Cluster backpatches and initial header
+ * construction must not trigger this fault. Parse the existing bounded header
+ * instead of guessing an offset or treating every backwards write as finish. */
+static int recording_duration_rewrite(int fd, const char *path, const struct stat *before,
+                                      off_t *position) {
+    *position = lseek(fd, 0, SEEK_CUR);
+    if (*position < 0) return -1;
+    if (*position >= 512 || before->st_size < 1024 || before->st_size > 1024 * 1024)
+        return 0;
+    int flags = fcntl(fd, F_GETFL);
+    if (flags < 0 || (flags & O_APPEND) != 0) return -1;
+    unsigned char data[512];
+    struct stat metadata;
+    int reader = open(path, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    if (reader < 0) return -1;
+    int valid = fstat(reader, &metadata) == 0 && metadata.st_dev == before->st_dev &&
+        metadata.st_ino == before->st_ino && pread(reader, data, sizeof(data), 0) == (ssize_t)sizeof(data);
+    if (close(reader) != 0 || !valid) return -1;
+    size_t at = 0U;
+    uint64_t id, size;
+    if (recording_header_vint(data, sizeof(data), &at, 1, &id) != 0 || id != 0x1a45dfa3U ||
+        recording_header_vint(data, sizeof(data), &at, 0, &size) != 0 || size > sizeof(data) - at)
+        return -1;
+    at += (size_t)size;
+    if (recording_header_vint(data, sizeof(data), &at, 1, &id) != 0 || id != 0x18538067U ||
+        recording_header_vint(data, sizeof(data), &at, 0, &size) != 0 ||
+        size != UINT64_C(0x00ffffffffffffff)) return -1;
+    for (unsigned int i = 0U; i < 16U; ++i) {
+        if (recording_header_vint(data, sizeof(data), &at, 1, &id) != 0 ||
+            recording_header_vint(data, sizeof(data), &at, 0, &size) != 0 ||
+            size > sizeof(data) - at) return -1;
+        if (id == 0x1549a966U) {
+            size_t end = at + (size_t)size;
+            unsigned int matches = 0U;
+            int selected = 0;
+            for (unsigned int j = 0U; at < end && j < 16U; ++j) {
+                size_t start = at;
+                if (recording_header_vint(data, end, &at, 1, &id) != 0 ||
+                    recording_header_vint(data, end, &at, 0, &size) != 0 || size > end - at)
+                    return -1;
+                if (id == 0x4489U) {
+                    if (++matches != 1U || size != 4U || memcmp(data + at, "\x3f\x80\0\0", 4U) != 0)
+                        return -1;
+                    selected = *position == (off_t)start;
+                }
+                at += (size_t)size;
+            }
+            return at == end && matches == 1U ? selected : -1;
+        }
+        if (id != 0xecU && id != 0x114d9b74U) return -1;
+        at += (size_t)size;
+    }
+    return -1;
+}
+
+static ssize_t recording_finish_fault(int fd, int coord, const struct stat *before,
+                                      off_t position, write_fn next) {
+    int expected = 0;
+    if (!atomic_compare_exchange_strong(&recording_finish_claimed, &expected, 1)) {
+        close(coord);
+        errno = EIO;
+        return -1;
+    }
+    uint64_t started = recording_millis(), now = started;
+    int released = 0;
+    if (started == 0 || recording_marker(coord, "incoming.finish.held", 1, next) != 0) goto out;
+    while (now >= started && now - started < 30000U) {
+        released = recording_marker(coord, "incoming.finish.release", 0, next);
+        if (released < 0) goto out;
+        if (released == 1) break;
+        struct timespec interval = {.tv_sec = 0, .tv_nsec = 10000000L};
+        if (nanosleep(&interval, NULL) != 0 && errno != EINTR) goto out;
+        now = recording_millis();
+    }
+    struct stat after;
+    if (released != 1 || now < started || now - started >= 30000U ||
+        fstat(fd, &after) != 0 || before->st_dev != after.st_dev || before->st_ino != after.st_ino ||
+        before->st_size != after.st_size || before->st_mtim.tv_sec != after.st_mtim.tv_sec ||
+        before->st_mtim.tv_nsec != after.st_mtim.tv_nsec || lseek(fd, 0, SEEK_CUR) != position)
+        goto out;
+    char observation[256];
+    int length = snprintf(observation, sizeof(observation),
+        "FLUTTER_PEER_INCOMING_FINISH_FAULT offset=%lld file_bytes=%lld held_ms=%llu "
+        "header=duration file_unchanged=true result=-1 errno=EIO\n",
+        (long long)position, (long long)before->st_size, (unsigned long long)(now - started));
+    if (length <= 0 || (size_t)length >= sizeof(observation) ||
+        next(STDERR_FILENO, observation, (size_t)length) != length) goto out;
+    if (recording_marker(coord, "incoming.finish.failed", 1, next) != 0) goto out;
+out:
+    close(coord);
+    errno = EIO;
+    return -1;
+}
+
+/* Only the incoming-recording fixture compiles this interposer. Separate arms
+ * select one payload hold/release and one later Duration rewrite hold/EIO.
+ * Both use the exact private output directory without another thread/process;
+ * expiry or missing observations fail the fixture transaction. */
 ssize_t write(int fd, const void *data, size_t size) {
     write_fn next = (write_fn)dlsym(RTLD_NEXT, "write");
     if (next == NULL) { errno = ENOSYS; return -1; }
-    if (size < 128U || atomic_load(&recording_claimed)) return next(fd, data, size);
+    int payload = size >= 128U && !atomic_load(&recording_claimed);
+    int finishing = size == 1U && data != NULL && *(const unsigned char *)data == 0x44U &&
+        !atomic_load(&recording_finish_claimed);
+    if (!payload && !finishing) return next(fd, data, size);
     char descriptor[64], path[512];
     int length = snprintf(descriptor, sizeof(descriptor), "/proc/self/fd/%d", fd);
     if (length <= 0 || (size_t)length >= sizeof(descriptor)) return next(fd, data, size);
@@ -108,6 +220,14 @@ ssize_t write(int fd, const void *data, size_t size) {
         fstat(fd, &before) != 0 || !S_ISREG(before.st_mode) || before.st_nlink != 1 ||
         before.st_uid != geteuid() || before.st_gid != getegid() ||
         (before.st_mode & 07777) != 0600) goto out;
+    if (finishing) {
+        result = recording_marker(coord, "incoming.finish.arm", 0, next);
+        off_t position = 0;
+        if (result == 1) result = recording_duration_rewrite(fd, path, &before, &position);
+        if (result == 0) { close(coord); return next(fd, data, size); }
+        if (result != 1) goto out;
+        return recording_finish_fault(fd, coord, &before, position, next);
+    }
     result = recording_marker(coord, "incoming.write.arm", 0, next);
     if (result == 0) { close(coord); return next(fd, data, size); }
     if (result != 1) goto out;

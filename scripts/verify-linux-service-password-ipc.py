@@ -1286,7 +1286,11 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     environment = ipc.function("configure_linux_pkcheck_environment")
     if environment.values != ["command", ".", "env_clear", "(", ")", ";"]:
         raise VerificationError(f"{environment.label}: pkcheck requires an empty environment")
-    polkit = ipc.function("linux_pkcheck_authorizes_service_owned_password_change")
+    polkit = ipc.function("linux_pkcheck_authorizes_service_action")
+    ipc.function("polkit_id").require(
+        ("Self", "::", "SetUnattendedPassword", "=>", '"com.carriez.RustDesk.set-unattended-password"'),
+        "fixed password action identity", unique=True,
+    )
     for setter in ("env", "envs"):
         polkit.forbid((".", setter, "("), "replacement pkcheck environment")
     polkit.require_order(
@@ -1295,7 +1299,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
             (("Command", "::", "new", "(", "pkcheck", ")"), "trusted command execution"),
             (("configure_linux_pkcheck_environment", "(", "&", "mut", "command", ")"), "empty helper environment"),
             (("arg", "(", '"--action-id"', ")"), "polkit action argument"),
-            (("arg", "(", "SET_UNATTENDED_PASSWORD_POLKIT_ACTION", ")"), "fixed action ID"),
+            (("arg", "(", "action", ".", "polkit_id", "(", ")", ")"), "closed service action ID"),
             (("arg", "(", '"--process"', ")"), "process subject mode"),
             (("arg", "(", "&", "subject", ")"), "PID/start-time/UID subject"),
             (("arg", "(", '"--allow-user-interaction"', ")"), "interactive authorization"),
@@ -1319,7 +1323,7 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     grant = ipc.function("authorize_and_admit_linux_password_request")
     grant.require_order(
         (
-            (("if", "!", "linux_pkcheck_authorizes_service_owned_password_change", "(", "identity", ",", "cancelled", ")"), "requester-bound fail-closed polkit call"),
+            (("if", "!", "linux_pkcheck_authorizes_service_action", "(", "identity", ",", "LinuxServiceAction", "::", "SetUnattendedPassword", ",", "cancelled", OPTIONAL_COMMA, ")"), "requester-bound fail-closed password action"),
             (("LoginctlLookup", "::", "new", "("), "one post-polkit lookup context"),
             (("if", "!", "linux_service_owned_password_requester_is_live", "(", "identity", ",", "&", "mut", "lookup", ")"), "post-authorization full requester replay"),
             (("LinuxServiceOwnedPasswordAdmission", "{", "requester", ":", "identity", ".", "clone", "(", ")"), "non-cloneable action admission"),

@@ -877,6 +877,10 @@ async fn authenticate_tcp_stream(stream: &mut Stream, addr: SocketAddr) -> Resul
         if confirmed_generation != credential_generation {
             bail!("CPace credential changed during handshake");
         }
+        #[cfg(target_os = "linux")]
+        if crate::common::is_service_owned_server_process() {
+            crate::ipc::recording_policy::refresh_for_server().await?;
+        }
         let keys_installed =
             Config::with_current_permanent_password_generation(credential_generation, || {
                 #[cfg(target_os = "windows")]
@@ -1153,6 +1157,12 @@ pub async fn start_server() {
                 "Linux service-owned credential snapshot failed before admission: {err}"
             );
             std::process::exit(1);
+        }
+        if !crate::platform::linux::service_child_is_unsupervised_recovery_fixture() {
+            if let Err(err) = crate::ipc::recording_policy::refresh_for_server().await {
+                log::error!("Linux service recording policy failed before admission: {err}");
+                std::process::exit(1);
+            }
         }
     }
     // R-A4 is a pre-admission invariant on desktop: prove it before any authority-bearing

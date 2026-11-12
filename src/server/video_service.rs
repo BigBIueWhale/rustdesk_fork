@@ -1102,6 +1102,9 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
     let mut video_qos = VIDEO_QOS.lock().unwrap();
     let mut spf = video_qos.spf();
     let mut quality = video_qos.ratio();
+    #[cfg(target_os = "linux")]
+    let record_incoming = crate::ipc::recording_policy::enabled_for_server()?;
+    #[cfg(not(target_os = "linux"))]
     let record_incoming = config::option2bool(
         "allow-auto-record-incoming",
         &Config::get_option("allow-auto-record-incoming"),
@@ -1202,6 +1205,10 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
     };
 
     while sp.ok() {
+        #[cfg(target_os = "linux")]
+        if crate::ipc::recording_policy::enabled_for_server()? != record_incoming {
+            bail!("SWITCH");
+        }
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
         check_qos(

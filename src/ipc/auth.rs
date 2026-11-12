@@ -3514,6 +3514,40 @@ pub(crate) fn linux_service_owned_password_requester_is_live(
         )
 }
 
+#[cfg(target_os = "linux")]
+pub(super) fn authorize_linux_service_connection(
+    stream: &Connection,
+    postfix: &str,
+    lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
+) -> bool {
+    let authorization = service_scoped_ipc_authorization_snapshot(stream, postfix, lookup);
+    if authorization.uid_authorized
+        && authenticate_linux_service_owned_password_replica_server(
+            stream.inner.get_ref(), postfix,
+        ).is_ok()
+    {
+        return true;
+    }
+    authorize_service_scoped_ipc_authorization_snapshot(authorization)
+}
+
+#[cfg(target_os = "linux")]
+pub(super) fn authenticate_linux_recording_policy_requester<T>(
+    stream: &T,
+    lookup: &mut hbb_common::platform::linux::LoginctlLookup<'_>,
+) -> ResultType<PeerProcessIdentity>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let identity = peer_process_identity_from_stream(stream, crate::POSTFIX_SERVICE)?;
+    if !process_argv_is_exact(&identity.argv, &[])
+        || !peer_process_identity_is_live(&identity, crate::POSTFIX_SERVICE, lookup)
+    {
+        bail!("Incoming recording policy requires the live installed settings process");
+    }
+    Ok(identity)
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
 #[inline]
 fn current_exe_canonical_path() -> ResultType<PathBuf> {

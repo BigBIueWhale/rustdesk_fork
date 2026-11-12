@@ -22,7 +22,10 @@ from email.parser import BytesParser
 from pathlib import Path
 
 
-POLKIT_ACTION_ID = "com.carriez.RustDesk.set-unattended-password"
+POLKIT_ACTION_IDS = {
+    "com.carriez.RustDesk.set-unattended-password",
+    "com.carriez.RustDesk.set-incoming-recording",
+}
 POLKIT_POLICY_SOURCE = Path("res/com.carriez.RustDesk.policy")
 POLKIT_POLICY_MEMBER = "./usr/share/polkit-1/actions/com.carriez.RustDesk.policy"
 POLKIT_POLICY_DEFAULTS = {
@@ -183,26 +186,24 @@ def validate_polkit_policy(contents, label):
         raise ValidationError(f"{label}: root element is not policyconfig")
 
     actions = [child for child in root if xml_tag_name(child.tag) == "action"]
-    if len(actions) != 1:
-        raise ValidationError(f"{label}: expected exactly one action, found {len(actions)}")
-    action = actions[0]
-    if action.get("id") != POLKIT_ACTION_ID:
-        raise ValidationError(f"{label}: unexpected action id {action.get('id')!r}")
-
-    defaults = [child for child in action if xml_tag_name(child.tag) == "defaults"]
-    if len(defaults) != 1:
-        raise ValidationError(
-            f"{label}: expected exactly one defaults block, found {len(defaults)}"
-        )
-    entries = [
-        (xml_tag_name(child.tag), (child.text or "").strip())
-        for child in defaults[0]
-    ]
-    values = dict(entries)
-    if len(entries) != len(POLKIT_POLICY_DEFAULTS) or values != POLKIT_POLICY_DEFAULTS:
-        raise ValidationError(
-            f"{label}: defaults are {entries!r}, expected {POLKIT_POLICY_DEFAULTS!r}"
-        )
+    if (len(actions) != len(POLKIT_ACTION_IDS)
+            or {action.get("id") for action in actions} != POLKIT_ACTION_IDS):
+        raise ValidationError(f"{label}: unexpected action inventory")
+    for action in actions:
+        defaults = [child for child in action if xml_tag_name(child.tag) == "defaults"]
+        if len(defaults) != 1:
+            raise ValidationError(
+                f"{label}: expected exactly one defaults block, found {len(defaults)}"
+            )
+        entries = [
+            (xml_tag_name(child.tag), (child.text or "").strip())
+            for child in defaults[0]
+        ]
+        values = dict(entries)
+        if len(entries) != len(POLKIT_POLICY_DEFAULTS) or values != POLKIT_POLICY_DEFAULTS:
+            raise ValidationError(
+                f"{label}: defaults are {entries!r}, expected {POLKIT_POLICY_DEFAULTS!r}"
+            )
 
 
 def load_polkit_policy(repo):
@@ -1533,11 +1534,7 @@ def run_desktop_resource_self_test(repo):
     with tempfile.TemporaryDirectory(prefix="rustdesk-package-resources.") as scratch:
         scratch = Path(scratch)
         staging = scratch / "tree"
-        policy = (f'<policyconfig><action id="{POLKIT_ACTION_ID}"><defaults>'
-                  '<allow_any>auth_admin</allow_any>'
-                  '<allow_inactive>auth_admin</allow_inactive>'
-                  '<allow_active>auth_admin</allow_active>'
-                  '</defaults></action></policyconfig>\n').encode("ascii")
+        policy = load_polkit_policy(repo)
         make_synthetic_tree(staging, policy)
         source_scripts = scratch / "scripts"
         source_scripts.mkdir(mode=0o700)
@@ -1945,23 +1942,21 @@ def run_self_test(repo, polkit_policy):
                      expected_maintainer_scripts=synthetic_maintainer_scripts())
         run_load_range_self_test(good_tree, tmp, polkit_policy)
 
-        permissive_polkit_policy = polkit_policy.replace(
-            b"<allow_active>auth_admin</allow_active>",
-            b"<allow_active>yes</allow_active>",
-            1,
-        )
-        if permissive_polkit_policy == polkit_policy:
-            raise ValidationError("source polkit fixture has no exact allow_active policy")
-        permissive_polkit_deb = tmp / "permissive-polkit.deb"
-        write_modified_deb(
-            good_deb,
-            permissive_polkit_deb,
-            data_transform=replace_tar_member(
-                POLKIT_POLICY_MEMBER,
-                contents=permissive_polkit_policy,
-            ),
-        )
-        expect_validation_failure(permissive_polkit_deb, "defaults are")
+        for action_id in sorted(POLKIT_ACTION_IDS):
+            policy_root = ET.fromstring(polkit_policy)
+            action = next(action for action in policy_root.findall("action")
+                          if action.get("id") == action_id)
+            action.find("defaults/allow_active").text = "yes"
+            permissive_polkit_deb = tmp / f"permissive-{action_id}.deb"
+            write_modified_deb(
+                good_deb,
+                permissive_polkit_deb,
+                data_transform=replace_tar_member(
+                    POLKIT_POLICY_MEMBER,
+                    contents=ET.tostring(policy_root, encoding="utf-8"),
+                ),
+            )
+            expect_validation_failure(permissive_polkit_deb, "defaults are")
 
         different_polkit_policy = polkit_policy.replace(
             b"Change the RustDesk unattended password",

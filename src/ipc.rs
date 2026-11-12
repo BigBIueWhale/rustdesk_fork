@@ -22,6 +22,9 @@ pub(crate) mod password;
 mod main_config;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub use main_config::MainConfigKey;
+#[cfg(target_os = "linux")]
+#[path = "ipc/recording_policy.rs"]
+pub(crate) mod recording_policy;
 
 use crate::common::is_service_owned_server_process;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2448,6 +2451,10 @@ impl CmAuthConnType {
 #[serde(tag = "t", deny_unknown_fields)]
 pub(crate) enum ServiceIpcRequest {
     LivenessProbe {},
+    #[cfg(target_os = "linux")]
+    IncomingRecordingPolicy {},
+    #[cfg(target_os = "linux")]
+    SetIncomingRecordingPolicy { enabled: bool },
     #[cfg(target_os = "macos")]
     EnsurePasswordRightReady {},
     #[cfg(target_os = "windows")]
@@ -2459,6 +2466,12 @@ pub(crate) enum ServiceIpcRequest {
 #[serde(tag = "t", deny_unknown_fields)]
 pub(crate) enum ServiceIpcResponse {
     Liveness {},
+    #[cfg(target_os = "linux")]
+    IncomingRecordingPolicy { enabled: Option<bool> },
+    #[cfg(target_os = "linux")]
+    IncomingRecordingPolicySet {
+        outcome: recording_policy::RecordingPolicyOutcome,
+    },
     #[cfg(target_os = "macos")]
     PasswordRightReady { ready: bool },
     #[cfg(target_os = "windows")]
@@ -2866,10 +2879,18 @@ impl MainStatusOptions {
     }
 
     fn from_config() -> ResultType<Self> {
-        let options = Config::get_options()
+        #[allow(unused_mut)]
+        let mut options: HashMap<String, String> = Config::get_options()
             .into_iter()
             .filter(|(key, _)| MainStatusOptionKey::from_str(key).is_some())
             .collect();
+        #[cfg(target_os = "linux")]
+        if is_service_owned_server_process() {
+            options.insert(
+                config::keys::OPTION_ALLOW_AUTO_RECORD_INCOMING.to_owned(),
+                if recording_policy::enabled_for_server()? { "Y" } else { "" }.to_owned(),
+            );
+        }
         Self::from_map(options)
     }
 
@@ -4380,7 +4401,7 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                             let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(deadline, &cancelled);
                             let authorization = (|| {
                                 lookup.check_pending()?;
-                                if !authorize_service_scoped_ipc_connection(&stream, &postfix, &mut lookup) {
+                                if !ipc_auth::authorize_linux_service_connection(&stream, &postfix, &mut lookup) {
                                     bail!("Linux service requester authority was not proved");
                                 }
                                 lookup.check_pending()?;
@@ -4773,6 +4794,13 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
             };
             #[cfg(not(target_os = "windows"))]
             let file_transfer_enabled = None;
+            #[cfg(target_os = "linux")]
+            if is_service_owned_server_process() {
+                if let Err(err) = recording_policy::refresh_for_server().await {
+                    log::warn!("Main IPC recording policy is unavailable: {err}");
+                    return MainIpcResponse::RequestFailed(IpcMutationResult::InternalFailure);
+                }
+            }
             let options = match MainStatusOptions::from_config() {
                 Ok(options) => options,
                 Err(err) => {
@@ -6081,7 +6109,21 @@ where
 }
 
 #[cfg(target_os = "linux")]
-const SET_UNATTENDED_PASSWORD_POLKIT_ACTION: &str = "com.carriez.RustDesk.set-unattended-password";
+#[derive(Clone, Copy)]
+enum LinuxServiceAction {
+    SetUnattendedPassword,
+    SetIncomingRecording,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxServiceAction {
+    fn polkit_id(self) -> &'static str {
+        match self {
+            Self::SetUnattendedPassword => "com.carriez.RustDesk.set-unattended-password",
+            Self::SetIncomingRecording => "com.carriez.RustDesk.set-incoming-recording",
+        }
+    }
+}
 #[cfg(target_os = "linux")]
 const PKCHECK_PATH: &str = "/usr/bin/pkcheck";
 #[cfg(target_os = "linux")]
@@ -6125,15 +6167,16 @@ fn configure_linux_pkcheck_environment(command: &mut std::process::Command) {
 }
 
 #[cfg(target_os = "linux")]
-fn linux_pkcheck_authorizes_service_owned_password_change(
+fn linux_pkcheck_authorizes_service_action(
     identity: &PeerProcessIdentity,
+    action: LinuxServiceAction,
     cancelled: &dyn Fn() -> bool,
 ) -> bool {
     use std::os::fd::AsRawFd;
 
     let Some(pkcheck) = trusted_linux_pkcheck_path() else {
         log::warn!(
-            "Rejected service-owned unattended password change: no trusted pkcheck executable at {}",
+            "Rejected service action: no trusted pkcheck executable at {}",
             PKCHECK_PATH
         );
         return false;
@@ -6142,7 +6185,7 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
         Ok(requester) => requester,
         Err(err) => {
             log::warn!(
-                "Rejected service-owned unattended password change: failed to retain requester: {err}"
+                "Rejected service action: failed to retain requester: {err}"
             );
             return false;
         }
@@ -6155,7 +6198,7 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
     configure_linux_pkcheck_environment(&mut command);
     command
         .arg("--action-id")
-        .arg(SET_UNATTENDED_PASSWORD_POLKIT_ACTION)
+        .arg(action.polkit_id())
         .arg("--process")
         .arg(&subject)
         .arg("--allow-user-interaction")
@@ -6166,8 +6209,8 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
         hbb_common::platform::linux::configure_command_close_nonstdio_on_exec(&mut command)
     {
         log::warn!(
-            "Rejected service-owned unattended password change: failed to constrain pkcheck descriptors for action={}, subject={}, err={}",
-            SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
+            "Rejected service action: failed to constrain pkcheck descriptors for action={}, subject={}, err={}",
+            action.polkit_id(),
             subject,
             err
         );
@@ -6178,8 +6221,8 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
         Ok(child) => child,
         Err(err) => {
             log::warn!(
-                "Rejected service-owned unattended password change: failed to run pkcheck for action={}, subject={}, err={}",
-                SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
+                "Rejected service action: failed to run pkcheck for action={}, subject={}, err={}",
+                action.polkit_id(),
                 subject,
                 err
             );
@@ -6201,12 +6244,12 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
         if rc != 0 {
             if rc < 0 {
                 log::warn!(
-                    "Rejected service-owned unattended password change: requester lifetime poll failed: {}",
+                    "Rejected service action: requester lifetime poll failed: {}",
                     std::io::Error::last_os_error()
                 );
             } else {
                 log::debug!(
-                    "Rejected service-owned unattended password change: requester lifetime became unavailable, events={}",
+                    "Rejected service action: requester lifetime became unavailable, events={}",
                     process.revents
                 );
             }
@@ -6217,8 +6260,8 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
             Ok(Some(status)) if status.success() => return true,
             Ok(Some(status)) => {
                 log::warn!(
-                    "Rejected service-owned unattended password change: polkit denied action={}, subject={}, status={}",
-                    SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
+                    "Rejected service action: polkit denied action={}, subject={}, status={}",
+                    action.polkit_id(),
                     subject,
                     status
                 );
@@ -6226,7 +6269,7 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
             }
             Ok(None) if std::time::Instant::now() >= deadline => {
                 log::warn!(
-                    "Rejected service-owned unattended password change: pkcheck exceeded its authorization deadline"
+                    "Rejected service action: pkcheck exceeded its authorization deadline"
                 );
                 terminate_and_reap_linux_pkcheck(&mut child, "authorization timeout");
                 return false;
@@ -6234,8 +6277,8 @@ fn linux_pkcheck_authorizes_service_owned_password_change(
             Ok(None) => std::thread::sleep(PKCHECK_POLL_INTERVAL),
             Err(err) => {
                 log::warn!(
-                    "Rejected service-owned unattended password change: failed to poll pkcheck for action={}, subject={}, err={}",
-                    SET_UNATTENDED_PASSWORD_POLKIT_ACTION,
+                    "Rejected service action: failed to poll pkcheck for action={}, subject={}, err={}",
+                    action.polkit_id(),
                     subject,
                     err
                 );
@@ -6257,7 +6300,11 @@ fn authorize_and_admit_linux_password_request(
     if cancelled() {
         return Ok(false);
     }
-    if !linux_pkcheck_authorizes_service_owned_password_change(identity, cancelled) {
+    if !linux_pkcheck_authorizes_service_action(
+        identity,
+        LinuxServiceAction::SetUnattendedPassword,
+        cancelled,
+    ) {
         return Ok(false);
     }
     let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(
@@ -7396,6 +7443,24 @@ async fn handle_service_request(
     _authorization: ServiceIpcRequesterAuthorization,
 ) {
     match request {
+        #[cfg(target_os = "linux")]
+        ServiceIpcRequest::IncomingRecordingPolicy {} => {
+            let response = recording_policy::read_service_policy().await;
+            if let Err(err) = stream.send_service_response_timeout(
+                &response, SERVICE_IPC_REQUEST_TIMEOUT_MS,
+            ).await {
+                log::debug!("Failed to return incoming recording policy: {err}");
+            }
+        }
+        #[cfg(target_os = "linux")]
+        ServiceIpcRequest::SetIncomingRecordingPolicy { enabled } => {
+            let response = recording_policy::set_service_policy(stream, enabled).await;
+            if let Err(err) = stream.send_service_response_timeout(
+                &response, SERVICE_IPC_REQUEST_TIMEOUT_MS,
+            ).await {
+                log::debug!("Failed to return incoming recording policy outcome: {err}");
+            }
+        }
         ServiceIpcRequest::LivenessProbe {} => {
             if let Err(err) = stream
                 .send_service_response_timeout(

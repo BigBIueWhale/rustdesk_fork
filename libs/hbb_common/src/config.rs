@@ -3573,6 +3573,14 @@ impl Config {
         option2bool(k, &Self::get_option(k))
     }
 
+    pub fn read_incoming_recording_enabled() -> crate::ResultType<bool> {
+        let stored: Config2 = read_config_view(&Config2::file())?;
+        let key = keys::OPTION_ALLOW_AUTO_RECORD_INCOMING;
+        let value = get_or(&OVERWRITE_SETTINGS, &stored.options, &DEFAULT_SETTINGS, key)
+            .unwrap_or_default();
+        Ok(option2bool(key, &value))
+    }
+
     pub fn set_option(k: String, v: String) -> crate::ResultType<()> {
         let desired = (is_option_can_save(&OVERWRITE_SETTINGS, &k, &DEFAULT_SETTINGS, &v)
             && !v.is_empty())

@@ -1230,6 +1230,10 @@ pub fn main_get_options_sync() -> SyncReturn<String> {
     SyncReturn(get_options())
 }
 
+pub fn main_get_incoming_recording_status() -> Result<SyncReturn<String>> {
+    Ok(SyncReturn(serde_json::to_string(&incoming_recording_status())?))
+}
+
 pub fn main_get_app_name() -> String {
     get_app_name()
 }

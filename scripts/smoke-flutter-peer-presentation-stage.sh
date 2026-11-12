@@ -1025,6 +1025,13 @@ PY
         python3 -B -I -S ../scripts/test-flutter-model-test-result.py --view-mode
         python3 -B -I -S ../scripts/verify-flutter-model-test-result.py \
           /tmp/view-mode-tests.json --profile view-mode
+        /usr/bin/timeout --signal=TERM --kill-after=10s 120s \
+          "$REAL_FLUTTER" --suppress-analytics --no-version-check test --no-pub \
+          --reporter=json test/incoming_recording_status_test.dart > /tmp/incoming-recording-tests.json \
+          || { tail -n 100 /tmp/incoming-recording-tests.json; fail 'Incoming recording widget tests failed'; }
+        cat /tmp/incoming-recording-tests.json
+        python3 -B -I -S ../scripts/verify-flutter-model-test-result.py \
+          /tmp/incoming-recording-tests.json --profile incoming-recording
       )
       cargo build --locked --offline --features flutter,unix-file-copy-paste \
         --lib --release

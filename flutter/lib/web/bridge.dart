@@ -1100,6 +1100,8 @@ class RustdeskImpl {
     return js.context.callMethod('getByName', ['options']);
   }
 
+  String mainGetIncomingRecordingStatus({dynamic hint}) => 'null';
+
   Future<String> mainGetAppName({dynamic hint}) {
     return Future.value(mainGetAppNameSync(hint: hint));
   }

@@ -10,6 +10,7 @@ import 'package:flutter_hbb/common/widgets/audio_input.dart';
 import 'package:flutter_hbb/common/widgets/auto_disconnect_timeout_field.dart';
 import 'package:flutter_hbb/common/widgets/setting_checkbox.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
+import 'package:flutter_hbb/common/widgets/incoming_recording_status.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
@@ -644,6 +645,14 @@ class _RecordingState extends State<_Recording>
         if (!bind.isOutgoingOnly())
           _OptionCheckBox(context, 'Automatically record incoming sessions',
               kOptionAllowAutoRecordIncoming),
+        if (!bind.isOutgoingOnly())
+          AnimatedBuilder(
+            animation: gFFI.serverModel,
+            builder: (context, _) => IncomingRecordingStatusView(
+              status: gFFI.serverModel.incomingRecordingStatus,
+              translate: translate,
+            ),
+          ).marginOnly(left: _kContentHMargin),
         if (!bind.isIncomingOnly())
           _OptionCheckBox(context, 'Automatically record outgoing sessions',
               kOptionAllowAutoRecordOutgoing,

@@ -185,6 +185,7 @@ def build():
         'main_ipc_request', 'main_ipc_request_on_stream')))
     shutil.copyfile(repo / 'libs/hbb_common/src/bytes_codec.rs', work / 'bytes_codec.rs')
     shutil.copyfile(repo / 'src/ipc/framed.rs', work / 'framed.rs')
+    shutil.copyfile(repo / 'src/incoming_recording_status.rs', work / 'incoming_recording_status.rs')
     config = parsed(repo / 'libs/hbb_common/src/config.rs')
     config_impl = config.impl(('impl', 'Config'), 'Config methods')
     (work / 'config.rs').write_text(

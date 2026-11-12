@@ -18,6 +18,7 @@ import '../mobile/pages/server_page.dart';
 import 'android_service_ui_state.dart';
 import 'model.dart';
 import 'server_status_refresh_loop.dart';
+import 'incoming_recording_status.dart';
 
 const kLoginDialogTag = "LOGIN";
 
@@ -132,6 +133,8 @@ Future<void> requestCmClientClosures(List<Client> clients,
 class ServerModel with ChangeNotifier {
   final _androidServiceUiState = AndroidServiceUiState();
   bool _directListenerBound = false;
+  IncomingRecordingStatus? incomingRecordingStatus;
+  String? _incomingRecordingJson;
   bool _mediaOk = false;
   bool _inputOk = false;
   bool _audioOk = false;
@@ -227,6 +230,7 @@ class ServerModel with ChangeNotifier {
   }
 
   Future<void> _refreshStatus() async {
+    _refreshIncomingRecordingStatus();
     if (isMobile) {
       final bound =
           bind.mainGetCommonSync(key: 'direct-listener-bound') == 'true';
@@ -244,6 +248,24 @@ class ServerModel with ChangeNotifier {
     }
 
     await updatePasswordModel();
+  }
+
+  void _refreshIncomingRecordingStatus() {
+    try {
+      final encoded = bind.mainGetIncomingRecordingStatus();
+      if (encoded == _incomingRecordingJson) return;
+      final status = IncomingRecordingStatus.decode(encoded);
+      _incomingRecordingJson = encoded;
+      incomingRecordingStatus = status;
+      notifyListeners();
+    } catch (error) {
+      _incomingRecordingJson = null;
+      if (incomingRecordingStatus != null) {
+        incomingRecordingStatus = null;
+        notifyListeners();
+      }
+      debugPrint('Incoming recording status unavailable: $error');
+    }
   }
 
   /// M1: reflect the on-device OS runtime-permission state into the capability flags.

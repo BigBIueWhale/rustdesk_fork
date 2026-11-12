@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
+import 'package:flutter_hbb/common/widgets/incoming_recording_status.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -301,6 +302,16 @@ class _SettingsState extends State<SettingsPage> {
           SettingsSection(
             title: Text(translate("Recording")),
             tiles: [
+              if (!outgoingOnly)
+                SettingsTile(
+                  title: AnimatedBuilder(
+                    animation: gFFI.serverModel,
+                    builder: (context, _) => IncomingRecordingStatusView(
+                      status: gFFI.serverModel.incomingRecordingStatus,
+                      translate: translate,
+                    ),
+                  ),
+                ),
               if (!outgoingOnly)
                 SettingsTile.switchTile(
                   title:

@@ -28,6 +28,9 @@ include!("identity.rs");
 include!("transport.rs");
 include!("connection.rs");
 include!("main_responses.rs");
+mod incoming_recording_status {
+    include!("incoming_recording_status.rs");
+}
 mod argv_auth {
     use super::*;
     include!("argv_auth.rs");
@@ -666,6 +669,7 @@ async fn main_validation_fixture(scenario: &str) {
                 };
                 (MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
                     options: MainStatusOptions(entries), file_transfer_enabled: None,
+                    incoming_recording: Default::default(),
                 }), Some(error))
             }
             "option-oversized" | "option-limit" => (MainIpcResponse::OptionSet {
@@ -790,7 +794,7 @@ async fn main_response_shape_fixture() {
             }
         }
         for (tag, payload) in [
-            ("StatusSnapshot", r#"{"options":[{"key":"AudioInput","value":"device"}],"file_transfer_enabled":false}"#),
+            ("StatusSnapshot", r#"{"options":[{"key":"AudioInput","value":"device"}],"file_transfer_enabled":false,"incoming_recording":{"starting":0,"active":0,"finishing":0,"last_failure":null}}"#),
             ("ReadinessSnapshot", r#"{"permanent_password_set":true,"user_owned_permanent_password_writable":false,"direct_listener_bound":true}"#),
             ("Config", r#"{"key":{"t":"VoiceCallInput"},"value":"device"}"#),
             ("OptionSet", r#"{"result":"Applied","effective":{"key":"AudioInput","value":"device"}}"#),
@@ -874,6 +878,7 @@ async fn main_response_fixture(scenario: &str) {
                 MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
                     options: MainStatusOptions(entries).validate().unwrap(),
                     file_transfer_enabled: Some(true),
+                    incoming_recording: Default::default(),
                 })
             }
             "config" => MainIpcResponse::Config {
@@ -1356,6 +1361,7 @@ async fn main_peer_server(route_uid: u32, client_uid: u32, dumpable: u32) {
                 let mut stream = ConnectionTmpl::new_main(stream);
                 stream.send_json_timeout(&MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
                     options: MainStatusOptions(Vec::new()), file_transfer_enabled: None,
+                    incoming_recording: Default::default(),
                 }), 1000).await.unwrap();
             }
         }

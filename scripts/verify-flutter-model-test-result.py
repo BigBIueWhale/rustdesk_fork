@@ -1939,6 +1939,14 @@ MODEL_TESTS = {
 }
 
 
+INCOMING_RECORDING_TESTS = {
+    "incoming recording unavailable is distinct from stopped",
+    "incoming recording finishing is not reported as complete",
+    "incoming recording historical failure survives healthy retry",
+    "incoming recording malformed or excessive status is refused",
+}
+
+
 VIEW_MODE_TESTS = {
     'view mode reads and explicit coupled choices retain exact owners',
     'view mode failed save preserves both values and retries exact intent',
@@ -1984,7 +1992,7 @@ CM_DURATION_TESTS = {
 
 
 def parse_result(path, profile="models"):
-    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "recording-directory", "mobile-build-date", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"}, "test profile is unknown")
+    require(profile in {"models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "recording-directory", "mobile-build-date", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode", "incoming-recording"}, "test profile is unknown")
     expected_suites = set(MODEL_TESTS)
     expected_by_suite = None
     if profile == "frame-queue":
@@ -2081,6 +2089,10 @@ def parse_result(path, profile="models"):
         expected_by_suite = COMBO_BOX_SUITES
         expected_suites = set(expected_by_suite)
         expected_names = set().union(*expected_by_suite.values())
+        expected_tests = len(expected_names)
+    elif profile == "incoming-recording":
+        expected_suites = {"incoming_recording_status_test.dart"}
+        expected_names = INCOMING_RECORDING_TESTS
         expected_tests = len(expected_names)
     elif profile == "view-mode":
         expected_suites = {"view_mode_test.dart"}
@@ -2333,7 +2345,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("result")
     parser.add_argument(
-        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "recording-directory", "mobile-build-date", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode"), default="models"
+        "--profile", choices=("models", "frame-queue", "direct-address", "file-metadata", "password-fields", "share-rdp", "connect-password", "credential-dialog", "terminal-output", "settings-navigation", "settings-sidebar", "recording-directory", "mobile-build-date", "desktop-theme", "cm-duration", "window-dispatch", "menu-button", "help-button", "keyboard-layout", "hold-drag", "locales", "path-labels", "setting-checkbox", "draggable-divider", "list-search", "credential-badge", "peer-search", "tab-selection", "connection-page", "status-refresh", "peer-data", "file-progress", "restart-dialog", "custom-scale", "trackpad-speed", "floating-position", "virtual-joystick", "virtual-mouse-buttons", "screenshot-save", "clipboard-keystrokes", "file-search", "file-columns", "audio-input", "reconnect", "file-navigation", "directory-ordering", "modifier-release", "auto-disconnect", "combo-box", "image-quality", "audio-mute", "view-mode", "incoming-recording"), default="models"
     )
     arguments = parser.parse_args()
     try:
@@ -2369,6 +2381,7 @@ def main():
         "image-quality": "FLUTTER_IMAGE_QUALITY_TEST_JSON",
         "audio-mute": "FLUTTER_AUDIO_MUTE_TEST_JSON",
         "view-mode": "FLUTTER_VIEW_MODE_TEST_JSON",
+        "incoming-recording": "FLUTTER_INCOMING_RECORDING_TEST_JSON",
         "keyboard-layout": "FLUTTER_KEYBOARD_LAYOUT_TEST_JSON",
         "directory-ordering": "FLUTTER_DIRECTORY_ORDERING_TEST_JSON",
         "file-navigation": "FLUTTER_FILE_NAVIGATION_TEST_JSON",

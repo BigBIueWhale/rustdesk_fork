@@ -13,6 +13,7 @@ mod server;
 pub use self::server::*;
 mod client;
 mod peer_text;
+mod incoming_recording_status;
 // R-X5 / R-SV1 / R-D7a: LAN discovery is fully removed (the `mod lan` no-op stubs — discover()
 // and send_wol() — are gone, along with the sciter Discovered-tab UI, ui_interface get_lan_peers/
 // remove_discovered, and config::LanPeers). The discovery LISTENER/querier was already excised

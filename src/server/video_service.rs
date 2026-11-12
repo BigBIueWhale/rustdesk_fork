@@ -25,6 +25,7 @@ use qos_apply::check_qos;
 #[path = "screenshot_png.rs"]
 mod screenshot_png;
 use screenshot_png::BoundedScreenshotPng;
+use super::incoming_recording::IncomingRecording;
 #[cfg(all(test, target_os = "linux"))]
 mod incoming_recording_tests;
 #[cfg(target_os = "linux")]
@@ -51,7 +52,7 @@ use scrap::vram::{VRamEncoder, VRamEncoderConfig};
 use scrap::Capturer;
 use scrap::{
     codec::{Decoder, Encoder, EncoderCfg},
-    record::{Recorder, RecorderContext},
+    record::RecorderContext,
     vpxcodec::{VpxEncoderConfig, VpxVideoCodecId},
     CodecFormat, Display, EncodeInput, EncodeYuvFormat, ImageFormat, ImageRgb, ImageTexture,
     yuv_samples, Pixfmt, TraitCapturer, TraitPixelBuffer,
@@ -1569,7 +1570,7 @@ fn setup_encoder(
     EncoderCfg,
     CodecFormat,
     bool,
-    Option<Recorder>,
+    Option<IncomingRecording>,
 )> {
     let codec_format = Encoder::negotiated_codec();
     if codec_format == CodecFormat::Unknown {
@@ -1682,7 +1683,7 @@ fn get_recorder(
     record_incoming: bool,
     display_idx: usize,
     camera: bool,
-) -> Option<Recorder> {
+) -> Option<IncomingRecording> {
     if !record_incoming {
         return None;
     }
@@ -1690,7 +1691,7 @@ fn get_recorder(
     let root = crate::platform::is_root();
     #[cfg(not(windows))]
     let root = false;
-    match Recorder::new(RecorderContext {
+    match IncomingRecording::new(RecorderContext {
         server: true,
         id: Config::get_id(),
         dir: crate::ui_interface::video_save_directory(root),
@@ -1783,7 +1784,7 @@ fn handle_one_frame(
     frame: EncodeInput,
     ms: i64,
     encoder: &mut Encoder,
-    recorder: &mut Option<Recorder>,
+    recorder: &mut Option<IncomingRecording>,
     encode_fail_counter: &mut usize,
     first_frame: &mut bool,
     width: usize,

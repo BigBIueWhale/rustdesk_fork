@@ -71,6 +71,7 @@ pub mod display_service;
 mod service;
 mod video_qos;
 pub mod video_service;
+pub mod incoming_recording;
 
 #[cfg(any(target_os = "windows", test))]
 #[derive(Clone)]

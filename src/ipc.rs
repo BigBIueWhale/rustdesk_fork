@@ -2699,6 +2699,7 @@ pub enum CmVoiceCallCommand {
 pub struct MainStatusSnapshot {
     pub options: MainStatusOptions,
     pub file_transfer_enabled: Option<bool>,
+    pub incoming_recording: crate::incoming_recording_status::IncomingRecordingStatus,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -3409,6 +3410,7 @@ impl MainIpcResponse {
         Ok(match self {
             Self::StatusSnapshot(mut snapshot) => {
                 snapshot.options = snapshot.options.validate()?;
+                snapshot.incoming_recording = snapshot.incoming_recording.validate()?;
                 Self::StatusSnapshot(snapshot)
             }
             Self::Config { key, value } => {
@@ -4781,6 +4783,7 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
             MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
                 options,
                 file_transfer_enabled,
+                incoming_recording: crate::server::incoming_recording::snapshot(),
             })
         }
         MainIpcRequest::ReadinessSnapshot => {
@@ -9564,6 +9567,50 @@ pub async fn close_windows_service_owned_main_server(
 #[cfg(test)]
 mod test {
     use super::*;
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn incoming_recording_status_uses_validated_main_frames() {
+        use crate::incoming_recording_status::{FailureStage, IncomingRecordingStatus, RecordingFailure};
+        let (sender, receiver) = tokio::net::UnixStream::pair().unwrap();
+        let mut sender = ConnectionTmpl::new_main(sender);
+        let mut receiver = ConnectionTmpl::new_main(receiver);
+        let status = IncomingRecordingStatus {
+            starting: 32, active: 31, finishing: 1,
+            last_failure: Some(RecordingFailure { display: 3, camera: true, stage: FailureStage::Finish }),
+        };
+        let response = MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
+            options: MainStatusOptions(Vec::new()), file_transfer_enabled: None,
+            incoming_recording: status,
+        });
+        for _ in 0..2 {
+            let (sent, received) = tokio::join!(
+                sender.send_json_timeout(&response, 1000), receiver.next_main_response_timeout(1000),
+            );
+            sent.unwrap();
+            let MainIpcResponse::StatusSnapshot(snapshot) = received.unwrap().unwrap() else {
+                panic!("expected recording status response");
+            };
+            assert_eq!(snapshot.incoming_recording, status);
+
+            let mut invalid = serde_json::to_value(&response).unwrap();
+            invalid["c"]["incoming_recording"]["starting"] = 33.into();
+            let (sent, received) = tokio::join!(
+                sender.send_json_timeout(&invalid, 1000), receiver.next_main_response_timeout(1000),
+            );
+            sent.unwrap();
+            assert_eq!(received.unwrap_err().to_string(), "Incoming recording status exceeds the writer limit");
+            for field in ["unknown", "stage"] {
+                let mut invalid = serde_json::to_value(&response).unwrap();
+                invalid["c"]["incoming_recording"]["last_failure"][field] = "invalid".into();
+                let (sent, received) = tokio::join!(
+                    sender.send_json_timeout(&invalid, 1000), receiver.next_main_response_timeout(1000),
+                );
+                sent.unwrap();
+                assert!(received.unwrap().is_none(), "invalid failure must not reach UI status");
+            }
+        }
+    }
 
     fn windows_service_owned_password_admission_fixture() -> WindowsServiceOwnedPasswordAdmission {
         WindowsServiceOwnedPasswordAdmission {

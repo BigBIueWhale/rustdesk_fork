@@ -29,6 +29,18 @@ lazy_static::lazy_static! {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static OPTION_STATUS_SYNC: std::sync::Once = std::sync::Once::new();
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+static INCOMING_RECORDING_STATUS: Mutex<Option<crate::incoming_recording_status::IncomingRecordingStatus>> = Mutex::new(None);
+
+pub fn incoming_recording_status() -> Option<crate::incoming_recording_status::IncomingRecordingStatus> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    { *INCOMING_RECORDING_STATUS.lock().unwrap() }
+    #[cfg(target_os = "android")]
+    { Some(crate::server::incoming_recording::snapshot()) }
+    #[cfg(target_os = "ios")]
+    { None }
+}
+
 #[cfg(target_os = "windows")]
 lazy_static::lazy_static! {
     pub static ref IS_FILE_TRANSFER_ENABLED: Arc<Mutex<Option<bool>>> = Arc::new(Mutex::new(None));
@@ -718,11 +730,13 @@ async fn sync_main_status() {
                     Ok(options) => options,
                     Err(err) => {
                         log::error!("Main IPC returned invalid status options: {err}");
+                        *INCOMING_RECORDING_STATUS.lock().unwrap() = None;
                         sleep(1.).await;
                         continue;
                     }
                 };
                 *OPTIONS.lock().unwrap() = options;
+                *INCOMING_RECORDING_STATUS.lock().unwrap() = Some(snapshot.incoming_recording);
                 *OPTION_SYNCED.lock().unwrap() = true;
                 #[cfg(target_os = "windows")]
                 if let Some(enabled) = snapshot.file_transfer_enabled {
@@ -735,6 +749,7 @@ async fn sync_main_status() {
             }
             Err(err) => {
                 log::trace!("Main IPC status transaction failed: {err}");
+                *INCOMING_RECORDING_STATUS.lock().unwrap() = None;
                 if was_connected && is_cm {
                     crate::ui_cm_interface::quit_cm();
                     return;

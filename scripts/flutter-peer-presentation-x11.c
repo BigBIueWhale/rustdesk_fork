@@ -7805,22 +7805,42 @@ static int recording_path_visible(unsigned int pid) {
 /* Observe the real controlled-side UI on its own X server so it cannot cover
  * the capture fixture. Both app processes use the same private user profile. */
 static int incoming_status_visible(unsigned int pid, int active, int failed) {
-    const char *names[] = {"Incoming recordings", "Not recording", "Recording: 1",
-        "Starting: 1", "Finishing: 1", "Recording status unavailable",
-        "Last recording failure: Display 1 (Writing)"};
-    const int expected[] = {1, !active, active, 0, 0, 0, failed};
+    char expected[512];
+    int length = snprintf(expected, sizeof(expected), "Recording\nIncoming recordings\n%s\n%sDirectory:\n/tmp/recording-selected-שלום",
+        active ? "Recording: 1" : "Not recording",
+        failed ? "Last recording failure: Display 1 (Writing)\n" : "");
+    if (length <= 0 || (size_t)length >= sizeof(expected)) return -1;
     uint64_t deadline = monotonic_millis() + 10000U;
     unsigned int stable = 0U;
     while (monotonic_millis() < deadline) {
-        int exact = 1;
-        for (size_t i = 0U; i < sizeof(names) / sizeof(names[0]); ++i) {
-            AtspiAccessible *label = NULL;
-            int status = query_named_accessible(pid, names[i], deadline, &label, 0);
-            int found = label != NULL;
-            g_clear_object(&label);
-            if (status != 0) return -1;
-            if (found != expected[i]) exact = 0;
+        AtspiAccessible *checkbox = NULL, *card = NULL;
+        AtspiStateSet *states = NULL;
+        GError *error = NULL;
+        gchar *name = NULL;
+        if (query_named_accessible(pid, "Automatically record incoming sessions", deadline, &checkbox, 0) != 0)
+            return -1;
+        if (checkbox != NULL) card = atspi_accessible_get_parent(checkbox, &error);
+        int valid = card != NULL && error == NULL && atspi_accessible_get_process_id(card, &error) == pid;
+        if (valid && error == NULL) {
+            atspi_accessible_clear_cache(card);
+            states = atspi_accessible_get_state_set(card);
+            name = atspi_accessible_get_name(card, &error);
         }
+        valid = valid && error == NULL && states != NULL && name != NULL &&
+            strnlen(name, 1025U) <= 1024U &&
+            atspi_state_set_contains(states, ATSPI_STATE_VISIBLE) &&
+            atspi_state_set_contains(states, ATSPI_STATE_SHOWING);
+        int exact = valid && strcmp(name, expected) == 0;
+        if (valid && monotonic_millis() + 200U >= deadline) {
+            gchar *escaped = g_strescape(name, NULL);
+            fprintf(stderr, "FLUTTER_PEER_INCOMING_CARD observed=%s\n", escaped != NULL ? escaped : "unavailable");
+            g_free(escaped);
+        }
+        g_free(name);
+        g_clear_error(&error);
+        g_clear_object(&states);
+        g_clear_object(&card);
+        g_clear_object(&checkbox);
         stable = exact ? stable + 1U : 0U;
         if (stable == 3U) return 0;
         if (sleep_millis(100U) != 0) return -1;

@@ -1106,7 +1106,7 @@ fn run(vs: VideoService) -> ResultType<()> {
     );
     let client_record = video_qos.record();
     drop(video_qos);
-    let (mut encoder, encoder_cfg, codec_format, use_i444, recorder) = match setup_encoder(
+    let (mut encoder, encoder_cfg, codec_format, use_i444, mut recorder) = match setup_encoder(
         &c,
         sp.name(),
         quality,
@@ -1384,7 +1384,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         frame,
                         ms,
                         &mut encoder,
-                        recorder.clone(),
+                        &mut recorder,
                         &mut encode_fail_counter,
                         &mut first_frame,
                         capture_width,
@@ -1450,7 +1450,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                         EncodeInput::YUV(&yuv),
                         ms,
                         &mut encoder,
-                        recorder.clone(),
+                        &mut recorder,
                         &mut encode_fail_counter,
                         &mut first_frame,
                         capture_width,
@@ -1569,7 +1569,7 @@ fn setup_encoder(
     EncoderCfg,
     CodecFormat,
     bool,
-    Arc<Mutex<Option<Recorder>>>,
+    Option<Recorder>,
 )> {
     let codec_format = Encoder::negotiated_codec();
     if codec_format == CodecFormat::Unknown {
@@ -1682,25 +1682,27 @@ fn get_recorder(
     record_incoming: bool,
     display_idx: usize,
     camera: bool,
-) -> Arc<Mutex<Option<Recorder>>> {
+) -> Option<Recorder> {
+    if !record_incoming {
+        return None;
+    }
     #[cfg(windows)]
     let root = crate::platform::is_root();
     #[cfg(not(windows))]
     let root = false;
-    let recorder = if record_incoming {
-        Recorder::new(RecorderContext {
-            server: true,
-            id: Config::get_id(),
-            dir: crate::ui_interface::video_save_directory(root),
-            display_idx,
-            camera,
-        })
-        .map_or(Default::default(), |r| Arc::new(Mutex::new(Some(r))))
-    } else {
-        Default::default()
-    };
-
-    recorder
+    match Recorder::new(RecorderContext {
+        server: true,
+        id: Config::get_id(),
+        dir: crate::ui_interface::video_save_directory(root),
+        display_idx,
+        camera,
+    }) {
+        Ok(recorder) => Some(recorder),
+        Err(error) => {
+            log::error!("Failed to initialize incoming recording: {error:#}");
+            None
+        }
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -1781,7 +1783,7 @@ fn handle_one_frame(
     frame: EncodeInput,
     ms: i64,
     encoder: &mut Encoder,
-    recorder: Arc<Mutex<Option<Recorder>>>,
+    recorder: &mut Option<Recorder>,
     encode_fail_counter: &mut usize,
     first_frame: &mut bool,
     width: usize,
@@ -1806,13 +1808,17 @@ fn handle_one_frame(
             if let Some(trace) = presentation_trace.as_mut() {
                 trace.trace_encoded(display, ms, &vf);
             }
+            if let (Some(recording), Some(frame)) = (recorder.as_mut(), vf.union.as_ref()) {
+                if let Err(error) = recording.write_frame(frame, width, height) {
+                    log::error!(
+                        "Incoming recording stopped for {:?} display {display}: {error:#}",
+                        frame_controller.key.source,
+                    );
+                    *recorder = None;
+                }
+            }
             let mut msg = Message::new();
             msg.set_video_frame(vf);
-            recorder
-                .lock()
-                .unwrap()
-                .as_mut()
-                .map(|r| r.write_message(&msg, width, height));
             sp.send_video_frame_with_targets(
                 msg,
                 frame_controller.key.source,

@@ -3,7 +3,7 @@ use crate::CodecFormat;
 use hbb_common::anyhow::anyhow;
 use hbb_common::{
     bail, chrono, log,
-    message_proto::{message, video_frame, EncodedVideoFrame, Message},
+    message_proto::{video_frame, EncodedVideoFrame},
     uuid::Uuid,
     ResultType,
 };
@@ -152,14 +152,6 @@ impl Recorder {
 
     pub fn has_frames(&self) -> bool {
         self.pts.is_some()
-    }
-
-    pub fn write_message(&mut self, msg: &Message, w: usize, h: usize) {
-        if let Some(message::Union::VideoFrame(vf)) = &msg.union {
-            if let Some(frame) = &vf.union {
-                self.write_frame(frame, w, h).ok();
-            }
-        }
     }
 
     pub fn write_frame(

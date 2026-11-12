@@ -44,7 +44,7 @@ fn encoder() -> Encoder {
 #[test]
 fn failed_incoming_recording_retires_while_video_continues() {
     let dir = RecordingDirectory::new();
-    let recorder = Arc::new(Mutex::new(Some(dir.recorder())));
+    let mut recorder = Some(dir.recorder());
     dir.writable(false);
     let error = fs::write(dir.0.join("canary"), b"x").unwrap_err();
     assert_eq!(error.raw_os_error(), Some(libc::EACCES), "actual write denial");
@@ -65,13 +65,13 @@ fn failed_incoming_recording_retires_while_video_continues() {
 
     for index in 0..4 {
         if index == 1 {
-            retired_after_failure = recorder.lock().unwrap().is_none();
+            retired_after_failure = recorder.is_none();
             dir.writable(true);
         }
         if index == 2 {
             assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0,
                 "a failed attempt must not restart when storage recovers");
-            *recorder.lock().unwrap() = Some(dir.recorder());
+            recorder = Some(dir.recorder());
         }
         let format = encoder.yuvfmt();
         let mut yuv = vec![128; format.buffer_len];
@@ -82,7 +82,7 @@ fn failed_incoming_recording_retires_while_video_continues() {
         controller.reset();
         assert!(handle_one_frame(
             0, &service, &controller, EncodeInput::YUV(&yuv), index * 2000,
-            &mut encoder, recorder.clone(), &mut failures, &mut first_frame,
+            &mut encoder, &mut recorder, &mut failures, &mut first_frame,
             64, 48, &mut None,
         ).expect("recording failure must not fail video publication"));
         assert_eq!(failures, 0);
@@ -109,7 +109,7 @@ fn failed_incoming_recording_retires_while_video_continues() {
     }
     assert!(samples.windows(2).all(|pair| pair[0] != pair[1]),
         "each delivered image must reflect changed source pixels");
-    recorder.lock().unwrap().take().unwrap().finish().unwrap();
+    recorder.take().unwrap().finish().unwrap();
     let files: Vec<_> = fs::read_dir(&dir.0).unwrap()
         .map(|entry| entry.unwrap().path()).collect();
     assert_eq!(files.len(), 1, "one fresh recording after explicit new ownership");

@@ -7858,26 +7858,39 @@ static const char incoming_finish_error[] = "Failed to finalize incoming recordi
 
 static int incoming_log_count(int fd, const char *failure) {
     char data[262145];
-    struct stat metadata;
+    struct stat metadata = {0};
+    const char *phase = "metadata";
+    size_t size = 0U, offset = 0U;
+    unsigned int count = 0U;
     if (fstat(fd, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
         metadata.st_uid != geteuid() || metadata.st_gid != getegid() ||
         metadata.st_nlink != 1 || (metadata.st_mode & 07777) != 0600 ||
-        metadata.st_size <= 0 || metadata.st_size > 262144) return -1;
-    size_t size = (size_t)metadata.st_size, offset = 0U;
+        metadata.st_size <= 0 || metadata.st_size > 262144) goto fail;
+    size = (size_t)metadata.st_size;
+    phase = "read";
     while (offset < size) {
-        ssize_t count = pread(fd, data + offset, size - offset, (off_t)offset);
-        if (count < 0 && errno == EINTR) continue;
-        if (count <= 0) return -1;
-        offset += (size_t)count;
+        ssize_t bytes = pread(fd, data + offset, size - offset, (off_t)offset);
+        if (bytes < 0 && errno == EINTR) continue;
+        if (bytes <= 0) goto fail;
+        offset += (size_t)bytes;
     }
-    if (memchr(data, '\0', size) != NULL) return -1;
+    phase = "text";
+    if (memchr(data, '\0', size) != NULL) goto fail;
     data[size] = '\0';
-    unsigned int count = 0U;
+    phase = "count";
     for (char *found = strstr(data, failure); found != NULL;
          found = strstr(found + strlen(failure), failure)) {
-        if (++count > 1U) return -1;
+        if (++count > 1U) goto fail;
     }
     return (int)count;
+fail:
+    fprintf(stderr, "FLUTTER_PEER_INCOMING_LOG_FAIL phase=%s fd=%d errno=%d uid=%u gid=%u "
+            "mode=%o links=%llu bytes=%lld read=%zu matches=%u kind=%s\n", phase, fd, errno,
+            (unsigned int)metadata.st_uid, (unsigned int)metadata.st_gid,
+            (unsigned int)metadata.st_mode, (unsigned long long)metadata.st_nlink,
+            (long long)metadata.st_size, offset, count,
+            failure == incoming_finish_error ? "finish" : "overflow");
+    return -1;
 }
 
 static int incoming_output(int directory, uint64_t started, uint64_t stopped) {

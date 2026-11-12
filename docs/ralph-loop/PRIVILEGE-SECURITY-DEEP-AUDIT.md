@@ -148988,3 +148988,94 @@ private/QEMU/socket/RAM absence pass. The approximate 400,000-token compression
 target remains OPEN. This audit-only append preserves the counted ledger and prior
 16,022,859-byte audit prefix, SHA-256
 e04cd17cb5f1accb9e334f5e27885c74900aa5f725b02f3d5ae33a41fb4a90c5.
+
+## 2026-11-12 — installed incoming-recording workflow and package inventory
+
+Prior turn: progress. Continue the selected R-S0 installed recording acceptance
+after user-owned finalization coverage. Reuse app 4d1d1153 and its unchanged
+74-payload manifest 6c827f474e1cc30d35dbe493b314f64770dfe8f3bf772466ef5401716f96ee64;
+no application rebuild or new cache. Existing password-authority controls run
+before enabling/disabling incoming recording in the same ordinary installed GUI.
+The intended acceptance requires actual checkbox state, persisted preference and
+unchanged protected credential after each recording step; no optimistic UI pass.
+
+0aab7785 extends linux-installed-settings-x11.c and test-linux-installed-settings.py
+with three recording stages. PID-scoped AT-SPI checks require an enabled, sensitive,
+visible/showing, non-indeterminate checkbox with the expected CHECKED state across
+three scans. The root guest observer checks the bounded UID-4001 profile file and
+unchanged service/GUI generations and credentials. Official AT-SPI state semantics:
+https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/enum.StateType.html
+https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/method.Accessible.get_state_set.html
+
+The first run instead exposed a production packaging omission. The pinned
+file_selector_linux 0.9.4+1 CMake source builds libfile_selector_linux_plugin.so;
+the application bundle includes it, but both exact Debian inventories omitted it.
+dffc8670 adds the required file to build.py and the independent archive validator,
+and redirects their missing-plugin negative cases to this library. It is not an
+optional compatibility entry. Flutter's deployment contract includes the complete
+bundle/lib payload: https://docs.flutter.dev/platform-integration/linux/building
+Plugin identity: https://pub.dev/packages/file_selector_linux
+
+At 23043e5a, FN6K4j1Wjo/tool71997 exits zero for --debian-package-tests. Producer
+and archive self-tests, two CLI-verified archives, thirteen native fixture-library
+digests, eight changed/missing maintainer-source cases and native ELF load-range
+controls pass. file-selector-package-23043e5a.json binds eight files/87,840 bytes
+copied to CTE/TUF. QEMU 3798905 joins zero after 32.383 seconds; scratch peaks at
+3,913,269,248 bytes, three zero listener deltas and exact cleanup pass. This is
+package component evidence; the fixture libraries are not the application payload.
+
+Failed prerequisite runs, all exit 1 and all retained separately:
+
+| Source/run/tool | Observation and correction | Capsule files/bytes |
+| --- | --- | --- |
+| 0aab7785 / 2y4cjD5Lux / 46614 | Actual app packaging refuses the required file-selector library as unexpected; fixed by dffc8670. | installed-recording-0aab7785.json: 14 / 190,958 |
+| dffc8670 / mlmenqDtsp / 71516 | Component result parser still requires twelve library digests; 23043e5a updates the exact expected count to thirteen. | file-selector-package-dffc8670.json: 13 / 166,815 |
+| 23043e5a / L6WT4ZI6X2 / 63462 | Actual package succeeds; shared settings-driver link lacks the included recording decoder's libvpx. 87781474 adds its existing pkg-config library. | installed-recording-23043e5a.json: 14 / 200,720 |
+| 87781474 / vFW0Ts4fF2 / 72077 | Package and repeated drivers prepare; install refuses a historical whole-build.py hash in dependency provenance. | installed-recording-87781474.json: 14 / 201,827 |
+
+e5b602e9 deletes that redundant three-line source-hash gate. The authenticated
+acquisition contract remains pinned and retained. Before APT, the actual archive's
+complete control file must still byte-match the control data used to acquire the
+dependency closure; every package/plan/archive hash and installed version remains
+checked. APT runs offline with --no-download and then checks dependencies/dpkg state.
+Changing unrelated packaging inventory does not change that control contract.
+This follows Debian's actual binary metadata/dependency semantics:
+https://www.debian.org/doc/debian-policy/ch-controlfields.html#debian-binary-package-control-files-debian-control
+https://www.debian.org/doc/debian-policy/ch-relationships.html
+No dependency download or provenance rewrite was needed. Existing authenticated
+runtime already includes libvpx7 1.12.0-1+deb12u5.
+
+Final installed run brRFbsYgsz/tool66659 at e5b602e9 reaches the real UI and exits 1
+on the required behavior. The package is 19,808,020 bytes, SHA-256
+0b8d8c23db0110bd77bf4a003abb1a144f70f0e6f2c1589dfc202830b83c8f26;
+all 73 bundle payloads are preserved. Package generation, independent validation,
+APT installation/check, dpkg audit, exact runtime inventory and installed process
+identity checks pass. GUI 7823 completes sixteen password stages, including actual
+polkit/PAM-authorized protected commit and denials, against service generation
+8088edd4-7eb0-425e-b79f-b78dd3789bfd (supervisor 7601, child 7726/start 7024).
+The seventeenth observation confirms incoming recording initially off and the
+saved option empty. Clicking enable emits the real FFI error "Option write was
+rejected by daemon". The checkbox remains available, role 7, checked 0 while 1 is
+required. The retained screenshot was inspected: the incoming toggle is unchecked,
+Failed is visible underneath, and status says Not recording. The workflow refuses
+before disable, recording output or restart checks; those are not claimed passed.
+
+Source matches the runtime result: _Recording's incoming _OptionCheckBox selects
+mainSetBoolOption/mainSetOption, then ui_interface::set_option/ipc::set_option.
+The SetOption receiver in src/ipc.rs rejects MainIpcAuthority::ServiceOwned.
+The Linux selected-session child records with its own principal/profile, while
+the root supervisor owns the durable password. R-S11 still forbids ordinary
+user-owned option writes on service-owned receivers. Next: determine and implement
+the narrow recording-specific authority across supported ownership cases, preserving
+that boundary, then run authorized settings and actual recording output. No product
+authorization correction or installed recording acceptance is claimed here.
+
+installed-recording-e5b602e9.json binds sixteen files/572,488 bytes verified on both
+hosts, including screenshot and seventeen observed stages. QEMU 3826334 joins zero
+after 142.559 seconds; RAM scratch peaks at 4,214,210,560 bytes. Guest network returns
+to baseline after 38.362 seconds of kernel TIME_WAIT drain; four host listener
+deltas are zero. All five failed private trees were inventoried and copied before
+identity-checked retirement, with exact QEMU/socket/RAM absence; their retirement
+receipts are copied to CTE. No failed tree or bulk VM disk remains. This append
+preserves the prior 16,023,618-byte audit prefix, SHA-256
+844f1902c316005a1a46e1b15175870012e992f70b9a808632747efa47fc602f.

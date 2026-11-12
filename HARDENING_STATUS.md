@@ -6863,9 +6863,31 @@ on CTE/TUF, four zero listener deltas and joined process/VM/RAM cleanup. The aud
 retains five failed fixture runs and their corrections; none is counted as a pass.
 This is interposed I/O in a user-owned Linux full app, not physical-filesystem or
 installed/root acceptance; native kernel-write blocking has separate evidence.
-Next: validate authorized incoming-recording settings and output in installed Linux
-service mode. Native spawn failure, full-UI multiple writers, broader finalization
+
+**Installed Linux incoming-recording toggle — reproduced failure, OPEN.** At
+`e5b602e9`, the same retained app installs with its declared APT runtime and passes
+sixteen actual password-control stages, including administrator-authorized commit
+and denied requests. The recording checkbox initially agrees with the saved off
+state. Clicking enable then yields `Option write was rejected by daemon`; the
+enabled checkbox stays unchecked and the actual UI displays Failed. The UI uses
+generic `SetOption`, which service-owned receivers reject. This is a required
+settings failure, not completed recording acceptance. No installed recording output,
+disable or restart persistence is proved. `installed-recording-e5b602e9.json` binds
+sixteen files/572,488 bytes, including the inspected screenshot, copied to CTE/TUF;
+the failed private tree and VM/RAM/process/socket state are retired with four zero
+host listener deltas. Next: implement the authorized recording-specific operation
+without reopening generic service-owned config writes, then exercise settings and
+actual output. Native spawn failure, full-UI multiple writers, broader finalization
 failures and other platforms remain OPEN.
+
+The installed check also exposed a packaging blocker: the exact required-library
+inventory omitted the directory-picker plugin. `dffc8670` adds it to the producer
+and independent validator; missing-plugin refusal and package component tests pass
+at `23043e5a` (`file-selector-package-23043e5a.json`). The current 73-file app bundle
+now packages and installs. Fixture repairs link the shared driver to libvpx and
+reuse authenticated dependencies by exact package control bytes rather than the
+whole packager's historical hash; archive/package hashes and offline APT checks
+remain mandatory. The audit retains the failed attempts and exact identities.
 These selected cases do not close R-S0/R-F5 or complete release acceptance.
 
 **Transport verification classification — source-wording checks removed.**

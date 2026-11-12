@@ -112,7 +112,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     gFFI.imageModel.addCallbackOnFirstImage((String peerId) {
       if (!gFFI.isCurrentSession(sessionId)) return;
       gFFI.recordingModel
-          .updateStatus(bind.sessionGetIsRecording(sessionId: sessionId));
+          .updateStatus(bind.sessionGetRecordingStatus(sessionId: sessionId));
       if (gFFI.recordingModel.start) {
         showToast(translate('Automatically record outgoing sessions'));
       }

@@ -120,7 +120,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     gFFI.imageModel.addCallbackOnFirstImage((String peerId) {
       if (!gFFI.isCurrentSession(sessionId)) return;
       gFFI.recordingModel
-          .updateStatus(bind.sessionGetIsRecording(sessionId: sessionId));
+          .updateStatus(bind.sessionGetRecordingStatus(sessionId: sessionId));
       if (gFFI.recordingModel.start) {
         showToast(translate('Automatically record outgoing sessions'));
       }

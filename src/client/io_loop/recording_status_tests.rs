@@ -88,7 +88,8 @@ async fn recording_status_case(fail_output: bool) {
         assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
         assert_eq!(remote.recording_status, RecordingStatus::Starting,
             "recording requested before the first frame must remain cancellable");
-        assert!(!remote.handler.is_recording(), "pending recording falsely reports output");
+        assert_eq!(remote.handler.recording_status(), RecordingStatus::Starting,
+            "a newly attached UI must observe the pending recording request");
         assert!(remote.handle_msg_from_ui(Data::RecordScreen(false), &mut viewer).await);
         assert_eq!(remote.recording_status, RecordingStatus::Stopped);
         assert!(remote.new_video_thread(0, &mut viewer).await, "real decoder worker admitted");
@@ -100,6 +101,8 @@ async fn recording_status_case(fail_output: bool) {
             assert!(remote.handle_msg_from_ui(Data::RecordScreen(false), &mut viewer).await);
             assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
             assert_eq!(remote.recording_status, RecordingStatus::Stopping);
+            assert_eq!(remote.handler.recording_status(), RecordingStatus::Stopping,
+                "a newly attached UI must observe the draining recording attempt");
             assert!(Arc::ptr_eq(remote.recording.as_ref().unwrap(), &first),
                 "retry replaced an undrained recording attempt");
             drop(pending);
@@ -156,7 +159,7 @@ async fn recording_status_case(fail_output: bool) {
             }
         }
         let observation = ui.recording_observation();
-        let recording = remote.handler.is_recording();
+        let recording = remote.handler.recording_status();
         let errors = ui.take_errors();
         if fail_output {
             assert_eq!(remote.recording_status, RecordingStatus::Stopped);
@@ -182,7 +185,7 @@ async fn recording_status_case(fail_output: bool) {
                     assert!(remote.update_record_state(&mut viewer).await);
                 }
             }
-            assert!(remote.handler.is_recording());
+            assert_eq!(remote.handler.recording_status(), RecordingStatus::Active);
             assert!(ui.take_errors().is_empty(), "retry reported an old failure");
         }
         assert!(remote.handle_msg_from_ui(Data::RecordScreen(false), &mut viewer).await);
@@ -196,11 +199,12 @@ async fn recording_status_case(fail_output: bool) {
     assert_eq!(std::fs::read(fixture.root.join("not-a-directory")).unwrap(), b"retained");
     if fail_output {
         assert_eq!(status, Some(false), "failed recording still advertises active status");
-        assert!(!recording, "failed recording remains selected in the session");
+        assert_eq!(recording, RecordingStatus::Stopped,
+            "failed recording remains selected in the session");
         assert!(!errors.is_empty(), "recording failure was not reported to the UI callback");
     } else {
         assert_eq!(status, Some(true), "working recording must remain active");
-        assert!(recording);
+        assert_eq!(recording, RecordingStatus::Active);
         assert!(errors.is_empty(), "healthy recording errors: {errors:?}");
     }
     let files: Vec<_> = std::fs::read_dir(fixture.root.join("recordings")).unwrap()

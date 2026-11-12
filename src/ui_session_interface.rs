@@ -722,7 +722,7 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::TakeScreenshot((display, sid)));
     }
 
-    pub fn is_recording(&self) -> bool {
+    pub fn recording_status(&self) -> crate::client::recording::RecordingStatus {
         self.lc.read().unwrap().record_state
     }
 

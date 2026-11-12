@@ -1848,7 +1848,7 @@ impl<T: InvokeUiSession> Remote<T> {
             }
         }
         self.recording_status = RecordingStatus::Stopped;
-        self.handler.lc.write().unwrap().record_state = false;
+        self.handler.lc.write().unwrap().record_state = RecordingStatus::Stopped;
         self.handler.update_record_status(RecordingStatus::Stopped);
     }
 
@@ -4533,7 +4533,7 @@ impl<T: InvokeUiSession> Remote<T> {
         let was_active = self.recording_status == RecordingStatus::Active;
         let active = status == RecordingStatus::Active;
         self.recording_status = status;
-        self.handler.lc.write().unwrap().record_state = active;
+        self.handler.lc.write().unwrap().record_state = status;
         self.handler.update_record_status(status);
         if was_active == active {
             return true;

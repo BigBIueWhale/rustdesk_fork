@@ -1453,7 +1453,7 @@ pub struct LoginConfigHandler {
     pub mark_unsupported: Vec<CodecFormat>,
     pub selected_windows_session_id: Option<u32>,
     pub peer_info: Option<PeerInfo>,
-    pub record_state: bool,
+    pub record_state: recording::RecordingStatus,
     pub record_permission: bool,
 }
 
@@ -1534,7 +1534,7 @@ impl LoginConfigHandler {
         self.supported_encoding = Default::default();
         self.received = false;
         self.selected_windows_session_id = None;
-        self.record_state = false;
+        self.record_state = recording::RecordingStatus::Stopped;
         self.record_permission = true;
     }
 

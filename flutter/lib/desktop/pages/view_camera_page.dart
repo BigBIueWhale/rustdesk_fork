@@ -130,7 +130,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       showKBLayoutTypeChooserIfNeeded(
           _ffi.ffiModel.pi.platform, _ffi.dialogManager);
       _ffi.recordingModel
-          .updateStatus(bind.sessionGetIsRecording(sessionId: _ffi.sessionId));
+          .updateStatus(bind.sessionGetRecordingStatus(sessionId: _ffi.sessionId));
     });
     _ffi.start(
       widget.id,

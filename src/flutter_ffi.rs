@@ -372,11 +372,11 @@ pub fn session_record_screen(session_id: SessionID, start: bool) {
     }
 }
 
-pub fn session_get_is_recording(session_id: SessionID) -> SyncReturn<bool> {
+pub fn session_get_recording_status(session_id: SessionID) -> SyncReturn<String> {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        SyncReturn(session.is_recording())
+        SyncReturn(session.recording_status().as_str().to_owned())
     } else {
-        SyncReturn(false)
+        SyncReturn(crate::client::recording::RecordingStatus::Stopped.as_str().to_owned())
     }
 }
 

@@ -371,8 +371,8 @@ class RustdeskImpl {
     throw UnimplementedError("sessionRecordScreen");
   }
 
-  bool sessionGetIsRecording({required UuidValue sessionId, dynamic hint}) {
-    return false;
+  String sessionGetRecordingStatus({required UuidValue sessionId, dynamic hint}) {
+    return 'stopped';
   }
 
   Future<void> sessionReconnect({required UuidValue sessionId, dynamic hint}) async {

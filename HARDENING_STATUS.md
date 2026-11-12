@@ -9297,15 +9297,40 @@ Next: native ViewCamera and disposal/subtree replacement/FlView restart coverage
 platforms, original display-delay causation, sustained resources, installed-service loader/FFI
 authority and broader native/installed/release acceptance remain OPEN.
 
-**ViewCamera native identity — PRODUCT-MODULE FAILURE REPRODUCED; CATALOG/GENERATION FIX OPEN.**
-`libs/scrap/src/common/camera.rs::all_info` selects an actual native camera index but publishes only
-ordinal `DisplayInfo`; resolution and capturer creation reconstruct `CameraIndex::Index` from that ordinal.
-A nonzero-only Linux node can therefore be advertised at ordinal zero and then opened as native zero.
-The Linux name also comes from the first enumerated info when another index-zero device was selected.
-`src/server/video_service.rs::get_capturer_camera` reads metadata and creates capture separately;
-ViewCamera logins replace that process-wide catalog while `src/server.rs` keys camera services by ordinal.
-The correction must bind advertised metadata, the selected native handle, connection and service to one
-owned catalog/capture generation. An index cache alone cannot establish that lifetime.
+**ViewCamera native identity — LINUX MODULE CORRECTED; FULL BUILD PASS; APPLICATION ACCEPTANCE OPEN.**
+`e93f8660` replaces the Linux global ordinal catalog with a retained native device,
+immutable metadata and a checked generation. `CameraCatalogPool` shares a live
+matching open after fresh node/retained-handle inspection; replacement gets a new
+generation. Connection reservations, metadata queries, service names, capture
+and frame feedback carry that generation. Final connection removal stops the
+service and retains its exact thread handle in a bounded draining list until
+join. Discovery uses a blocking worker; live-worker joins are outside connection
+drop. Resolution queries use the retained metadata rather than reopening an
+ordinal as a native index. Windows retains its existing path and remains OPEN.
+
+At final source `b09f3420`, TUF `goElyPzUJx` passes all eight native component
+scenarios: nonzero product capture, shared acquisition during live capture,
+distinct replacement/old generations with preserved metadata and usable handles,
+retired-catalog refusal, backend independence/exclusive-stream retry, and
+stalled-read recovery. Eighteen samples decode 72 advancing 640×360 RGBA frames;
+twelve 100 ms deadlines and stalled retirement below 1 ms pass. The probe now
+uses production scrap's Rust 2018 edition. `camera-catalog-b09f3420.json` binds
+eight files/193,712 bytes verified on CTE/TUF, joined owners and RAM retirement,
+and three zero listener deltas. The earlier `e93f8660` component pass is retained.
+
+The exact `b09f3420` full Linux Flutter app builds successfully in `YCdB71iRXT`,
+including the changed server/connection code and test target. Thirteen view-mode,
+eight recording widget/model and two native command controls pass; the changed
+camera-generation acknowledgement test compiles but is not selected by this build.
+The 74-payload manifest is
+`ac77e9c1b36a44bbb3144b121a6d32e32d6c7e09b3c3b6a5eed6b3f8f717f60e`.
+Only the Rust library and readiness helper differ from `4468059d`; the other 72
+payloads, inputs, engine and recipe match. `camera-catalog-app-b09f3420.json`
+binds ten files/327,550 bytes on both hosts, enforced compiler limits, four zero
+listener deltas and joined cleanup. Two preceding import-related compile failures
+and their fixes are preserved in the audit. Full authenticated ViewCamera,
+concurrent service subscriptions, physical hotplug/device loss and Windows
+acceptance remain OPEN. Next: execute those application paths on this retained app.
 
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production
@@ -9318,9 +9343,9 @@ CameraCapturer/PixelBuffer. All four backend ownership regressions also pass.
 `camera-module-05969769.json` binds eight files/183,161 bytes verified on both
 hosts, joined QEMU/owner cleanup, retired RAM and three zero listener deltas.
 This is native camera-module execution; authenticated application login, shared
-service concurrency and physical hotplug remain unexecuted. The next correction
-must retain the selected device with its metadata through capture ownership,
-without moving a non-Send Camera across threads or blocking shutdown forever.
+service concurrency and physical hotplug remain unexecuted. The retained Linux
+catalog above corrects this baseline using the concrete Send backend and bounded
+frame waits; Windows needs its own thread-correct ownership design.
 
 **Linux bounded frame reads — native module accepted at `f822d5e2`.** The owned
 backend now uses nonblocking dequeue, bounded poll and explicit queued/dequeued
@@ -9334,8 +9359,8 @@ in under 1 ms and passes fresh-owner timeout/recovery. All six existing camera
 scenarios pass; fifteen samples decode sixty frames. `camera-timeout-f822d5e2.json`
 binds eight files/188,853 bytes verified on both hosts, joined QEMU/owner cleanup,
 retired RAM and three zero listener deltas. This resolves the stalled-read
-prerequisite; ordinal/catalog/service generation ownership and full-application,
-physical-camera, disconnect/error and Windows acceptance remain OPEN.
+prerequisite; application service-generation lifetime, physical-camera,
+disconnect/error and Windows acceptance remain OPEN.
 
 **Pinned supplier failures reproduced natively; backend corrected below.** The locked nokhwa revision
 `c2f74662b6ce117f7f94301693fdfadc0b1ec91a` uses a process-global weak device cache keyed only by numeric
@@ -9343,8 +9368,8 @@ index (`nokhwa-bindings-linux/src/lib.rs::new_shared_device`, lines 143–205). 
 returned without reopening the current node; a catalog refresh cannot establish fresh native identity.
 Its `devices.len() > 1` assertion compares a count from `windows(2)` with the full list length: that count
 is at most `len - 1`, so a successful second distinct retained-device open reaches an impossible assertion.
-The baseline native probe reproduces that assertion abort and stale-handle reuse; RustDesk application
-reachability and catalog correction remain OPEN. Neither observation establishes a privilege escalation.
+The baseline native probe reproduces that assertion abort and stale-handle reuse; full-application
+acceptance remains OPEN. Neither observation establishes a privilege escalation.
 The [pinned supplier source](https://github.com/rustdesk-org/nokhwa/blob/c2f74662b6ce117f7f94301693fdfadc0b1ec91a/nokhwa-bindings-linux/src/lib.rs)
 contains both paths; the retained vendor file matches its Cargo checksum entry, SHA-256
 `9fb446f29bcc50a20e786704f9c91bcf404a744208a361264a7e4e0fc1573da4`.
@@ -9388,9 +9413,9 @@ all device handles, compiler owners and fixture nodes/modules retire.
 The 145.390-second transaction joins QEMU 2365396 exit zero, retires
 6,685,474,816 bytes peak RAM scratch and records three zero host listener deltas.
 This closes the reproduced backend failures in the native component fixture.
-The RustDesk catalog/ordinal/service-generation correction and full-application
-ViewCamera acceptance, including overlapping logins and physical hotplug, remain
-OPEN. The native component result does not establish those application behaviors.
+Full-application ViewCamera acceptance, including service generations,
+overlapping logins and physical hotplug, remains OPEN. The native component
+result does not establish those application behaviors.
 
 **Fixture evidence retained.** The authenticated cloud base lacks `CONFIG_MEDIA_SUPPORT`; its complete
 config and observations remain in `.harness-state/verifier-vm/camera-kernel-inspection-61d8cb61-complete`.
@@ -9430,7 +9455,7 @@ failure to reach the new kernel or complete capture cannot satisfy the outer rec
 
 The kernel-only paths ran the guest kernel/Python probe; the component path also executes nokhwa
 and production camera.rs, with full-application `rustdesk_product_executed: false`.
-Catalog/service generation ownership, authenticated ViewCamera, physical hotplug/overlapping logins,
+Application service-generation lifetime, authenticated ViewCamera, physical hotplug/overlapping logins,
 physical and Windows cameras, canonical reusable media boot-cache
 promotion, independent reproduction, cold R-B2/R-B10 and broader native/installed/release acceptance remain OPEN.
 

@@ -150102,3 +150102,38 @@ hosts. QEMU 2382241 joins zero after 558.303 seconds; four listener deltas are
 zero, RAM retires, no app artifact exists, and failed private tree 66306:78035080
 is reconciled and removed. The prior 16,098,914-byte audit prefix is preserved,
 SHA-256 1feaf4bcd27e50fc25ff4a8f05f6041c5952c64dc0264da6abe56fb54eaf1825.
+
+Final-source integration at b09f3420, YCdB71iRXT/tool84156, passes. The production
+Rust library and libtest target compile; thirteen view-mode and eight recording
+widget/model cases plus two native command cases pass. The camera-generation
+acknowledgement test is compiled but not selected by the build's test filter.
+The 74-payload/70,569,764-byte application manifest is
+ac77e9c1b36a44bbb3144b121a6d32e32d6c7e09b3c3b6a5eed6b3f8f717f60e.
+Independent capsule admission checks every payload and tree identity. Compared
+with 4468059d, only bundle/lib/librustdesk.so and smoke-readiness differ; the
+other 72 payloads, authenticated inputs, engine and recipe match. Compiler peak
+is exactly the enforced 10 GiB limit, with zero swap/OOM events. QEMU 2383694
+joins zero after 1,271.738 seconds; RAM scratch peaks at 11,915,608,064 bytes.
+Four listener deltas are zero and exact private/process/socket/RAM absence pass.
+camera-catalog-app-b09f3420.json binds ten files/327,550 bytes verified on both
+hosts, outer SHA-256
+85334e8672719915be3d029ff6d5df9469c399c31398e76816738f5d9d6fdc12.
+
+Revalidate the changed Rust-2018 probe at the same source, goElyPzUJx/tool79968.
+All eight native scenarios pass with eighteen advancing samples/seventy-two
+decoded frames, twelve 100 ms deadlines and stalled retirement below 1 ms.
+The 5,162,016-byte probe SHA-256 is
+1996a6b60237397cc6f7cc0f3579e00b6c6017c57599ca89698d418297c6c89b;
+the 150-package lock remains unchanged. QEMU 2448478 joins zero after 154.242
+seconds; peak RAM scratch is 6,813,106,176 bytes, with three zero listener
+deltas and exact owner/process/socket/RAM retirement. The capsule
+camera-catalog-b09f3420.json binds eight files/193,712 bytes on CTE/TUF,
+outer SHA-256 652abcd743f046e0049cfce69b442c8ee2bd7a7921099b678407dddf200fd076.
+
+This is a meaningful implementation/native-module/integration-build checkpoint,
+not full ViewCamera release acceptance. Next run authenticated application
+logins and shared-service lifecycle/concurrency on the retained b09f3420 app;
+physical hotplug, native device loss and Windows remain OPEN. The full build
+and native fixture are not repeated without a relevant change or concern.
+The prior 16,099,623-byte audit prefix is preserved, SHA-256
+86b3a575b8275d1ec11c6019af2ace58e63473aff244b7a90cabd4c405db9f56.

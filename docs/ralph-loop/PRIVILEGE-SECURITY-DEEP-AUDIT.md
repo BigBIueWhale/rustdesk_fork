@@ -149628,3 +149628,14 @@ pass. No product change or application rebuild was needed. Other exit/admission
 timing, wrong/stale principals, broader failures, physical devices and other
 platforms remain OPEN. This append preserves the prior 16,065,509-byte audit
 prefix, SHA-256 2be681835ae6b617447fde4802d66346b8267c0f5c60696481f04cb71f53ed0d.
+
+Fresh ledger count at 25ad7c82, 9jr32REU8C/tool30020 exits zero: 413,719 tokens /
+1,888,026 bytes, SHA-256
+371ff549fcb9eaaef2cf4c24c00227b9308ab840e0335a3a495aea4442e0aebb.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+installed-recording-exit-ledger-25ad7c82.json binds eight files/115,615 bytes
+copied and verified on CTE/TUF. QEMU 1864668 joins zero; three zero host listener
+deltas and exact private/socket/RAM retirement pass. The approximate 400,000-token
+compression target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,068,263-byte audit prefix, SHA-256
+307d0e49df64a6891a150b156d024a8b60cf9252278f8f85b044389ff570a58f.

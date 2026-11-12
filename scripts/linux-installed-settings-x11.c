@@ -239,6 +239,13 @@ static int settings_recording_checked(unsigned int pid, int expected, int enable
     return -1;
 }
 
+static int settings_recording_card(unsigned int pid, int denied) {
+    /* Flutter merges the card's text into one newline-separated accessible name. */
+    return settings_visible(pid, denied
+        ? "Recording\nDenied\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001"
+        : "Recording\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001", 1);
+}
+
 int main(int argc, char **argv) {
     unsigned long parsed;
     char *end = NULL;
@@ -267,11 +274,11 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[2], "recording-open") == 0 || strcmp(argv[2], "recording-restarted") == 0) {
         if (activate_named_control(pid, "General") != 0 ||
             settings_recording_checked(pid, strcmp(argv[2], "recording-restarted") == 0, 1) != 0 ||
-            settings_visible(pid, "Failed", 0) != 0) goto atspi_out;
+            settings_recording_card(pid, 0) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "recording-denied") == 0) {
         if (settings_recording_checked(pid, 0, 1) != 0 ||
             click_main_control(display, main, pid, "Automatically record incoming sessions") != 0 ||
-            settings_visible(pid, "Denied", 1) != 0 ||
+            settings_recording_card(pid, 1) != 0 ||
             settings_recording_checked(pid, 0, 1) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "recording-enable-submit") == 0 ||
                strcmp(argv[2], "recording-disable-submit") == 0) {
@@ -283,9 +290,7 @@ int main(int argc, char **argv) {
                strcmp(argv[2], "recording-disable") == 0) {
         int enabled = strcmp(argv[2], "recording-enable") == 0;
         if (settings_recording_checked(pid, enabled, 1) != 0 ||
-            settings_visible(pid, "Denied", 0) != 0 ||
-            settings_visible(pid, "Recording change is unconfirmed", 0) != 0 ||
-            settings_visible(pid, "Failed", 0) != 0) goto atspi_out;
+            settings_recording_card(pid, 0) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "cancel") == 0) {
         if (activate_named_control(pid, "Cancel") != 0 ||
             settings_visible(pid, "Set password", 0) != 0) goto atspi_out;

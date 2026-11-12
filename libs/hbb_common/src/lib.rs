@@ -529,6 +529,71 @@ mod test {
             .ends_with("rotation final record\n"));
     }
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn file_logging_recovers_when_file_and_stderr_writes_fail() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        const DIRECTORY_ENV: &str = "RUSTDESK_LOG_WRITE_FAILURE_DIRECTORY";
+        const TEST_NAME: &str = "test::file_logging_recovers_when_file_and_stderr_writes_fail";
+        if let Some(path) = std::env::var_os(DIRECTORY_ENV) {
+            // stdout is a pipe owned by the parent, outside the file-size fault.
+            // Preserve the failing call stack even when stderr cannot report it.
+            std::panic::set_hook(Box::new(|info| {
+                writeln!(std::io::stdout(), "FILE_LOG_WRITE_PANIC {info}\n{}",
+                    std::backtrace::Backtrace::force_capture()).unwrap();
+            }));
+            let (logger, handle) = file_logger(false, path.into()).unwrap().build().unwrap();
+            let write_record = |message| logger.log(
+                &log::Record::builder().level(log::Level::Error)
+                    .target("write_failure_regression")
+                    .args(format_args!("{message}")).build());
+            write_record("before-write-failure");
+            let mut original = libc::rlimit { rlim_cur: 0, rlim_max: 0 };
+            assert_eq!(unsafe { libc::getrlimit(libc::RLIMIT_FSIZE, &mut original) }, 0);
+            assert!(original.rlim_cur >= 1024 * 1024);
+            let previous = unsafe { libc::signal(libc::SIGXFSZ, libc::SIG_IGN) };
+            assert_ne!(previous, libc::SIG_ERR);
+            let limit = libc::rlimit { rlim_cur: 0, rlim_max: original.rlim_max };
+            assert_eq!(unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &limit) }, 0);
+            let refused = writeln!(std::io::stderr(), "stderr-must-refuse");
+            assert_eq!(refused.unwrap_err().raw_os_error(), Some(libc::EFBIG));
+            write_record("during-write-failure");
+            let restored = unsafe { libc::setrlimit(libc::RLIMIT_FSIZE, &original) };
+            let disposition = unsafe { libc::signal(libc::SIGXFSZ, previous) };
+            assert_eq!(restored, 0);
+            assert_ne!(disposition, libc::SIG_ERR);
+            write_record("after-write-failure");
+            handle.shutdown();
+            println!("FILE_LOG_WRITE_RECOVERED stderr=EFBIG limit=restored");
+            return;
+        }
+
+        let directory = LogDirectory::new();
+        let diagnostics = directory.0.join("stderr.capture");
+        let stderr = std::fs::OpenOptions::new().create_new(true).write(true)
+            .open(&diagnostics).unwrap();
+        let output = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", TEST_NAME, "--test-threads=1", "--nocapture"])
+            .env(DIRECTORY_ENV, &directory.0).env("RUST_LOG", "error")
+            .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::from(stderr))
+            .output().unwrap();
+        assert!(output.stdout.len() <= 64 * 1024);
+        assert!(output.status.success(), "write-failure child: {}\n{}",
+            output.status, String::from_utf8_lossy(&output.stdout));
+        assert!(String::from_utf8_lossy(&output.stdout)
+            .contains("FILE_LOG_WRITE_RECOVERED stderr=EFBIG limit=restored\n"));
+        assert_eq!(std::fs::metadata(diagnostics).unwrap().len(), 0);
+        let logs = directory.logs();
+        assert_eq!(logs.len(), 1);
+        let content = std::fs::read_to_string(&logs[0]).unwrap();
+        assert!(content.contains("before-write-failure\n"));
+        assert!(!content.contains("during-write-failure\n"));
+        assert!(content.ends_with("after-write-failure\n"));
+        println!("FILE_LOG_WRITE_FAILURE file=EFBIG stderr=EFBIG recovered=true child=joined");
+    }
+
     #[test]
     fn file_logging_retains_only_the_configured_archives() {
         let directory = LogDirectory::new();

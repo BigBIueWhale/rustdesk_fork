@@ -148477,3 +148477,15 @@ source or Linux compilation. No live instruction or host authentication changes.
 
 This append preserves the prior 15,981,991-byte audit prefix,
 SHA-256 bb05f5e0e2a967a91981d4821da4fcad1f885e2a12f05404bcc4ec7b2af77769.
+
+Fresh ledger count at bd1b52a8, HB1rXpwd2v/tool62216 exits zero: 411,545 tokens /
+1,877,961 bytes, SHA-256
+8f2127ac55e952fd02987b17c949aa055f4b52358da8d2e0aacf6117a9f4ad3e.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and complete
+round trip pass. incoming-status-ledger-bd1b52a8.json binds eight files/115,812
+bytes verified on both hosts. QEMU 2698300 joins zero after 30.256 seconds;
+RAM scratch peaks at 402,915,328 bytes, three listener deltas are zero, and exact
+private/QEMU/socket/RAM absence is verified. Approximate 400,000-token compression
+remains OPEN. This audit-only append preserves the counted ledger and prior
+15,987,216-byte audit prefix, SHA-256
+a7248ca880efada3cce1f7a1091a78aefabf62b6114f619cabef36e659f3801e.

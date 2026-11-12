@@ -29,6 +29,7 @@ FLUTTER_THEME_APPEARANCE=0
 FLUTTER_THEME_SAVE_FAILURE=0
 FLUTTER_VIEWER_ISOLATION=0
 FLUTTER_CAMERA_UNAVAILABLE=0
+FLUTTER_CAMERA_SHARED=0
 FLUTTER_VIEWER_SOAK=0
 FLUTTER_INPUT_LATENCY=0
 FLUTTER_INPUT_SOAK=0
@@ -382,6 +383,7 @@ case "$#:${8:-}" in
                 --theme-save-failure) FLUTTER_THEME_SAVE_FAILURE=1 ;;
                 --viewer-isolation) FLUTTER_VIEWER_ISOLATION=1 ;;
                 --camera-unavailable) FLUTTER_CAMERA_UNAVAILABLE=1 ;;
+                --camera-shared) FLUTTER_CAMERA_SHARED=1 ;;
                 --viewer-soak) FLUTTER_VIEWER_SOAK=1 ;;
                 --input-latency) FLUTTER_INPUT_LATENCY=1 ;;
                 --input-soak) FLUTTER_INPUT_SOAK=1 ;;
@@ -496,7 +498,7 @@ readonly FLUTTER_QUALITY_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
-readonly FLUTTER_CAMERA_UNAVAILABLE
+readonly FLUTTER_CAMERA_UNAVAILABLE FLUTTER_CAMERA_SHARED
 readonly FLUTTER_VIEWER_SOAK
 readonly FLUTTER_INPUT_LATENCY
 readonly FLUTTER_INPUT_SOAK
@@ -14910,6 +14912,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || peer_args+=(--theme-save-failure)
     [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || peer_args+=(--viewer-isolation)
     [ "$FLUTTER_CAMERA_UNAVAILABLE" -eq 0 ] || peer_args+=(--camera-unavailable)
+    [ "$FLUTTER_CAMERA_SHARED" -eq 0 ] || peer_args+=(--camera-shared)
     [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || peer_args+=(--viewer-soak)
     [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || peer_args+=(--input-latency)
     [ "$FLUTTER_INPUT_SOAK" -eq 0 ] || peer_args+=(--input-soak)
@@ -14999,6 +15002,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_VIEWER_ISOLATION" -eq 1 ]; then
         peer_scenario=viewer-isolation
+        peer_cycles=1
+    elif [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+        peer_scenario=camera-shared
         peer_cycles=1
     elif [ "$FLUTTER_CAMERA_UNAVAILABLE" -eq 1 ]; then
         peer_scenario=camera-unavailable
@@ -15339,13 +15345,23 @@ ulimit -Sn "$VERIFIER_VM_NOFILE_LIMIT" \
     || fail 'Docker version pin is malformed'
 case "$EXPECTED_SIZE" in 0|*[!0-9]*|'') fail 'Docker size pin is malformed' ;; esac
 [[ "$EXPECTED_SHA256" =~ ^[0-9a-f]{64}$ ]] || fail 'Docker digest pin is malformed'
-[[ "$EXPECTED_KERNEL_RELEASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cloud-amd64$ ]] \
-    || fail 'kernel-release pin is malformed'
+if [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+    [ "$EXPECTED_KERNEL_RELEASE" = 6.1.0-50-amd64 ] || fail 'camera kernel pin differs'
+else
+    [[ "$EXPECTED_KERNEL_RELEASE" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]+-cloud-amd64$ ]] \
+        || fail 'kernel-release pin is malformed'
+fi
 [[ "$EXPECTED_ROOT_UUID" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] \
     || fail 'root-filesystem UUID pin is malformed'
 [ "$(uname -r)" = "$EXPECTED_KERNEL_RELEASE" ] \
     || fail 'running guest kernel release differs'
 expected_cmdline="root=UUID=$EXPECTED_ROOT_UUID rw rootfstype=ext4 rootwait console=ttyS0,115200n8 rustdesk.verifier_vm=1 systemd.mask=systemd-networkd-wait-online.service systemd.mask=ssh.service systemd.mask=ssh.socket"
+if [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+    expected_cmdline+=' rustdesk.media_vm=1 systemd.mask=serial-getty@ttyS0.service'
+    for service in cloud-init-local cloud-init cloud-config cloud-final; do
+        expected_cmdline+=" systemd.mask=$service.service"
+    done
+fi
 [ "$(< /proc/cmdline)" = "$expected_cmdline" ] \
     || fail 'running guest kernel command line differs'
 for masked_unit in systemd-networkd-wait-online.service ssh.service ssh.socket; do

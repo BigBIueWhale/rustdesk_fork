@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import stat
 import subprocess
 import sys
 
@@ -28,9 +29,57 @@ def create(path, data):
         os.fsync(output.fileno())
 
 
+def application_request(argv, contract, release):
+    require(len(argv) == 21 and argv[:4] == [
+        'bash', '/mnt/rustdesk-verifier-inputs/guest.sh',
+        '/mnt/rustdesk-verifier-inputs/docker.tgz',
+        '/mnt/rustdesk-verifier-inputs/repo/scripts/verify-vm-entry-preflight.sh']
+        and argv[7] == release
+        and argv[8] == contract['pins']['VERIFIER_VM_ROOT_FILESYSTEM_UUID']
+        and argv[9:11] == ['--linux-flutter-app-replay', '/mnt/rustdesk-verifier-inputs/source.tar']
+        and argv[11] == contract['source_commit'] and argv[20] == '--camera-shared',
+        'closed application replay request differs')
+    require(all(re.fullmatch('[0-9a-f]{40}', argv[i]) for i in (11, 12, 14, 15))
+            and all(re.fullmatch('[0-9a-f]{64}', argv[i]) for i in (6, 13, 16, 17))
+            and all(len(argv[i]) <= 16384 and isinstance(json.loads(argv[i]), dict)
+                    for i in (18, 19)), 'application replay identities differ')
+
+
+def application_fixture(guest, contract, previous):
+    argv = previous['application_argv']
+    application_request(argv, contract, contract['pins']['VERIFIER_VM_KERNEL_RELEASE'])
+    argv[7] = guest.RELEASE
+    require(not list(Path('/dev').glob('video*')), 'application starts with camera nodes')
+    guest.run(['/usr/sbin/modprobe', 'vivid', 'n_devs=1', 'node_types=1', 'vid_cap_nr=2',
+               'num_inputs=1', 'input_types=0'])
+    try:
+        guest.run(['/usr/bin/udevadm', 'settle', '--timeout=10'])
+        node = Path('/dev/video2')
+        require(sorted(p.name for p in Path('/dev').glob('video*')) == ['video2']
+                and stat.S_ISCHR(node.lstat().st_mode)
+                and Path('/sys/class/video4linux/video2/name').read_text().strip()
+                == 'vivid-000-vid-cap', 'application native camera identity differs')
+        os.chown(node, 1000, 1000)
+        os.chmod(node, 0o600)
+        # Common guest orchestration owns the unprivileged app containers and
+        # joins them before returning. The device is created only in this guest.
+        subprocess.run(argv, check=True, timeout=840)
+    finally:
+        guest.run(['/usr/sbin/modprobe', '-r', 'vivid'])
+        guest.run(['/usr/bin/udevadm', 'settle', '--timeout=10'])
+    require(not list(Path('/dev').glob('video*')) and not Path('/sys/module/vivid').exists(),
+            'application camera module retirement incomplete')
+    print('MEDIA_APPLICATION_FIXTURE=pass source=' + contract['source_commit']
+          + ' kernel=' + guest.RELEASE
+          + ' native_node=2 viewers=2 module=retired cleanup=joined', flush=True)
+    print('VERIFIER_VM_CLOUD_INIT=pass', flush=True)
+
+
 def main():
     os.umask(0o077)
-    require(sys.argv[1:] in (['--prepare'], ['--fixture']), 'closed media boot request required')
+    preparing_app = sys.argv[1:3] == ['--prepare', '--']
+    require(preparing_app or sys.argv[1:] in (['--prepare'], ['--fixture']),
+            'closed media boot request required')
     require(os.getuid() == 0 and os.getgid() == 0 and os.uname().machine == 'x86_64',
             'media boot requires the x86_64 guest administrator')
     require(Path('/proc/1/comm').read_text().strip() == 'systemd'
@@ -41,7 +90,12 @@ def main():
                     for line in Path('/proc/mounts').read_text().splitlines()),
             'media boot forbids filesystem shares')
     contract = json.loads((MEDIA / 'contract.json').read_text())
-    require(type(contract['nokhwa']) is bool, 'closed media workload required')
+    require(type(contract['nokhwa']) is bool and type(contract['application']) is bool
+            and not (contract['nokhwa'] and contract['application']), 'closed media workload required')
+    if sys.argv[1] == '--prepare':
+        require(preparing_app == contract['application'], 'media/application preparation differs')
+        if preparing_app:
+            application_request(sys.argv[3:], contract, contract['pins']['VERIFIER_VM_KERNEL_RELEASE'])
     require(re.fullmatch('[0-9a-f]{40}', contract['source_commit']) is not None,
             'media source commit differs')
     spec = importlib.util.spec_from_file_location('media_guest', MEDIA / 'guest.py')
@@ -73,13 +127,21 @@ def main():
                 'another kexec image is already loaded')
         result = guest.provision(pins)
         result.update(source_commit=contract['source_commit'], boot_id=boot_id)
+        if preparing_app:
+            result['application_argv'] = sys.argv[3:]
         create(STATE, json.dumps(result, sort_keys=True).encode() + b'\n')
+        start = '/usr/bin/python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --fixture'
+        if preparing_app:
+            start = ('/bin/bash -o pipefail -c "' + start + ' 2>&1 | /usr/bin/python3 -I -S '
+                     '/mnt/rustdesk-verifier-inputs/repo/scripts/bounded-unix-stream-capture.py '
+                     '--guest-output"')
         unit = ('[Unit]\nDescription=Disposable native media fixture\n'
                 'After=local-fs.target\nConditionKernelCommandLine=rustdesk.media_vm=1\n'
-                '[Service]\nType=oneshot\nTimeoutStartSec=' + ('360' if contract['nokhwa'] else '60') + '\n'
+                '[Service]\nType=oneshot\nTimeoutStartSec='
+                + ('900' if preparing_app else '360' if contract['nokhwa'] else '60') + '\n'
                 'ExecStartPre=/usr/bin/mount -L RD_VERIFIER_INPUTS -o ro,nodev,nosuid,noexec'
                 ' /mnt/rustdesk-verifier-inputs\n'
-                'ExecStart=/usr/bin/python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --fixture\n'
+                'ExecStart=' + start + '\n'
                 'ExecStopPost=/usr/bin/systemctl --no-block poweroff\n'
                 'StandardOutput=tty\nStandardError=tty\nTTYPath=/dev/ttyS0\n')
         create(UNIT, unit.encode())
@@ -108,6 +170,9 @@ def main():
         require(guest.file_record(kernel, guest.LIMIT) == previous['kernel']
                 and guest.file_record(initrd, guest.LIMIT) == previous['initrd'],
                 'media handoff assets changed')
+        if contract['application']:
+            application_fixture(guest, contract, previous)
+            return
         result = guest.fixture(pins, contract) if contract['nokhwa'] else guest.capture_fixture(pins)
         result.update(source_commit=contract['source_commit'], boot_id=boot_id,
                       previous_boot_id=previous['boot_id'], sources=contract['sources'])
@@ -129,4 +194,5 @@ if __name__ == '__main__':
         main()
     except (OSError, ValueError, KeyError, subprocess.SubprocessError) as error:
         print('MEDIA_KERNEL_FAILURE=' + str(error), file=sys.stderr, flush=True)
+        print('VERIFIER_VM_CLOUD_INIT=fail status=1', file=sys.stderr, flush=True)
         raise SystemExit(1)

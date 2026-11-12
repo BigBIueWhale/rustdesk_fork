@@ -4057,6 +4057,75 @@ static int wait_isolation_marker(int coord, const char *name, unsigned int budge
     return -1;
 }
 
+/* Read a broad central area from the actual X11 root, not a decode callback.
+ * Three successive observations must match each guest-controlled camera color. */
+static int camera_pixels(Display *display, const ViewerWindow *viewer, unsigned int color) {
+    uint64_t deadline = monotonic_millis() + 15000U;
+    unsigned int samples = 0U, matched = 0U;
+    while (monotonic_millis() < deadline) {
+        XWindowAttributes attrs;
+        Window child;
+        int x, y;
+        if (!XGetWindowAttributes(display, viewer->window, &attrs) ||
+            attrs.map_state != IsViewable || attrs.width < 400 || attrs.height < 240 ||
+            !XTranslateCoordinates(display, viewer->window, DefaultRootWindow(display),
+                attrs.width / 2 - 100, attrs.height / 2 - 60, &x, &y, &child)) return -1;
+        XImage *pixels = XGetImage(display, DefaultRootWindow(display), x, y,
+                                  200U, 120U, AllPlanes, ZPixmap);
+        if (pixels == NULL) return -1;
+        matched = 0U;
+        for (int row = 0; row < 120; ++row) {
+            for (int column = 0; column < 200; ++column) {
+                unsigned long pixel = XGetPixel(pixels, column, row);
+                unsigned int rgb[3] = {
+                    x11_frame_component(pixel, pixels->red_mask),
+                    x11_frame_component(pixel, pixels->green_mask),
+                    x11_frame_component(pixel, pixels->blue_mask)};
+                if (rgb[color] >= 180U && rgb[(color + 1U) % 3U] <= 60U &&
+                    rgb[(color + 2U) % 3U] <= 60U) matched += 1U;
+            }
+        }
+        XDestroyImage(pixels);
+        samples = matched >= 22800U ? samples + 1U : 0U;
+        if (samples == 3U) {
+            printf("FLUTTER_PEER_CAMERA_PIXELS color=%u matched=%u area=24000 samples=3 "
+                   "observation=x11-root\n", color, matched);
+            return 0;
+        }
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL camera color=%u matched=%u samples=%u\n",
+            color, matched, samples);
+    return -1;
+}
+
+static int camera_shared(Display *display, const ViewerWindow *viewer, int slow) {
+    int result = -1;
+    int coord = open("/coord", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    ConnectionIdentity before = {{0}, {0}, 0UL}, after = {{0}, {0}, 0UL};
+    if (coord < 0) return -1;
+    if (camera_pixels(display, viewer, 0U) != 0 ||
+        read_connection_identity(&before) != 0 ||
+        isolation_marker(coord, slow ? "slow.ready" : "camera.main.ready", 1) != 0 ||
+        wait_isolation_marker(coord, "camera.green", 60000U) != 0 ||
+        camera_pixels(display, viewer, 1U) != 0 ||
+        isolation_marker(coord, slow ? "camera.slow.green" : "camera.main.green", 1) != 0)
+        goto out;
+    if (slow) {
+        if (wait_isolation_marker(coord, "camera.close-slow", 15000U) != 0) goto out;
+    } else {
+        if (wait_isolation_marker(coord, "camera.blue", 30000U) != 0 ||
+            camera_pixels(display, viewer, 2U) != 0) goto out;
+    }
+    if (read_connection_identity(&after) != 0 || !same_connection(&before, &after)) goto out;
+    printf("FLUTTER_PEER_CAMERA_VIEWER_OK role=%s colors=%u stable_connection=true\n",
+           slow ? "slow" : "main", slow ? 2U : 3U);
+    result = 0;
+out:
+    if (close(coord) != 0) result = -1;
+    return result;
+}
+
 static int stop_isolation_viewer(int process, int pidfd, unsigned long pid,
                                  const char *start) {
     char state = '\0';
@@ -8814,6 +8883,8 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--audio-mute") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--camera-unavailable") != 0 &&
+                                    strcmp(argv[5], "--camera-shared-main") != 0 &&
+                                    strcmp(argv[5], "--camera-shared-slow") != 0 &&
                                     strcmp(argv[5], "--monitor-switch") != 0 &&
                                     strcmp(argv[5], "--recent-search") != 0 &&
                                     strcmp(argv[5], "--native-components") != 0 &&
@@ -8890,7 +8961,9 @@ int main(int argc, char **argv) {
             if (strcmp(argv[5], keyboard_phases[i]) == 0) keyboard_generation = i + 1U;
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
-    if (argc == 6 && strcmp(argv[5], "--camera-unavailable") == 0)
+    int camera = argc == 6 && (strcmp(argv[5], "--camera-shared-main") == 0 ||
+                               strcmp(argv[5], "--camera-shared-slow") == 0);
+    if (camera || (argc == 6 && strcmp(argv[5], "--camera-unavailable") == 0))
         expected_remote_title_suffix = " - View camera - RustDesk";
     if (language_direction && language_generation == 2U)
         expected_remote_title_suffix = " - שלוט בשולחן עבודה מרוחק - RustDesk";
@@ -8919,7 +8992,7 @@ int main(int argc, char **argv) {
     }
     int isolation = argc == 6 && (strcmp(argv[5], "--isolation-slow") == 0 ||
                                   strcmp(argv[5], "--isolation-healthy") == 0);
-    if (isolation) {
+    if (isolation || camera) {
         char path[64];
         snprintf(path, sizeof(path), "/proc/%lu/fd", viewer_pid);
         connection_fds = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
@@ -9067,6 +9140,17 @@ int main(int argc, char **argv) {
     }
     puts("FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true "
          "retired=true typed_via_xtest=true argv_password=false");
+    }
+
+    if (camera) {
+        int result = camera_shared(display, &viewer, strcmp(argv[5], "--camera-shared-slow") == 0);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        if (close(connection_fds) != 0) result = -1;
+        connection_fds = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
     }
 
     if (argc == 6 && strcmp(argv[5], "--camera-unavailable") == 0) {

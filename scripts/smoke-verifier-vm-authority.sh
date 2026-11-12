@@ -74,6 +74,7 @@ FLUTTER_THEME_APPEARANCE=0
 FLUTTER_THEME_SAVE_FAILURE=0
 FLUTTER_VIEWER_ISOLATION=0
 FLUTTER_CAMERA_UNAVAILABLE=0
+FLUTTER_CAMERA_SHARED=0
 FLUTTER_VIEWER_SOAK=0
 FLUTTER_INPUT_LATENCY=0
 FLUTTER_INPUT_SOAK=0
@@ -802,6 +803,7 @@ case "$#:${1:-}" in
                 --theme-save-failure) FLUTTER_THEME_SAVE_FAILURE=1 ;;
                 --viewer-isolation) FLUTTER_VIEWER_ISOLATION=1 ;;
                 --camera-unavailable) FLUTTER_CAMERA_UNAVAILABLE=1 ;;
+                --camera-shared) FLUTTER_CAMERA_SHARED=1 ;;
                 --viewer-soak) FLUTTER_VIEWER_SOAK=1 ;;
                 --input-latency) FLUTTER_INPUT_LATENCY=1 ;;
                 --input-soak) FLUTTER_INPUT_SOAK=1 ;;
@@ -1004,7 +1006,7 @@ readonly FLUTTER_QUALITY_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
-readonly FLUTTER_CAMERA_UNAVAILABLE
+readonly FLUTTER_CAMERA_UNAVAILABLE FLUTTER_CAMERA_SHARED
 readonly FLUTTER_VIEWER_SOAK
 readonly FLUTTER_INPUT_LATENCY
 readonly FLUTTER_INPUT_SOAK
@@ -3078,7 +3080,7 @@ if [ "$MODE" = debian-maintainer-tests ]; then
     debian_maintainer_sources_before="$(/usr/bin/sha256sum "${debian_maintainer_sources[@]}")"
 fi
 ledger_token_inputs_before=
-if [ "$MODE" = media-kernel-tests ]; then
+if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
     media_sources=("$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" "$PIN_SOURCE" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh")
     media_product_sources=()
     if [ "$MEDIA_NOKHWA" -eq 1 ]; then
@@ -5052,74 +5054,7 @@ elif [ "$MODE" = dependency-inventory ]; then
         [ "$source" != .github/workflows/DISABLED.md ] || continue
         lifecycle_payload_grafts+=("repo/$source=$REPO_ROOT/$source")
     done
-elif [ "$MODE" = media-kernel-tests ]; then
-    media_contract="$VM_TRANSIENT/media-contract.json"
-    /usr/bin/python3 -I -S - "$media_contract" "$FOCUSED_TEST_COMMIT" "$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" \
-        "$VERIFIER_VM_KERNEL_RELEASE" "$VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
-        "$SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE" "$SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE" \
-        "$SIZE_VERIFIER_MEDIA_KERNEL" "$SHA256_VERIFIER_MEDIA_KERNEL" \
-        "$SHA256_VERIFIER_MEDIA_KERNEL_CONFIG" "$SOURCE_DATE_EPOCH_PIN" "$MEDIA_NOKHWA" "$PIN_SOURCE" "${media_product_sources[@]}" <<'PY'
-import hashlib,json,os,re,sys
-from pathlib import Path
-sources={}
-for name,path in zip(('boot.py','guest.py'),sys.argv[3:5]):
-    data=Path(path).read_bytes()
-    sources[name]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
-keys=('VERIFIER_VM_KERNEL_RELEASE','VERIFIER_VM_ROOT_FILESYSTEM_UUID',
-      'SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE','SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE',
-      'SIZE_VERIFIER_MEDIA_KERNEL','SHA256_VERIFIER_MEDIA_KERNEL',
-      'SHA256_VERIFIER_MEDIA_KERNEL_CONFIG','SOURCE_DATE_EPOCH_PIN')
-pins=dict(zip(keys,sys.argv[5:13]))
-nokhwa=sys.argv[13]=='1'
-if nokhwa:
-    scripts=Path(sys.argv[3]).parent
-    for name,path in [('nokhwa.py',scripts/'verifier-media-nokhwa.py'),
-                      *((f'product/{name}',scripts.parent/name) for name in sys.argv[15:]),
-                      ('product-Cargo.toml',scripts.parent/'Cargo.toml'),
-                      ('product-Cargo.lock',scripts.parent/'Cargo.lock'),
-                      *((f'backend/{name}',scripts.parent/'libs/nokhwa-bindings-linux'/name)
-                        for name in ('Cargo.toml','src/lib.rs','src/capture.rs','README.md','LICENSE')),
-                      *((f'probe/{name}',scripts/'camera-native-probe'/name)
-                        for name in ('Cargo.toml','Cargo.lock','build.rs','src/main.rs')),
-                      *((f'../repo/scripts/{name}',scripts/name) for name in
-                        ('verify-vm-entry-preflight.sh','offline-image-provenance.py','online-input-provenance.py'))]:
-        data=path.read_bytes()
-        sources[name]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
-    selected=('DEV_CHECK_', 'SHA256_DEV_CHECK_', 'SIZE_DEV_CHECK_',
-              'SIZE_VERIFIER_VM_DOCKER_STATIC', 'SHA256_VERIFIER_VM_DOCKER_STATIC',
-              'SHA256_CARGO_VENDOR_CLOSURE_V1')
-    for line in Path(sys.argv[14]).read_text().splitlines():
-        match=re.fullmatch(r'([A-Z0-9_]+)="([^"\n]*)"(?:\s*#.*)?',line)
-        if match and match[1].startswith(selected):
-            pins[match[1]]=match[2]
-with open(sys.argv[1],'x') as output:
-    json.dump({'source_commit':sys.argv[2],'sources':sources,'pins':pins,'nokhwa':nokhwa},output,sort_keys=True)
-    output.write('\n')
-    os.fchmod(output.fileno(),0o400)
-PY
-    lifecycle_payload_grafts=(
-        "media/contract.json=$media_contract"
-        "media/boot.py=$MEDIA_BOOT_SOURCE"
-        "media/guest.py=$MEDIA_GUEST_SOURCE"
-        "media/linux-image-6.1.0-50-amd64_6.1.176-1_amd64.deb=$MEDIA_KERNEL_PACKAGE"
-    )
-    if [ "$MEDIA_NOKHWA" -eq 1 ]; then
-        payload_identity=(-uid 1000 -gid 1000)
-        for source in "${media_product_sources[@]}"; do
-            lifecycle_payload_grafts+=("media/product/$source=$REPO_ROOT/$source")
-        done
-        lifecycle_payload_grafts+=(
-            "media/nokhwa.py=$SCRIPT_DIR/verifier-media-nokhwa.py"
-            "media/probe=$SCRIPT_DIR/camera-native-probe"
-            "media/backend=$REPO_ROOT/libs/nokhwa-bindings-linux"
-            "media/product-Cargo.toml=$REPO_ROOT/Cargo.toml"
-            "media/product-Cargo.lock=$REPO_ROOT/Cargo.lock"
-            "repo/scripts/online-input-provenance.py=$SCRIPT_DIR/online-input-provenance.py"
-            "media/devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
-            "media/cargo-vendor=$CARGO_VENDOR_ROOT"
-            "media/cargo-vendor-config.toml=$CARGO_VENDOR_CONFIG"
-        )
-    fi
+
 elif [ "$MODE" = ledger-token-count ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=(
@@ -5385,6 +5320,77 @@ elif [ "$MODE" = rust-audit ]; then
         "source.tar=$RUST_AUDIT_SOURCE_ARCHIVE"
         "rust-audit.docker.tar.gz=$RUST_AUDIT_IMAGE_ARCHIVE"
     )
+fi
+if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+    media_commit=$FOCUSED_TEST_COMMIT
+    [ "$FLUTTER_CAMERA_SHARED" -eq 0 ] || media_commit=$FLUTTER_PEER_SOURCE_COMMIT
+    media_contract="$VM_TRANSIENT/media-contract.json"
+    /usr/bin/python3 -I -S - "$media_contract" "$media_commit" "$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" \
+        "$VERIFIER_VM_KERNEL_RELEASE" "$VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
+        "$SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE" "$SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE" \
+        "$SIZE_VERIFIER_MEDIA_KERNEL" "$SHA256_VERIFIER_MEDIA_KERNEL" \
+        "$SHA256_VERIFIER_MEDIA_KERNEL_CONFIG" "$SOURCE_DATE_EPOCH_PIN" "$MEDIA_NOKHWA" "$FLUTTER_CAMERA_SHARED" "$PIN_SOURCE" "${media_product_sources[@]}" <<'PY'
+import hashlib,json,os,re,sys
+from pathlib import Path
+sources={}
+for name,path in zip(('boot.py','guest.py'),sys.argv[3:5]):
+    data=Path(path).read_bytes()
+    sources[name]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+keys=('VERIFIER_VM_KERNEL_RELEASE','VERIFIER_VM_ROOT_FILESYSTEM_UUID',
+      'SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE','SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE',
+      'SIZE_VERIFIER_MEDIA_KERNEL','SHA256_VERIFIER_MEDIA_KERNEL',
+      'SHA256_VERIFIER_MEDIA_KERNEL_CONFIG','SOURCE_DATE_EPOCH_PIN')
+pins=dict(zip(keys,sys.argv[5:13]))
+nokhwa=sys.argv[13]=='1'
+if nokhwa:
+    scripts=Path(sys.argv[3]).parent
+    for name,path in [('nokhwa.py',scripts/'verifier-media-nokhwa.py'),
+                      *((f'product/{name}',scripts.parent/name) for name in sys.argv[16:]),
+                      ('product-Cargo.toml',scripts.parent/'Cargo.toml'),
+                      ('product-Cargo.lock',scripts.parent/'Cargo.lock'),
+                      *((f'backend/{name}',scripts.parent/'libs/nokhwa-bindings-linux'/name)
+                        for name in ('Cargo.toml','src/lib.rs','src/capture.rs','README.md','LICENSE')),
+                      *((f'probe/{name}',scripts/'camera-native-probe'/name)
+                        for name in ('Cargo.toml','Cargo.lock','build.rs','src/main.rs')),
+                      *((f'../repo/scripts/{name}',scripts/name) for name in
+                        ('verify-vm-entry-preflight.sh','offline-image-provenance.py','online-input-provenance.py'))]:
+        data=path.read_bytes()
+        sources[name]={'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+    selected=('DEV_CHECK_', 'SHA256_DEV_CHECK_', 'SIZE_DEV_CHECK_',
+              'SIZE_VERIFIER_VM_DOCKER_STATIC', 'SHA256_VERIFIER_VM_DOCKER_STATIC',
+              'SHA256_CARGO_VENDOR_CLOSURE_V1')
+    for line in Path(sys.argv[15]).read_text().splitlines():
+        match=re.fullmatch(r'([A-Z0-9_]+)="([^"\n]*)"(?:\s*#.*)?',line)
+        if match and match[1].startswith(selected):
+            pins[match[1]]=match[2]
+with open(sys.argv[1],'x') as output:
+    json.dump({'source_commit':sys.argv[2],'sources':sources,'pins':pins,'nokhwa':nokhwa,'application':sys.argv[14]=='1'},output,sort_keys=True)
+    output.write('\n')
+    os.fchmod(output.fileno(),0o400)
+PY
+    lifecycle_payload_grafts+=(
+        "media/contract.json=$media_contract"
+        "media/boot.py=$MEDIA_BOOT_SOURCE"
+        "media/guest.py=$MEDIA_GUEST_SOURCE"
+        "media/linux-image-6.1.0-50-amd64_6.1.176-1_amd64.deb=$MEDIA_KERNEL_PACKAGE"
+    )
+    if [ "$MEDIA_NOKHWA" -eq 1 ]; then
+        payload_identity=(-uid 1000 -gid 1000)
+        for source in "${media_product_sources[@]}"; do
+            lifecycle_payload_grafts+=("media/product/$source=$REPO_ROOT/$source")
+        done
+        lifecycle_payload_grafts+=(
+            "media/nokhwa.py=$SCRIPT_DIR/verifier-media-nokhwa.py"
+            "media/probe=$SCRIPT_DIR/camera-native-probe"
+            "media/backend=$REPO_ROOT/libs/nokhwa-bindings-linux"
+            "media/product-Cargo.toml=$REPO_ROOT/Cargo.toml"
+            "media/product-Cargo.lock=$REPO_ROOT/Cargo.lock"
+            "repo/scripts/online-input-provenance.py=$SCRIPT_DIR/online-input-provenance.py"
+            "media/devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
+            "media/cargo-vendor=$CARGO_VENDOR_ROOT"
+            "media/cargo-vendor-config.toml=$CARGO_VENDOR_CONFIG"
+        )
+    fi
 fi
 vm_iso_command /usr/bin/xorriso -as mkisofs -quiet -iso-level 3 -volid RD_VERIFIER_INPUTS \
     -joliet -rock -dir-mode 0555 "${payload_identity[@]}" -graft-points -output "$PAYLOAD" \
@@ -5742,6 +5748,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || guest_invocation+=' --theme-save-failure'
         [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || guest_invocation+=' --viewer-isolation'
         [ "$FLUTTER_CAMERA_UNAVAILABLE" -eq 0 ] || guest_invocation+=' --camera-unavailable'
+        [ "$FLUTTER_CAMERA_SHARED" -eq 0 ] || guest_invocation+=' --camera-shared'
         [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || guest_invocation+=' --viewer-soak'
         [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || guest_invocation+=' --input-latency'
         [ "$FLUTTER_INPUT_SOAK" -eq 0 ] || guest_invocation+=' --input-soak'
@@ -5786,8 +5793,15 @@ elif [ "$MODE" = dart-audit ]; then
 elif [ "$MODE" = rust-audit ]; then
     guest_invocation+=" --rust-audit /mnt/rustdesk-verifier-inputs/source.tar $RUST_AUDIT_SOURCE_COMMIT $RUST_AUDIT_SOURCE_TREE $RUST_AUDIT_SOURCE_ARCHIVE_SHA256 /mnt/rustdesk-verifier-inputs/rust-audit.docker.tar.gz"
 fi
+guest_report=VERIFIER_VM_CLOUD_INIT
+guest_output=') 2>&1 | /usr/bin/python3 -I -S /mnt/rustdesk-verifier-inputs/repo/scripts/bounded-unix-stream-capture.py --guest-output'
+if [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+    guest_invocation="python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --prepare -- $guest_invocation"
+    guest_report=MEDIA_APPLICATION_PREPARE
+    guest_output=') 2>&1'
+fi
 guest_finish='systemctl poweroff --no-block || poweroff -f'
-if [ "$MODE" = media-kernel-tests ]; then
+if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
     guest_finish='if [ "$status" -eq 0 ]; then systemctl kexec --no-block || poweroff -f; else systemctl poweroff --no-block || poweroff -f; fi'
 fi
 printf '%s\n' \
@@ -5804,9 +5818,9 @@ printf '%s\n' \
     '    status=$?' \
     '    trap - EXIT' \
     '    if [ "$status" -eq 0 ]; then' \
-    '        echo VERIFIER_VM_CLOUD_INIT=pass' \
+    "        echo $guest_report=pass" \
     '    else' \
-    '        echo VERIFIER_VM_CLOUD_INIT=fail status=$status' \
+    "        echo $guest_report=fail status=\$status" \
     '    fi' \
     '    exit "$status"' \
     '}' \
@@ -5816,7 +5830,7 @@ printf '%s\n' \
     '(' \
     '    trap report_status EXIT' \
     "$guest_invocation" \
-    ') 2>&1 | /usr/bin/python3 -I -S /mnt/rustdesk-verifier-inputs/repo/scripts/bounded-unix-stream-capture.py --guest-output' \
+    "$guest_output" \
     >"$RUN/seed/user-data"
 printf '%s\n' \
     'instance-id: rustdesk-verifier-authority-v1' \
@@ -9608,6 +9622,12 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || peer_scenario=theme-save-failure
     [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || peer_scenario=viewer-isolation
     [ "$FLUTTER_CAMERA_UNAVAILABLE" -eq 0 ] || peer_scenario=camera-unavailable
+    if [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+        peer_scenario=camera-shared
+        require_exact_fixed_receipt \
+            "MEDIA_APPLICATION_FIXTURE=pass source=$FLUTTER_PEER_SOURCE_COMMIT kernel=6.1.0-50-amd64 native_node=2 viewers=2 module=retired cleanup=joined" \
+            'native camera application lifecycle'
+    fi
     [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || peer_scenario=viewer-soak
     [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || peer_scenario=input-latency
     [ "$FLUTTER_INPUT_SOAK" -eq 0 ] || peer_scenario=input-soak
@@ -10236,10 +10256,9 @@ if [ "$MODE" = dependency-inventory ]; then
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'dependency inventory source or index changed'
 fi
-if [ "$MODE" = media-kernel-tests ]; then
+if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
     [ "$(/usr/bin/sha256sum "${media_sources[@]}")" = "$media_inputs_before" ] \
-        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
-        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$media_commit" ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'media kernel source or inputs changed during execution'
 fi

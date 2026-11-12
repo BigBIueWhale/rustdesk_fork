@@ -77,6 +77,7 @@ case "$#:${1:-}" in
         --viewer-suspend) PEER_SCENARIO=viewer-suspend ;;
         --viewer-isolation) PEER_SCENARIO=viewer-isolation ;;
         --camera-unavailable) PEER_SCENARIO=camera-unavailable ;;
+        --camera-shared) PEER_SCENARIO=camera-shared ;;
         --viewer-soak) PEER_SCENARIO=viewer-soak ;;
         --congestion-soak) PEER_SCENARIO=congestion-soak ;;
         --input-congestion-soak) PEER_SCENARIO=input-congestion-soak ;;
@@ -270,6 +271,11 @@ elif [ "$PEER_SCENARIO" = session-close ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined session_close=passed connected_sockets=0 listener=preserved main=usable'
+elif [ "$PEER_SCENARIO" = camera-shared ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined camera_shared=main colors=3 stable_connection=true'
 elif [ "$PEER_SCENARIO" = camera-unavailable ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -885,7 +891,12 @@ inspect_container_contract() {
     || die "$label privilege/read-only-root contract differs"
   [ "$user" = "$HOST_UID:$HOST_GID" ] || die "$label numeric user differs: $user"
   { [ "$ports" = null ] || [ "$ports" = '{}' ]; } || die "$label publishes a port"
-  { [ "$devices" = null ] || [ "$devices" = '[]' ]; } || die "$label receives a host device"
+  if [ "$label:$PEER_SCENARIO" = server:camera-shared ]; then
+    [ "$devices" = '[{"PathOnHost":"/dev/video2","PathInContainer":"/dev/video2","CgroupPermissions":"rw"}]' ] \
+      || die 'server guest camera device contract differs'
+  else
+    { [ "$devices" = null ] || [ "$devices" = '[]' ]; } || die "$label receives a host device"
+  fi
   [ "$caps" = '["ALL"]' ] || die "$label does not drop all capabilities"
   case "$security" in
     '["no-new-privileges"]'|'["no-new-privileges:true"]') ;;
@@ -1386,6 +1397,8 @@ printf '== peer runtime cycle %s/%s, scenario=%s, instrumentation=%s, network=no
 CID_FILES+=("$SERVER_CID_FILE")
 server_session=smoke-flutter-peer-presentation-stage.sh
 server_accessibility=()
+server_devices=()
+[ "$PEER_SCENARIO" != camera-shared ] || server_devices=(--device=/dev/video2:/dev/video2:rw)
 if [ "$PEER_SCENARIO" = incoming-recording ]; then
   server_session=smoke-private-atspi-session.sh
   server_accessibility=(
@@ -1400,7 +1413,7 @@ if [ "$PEER_SCENARIO" = incoming-recording ]; then
   )
 fi
 peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
-  "${server_accessibility[@]}" \
+  "${server_accessibility[@]}" "${server_devices[@]}" \
   --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
@@ -1451,7 +1464,7 @@ fi
 run_viewer_container() {
   local cid_file=$1 role=$2 display=$3 machine_id=$VIEWER_MACHINE_ID
   local memory=4g core=1073741824
-  [ "$PEER_SCENARIO" != viewer-isolation ] || memory=2g
+  if [ "$PEER_SCENARIO" = viewer-isolation ] || [ "$PEER_SCENARIO" = camera-shared ]; then memory=2g; fi
   if [ "$role" = slow ]; then machine_id=$SLOW_MACHINE_ID; core=0; fi
   peer_vm_docker run --cidfile "$cid_file" \
   "${impairment_mount[@]}" \
@@ -1488,7 +1501,7 @@ run_viewer_container() {
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
   bash --noprofile --norc /source/scripts/smoke-private-atspi-session.sh viewer
 }
-if [ "$PEER_SCENARIO" = viewer-isolation ]; then
+if [ "$PEER_SCENARIO" = viewer-isolation ] || [ "$PEER_SCENARIO" = camera-shared ]; then
   SLOW_CID_FILE="$WORKSPACE/slow.$cycle.cid"
   SLOW_LOG="$WORKSPACE/slow.$cycle.log"
   CID_FILES+=("$SLOW_CID_FILE")
@@ -1525,7 +1538,7 @@ if [ -n "$SLOW_JOB" ]; then
   SLOW_JOB=
 fi
 set -e
-if [ "$PEER_SCENARIO" = viewer-isolation ]; then
+if [ "$PEER_SCENARIO" = viewer-isolation ] || [ "$PEER_SCENARIO" = camera-shared ]; then
   cat "$SLOW_LOG"
   inspect_container_contract "$SLOW_CID" "container:$SERVER_CID" slow-viewer
   [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SLOW_MACHINE_ID")" = "$SLOW_MACHINE_ID_ID" ] \
@@ -1575,6 +1588,10 @@ peer_vm_docker logs "$SERVER_CID" > "$SERVER_LOG" 2>&1 || true
 cat "$SERVER_LOG"
 [ "$(input_provider_binding)" = "$INPUT_PROVIDER_BINDING" ] \
   || die 'protected private input provider changed during the peer cycle'
+if [ "$PEER_SCENARIO" = camera-shared ]; then
+  grep -Fxq 'FLUTTER_PEER_CAMERA_SHARED_OK viewers=2 colors=3 first_close=survived last_close=devices-retired server=preserved' \
+    "$SERVER_LOG" || die 'shared camera ownership observation is absent'
+else
 for generation in $SERVER_GENERATIONS; do
   grep -Fxq "FLUTTER_PEER_INPUT_PROVIDER_MAPPED generation=$generation path=/usr/lib/rustdesk-fork/libxdo.so.3 live_mapping=true" \
     "$SERVER_LOG" \
@@ -1584,6 +1601,7 @@ done
   || die 'serving input-provider observation cardinality differs'
 printf 'FLUTTER_PEER_INPUT_PROVIDER_OBSERVED=pass cycle=%s sha256=%s unchanged=before-after instrumentation=none\n' \
   "$cycle" "$INPUT_PROVIDER_SHA256"
+fi
 [ "$server_stopped" -eq 1 ] || die 'controlled peer container did not retire'
 server_status="$(peer_vm_docker inspect --format '{{.State.ExitCode}}' "$SERVER_CID")"
 [[ "$server_status" =~ ^[0-9]+$ ]] || die 'server exit status is malformed'
@@ -1604,9 +1622,10 @@ grep -Fxq "FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joine
   "$SERVER_LOG" || die 'server terminal verdict is missing'
 [ "$(<"$COORD/viewer.result")" = "$VIEWER_RESULT" ] \
   || die 'viewer result receipt differs'
-if [ "$PEER_SCENARIO" = viewer-isolation ]; then
-  [ "$(<"$COORD/slow.result")" = 'viewer=joined xvfb=joined isolation=slow stable_connection=true resources=bounded' ] \
-    || die 'suspended viewer result receipt differs'
+if [ "$PEER_SCENARIO" = viewer-isolation ] || [ "$PEER_SCENARIO" = camera-shared ]; then
+  slow_result='viewer=joined xvfb=joined isolation=slow stable_connection=true resources=bounded'
+  [ "$PEER_SCENARIO" != camera-shared ] || slow_result='viewer=joined xvfb=joined camera_shared=slow colors=2 stable_connection=true'
+  [ "$(<"$COORD/slow.result")" = "$slow_result" ] || die 'second viewer result receipt differs'
   cleanup_container "$SLOW_CID_FILE"
 fi
 [ "$(<"$COORD/server.result")" = \

@@ -35,7 +35,8 @@ case "$1" in
     ;;
   viewer)
     viewer_display=:99
-    if [ "${FLUTTER_PEER_SCENARIO:-}:${FLUTTER_PEER_ROLE:-main}" = viewer-isolation:slow ]; then
+    if [ "${FLUTTER_PEER_SCENARIO:-}:${FLUTTER_PEER_ROLE:-main}" = viewer-isolation:slow ] \
+      || [ "${FLUTTER_PEER_SCENARIO:-}:${FLUTTER_PEER_ROLE:-main}" = camera-shared:slow ]; then
       viewer_display=:97
     fi
     [ "${DISPLAY:-}" = "$viewer_display" ] \

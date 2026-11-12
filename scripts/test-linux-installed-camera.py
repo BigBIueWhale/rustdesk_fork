@@ -44,7 +44,7 @@ def guard(settings, uid):
 def session():
     settings = module('installed_settings', 'test-linux-installed-settings.py')
     guard(settings, 4001)
-    resource.setrlimit(resource.RLIMIT_FSIZE, (1048576, 1048576))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (268435456, 268435456))
     print('LINUX_INSTALLED_CAMERA_FILE_LIMIT=' + json.dumps(resource.getrlimit(resource.RLIMIT_FSIZE)),
           file=sys.stderr, flush=True)
     def cancelled(_signal, _frame):

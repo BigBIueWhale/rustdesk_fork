@@ -187,12 +187,14 @@ fn incoming_finalization_failure_survives_owner_retirement() {
     let files = || fs::read_dir(&dir.0).unwrap()
         .map(|entry| { let path = entry.unwrap().path(); let bytes = fs::read(&path).unwrap(); (path, bytes) })
         .collect::<BTreeMap<_, _>>();
-    let (frame, _) = crate::client::video_handler_tests::visible_and_hidden_frames();
+    let mut encoder = encoder();
+    let yuv = vec![128; encoder.yuvfmt().buffer_len];
+    let frame = encoder.encode_to_message(EncodeInput::YUV(&yuv), 0).unwrap().unwrap();
     let frame = frame.union.as_ref().unwrap();
     let mut first = dir.recorder();
     let pending = dir.recorder();
     assert_eq!((snapshot().starting, snapshot().active), (2, 0));
-    first.write_frame(frame, 640, 480).unwrap();
+    first.write_frame(frame, 64, 48).unwrap();
     assert_eq!((snapshot().starting, snapshot().active), (1, 1));
     let written = files();
     assert_eq!(written.len(), 1);
@@ -213,7 +215,7 @@ fn incoming_finalization_failure_survives_owner_retirement() {
     assert_eq!(snapshot().writers(), 0);
     assert_eq!(snapshot().last_failure, failure, "unwritten completion must not clear the failure");
     let mut retry = dir.recorder();
-    retry.write_frame(frame, 640, 480).unwrap();
+    retry.write_frame(frame, 64, 48).unwrap();
     assert_eq!(snapshot().active, 1);
     assert_eq!(snapshot().last_failure, failure, "live counts and historical failure coexist");
     drop(retry);

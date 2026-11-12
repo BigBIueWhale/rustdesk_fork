@@ -360,6 +360,7 @@ case "$#:${8:-}" in
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save) FLUTTER_SCREENSHOT_SAVE=1 ;;
                 --recording-directory) FLUTTER_RECORDING_DIRECTORY=1 ;;
+                --incoming-recording) FLUTTER_RECORDING_DIRECTORY=2 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --session-close) FLUTTER_SESSION_CLOSE=1 ;;
                 --monitor-switch) FLUTTER_MONITOR_SWITCH=1 ;;
@@ -14870,7 +14871,8 @@ run_flutter_peer_presentation() {
     peer_args+=(--engine-context "$FLUTTER_APP_ENGINE_CONTEXT")
     [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || peer_args+=(--viewer-suspend)
     [ "$FLUTTER_SCREENSHOT_SAVE" -eq 0 ] || peer_args+=(--screenshot-save)
-    [ "$FLUTTER_RECORDING_DIRECTORY" -eq 0 ] || peer_args+=(--recording-directory)
+    [ "$FLUTTER_RECORDING_DIRECTORY" -ne 1 ] || peer_args+=(--recording-directory)
+    [ "$FLUTTER_RECORDING_DIRECTORY" -ne 2 ] || peer_args+=(--incoming-recording)
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_args+=(--view-scaling)
     [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || peer_args+=(--session-close)
     [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || peer_args+=(--monitor-switch)
@@ -15045,6 +15047,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_VIEW_SCALING" -eq 1 ]; then
         peer_scenario=view-scaling
+        peer_cycles=1
+    elif [ "$FLUTTER_RECORDING_DIRECTORY" -eq 2 ]; then
+        peer_scenario=incoming-recording
         peer_cycles=1
     elif [ "$FLUTTER_RECORDING_DIRECTORY" -eq 1 ]; then
         peer_scenario=recording-directory

@@ -109,10 +109,12 @@ fn blocked_recording_write_preserves_capture_progress() {
             let mut encoder = encoder();
             let observer = WriteObserver::install();
             observer_tx.send(observer).unwrap();
-            let mut recorder = Some(dir.recorder());
+            let mut workers = RecordingWorkers::default();
+            let mut recorder = Some(dir.recorder(&mut workers));
             let controller = VideoFrameController::new(VideoSource::Monitor, 0).unwrap();
             let mut first = true;
             let mut failures = 0;
+            let mut retired_at = None;
             for index in 0..12 {
                 let format = encoder.yuvfmt();
                 let mut yuv = vec![128; format.buffer_len];
@@ -124,10 +126,12 @@ fn blocked_recording_write_preserves_capture_progress() {
                 assert!(handle_one_frame(0, service, &controller, EncodeInput::YUV(&yuv),
                     index * 250, &mut encoder, &mut recorder, &mut failures, &mut first,
                     64, 48, &mut None).unwrap());
+                if recorder.is_none() && retired_at.is_none() { retired_at = Some(index); }
                 if index < 11 && !advance_rx.recv().unwrap_or(false) { break; }
             }
             drop(recorder);
-            done_tx.send(()).unwrap();
+            drop(workers);
+            done_tx.send(retired_at).unwrap();
         });
         // Closing this descriptor during unwinding releases intercepted writes
         // with ENOSYS before the scoped capture thread is joined.
@@ -164,21 +168,23 @@ fn blocked_recording_write_preserves_capture_progress() {
         }
         observer.validate(&held);
         let pending = matches!(done_rx.try_recv(), Err(mpsc::TryRecvError::Empty));
+        let stalled = snapshot();
+        let retained = crate::server::incoming_recording::retained_resources();
         let held_ms = held_at.elapsed().as_millis();
         // Always release the syscall and join before asserting the behavioral
         // result, including when testing the synchronous baseline.
         let _ = advance_tx.send(false);
         observer.resume(&held);
         let deadline = Instant::now() + Duration::from_secs(5);
-        loop {
+        let retired_at = loop {
             match done_rx.try_recv() {
-                Ok(()) => break,
+                Ok(retired_at) => break retired_at,
                 Err(mpsc::TryRecvError::Empty) => {},
                 Err(error) => panic!("capture worker failed: {error}"),
             }
             assert!(Instant::now() < deadline, "recording did not drain after release");
             if let Some(event) = observer.receive(20) { observer.resume(&event); }
-        }
+        };
         capture.join().unwrap();
         assert_eq!(snapshot().writers(), 0);
         println!("INCOMING_BLOCKED_WRITE frames={} held_ms={held_ms} completion_pending={pending} syscall=write cleanup=joined",
@@ -186,6 +192,12 @@ fn blocked_recording_write_preserves_capture_progress() {
         assert!(pending, "completion cannot precede the held recording write");
         assert_eq!(samples.len(), 12, "recording I/O must not stall capture publication");
         assert!(samples.windows(2).all(|pair| pair[0] != pair[1]));
+        assert_eq!(retired_at, Some(9), "one in-flight plus eight queued batches");
+        assert_eq!((stalled.starting, stalled.active, stalled.finishing), (0, 0, 1));
+        assert_eq!(stalled.last_failure.unwrap().stage, FailureStage::Write);
+        assert_eq!(retained.0, 1, "retain worker ownership through blocked I/O");
+        assert!(retained.1 > 0 && retained.1 <= 2 * scrap::codec::MAX_NATIVE_VIDEO_BATCH_BYTES);
+        assert_eq!(crate::server::incoming_recording::retained_resources(), (0, 0));
     });
     service.on_unsubscribe(72);
 }

@@ -1,6 +1,6 @@
 use super::*;
 use crate::server::connection::{video_egress_channel, VideoEgressItem};
-use crate::{incoming_recording_status::{FailureStage, RecordingFailure}, server::incoming_recording::snapshot};
+use crate::{incoming_recording_status::{FailureStage, IncomingRecordingStatus, RecordingFailure}, server::incoming_recording::snapshot};
 use hbb_common::libc;
 use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
 
@@ -19,8 +19,8 @@ impl RecordingDirectory {
         Self(path)
     }
 
-    fn recorder(&self) -> IncomingRecording {
-        IncomingRecording::new(RecorderContext {
+    fn recorder(&self, workers: &mut RecordingWorkers) -> IncomingRecording {
+        workers.start(RecorderContext {
             server: true, id: "native-incoming".into(),
             dir: self.0.to_str().unwrap().into(), display_idx: 0, camera: false,
         }).unwrap()
@@ -46,10 +46,19 @@ fn encoder() -> Encoder {
     }), false).unwrap()
 }
 
+fn wait_status(predicate: impl Fn(IncomingRecordingStatus) -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+    while !predicate(snapshot()) {
+        assert!(std::time::Instant::now() < deadline, "recording status did not converge: {:?}", snapshot());
+        std::thread::sleep(std::time::Duration::from_millis(2));
+    }
+}
+
 #[test]
 fn failed_incoming_recording_retires_while_video_continues() {
     let dir = RecordingDirectory::new();
-    let mut recorder = Some(dir.recorder());
+    let mut workers = RecordingWorkers::default();
+    let mut recorder = Some(dir.recorder(&mut workers));
     assert_eq!((snapshot().starting, snapshot().active, snapshot().finishing), (1, 0, 0));
     dir.writable(false);
     let error = fs::write(dir.0.join("canary"), b"x").unwrap_err();
@@ -71,7 +80,7 @@ fn failed_incoming_recording_retires_while_video_continues() {
 
     for index in 0..4 {
         if index == 1 {
-            retired_after_failure = recorder.is_none();
+            wait_status(|status| status.writers() == 0);
             assert_eq!(snapshot().writers(), 0);
             assert_eq!(snapshot().last_failure, Some(RecordingFailure {
                 display: 0, camera: false, stage: FailureStage::Write,
@@ -81,7 +90,7 @@ fn failed_incoming_recording_retires_while_video_continues() {
         if index == 2 {
             assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0,
                 "a failed attempt must not restart when storage recovers");
-            recorder = Some(dir.recorder());
+            recorder = Some(dir.recorder(&mut workers));
         }
         let format = encoder.yuvfmt();
         let mut yuv = vec![128; format.buffer_len];
@@ -95,6 +104,7 @@ fn failed_incoming_recording_retires_while_video_continues() {
             &mut encoder, &mut recorder, &mut failures, &mut first_frame,
             64, 48, &mut None,
         ).expect("recording failure must not fail video publication"));
+        if index == 1 { retired_after_failure = recorder.is_none(); }
         assert_eq!(failures, 0);
         let Some(VideoEgressItem::Frame(frame)) = receiver.try_recv() else {
             panic!("encoded frame must reach the existing subscriber");
@@ -119,10 +129,12 @@ fn failed_incoming_recording_retires_while_video_continues() {
     }
     assert!(samples.windows(2).all(|pair| pair[0] != pair[1]),
         "each delivered image must reflect changed source pixels");
+    wait_status(|status| status.active == 1);
     assert_eq!((snapshot().starting, snapshot().active, snapshot().finishing), (0, 1, 0));
     let failure = snapshot().last_failure;
     assert!(failure.is_some(), "new ownership must not erase historical failure");
     drop(recorder.take().unwrap());
+    drop(workers);
     assert_eq!(snapshot().writers(), 0);
     assert_eq!(snapshot().last_failure, failure, "healthy completion preserves failure history");
     let files: Vec<_> = fs::read_dir(&dir.0).unwrap()
@@ -146,6 +158,37 @@ fn failed_incoming_recording_retires_while_video_continues() {
 struct FileLimit {
     original: libc::rlimit,
     signal: libc::sighandler_t,
+}
+
+#[test]
+fn recording_worker_limit_and_owner_shutdown_are_bounded() {
+    use crate::server::incoming_recording::retained_resources;
+    use crate::incoming_recording_status::MAX_RECORDERS;
+    let dir = RecordingDirectory::new();
+    let mut workers = RecordingWorkers::default();
+    let mut producers = Vec::new();
+    for _ in 0..MAX_RECORDERS { producers.push(dir.recorder(&mut workers)); }
+    assert_eq!(retained_resources(), (MAX_RECORDERS, 0));
+    assert_eq!(snapshot().starting as u32, MAX_RECORDERS);
+    assert!(workers.start(RecorderContext {
+        server: true, id: "refused".into(), dir: dir.0.to_str().unwrap().into(),
+        display_idx: 0, camera: false,
+    }).is_err());
+    assert_eq!(retained_resources(), (MAX_RECORDERS, 0));
+    assert_eq!(snapshot().last_failure.unwrap().stage, FailureStage::Start);
+    // Owner shutdown must close idle workers even while producers remain live.
+    drop(workers);
+    assert_eq!(retained_resources(), (0, 0));
+    assert_eq!(snapshot().writers(), 0);
+    let mut encoder = encoder();
+    let yuv = vec![128; encoder.yuvfmt().buffer_len];
+    let frame = encoder.encode_to_message(EncodeInput::YUV(&yuv), 0).unwrap().unwrap();
+    for producer in &mut producers {
+        assert!(producer.enqueue_frame(frame.union.as_ref().unwrap(), 64, 48).is_err());
+    }
+    drop(producers);
+    assert_eq!(retained_resources(), (0, 0));
+    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
 }
 
 impl FileLimit {
@@ -195,10 +238,12 @@ fn incoming_finalization_failure_survives_owner_retirement() {
     let yuv = vec![128; encoder.yuvfmt().buffer_len];
     let frame = encoder.encode_to_message(EncodeInput::YUV(&yuv), 0).unwrap().unwrap();
     let frame = frame.union.as_ref().unwrap();
-    let mut first = dir.recorder();
-    let pending = dir.recorder();
+    let mut workers = RecordingWorkers::default();
+    let mut first = dir.recorder(&mut workers);
+    let pending = dir.recorder(&mut workers);
     assert_eq!((snapshot().starting, snapshot().active), (2, 0));
-    first.write_frame(frame, 64, 48).unwrap();
+    first.enqueue_frame(frame, 64, 48).unwrap();
+    wait_status(|status| status.active == 1);
     assert_eq!((snapshot().starting, snapshot().active), (1, 1));
     let written = files();
     assert_eq!(written.len(), 1);
@@ -208,6 +253,7 @@ fn incoming_finalization_failure_survives_owner_retirement() {
     let limit = FileLimit::zero();
     assert_eq!(canary.write_all(b"refused").unwrap_err().raw_os_error(), Some(libc::EFBIG));
     drop(first);
+    wait_status(|status| status.finishing == 0 && status.active == 0);
     drop(limit);
     drop(canary);
     fs::remove_file(canary_path).unwrap();
@@ -216,13 +262,16 @@ fn incoming_finalization_failure_survives_owner_retirement() {
     assert_eq!((snapshot().starting, snapshot().active, snapshot().finishing), (1, 0, 0));
     assert_eq!(files(), written, "failed finalization must not rewrite existing bytes");
     drop(pending);
+    wait_status(|status| status.writers() == 0);
     assert_eq!(snapshot().writers(), 0);
     assert_eq!(snapshot().last_failure, failure, "unwritten completion must not clear the failure");
-    let mut retry = dir.recorder();
-    retry.write_frame(frame, 64, 48).unwrap();
+    let mut retry = dir.recorder(&mut workers);
+    retry.enqueue_frame(frame, 64, 48).unwrap();
+    wait_status(|status| status.active == 1);
     assert_eq!(snapshot().active, 1);
     assert_eq!(snapshot().last_failure, failure, "live counts and historical failure coexist");
     drop(retry);
+    drop(workers);
     assert_eq!(snapshot().writers(), 0);
     assert_eq!(snapshot().last_failure, failure, "status reads must not consume failure");
     let finished = files();

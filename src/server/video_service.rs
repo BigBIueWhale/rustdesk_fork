@@ -25,7 +25,7 @@ use qos_apply::check_qos;
 #[path = "screenshot_png.rs"]
 mod screenshot_png;
 use screenshot_png::BoundedScreenshotPng;
-use super::incoming_recording::IncomingRecording;
+use super::incoming_recording::{IncomingRecording, RecordingWorkers};
 #[cfg(all(test, target_os = "linux"))]
 mod incoming_recording_tests;
 #[cfg(target_os = "linux")]
@@ -784,7 +784,8 @@ pub fn new(
         #[cfg(target_os = "android")]
         android_generation,
     };
-    GenericService::run(&vs, run);
+    let mut recordings = RecordingWorkers::default();
+    GenericService::run(&vs, move |vs| run(vs, &mut recordings));
     vs.sp
 }
 
@@ -1058,7 +1059,7 @@ fn get_capturer(
     }
 }
 
-fn run(vs: VideoService) -> ResultType<()> {
+fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
     let mut _raii = Raii::new(vs.sp.name());
     // Wayland only support one video capturer for now. It is ok to call ensure_inited() here.
     //
@@ -1107,14 +1108,13 @@ fn run(vs: VideoService) -> ResultType<()> {
     );
     let client_record = video_qos.record();
     drop(video_qos);
-    let (mut encoder, encoder_cfg, codec_format, use_i444, mut recorder) = match setup_encoder(
+    let (mut encoder, encoder_cfg, codec_format, use_i444) = match setup_encoder(
         &c,
         sp.name(),
         quality,
         client_record,
         record_incoming,
         vs.source,
-        display_idx,
     ) {
         Ok(result) => result,
         Err(err) => {
@@ -1135,10 +1135,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                 client_record,
                 record_incoming,
                 vs.source,
-                display_idx,
             )?
         }
     };
+    let mut recorder = get_recorder(record_incoming, display_idx, source == VideoSource::Camera, recordings);
     #[cfg(feature = "vram")]
     c.set_output_texture(encoder.input_texture());
     #[cfg(target_os = "android")]
@@ -1564,13 +1564,11 @@ fn setup_encoder(
     client_record: bool,
     record_incoming: bool,
     source: VideoSource,
-    display_idx: usize,
 ) -> ResultType<(
     Encoder,
     EncoderCfg,
     CodecFormat,
     bool,
-    Option<IncomingRecording>,
 )> {
     let codec_format = Encoder::negotiated_codec();
     if codec_format == CodecFormat::Unknown {
@@ -1588,10 +1586,9 @@ fn setup_encoder(
     if codec_format == CodecFormat::Unknown {
         bail!("no mutually supported video codec after fallback; refusing to start video encoder");
     }
-    let recorder = get_recorder(record_incoming, display_idx, source == VideoSource::Camera);
     let use_i444 = Encoder::use_i444(&encoder_cfg);
     let encoder = Encoder::new(encoder_cfg.clone(), use_i444)?;
-    Ok((encoder, encoder_cfg, codec_format, use_i444, recorder))
+    Ok((encoder, encoder_cfg, codec_format, use_i444))
 }
 
 fn get_encoder_config(
@@ -1683,6 +1680,7 @@ fn get_recorder(
     record_incoming: bool,
     display_idx: usize,
     camera: bool,
+    recordings: &mut RecordingWorkers,
 ) -> Option<IncomingRecording> {
     if !record_incoming {
         return None;
@@ -1691,7 +1689,7 @@ fn get_recorder(
     let root = crate::platform::is_root();
     #[cfg(not(windows))]
     let root = false;
-    match IncomingRecording::new(RecorderContext {
+    match recordings.start(RecorderContext {
         server: true,
         id: Config::get_id(),
         dir: crate::ui_interface::video_save_directory(root),
@@ -1810,7 +1808,7 @@ fn handle_one_frame(
                 trace.trace_encoded(display, ms, &vf);
             }
             if let (Some(recording), Some(frame)) = (recorder.as_mut(), vf.union.as_ref()) {
-                if let Err(error) = recording.write_frame(frame, width, height) {
+                if let Err(error) = recording.enqueue_frame(frame, width, height) {
                     log::error!(
                         "Incoming recording stopped for {:?} display {display}: {error:#}",
                         frame_controller.key.source,

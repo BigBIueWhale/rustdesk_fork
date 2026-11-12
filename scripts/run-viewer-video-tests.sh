@@ -27,5 +27,5 @@ timeout --signal=TERM --kill-after=5s 30s \
     "$test_executable" client::tests::r_s11fn_ \
     --color never --test-threads=1
 [ "$(sha256sum "$test_executable" | cut -d ' ' -f 1)" = "$artifact_sha" ]
-printf 'VIEWER_VIDEO_ARTIFACT=pass sha256=%s executable=%s tests=18 unchanged=before-after execution_seconds=%s\n' \
+printf 'VIEWER_VIDEO_ARTIFACT=pass sha256=%s executable=%s tests=19 unchanged=before-after execution_seconds=%s\n' \
     "$artifact_sha" "$test_executable" "$((SECONDS - execution_started))"

@@ -76,6 +76,7 @@ case "$#:${1:-}" in
       case "${21}" in
         --viewer-suspend) PEER_SCENARIO=viewer-suspend ;;
         --viewer-isolation) PEER_SCENARIO=viewer-isolation ;;
+        --camera-unavailable) PEER_SCENARIO=camera-unavailable ;;
         --viewer-soak) PEER_SCENARIO=viewer-soak ;;
         --congestion-soak) PEER_SCENARIO=congestion-soak ;;
         --input-congestion-soak) PEER_SCENARIO=input-congestion-soak ;;
@@ -269,6 +270,11 @@ elif [ "$PEER_SCENARIO" = session-close ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined session_close=passed connected_sockets=0 listener=preserved main=usable'
+elif [ "$PEER_SCENARIO" = camera-unavailable ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined camera_unavailable=visible remote_after=presented server=preserved'
 elif [ "$PEER_SCENARIO" = audio-mute ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'

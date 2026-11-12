@@ -8813,6 +8813,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--image-quality-save-failure") != 0 &&
                                     strcmp(argv[5], "--audio-mute") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
+                                    strcmp(argv[5], "--camera-unavailable") != 0 &&
                                     strcmp(argv[5], "--monitor-switch") != 0 &&
                                     strcmp(argv[5], "--recent-search") != 0 &&
                                     strcmp(argv[5], "--native-components") != 0 &&
@@ -9064,6 +9065,42 @@ int main(int argc, char **argv) {
     }
     puts("FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true "
          "retired=true typed_via_xtest=true argv_password=false");
+    }
+
+    if (argc == 6 && strcmp(argv[5], "--camera-unavailable") == 0) {
+        uint64_t started = monotonic_millis();
+        uint64_t deadline = started + AUTH_WAIT_MS;
+        unsigned int disconnected_samples = 0U;
+        int result = -1;
+        while (started != 0U && monotonic_millis() < deadline) {
+            AtspiAccessible *error = NULL;
+            unsigned int connected = 0U, listeners = 0U;
+            if (query_named_accessible((unsigned int)viewer_pid, "Camera is unavailable",
+                                      deadline, &error, 0) != 0) break;
+            int visible = error != NULL;
+            if (error != NULL) g_object_unref(error);
+            if (session_socket_counts(&connected, &listeners) != 0 || listeners != 1U) break;
+            if (visible && connected == 0U) {
+                disconnected_samples += 1U;
+                if (disconnected_samples == 20U) {
+                    result = 0;
+                    break;
+                }
+            } else {
+                disconnected_samples = 0U;
+            }
+            if (sleep_millis(100U) != 0) break;
+        }
+        if (result == 0)
+            puts("FLUTTER_PEER_CAMERA_UNAVAILABLE_OK error=visible password=retired "
+                 "connected_sockets=0 listener=preserved");
+        else
+            fputs("FLUTTER_PEER_X11_FAIL camera-unavailable UI or connection cleanup\n", stderr);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
     }
 
     if (wait_for_current_frames(display, &viewer, &history, AUTH_WAIT_MS, 4U,

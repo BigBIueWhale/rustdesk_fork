@@ -28,6 +28,7 @@ FLUTTER_LANGUAGE_RESTART=0
 FLUTTER_THEME_APPEARANCE=0
 FLUTTER_THEME_SAVE_FAILURE=0
 FLUTTER_VIEWER_ISOLATION=0
+FLUTTER_CAMERA_UNAVAILABLE=0
 FLUTTER_VIEWER_SOAK=0
 FLUTTER_INPUT_LATENCY=0
 FLUTTER_INPUT_SOAK=0
@@ -380,6 +381,7 @@ case "$#:${8:-}" in
                 --theme-appearance) FLUTTER_THEME_APPEARANCE=1 ;;
                 --theme-save-failure) FLUTTER_THEME_SAVE_FAILURE=1 ;;
                 --viewer-isolation) FLUTTER_VIEWER_ISOLATION=1 ;;
+                --camera-unavailable) FLUTTER_CAMERA_UNAVAILABLE=1 ;;
                 --viewer-soak) FLUTTER_VIEWER_SOAK=1 ;;
                 --input-latency) FLUTTER_INPUT_LATENCY=1 ;;
                 --input-soak) FLUTTER_INPUT_SOAK=1 ;;
@@ -494,6 +496,7 @@ readonly FLUTTER_QUALITY_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
+readonly FLUTTER_CAMERA_UNAVAILABLE
 readonly FLUTTER_VIEWER_SOAK
 readonly FLUTTER_INPUT_LATENCY
 readonly FLUTTER_INPUT_SOAK
@@ -14906,6 +14909,7 @@ run_flutter_peer_presentation() {
     [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || peer_args+=(--theme-appearance)
     [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || peer_args+=(--theme-save-failure)
     [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || peer_args+=(--viewer-isolation)
+    [ "$FLUTTER_CAMERA_UNAVAILABLE" -eq 0 ] || peer_args+=(--camera-unavailable)
     [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || peer_args+=(--viewer-soak)
     [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || peer_args+=(--input-latency)
     [ "$FLUTTER_INPUT_SOAK" -eq 0 ] || peer_args+=(--input-soak)
@@ -14995,6 +14999,9 @@ run_flutter_peer_presentation() {
         peer_cycles=1
     elif [ "$FLUTTER_VIEWER_ISOLATION" -eq 1 ]; then
         peer_scenario=viewer-isolation
+        peer_cycles=1
+    elif [ "$FLUTTER_CAMERA_UNAVAILABLE" -eq 1 ]; then
+        peer_scenario=camera-unavailable
         peer_cycles=1
     elif [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 1 ]; then
         peer_scenario=theme-save-failure

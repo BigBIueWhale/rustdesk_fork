@@ -73,6 +73,7 @@ FLUTTER_LANGUAGE_RESTART=0
 FLUTTER_THEME_APPEARANCE=0
 FLUTTER_THEME_SAVE_FAILURE=0
 FLUTTER_VIEWER_ISOLATION=0
+FLUTTER_CAMERA_UNAVAILABLE=0
 FLUTTER_VIEWER_SOAK=0
 FLUTTER_INPUT_LATENCY=0
 FLUTTER_INPUT_SOAK=0
@@ -800,6 +801,7 @@ case "$#:${1:-}" in
                 --theme-appearance) FLUTTER_THEME_APPEARANCE=1 ;;
                 --theme-save-failure) FLUTTER_THEME_SAVE_FAILURE=1 ;;
                 --viewer-isolation) FLUTTER_VIEWER_ISOLATION=1 ;;
+                --camera-unavailable) FLUTTER_CAMERA_UNAVAILABLE=1 ;;
                 --viewer-soak) FLUTTER_VIEWER_SOAK=1 ;;
                 --input-latency) FLUTTER_INPUT_LATENCY=1 ;;
                 --input-soak) FLUTTER_INPUT_SOAK=1 ;;
@@ -877,6 +879,7 @@ case "$#:${1:-}" in
         printf 'Active-session Mute persistence and save refusal: use --audio-mute with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Native language selection across viewer restarts: use --language-restart with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Native Hebrew language direction: use --language-direction with the source-bound Linux app replay arguments above.\n' >&2
+        printf 'Native camera refusal and subsequent Remote control: use --camera-unavailable with the source-bound Linux app replay arguments above.\n' >&2
         printf 'Focused production X11 enumeration/capture check: %s --x11-display-tests\n' "${0##*/}" >&2
         printf 'Focused macOS cursor adapter compilation: %s --apple-conform --cursor-compile\n' "${0##*/}" >&2
         printf 'Focused macOS file-mode compilation: %s --apple-conform --file-mode-compile\n' "${0##*/}" >&2
@@ -1001,6 +1004,7 @@ readonly FLUTTER_QUALITY_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
+readonly FLUTTER_CAMERA_UNAVAILABLE
 readonly FLUTTER_VIEWER_SOAK
 readonly FLUTTER_INPUT_LATENCY
 readonly FLUTTER_INPUT_SOAK
@@ -5737,6 +5741,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || guest_invocation+=' --theme-appearance'
         [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || guest_invocation+=' --theme-save-failure'
         [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || guest_invocation+=' --viewer-isolation'
+        [ "$FLUTTER_CAMERA_UNAVAILABLE" -eq 0 ] || guest_invocation+=' --camera-unavailable'
         [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || guest_invocation+=' --viewer-soak'
         [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || guest_invocation+=' --input-latency'
         [ "$FLUTTER_INPUT_SOAK" -eq 0 ] || guest_invocation+=' --input-soak'
@@ -9602,6 +9607,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     [ "$FLUTTER_THEME_APPEARANCE" -eq 0 ] || peer_scenario=theme-appearance
     [ "$FLUTTER_THEME_SAVE_FAILURE" -eq 0 ] || peer_scenario=theme-save-failure
     [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || peer_scenario=viewer-isolation
+    [ "$FLUTTER_CAMERA_UNAVAILABLE" -eq 0 ] || peer_scenario=camera-unavailable
     [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || peer_scenario=viewer-soak
     [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || peer_scenario=input-latency
     [ "$FLUTTER_INPUT_SOAK" -eq 0 ] || peer_scenario=input-soak

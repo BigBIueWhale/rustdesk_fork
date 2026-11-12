@@ -27,6 +27,7 @@ MENU_ACTION=pointer
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
   monitor-switch|monitor-burst) EXPECTED_RESTARTS=0 ;;
+  camera-unavailable) EXPECTED_RESTARTS=0 ;;
   recent-search|native-components|recording-directory|incoming-recording) EXPECTED_RESTARTS=0 ;;
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
@@ -1159,6 +1160,10 @@ PY
     readonly PROBE=/app/smoke-readiness
     readonly SOURCE_FIXTURE=/out/flutter-peer-source-x11
     readonly COORD=/coord
+    if [ "$PEER_SCENARIO" = camera-unavailable ]; then
+      [ -z "$(find /dev -maxdepth 1 -name 'video*' -print -quit)" ] \
+        || fail 'camera-unavailable fixture has a camera node'
+    fi
     [ -d "$COORD" ] && [ ! -L "$COORD" ] \
       && [ "$(stat -c '%u:%g:%a' "$COORD")" = "$(id -u):$(id -g):700" ] \
       || fail 'coordination root is not a private current-user directory'
@@ -1628,6 +1633,14 @@ PY
       cleanup_incoming_ui || fail 'controlled UI cleanup failed'
       echo 'FLUTTER_PEER_INCOMING_UI_JOINED ui=true observer=true xvfb=true'
     fi
+    if [ "$PEER_SCENARIO" = camera-unavailable ]; then
+      "$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START" "$SERVER_LOG" \
+        "$PROBE" "$(id -u)"
+      camera_failures="$(emit_runtime_logs SERVER "$HOME/.local/share/logs" 2>&1 \
+        | grep -cF 'Camera login could not acquire its device:')"
+      [ "$camera_failures" -eq 1 ] || fail 'expected exactly one authenticated camera acquisition refusal'
+      echo 'FLUTTER_PEER_CAMERA_SERVER_OK native_nodes=0 acquisition_refusals=1 same_server=ready'
+    fi
     stop_server_generation "$((next_generation - 1))"
     if [ "$(<"$COORD/stop")" != viewer-complete ]; then
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN' >&2
@@ -1770,6 +1783,7 @@ PY
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
     viewer_generations=1
+    [ "$PEER_SCENARIO" != camera-unavailable ] || viewer_generations=2
     if [ "$PEER_SCENARIO" = recording-directory ]; then
       viewer_generations=2
       mkdir -m 700 -- /tmp/recording-selected-שלום /tmp/recording-cancelled
@@ -1857,14 +1871,25 @@ PY
     if [ "$LONG_SOAK" -eq 1 ] || [ "$INPUT_RESPONSE" -eq 1 ]; then
       viewer_rust_log=info
     fi
+    viewer_command=--connect
+    if [ "$PEER_SCENARIO:$viewer_generation" = camera-unavailable:1 ]; then
+      viewer_command=--view-camera
+    fi
     (cd /app/bundle
       # Let the recording fault return EFBIG instead of terminating the fixture app.
       [ "$PEER_SCENARIO" != recording-directory ] || trap '' XFSZ
-      exec env "${viewer_environment[@]}" RUST_LOG="$viewer_rust_log" "$APP" --connect 127.0.0.1) \
+      exec env "${viewer_environment[@]}" RUST_LOG="$viewer_rust_log" "$APP" "$viewer_command" 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
     controller_args=(:98 "$VIEWER_DISPLAY" "$VIEWER_PID" "$VIEWER_START")
+    if [ "$PEER_SCENARIO" = camera-unavailable ]; then
+      if [ "$viewer_generation" -eq 1 ]; then
+        controller_args+=(--camera-unavailable)
+      else
+        controller_args+=(--session-close)
+      fi
+    fi
     if [ "$PEER_SCENARIO" = viewer-isolation ]; then
       if [ "$PEER_ROLE" = slow ]; then
         controller_args+=(--isolation-slow)
@@ -2079,7 +2104,20 @@ PY
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
-    if [ "$PEER_SCENARIO" = incoming-recording ]; then
+    if [ "$PEER_SCENARIO" = camera-unavailable ]; then
+      grep -Fxq 'FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false' \
+        <<<"$controller_output" || fail 'camera/Remote session did not use the real password prompt'
+      if [ "$viewer_generation" -eq 1 ]; then
+        grep -Fxq 'FLUTTER_PEER_CAMERA_UNAVAILABLE_OK error=visible password=retired connected_sockets=0 listener=preserved' \
+          <<<"$controller_output" || fail 'camera refusal was not observed in the real viewer'
+      else
+        grep -Fxq 'FLUTTER_PEER_SESSION_CLOSE_OK action=pointer remote=retired connected_sockets=0 listener=preserved main=usable process=preserved' \
+          <<<"$controller_output" || fail 'Remote control after camera refusal failed'
+        grep -Eq '^FLUTTER_PEER_INITIAL_PIXELS_OK first_fresh_ms=[0-9]+ maximum_age_ms=[0-9]+ distinct=4$' \
+          <<<"$controller_output" || fail 'Remote control after camera refusal did not present current pixels'
+      fi
+      viewer_result='viewer=joined xvfb=joined camera_unavailable=visible remote_after=presented server=preserved'
+    elif [ "$PEER_SCENARIO" = incoming-recording ]; then
       grep -Eq "^FLUTTER_PEER_INCOMING_VIEWER_OK generation=$viewer_generation fresh_pixels=12 maximum_age_ms=[0-9]+ stable_connection=true$" \
         <<<"$controller_output" || fail 'incoming recording viewer observation is absent'
       grep -Fxq 'FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false' \
@@ -2616,6 +2654,8 @@ PY
         printf 'FLUTTER_PEER_QUALITY_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
         printf 'FLUTTER_PEER_KEYBOARD_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
+      elif [ "$PEER_SCENARIO" = camera-unavailable ]; then
+        printf 'FLUTTER_PEER_CAMERA_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       else
         printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       fi

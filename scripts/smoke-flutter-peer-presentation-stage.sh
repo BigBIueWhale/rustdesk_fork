@@ -1242,7 +1242,7 @@ PY
         || fail 'cannot overlap controlled-server generations'
       SERVER_LOG="/tmp/server.$generation.log"
       local rust_log=info,rustdesk::video_qos=debug,rustdesk::clipboard=debug
-      if [ "$LONG_SOAK" -eq 1 ] || [ "$INPUT_RESPONSE" -eq 1 ]; then
+      if [ "$LONG_SOAK" -eq 1 ] || [ "$INPUT_RESPONSE" -eq 1 ] || [ "$PEER_SCENARIO" = incoming-recording ]; then
         rust_log=info
       fi
       (cd /app/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG="$rust_log" exec "$APP" --server) \

@@ -150014,3 +150014,14 @@ service generation ownership, physical camera/disconnect/arbitrary driver
 failure, Windows or full-application ViewCamera acceptance. Continue the owned
 catalog/service correction. The prior 16,092,059-byte audit prefix is preserved,
 SHA-256 5673ffecaa780f887e749f8542a828f8df3cc732257616621f45789feee1eb88.
+
+Fresh ledger count at b7c0d1ba, WVpKkIBzK4/tool87274, passes: 415,063 tokens /
+1,894,405 bytes, SHA-256
+ab39c70934693cb7428f9bc3ad6f0b1bf262aa0c000519ad0d997a65a6c64047.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-timeout-ledger-b7c0d1ba.json binds eight files/115,835 bytes verified on
+CTE/TUF. QEMU 2376027 joins zero; three zero listener deltas and exact private/
+process/socket/RAM retirement pass. The approximate 400,000-token target remains
+OPEN. This audit-only append preserves the counted ledger and prior
+16,093,775-byte audit prefix, SHA-256
+197ceb9e0b7b5d5a9573c7b4c524aac6464d8cf6282805aeab6d7836b50007b8.

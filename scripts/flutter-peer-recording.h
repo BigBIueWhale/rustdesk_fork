@@ -15,9 +15,9 @@ typedef struct {
 } RecordingElement;
 
 typedef struct {
-    unsigned int packets, images;
+    unsigned int packets, images, startup_images, distinct_frames;
     int64_t first_frame, last_frame;
-    uint64_t last_pts_ms;
+    uint64_t first_pts_ms, last_pts_ms;
     const char *codec;
 } RecordingVideo;
 
@@ -69,12 +69,14 @@ static int recording_uint(const RecordingElement *parent, uint64_t id, uint64_t 
 }
 
 static int recording_decode(const unsigned char *data, size_t size, SourceHistory *history,
-                             uint64_t started_us, uint64_t stopped_us, RecordingVideo *video) {
+                             uint64_t started_us, uint64_t stopped_us, uint64_t startup_ms,
+                             RecordingVideo *video) {
     RecordingElement root = {0, data, size}, header = {0}, doc = {0}, segment = {0};
     RecordingElement info = {0}, tracks = {0}, track = {0}, codec_id = {0}, dimensions = {0};
     vpx_codec_ctx_t decoder = {0};
     int initialized = 0, result = -1;
     *video = (RecordingVideo){.first_frame = -1, .last_frame = -1};
+    if (startup_ms > 1000U) goto out;
     if (recording_child(&root, 0x1a45dfa3U, &header) != 0 ||
         recording_child(&header, 0x4282U, &doc) != 0 ||
         doc.size != 4U || memcmp(doc.data, "webm", 4U) != 0 ||
@@ -172,6 +174,15 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
                     g_clear_error(&error);
                     g_clear_object(&thumbnail);
                 }
+                /* Automatic incoming recording includes the connection manager's
+                 * initial window before the source raises itself again. Decode
+                 * and check corruption throughout; allow only this bounded prefix
+                 * before the first counter. Outgoing recording passes zero. */
+                if (identity < 0 && video->first_frame < 0 && (uint64_t)pts < startup_ms &&
+                    video->startup_images < 32U) {
+                    ++video->startup_images;
+                    continue;
+                }
                 if (identity < 0 || (uint64_t)identity >= history->count ||
                     identity < video->last_frame ||
                     history->publication_us[identity] + 1000000U < started_us ||
@@ -183,10 +194,14 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
                             (unsigned long long)stopped_us);
                     goto out;
                 }
-                if (video->first_frame < 0) video->first_frame = identity;
+                if (video->first_frame < 0) {
+                    if (startup_ms != 0U && (uint64_t)pts > startup_ms) goto out;
+                    video->first_frame = identity;
+                    if (startup_ms != 0U) video->first_pts_ms = (uint64_t)pts;
+                }
                 uint64_t interval = history->publication_us[identity] -
                                     history->publication_us[video->first_frame];
-                uint64_t media_us = (uint64_t)pts * 1000U;
+                uint64_t media_us = ((uint64_t)pts - video->first_pts_ms) * 1000U;
                 if (interval > media_us + 500000U || media_us > interval + 500000U) {
                     fprintf(stderr, "FLUTTER_PEER_RECORDING_TIMING_FAIL packet=%u first=%lld "
                             "identity=%lld source_us=%llu media_us=%llu tolerance_us=500000\n",
@@ -194,12 +209,13 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
                             (unsigned long long)interval, (unsigned long long)media_us);
                     goto out;
                 }
+                if (identity != video->last_frame) ++video->distinct_frames;
                 video->last_frame = identity;
             }
             video->last_pts_ms = (uint64_t)pts;
         }
     }
-    if (video->images == 0U) goto out;
+    if (video->first_frame < 0) goto out;
     result = 0;
 out:
     if (initialized && vpx_codec_destroy(&decoder) != VPX_CODEC_OK) result = -1;
@@ -538,14 +554,14 @@ static int recording_output_attempt(Display *display, const ViewerWindow *viewer
         }
         phase = "decode";
         RecordingVideo rejected;
-        if (recording_decode(data, offset, history, started_us, stopped_us, &item->video) != 0) {
+        if (recording_decode(data, offset, history, started_us, stopped_us, 0U, &item->video) != 0) {
             fprintf(stderr, "FLUTTER_PEER_RECORDING_DECODE_FAIL file=%s packets=%u images=%u "
                     "first=%lld last=%lld pts_ms=%llu\n", item->name,
                     item->video.packets, item->video.images, (long long)item->video.first_frame,
                     (long long)item->video.last_frame, (unsigned long long)item->video.last_pts_ms);
             goto out;
         }
-        if (recording_decode(data, offset - 1U, history, started_us, stopped_us, &rejected) == 0)
+        if (recording_decode(data, offset - 1U, history, started_us, stopped_us, 0U, &rejected) == 0)
             goto out;
         phase = "unchanged";
         if (fstat(file, &after) != 0 || before.st_dev != after.st_dev ||

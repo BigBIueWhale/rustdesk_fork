@@ -7852,7 +7852,7 @@ static int incoming_status_visible(unsigned int pid, int active, int failed) {
 static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
     int result = -1, file = -1;
     const char *phase = "directory";
-    unsigned int files = 0U, frames = 0U;
+    unsigned int files = 0U, frames = 0U, distinct = 0U;
     size_t bytes = 0U;
     unsigned char *data = NULL;
     SourceHistory history = {0};
@@ -7887,13 +7887,16 @@ static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
         }
         RecordingVideo video, rejected;
         phase = "decode";
-        if (recording_decode(data, size, &history, started, stopped, &video) != 0) {
+        if (recording_decode(data, size, &history, started, stopped, 1000U, &video) != 0) {
             fprintf(stderr, "FLUTTER_PEER_INCOMING_DECODE_FAIL file=%s bytes=%zu packets=%u images=%u first=%lld last=%lld\n",
                 entry->d_name, size, video.packets, video.images, (long long)video.first_frame, (long long)video.last_frame);
             goto out;
         }
         phase = "truncated-control";
-        if (recording_decode(data, size - 1U, &history, started, stopped, &rejected) == 0) goto out;
+        if (recording_decode(data, size - 1U, &history, started, stopped, 1000U, &rejected) == 0) goto out;
+        phase = "strict-startup-control";
+        if (video.startup_images != 0U &&
+            recording_decode(data, size, &history, started, stopped, 0U, &rejected) == 0) goto out;
         phase = "unchanged";
         if (fstat(file, &after) != 0 || before.st_dev != after.st_dev ||
             before.st_ino != after.st_ino || before.st_size != after.st_size ||
@@ -7902,23 +7905,26 @@ static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
         gchar *digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256, data, size);
         if (digest == NULL) goto out;
         printf("FLUTTER_PEER_INCOMING_FILE name=%s bytes=%zu sha256=%s decoded_frames=%u "
+               "startup_frames=%u first_counter_ms=%llu distinct_frames=%u "
                "first_frame=%lld last_frame=%lld mode=0600 truncated=refused\n",
-               entry->d_name, size, digest, video.images, (long long)video.first_frame,
+               entry->d_name, size, digest, video.images, video.startup_images,
+               (unsigned long long)video.first_pts_ms, video.distinct_frames, (long long)video.first_frame,
                (long long)video.last_frame);
         g_free(digest);
         free(data);
         data = NULL;
         bytes += size;
-        frames += video.images;
+        frames += video.images - video.startup_images;
+        distinct += video.distinct_frames;
         int closed = close(file);
         file = -1;
         if (closed != 0) goto out;
         errno = 0;
     }
     phase = "aggregate";
-    if (errno != 0 || files == 0U || frames < 12U) goto out;
-    printf("FLUTTER_PEER_INCOMING_OUTPUT_OK files=%u decoded_frames=%u bytes=%zu completion=ui\n",
-           files, frames, bytes);
+    if (errno != 0 || files == 0U || frames < 12U || distinct < 12U) goto out;
+    printf("FLUTTER_PEER_INCOMING_OUTPUT_OK files=%u counter_frames=%u distinct_frames=%u bytes=%zu completion=ui\n",
+           files, frames, distinct, bytes);
     result = 0;
 out:
     if (result != 0) fprintf(stderr, "FLUTTER_PEER_INCOMING_OUTPUT_FAIL phase=%s files=%u frames=%u bytes=%zu\n",

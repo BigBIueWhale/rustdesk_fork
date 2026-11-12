@@ -149688,3 +149688,16 @@ https://man7.org/linux/man-pages/man2/pidfd_open.2.html.
 
 This append preserves the prior 16,068,951-byte audit prefix, SHA-256
 e92996a37962062135581ba109f47d41826f90d3d38099149c14899a600969d9.
+
+The first component run at 5cf1c3cc, 6u3YI9csMz/tool52290, reports all 27 tests
+passed but exits 1: the guest's required_tests list still has 26 entries, despite
+the updated per-suite and artifact totals. Add the new named regression to that
+list; product code is unchanged by this fixture correction. The failed run emits
+no final named-case/artifact receipt and is not accepted component validation.
+recording-stop-recovery-5cf1c3cc.json binds fifteen files/181,767 bytes copied and
+verified on both hosts; outer SHA-256
+7c81fdfbf19facfd15857efe52e0f6abcfe8d696d85fa8d1077d2d98b34c10af.
+QEMU 2011295 joins zero after 240.820 seconds, RAM peaks at 5,334,638,592 bytes,
+and four listener deltas are zero. After copy, the inventoried 3,428,352-byte
+private tree is retired; the separate 174-byte retirement receipt is verified
+on CTE/TUF. Source/cache freeze is released only after that reconciliation.

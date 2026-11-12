@@ -5801,6 +5801,7 @@ run_focused_rust_tests() {
                 ipc::recording_policy::tests::policy_readback_observes_disk_changes_and_refuses_corruption
                 ipc::recording_policy::tests::lost_change_reply_queries_same_operation_without_resubmitting
                 ipc::recording_policy::tests::missing_change_history_remains_uncertain_and_unavailable_owner_fails_before_submit
+                ipc::recording_policy::tests::replaced_owner_ends_recovery_without_querying_or_resubmitting
                 server::video_service::incoming_recording_tests::blocked::blocked_recording_write_preserves_capture_progress
                 server::video_service::incoming_recording_tests::blocked::blocked_writers_share_and_release_the_byte_budget
                 server::video_service::incoming_recording_tests::blocked::blocked_finalization_retains_status_and_join_ownership

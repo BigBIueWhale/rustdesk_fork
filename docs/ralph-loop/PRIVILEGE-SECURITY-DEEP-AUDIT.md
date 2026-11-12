@@ -150864,3 +150864,63 @@ deltas and exact private/process/socket/RAM retirement. The approximate
 400,000-token target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,149,935-byte audit prefix, SHA-256
 7bcae85b71d59261400e49c99f85e6d728994f927f5649eb2a333ebd44566d82.
+
+### 2026-11-13 — Installed Remote delay and complete-outage recovery passes
+
+Continue R-F5 from the accepted installed paused-viewer prerequisite. Commit
+420e4dd1 adds --installed-remote-network to the normal-package fixture. The
+shared netem owner retains the exact guest namespace, calibrates packet sizes,
+uses the existing port-21118 ingress classifiers and 64-packet queue, and restores
+the original guest loopback MTU/GSO settings on retirement. The guest-root
+controller admits attachment from its owned actor; profile requests require its
+exact direct-child observer executable and retained pidfd. A same-UID wrong-role
+actor request is explicitly refused before attachment. No host network mutation.
+The design follows netem's receive-ingress requirement for realistic TCP tests:
+https://man7.org/linux/man-pages/man8/tc-netem.8.html.
+Kernel socket credentials identify the connecting process, with retained process
+ownership supplying the role proof:
+https://man7.org/linux/man-pages/man7/unix.7.html.
+The existing 2,500-ms four-fresh-frame recovery deadline, 1,000-ms healthy frame
+age, three-second follow-ups and viewer resource bounds remain unchanged.
+
+First run 1BWppoXAFm/tool76840 stops before impairment because the settings
+environment's /usr/bin:/bin PATH cannot find modprobe. Commit 334ef548 uses the
+shared network helper's existing environment. No product behavior is attributed
+to this fixture failure. remote-installed-network-420e4dd1.json binds nine
+files/159,740 bytes on CTE/TUF. QEMU 3651754 joins zero after 82.886 seconds;
+all four host deltas are zero and exact private/process/socket/RAM retirement
+is reconciled before source changes and replay.
+
+Corrected E6FJPQuuvU/tool65125 reuses app 2eb7015e, manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a.
+Supervisor 7616 and child 7740/start 7214/generation
+f6931fca-c736-4500-86df-d6cf2ed6cfd5 map the exact packaged core. Source 7837,
+viewer 7871 and observer 7872 share time namespace 4026531834. Baseline maximum
+displayed age is 324 ms. The 125-ms delay lasts 6,010 ms and delivers 126 packets.
+Eight complete outages last 2,023/6,012/1,784/5,750/2,283/6,289/2,534/6,533 ms
+and drop 6/7/7/7/7/7/7/9 packets. Four fresh displayed frames recover in
+872/2,227/1,842/2,255/2,177/1,758/1,302/1,587/1,324 ms, including controller
+restoration time. Follow-up maximum ages are 367/348/353/355/369/383/361/350/
+343 ms. All cycles retain the same TCP identity and viewer window. Of 381
+transport snapshots, 380 retain the socket pair; the final healthy snapshot is
+empty after normal viewer closure. Maximum observed TCP send queue is 4,966
+bytes and receive queue is zero. The calibrated oversized counter remains one,
+while the at-MTU count rises from one to 210.
+Viewer RSS grows at most 19,376 KiB, FDs at most two, and threads decrease.
+All 18 profile requests complete in order; wrong-role refusal and guest network
+restoration pass. Actor/source/viewer/observer exit zero, with 347 source
+publications. Child identity, listener inode 21460 and protected/user credentials
+remain unchanged. PAM closure reaps the child. Mutual CPace, wrong-password/
+ordinary-user refusal, reinstall/remove/purge and dependency audits pass.
+
+remote-installed-network-334ef548.json binds nine files/848,869 bytes copied
+and hash-verified on CTE/TUF before source/input unfreeze. QEMU 3653320 joins
+zero after 235.311 seconds; peak RAM scratch 4,285,927,424 bytes retires, four
+host listener deltas are zero, and exact private/socket/process/RAM absence is
+verified. No product correction or full build was needed. This closes these
+installed Linux delay/outage cases, not random/burst loss, bandwidth/jitter,
+input-to-visible response, baseline percentile agreement, multi-hour drift,
+physical scanout, other platform/role combinations or complete R-F5/release
+acceptance. Continue with the remaining installed impairment profiles.
+This append preserves the prior 16,150,603-byte audit prefix, SHA-256
+791d34babb5f9902e23fe508988e6c3dcf6fdac8597b5f05633526f1967d3c0c.

@@ -4083,9 +4083,31 @@ reinstall/remove/purge lifecycle retire.
 CTE/TUF, 183.388 seconds, four zero host listener deltas and joined private/RAM
 cleanup. The first attempt rejected the new source display/geometry in the
 observer's fixed header list; its failed evidence is retained separately.
-This establishes the installed setup for subsequent impairment acceptance.
-Actual installed network loss/outage, baseline-percentile recovery, input
-latency, multi-hour drift, physical scanout and other platforms remain OPEN.
+This establishes the installed setup used by the impairment check below.
+Installed random/burst loss, baseline-percentile recovery, input latency,
+multi-hour drift, physical scanout and other platforms remain OPEN.
+
+**Installed Linux delay/outage recovery — nine cycles PASS on the same app.**
+TUF `E6FJPQuuvU`, fixture `334ef548`, applies 125-ms receive-ingress delay
+for six seconds, then eight complete outages of 1.75–6.5 seconds. Native
+1,499/1,500/1,501-byte controls establish the packet-size counters before the
+guest's loopback MTU/GSO is bounded to 1,500 bytes. The delay interval delivers
+126 selected packets; each outage records 6–9 actual drops. All nine cycles
+recover four fresh displayed frames within **872–2,255 ms**, below the fixed
+2,500-ms deadline. Three-second follow-up maximum ages are **343–383 ms**
+against a 324-ms baseline, within the unchanged 1,000-ms freshness bound.
+The same TCP connection/window and installed child/listener/credentials persist.
+Viewer RSS growth peaks at 19,376 KiB; descriptors peak at 47 from 45.
+The controller refuses a wrong-role actor request, admits only the exact owned
+pixel observer, and restores loopback settings/removes its interface and socket.
+Desktop closure, authentication controls and reinstall/remove/purge pass.
+`remote-installed-network-334ef548.json` binds nine files/848,869 bytes on
+CTE/TUF, 235.311 seconds, 381 transport snapshots, four zero listener deltas
+and joined private/RAM cleanup. One earlier fixture attempt could not locate
+`modprobe` in the settings environment; its separate failed evidence is retained.
+Random/burst loss, bandwidth/jitter, input response, quantified baseline-tail
+agreement, multi-hour drift, physical/other-platform and complete R-F5/release
+acceptance remain OPEN. No product change or full build was needed.
 
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without

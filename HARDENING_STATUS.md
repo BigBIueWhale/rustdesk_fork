@@ -6904,9 +6904,23 @@ cleanup with four zero host listener deltas. Two earlier driver failures reflect
 Flutter's merged labels and enabled/sensitive distinction; their inspected
 screenshots and corrections remain in the audit, not as acceptance passes.
 
-**Still OPEN:** actual installed recording output/capture, wrong/stale requester
-and mutation lifecycle/concurrency coverage, native spawn and broader I/O failures,
-full-UI multiple writers and other platforms. Android's process-owned typed path
+**Installed capture/output — selected Linux package scenario passes at `46fbc2e3`.**
+The same `a36e5581` app records a real password-authenticated viewer session after
+the settings/service restart workflow. The viewer presents twelve changing source
+frames on one connection, with maximum observed age 344 ms. Two finalized VP9 WebM
+files (88,113 bytes total, UID 4001/mode 0600) decode to fourteen distinct source
+counters, with checked ordering/timing and no unrecognized startup images. Both
+truncated-file controls refuse. The actual settings UI confirms recording has
+finished before the exact files are retained for decoding. Source and observer use
+the same guest monotonic clock. `installed-recording-output-46fbc2e3.json` binds
+nine files/168,773 bytes, the unchanged app manifest, existing settings/package
+controls and joined VM/RAM cleanup with four zero host listener deltas. Two failed
+fixture attempts are retained separately: uppercase password input and a viewer
+too short to expose the complete 1024x768 counter. This is Xvfb desktop evidence.
+
+**Still OPEN:** physical-display and broader installed capture cases, wrong/stale
+requester and mutation lifecycle/concurrency coverage, native spawn and broader I/O
+failures, full-UI multiple writers and other platforms. Android's process-owned typed path
 is implemented without new native evidence; installed Windows/macOS still lack
 their authorized operation and explicitly report unavailable. These results do
 not close R-S0/R-F5 or establish complete release acceptance.

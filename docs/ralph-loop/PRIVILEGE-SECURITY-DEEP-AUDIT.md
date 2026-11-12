@@ -149345,3 +149345,67 @@ private/socket/RAM retirement pass. The approximate 400,000-token compression
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,048,423-byte audit prefix, SHA-256
 64879f9987c068291b8bc9f627d23713a756f22f0a9584b1c685c9db033f3807.
+
+## 2026-11-12 — Installed recording output and actual viewer pixels
+
+Selected R-S0's remaining installed recording effect after the previous setting
+checkpoint. Reusing the exact a36e5581 full app avoids another application build.
+The normal Debian package, systemd root service, PAM/logind desktop and actual
+administrator settings workflow remain the authority path. The new fixture adds
+the existing changing X11 source and native WebM decoder, compiled for this
+desktop's 1024x768 geometry; ordinary peer fixtures retain their 640x480 defaults.
+A real installed viewer enters the provisioned password through its Flutter
+dialog. Acceptance requires twelve fresh displayed counters on one connection,
+actual UI finalization, private user-owned output, native decode/corruption checks,
+source counter ordering/timing, at least twelve distinct saved counters and
+truncated-file refusal. No product source changes were needed.
+
+Research: libvpx's primary simple_decoder example requires draining every decoded
+image, respecting stride and checking VP8D_GET_FRAME_CORRUPTED even after a
+successful decode; the retained reader does all three. Matroska's element
+specification binds the WebM track dimensions and timestamps. The fixture keeps
+exact compile-time dimensions and existing bounded parsing, not arbitrary media
+acceptance. Sources:
+https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/examples/simple_decoder.c
+https://www.matroska.org/technical/elements.html
+
+0b39d4ca run ROIj8EK5Nk/tool29777 exits 1 after the 24 initial and eight restarted
+settings stages. The reused password typing helper rejects the fixture's first
+uppercase character before authentication. 261846b2 adds explicit Shift press/
+release for uppercase input. Its run iQ7sbXiJOh/tool1147 authenticates but observes
+zero recognizable viewer counters while source history continues. The 1300x740
+viewer cannot show the full 1024x768 source at Original scale. 46fbc2e3 supplies a
+1600x1200 fixture display and an explicitly checked 1400x1100 viewer window; the
+pixel oracle, twelve-frame requirement and one-second age ceiling remain unchanged.
+The two failure capsules, installed-recording-output-0b39d4ca.json and
+installed-recording-output-261846b2.json, retain respectively fifteen files/
+344,928 and 366,745 bytes. Each has a separate 174-byte retirement receipt. QEMU
+309234 and 324351 join zero after 178.352 and 217.128 seconds; scratch peaks at
+4,214,226,944 and 4,215,865,344 bytes. Both have four zero listener deltas, retired
+RAM/socket/process state, and verified private-tree removal after copying evidence.
+
+46fbc2e3 run pxdSRY1tsy/tool56466 exits zero. The actual viewer presents twelve
+fresh frames, maximum age 344 ms, on its retained authenticated connection. Two
+finalized VP9 recordings contain respectively counter 4 and counters 5 through 17:
+fourteen native-decoded images/distinct counters, zero startup allowances used,
+88,113 bytes total. Both files are UID/GID 4001, mode 0600, single-link regular
+files. Their hashes match before/after same-inode retention; native decoding and
+both truncated-file refusals pass. The settings UI observes Not recording before
+retention/decode. Existing administrator denial/change/persistence, password
+failure/recovery, seven CPace probes, three stale-password refusals, reinstall,
+remove and purge controls also pass. Source-driver repeated builds match and the
+native frame/history refusal controls pass in the guest preparation container.
+
+installed-recording-output-46fbc2e3.json binds nine files/168,773 bytes, copied and
+hash-verified on CTE/TUF. Outer SHA-256:
+99792a20a8b031db0ce7c6374a9abc63a5b12d67dc23c77c1a142e05baf50011.
+QEMU 366894 joins zero after 195.332 seconds; bounded scratch peaks at 4,285,136,896
+bytes. Four host listener deltas are zero; exact private/process/socket/RAM absence
+passes. No new app generation or persistent VM disk remains. The existing SSH
+master was reused without host authentication, service or network changes.
+
+This closes one installed Xvfb capture/recording scenario, not physical-display,
+wrong/stale-principal, mutation cancellation/concurrency, broader I/O, multi-writer,
+long-session/network-recovery or other-platform acceptance. Those remain OPEN.
+This append preserves the prior 16,049,099-byte audit prefix, SHA-256
+905a5a475cfc49e67849e66c21886dde3529957d6c9aeb4ddf052facc0a816ba.

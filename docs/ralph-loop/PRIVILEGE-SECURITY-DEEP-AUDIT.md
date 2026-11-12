@@ -149155,3 +149155,15 @@ does not fix the still-generic Flutter checkbox or establish installed acceptanc
 
 This append preserves the prior 16,031,190-byte audit prefix, SHA-256
 76aa86395d7b7cd856e551a1c347c1b70a8745330690130153448397a310cb0c.
+
+Fresh ledger count at de5a69b8, EdCKUX71b6/tool10714 exits zero: 412,558 tokens /
+1,882,708 bytes, SHA-256
+e59b6f745c75769eb5f69195927488744315e62f431c0ce48006b9f72b049826.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and full round
+trip pass. recording-policy-ledger-de5a69b8.json binds eight files/117,432 bytes
+verified on CTE/TUF. QEMU 4190030 joins zero after 30.376 seconds; scratch peaks
+at 403,058,688 bytes. Three zero listener deltas and exact private/process/socket/
+RAM absence pass. The approximate 400,000-token compression target remains OPEN.
+This audit-only append preserves the counted ledger and prior 16,036,113-byte
+audit prefix, SHA-256
+867eae12efec50a08fd18b4213de61a6000d07286e2151a1b8d6b928c1e45e76.

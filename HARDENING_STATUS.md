@@ -6965,6 +6965,23 @@ the existing cancellation/concurrency/password/package controls pass.
 VM/RAM cleanup with four zero host listener deltas. Other exit/admission timing
 and broader failures remain OPEN; hiding a window does not establish process exit.
 
+**Service-stop recovery — correction compiled; installed replay OPEN.**
+At `6515712d`, the same installed app preserves disabled recording when stopped
+during partial administrator entry, then reports Denied after restart. A second
+stop after durable enable also preserves the setting and reaps its helper, but
+the original GUI remains pending beyond five seconds. The client polls the new
+service's missing operation history until its 150-second deadline.
+`5cf1c3cc` binds recovery to the original authenticated PID/UID/start identity;
+a replacement returns Uncertain without receiving an operation query or mutation.
+Unknown history from the original owner still permits admission/result recovery.
+At `1aab2c22`, all 27 compiled recording/video cases pass, including replacement
+within two seconds and zero outgoing bytes to the replacement, using Unix pairs
+and injected identity changes. `recording-stop-recovery-1aab2c22.json` binds nine
+files/88,994 bytes and joined cleanup with four zero host listener deltas. The
+failed installed run and a corrected fixture-count failure remain in the audit.
+Next: rebuild the full app and rerun the actual service-stop/UI/fresh-disable
+scenario. This component pass does not establish corrected installed behavior.
+
 **Still OPEN:** physical-display and broader installed capture cases, wrong/stale
 requester and broader mutation lifecycle/concurrency coverage, native spawn and broader I/O
 failures, full-UI multiple writers and other platforms. Android's process-owned typed path

@@ -149701,3 +149701,25 @@ QEMU 2011295 joins zero after 240.820 seconds, RAM peaks at 5,334,638,592 bytes,
 and four listener deltas are zero. After copy, the inventoried 3,428,352-byte
 private tree is retired; the separate 174-byte retirement receipt is verified
 on CTE/TUF. Source/cache freeze is released only after that reconciliation.
+
+The corrected fixture at 1aab2c22, Ztszj1tKqq/tool20109, exits zero. All six
+recording-policy cases and 21 existing recording/video controls pass in eleven
+execution seconds after a 162-second compile. Exact executable SHA-256
+9929de8a7557beb2387672e5c70d7a266b6f17b4c1e1fb0216b3bda12b63f563
+is unchanged before/after execution. The replacement case uses actual Unix
+streams with injected PID/start-time/UID changes and requires completion within
+two seconds plus immediate EOF, with no operation bytes sent to the replacement.
+The same-owner control observes Unknown, Pending and each of five terminal
+outcomes while preserving one submit and the original operation UUID.
+
+recording-stop-recovery-1aab2c22.json binds nine files/88,994 bytes copied and
+verified on both hosts; outer SHA-256
+65701c0d097ea65ee603e18cfb43aeba439bee03830ada57c8a172a9539edb6b.
+QEMU 2033824 joins zero after 232.364 seconds; RAM peaks at 5,334,900,736 bytes.
+Four zero listener deltas and exact private/process/socket/RAM absence pass.
+The installed acceptance condition remains OPEN: build the corrected full app
+and rerun the real root-service replacement, truthful UI outcome and fresh
+authorized disable in the same surviving GUI/agent. Existing a36e5581 app bytes
+cannot validate this product correction. No application artifact was rebuilt or
+retired in this component checkpoint. The prior 16,073,197-byte audit prefix is
+preserved, SHA-256 9a327a830c91bc5b5c397e07a1a172f64e187eded0e1d5cb1622878b62e56aae.

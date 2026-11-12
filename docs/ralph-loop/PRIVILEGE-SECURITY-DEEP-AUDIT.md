@@ -148574,3 +148574,15 @@ privilege-immunity or latency-recovery conclusion follows from this short scenar
 
 This append preserves the prior 15,987,971-byte audit prefix, SHA-256
 cf7123b3e143143e5c4b01cc39106002de75fbc73239b48d90701e1948227798.
+
+Fresh ledger count at 5a36be97, mADjOGxgxA/tool42214 exits zero: 411,743 tokens /
+1,878,945 bytes, SHA-256
+c7816f4a8893e9000cd9cd9eabde2c71400c35ccbdd5c0c6cd8983237c8749d6.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and complete
+round trip pass. incoming-ui-ledger-5a36be97.json binds eight files/115,985 bytes
+verified on both hosts. QEMU 2903667 joins zero after 30.394 seconds; RAM scratch
+peaks at 403,054,592 bytes. Three zero listener deltas and exact private/QEMU/socket/
+RAM absence are verified. Approximate 400,000-token compression remains OPEN.
+This audit-only append preserves the counted ledger and prior 15,994,142-byte
+audit prefix, SHA-256
+caf72f38ff4d33efcf84c828311ca99075ebcd89dcdbf7346472a5ee65d48df2.

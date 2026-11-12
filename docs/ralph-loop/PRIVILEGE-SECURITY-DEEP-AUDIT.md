@@ -148233,3 +148233,15 @@ Multiple writers/late failures, blocked recording I/O, controlled-side discarded
 write results, whole online closure/cold reproduction and broader release
 acceptance remain OPEN. Next recording work is real multiple-writer/late-failure
 finality, using existing component facilities before another application build.
+
+Fresh ledger count at c58f5435, 6E2pOvCpNv/tool43097 exits zero: 410,588 tokens /
+1,873,451 bytes, SHA-256
+ba7493e7d62fe096dc389b8b47c0242a3e5652b057308df7ddb959c3ac7444cc.
+Pinned tokenizer, seven controls and whole-input round trip pass.
+logger-ui-ledger-c58f5435.json binds eight files/117,476 bytes verified on both
+hosts. QEMU 2307704 joins zero after 30.425 seconds; peak RAM scratch
+402,911,232 bytes, three zero listener deltas and exact private/socket/RAM
+absence are verified. The ledger shrinks by 127 tokens; the approximate
+400,000-token compression requirement remains OPEN. This audit-only append
+preserves the counted ledger and prior 15,971,191-byte audit prefix (SHA-256
+948dc24e8b61b6cec6e8744f04e4004abb724a7dccc2895f5a3dfabc8293d259).

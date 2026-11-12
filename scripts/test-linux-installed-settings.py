@@ -594,6 +594,26 @@ def recording_concurrent_session(environment, app, agent):
             drive(loser, loser_env, 'recording-disable')
             drive(winner, winner_env, 'recording-disable')
             checkpoint('retry-applied', ('continue',))
+            drive(secondary, other_environment, 'recording-enable-submit')
+            checkpoint('depart-submit', ('continue',))
+            for action in ('select', 'password'):
+                print(run([str(WORK / 'agent-driver'), str(agent.pid), action, 'incoming-recording'],
+                          env=environment, timeout=40, output_limit=524288), end='', file=sys.stderr, flush=True)
+            checkpoint('depart-password', ('depart',))
+            secondary.terminate()
+            exit_status = secondary.wait(timeout=8)
+            print(run([str(WORK / 'agent-driver'), str(agent.pid), 'retired', 'incoming-recording'],
+                      env=environment, timeout=40, output_limit=524288), end='', file=sys.stderr, flush=True)
+            drive(app, environment, 'recording-disable')
+            checkpoint('depart-retired', ('continue',), exit_status=exit_status)
+            drive(app, environment, 'recording-enable-submit')
+            checkpoint('recovery-submit', ('authenticate',))
+            drive(app, environment, 'recording-enable')
+            checkpoint('recovery-enabled', ('continue',))
+            drive(app, environment, 'recording-disable-submit')
+            checkpoint('recovery-disable-submit', ('authenticate',))
+            drive(app, environment, 'recording-disable')
+            checkpoint('recovery-disabled', ('continue',))
         finally:
             if secondary is not None:
                 if secondary.poll() is None:
@@ -1522,7 +1542,10 @@ def recording_concurrent_scenario(receiver, process, requester, record, agent_id
     listener = receiver.direct_listener(record)
     identities = {'primary': requester}
     helper = helper_fd = secondary_fd = owner = refused = None
+    pam_helper = pam_fd = departed_at = None
     helpers = []
+    departed_stages = ('depart-retired', 'recovery-submit', 'recovery-enabled',
+                       'recovery-disable-submit', 'recovery-disabled', 'retired')
 
     def pending(wait_seconds=0):
         deadline = time.monotonic() + wait_seconds
@@ -1556,7 +1579,8 @@ def recording_concurrent_scenario(receiver, process, requester, record, agent_id
             time.sleep(0.01)
 
     with ExitStack() as retained:
-        for stage in ('ready', 'submitted', 'contended', 'applied', 'retry-submitted', 'retry-applied', 'retired'):
+        for stage in ('ready', 'submitted', 'contended', 'applied', 'retry-submitted', 'retry-applied',
+                      'depart-submit', 'depart-password', *departed_stages):
             if not select.select([process.stdout], [], [], 45)[0]:
                 raise RuntimeError('concurrent recording stage timed out')
             raw = process.stdout.readline(4096)
@@ -1577,12 +1601,16 @@ def recording_concurrent_scenario(receiver, process, requester, record, agent_id
                 if refused not in ('Denied', 'Failed'):
                     raise RuntimeError('competing recording request did not report an explicit refusal')
                 expected.update(owner=owner, refused=refused)
+            elif stage == 'depart-retired':
+                if event.get('exit_status') not in (0, -signal.SIGTERM):
+                    raise RuntimeError('recording requester did not exit normally or by its owned SIGTERM')
+                expected['exit_status'] = event['exit_status']
             if (event != expected or receiver.child_record() != record or receiver.direct_listener(record) != listener
                     or receiver.credential() != credential or user_recording_options() != profile):
                 raise RuntimeError('concurrent recording changed its owner, credential, profile or service')
             for name, identity in (*identities.items(), ('agent', agent_identity)):
                 proc = Path(f'/proc/{identity[0]}')
-                if name == 'secondary' and stage == 'retired':
+                if name == 'secondary' and stage in departed_stages:
                     if not select.select([secondary_fd], [], [], 0)[0] or proc.exists():
                         raise RuntimeError('secondary recording GUI was not reaped')
                     continue
@@ -1601,10 +1629,10 @@ def recording_concurrent_scenario(receiver, process, requester, record, agent_id
                     package_process(identity[0])
             for pid in (record['supervisor'], record['pid']):
                 package_process(pid)
-            enabled = stage in ('applied', 'retry-submitted')
+            enabled = stage in ('applied', 'retry-submitted', 'recovery-enabled', 'recovery-disable-submit')
             recording_option(enabled)
             command = b'continue\n'
-            if stage in ('submitted', 'retry-submitted'):
+            if stage in ('submitted', 'retry-submitted', 'depart-submit', 'recovery-submit', 'recovery-disable-submit'):
                 matches = pending(5)
                 if len(matches) != 1:
                     raise RuntimeError('recording submission has no pending authorization')
@@ -1619,31 +1647,64 @@ def recording_concurrent_scenario(receiver, process, requester, record, agent_id
                 if stage == 'submitted':
                     owner = helper[2]
                     command = (owner + '\n').encode()
-                else:
+                elif stage == 'retry-submitted':
                     if helper[2] == owner:
                         raise RuntimeError('recording retry did not come from the previously refused GUI')
                     command = b'authenticate\n'
-            elif stage == 'contended':
+                elif stage == 'depart-submit':
+                    if helper[2] != 'secondary':
+                        raise RuntimeError('pending exit case does not belong to the secondary GUI')
+                else:
+                    if helper[2] != 'primary':
+                        raise RuntimeError('post-exit recovery does not belong to the surviving GUI')
+                    command = b'authenticate\n'
+            elif stage in ('contended', 'depart-password'):
                 if pending() != [helper] or select.select([helper_fd], [], [], 0)[0]:
                     raise RuntimeError('competing recording request displaced the original authorization')
-                command = b'authenticate\n'
+                if stage == 'contended':
+                    command = b'authenticate\n'
+                else:
+                    pam_helper, pam_start = pending_graphical_pam(agent_identity)
+                    pam_fd = os.pidfd_open(int(pam_helper.name))
+                    retained.callback(os.close, pam_fd)
+                    if (pending_graphical_pam(agent_identity) != (pam_helper, pam_start)
+                            or select.select([pam_fd, helper_fd, secondary_fd], [], [], 0)[0]):
+                        raise RuntimeError('requester exit case has no live pending PAM conversation')
+                    departed_at = time.monotonic()
+                    command = b'depart\n'
             else:
                 if pending():
                     raise RuntimeError('completed recording operation left a pending helper')
                 if helper_fd is not None and (not select.select([helper_fd], [], [], 0)[0]
                                               or Path(f'/proc/{helper[0]}').exists()):
                     raise RuntimeError('completed recording operation did not reap its helper')
-            print('LINUX_INSTALLED_RECORDING_CONCURRENT_STAGE=' + json.dumps({**event,
+            if stage == 'depart-retired':
+                seconds = time.monotonic() - departed_at
+                if seconds >= 10 or not select.select([pam_fd], [], [], 0)[0] or pam_helper.exists():
+                    raise RuntimeError('requester exit did not retire its PAM helper within ten seconds')
+                print('LINUX_INSTALLED_RECORDING_REQUESTER_EXIT=' + json.dumps({
+                    'requester': identities['secondary'], 'observer': requester, 'agent': agent_identity,
+                    'helper': helper, 'pam_helper': [int(pam_helper.name), pam_start],
+                    'exit_status': event['exit_status'], 'seconds': seconds,
+                    'helpers_reaped': True, 'setting': False, 'credential_unchanged': True,
+                    'profile_unchanged': True}, sort_keys=True), flush=True)
+            exit_stage = stage.startswith(('depart-', 'recovery-'))
+            prefix = 'LINUX_INSTALLED_RECORDING_REQUESTER_EXIT_STAGE=' if exit_stage else 'LINUX_INSTALLED_RECORDING_CONCURRENT_STAGE='
+            print(prefix + json.dumps({**event,
                 'identities': identities, 'agent': agent_identity, 'service_generation': record['generation'],
                 'enabled': enabled, 'helper': helper, 'credential_unchanged': True,
                 'profile_unchanged': True}, sort_keys=True), flush=True)
             process.stdin.write(command)
             process.stdin.flush()
-    if len(helpers) != 2 or helpers[0][2] == helpers[1][2] or refused is None:
+    if (len(helpers) != 5 or helpers[0][2] == helpers[1][2] or refused is None
+            or [helper[2] for helper in helpers[2:]] != ['secondary', 'primary', 'primary']):
         raise RuntimeError('recording concurrency coverage is incomplete')
     print('LINUX_INSTALLED_RECORDING_CONCURRENT=pass guis=2 pending=one competing=explicit-refusal '
           'authorization=preserved retry=other-gui enabled=confirmed disabled=confirmed '
           'helpers=reaped credential=unchanged profile=unchanged', flush=True)
+    print('LINUX_INSTALLED_RECORDING_REQUESTER_EXIT_RECOVERY=pass requester=SIGTERM phase=partial-password '
+          'dialog=retired helpers=reaped protected=preserved profile=unchanged '
+          'retry=surviving-gui-and-agent enabled=confirmed disabled=confirmed', flush=True)
 
 
 def admin_failure_scenario(receiver, probe_sha, network_before, graphical=None):

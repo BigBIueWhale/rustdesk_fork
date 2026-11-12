@@ -190,6 +190,34 @@ out:
     return result;
 }
 
+static int agent_dialog_retired(Display *display, unsigned int pid) {
+    uint64_t deadline = monotonic_millis() + 5000U;
+    unsigned int stable = 0U;
+    while (monotonic_millis() < deadline) {
+        Window root = DefaultRootWindow(display), returned_root, parent, *windows = NULL;
+        unsigned int count = 0U, visible = 0U;
+        if (XQueryTree(display, root, &returned_root, &parent, &windows, &count) == 0) return -1;
+        int valid = count <= ACCESSIBLE_CHILD_LIMIT;
+        for (unsigned int i = 0U; valid && i < count; ++i) {
+            unsigned long owner;
+            if (read_window_pid(display, windows[i], &owner) == 0 && owner == pid) {
+                XWindowAttributes attributes;
+                valid = XGetWindowAttributes(display, windows[i], &attributes) != 0;
+                if (valid && attributes.map_state == IsViewable) ++visible;
+            }
+        }
+        if (windows != NULL) XFree(windows);
+        if (!valid) return -1;
+        stable = visible == 0U ? stable + 1U : 0U;
+        if (stable == 3U) {
+            printf("LINUX_POLKIT_DIALOG_RETIRED=pass pid=%u visible_windows=0 observations=3\n", pid);
+            return 0;
+        }
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return -1;
+}
+
 int main(int argc, char **argv) {
     char *end = NULL;
     if (argc != 4 || getuid() != 4001 || geteuid() != 4001) return 2;
@@ -216,9 +244,11 @@ int main(int argc, char **argv) {
     puts("LINUX_INSTALLED_SETTINGS_PNG=pass source=gtk-resource dimensions=16x16");
     if (atspi_init() != 0) { XCloseDisplay(display); return 1; }
     atspi_set_timeout(1000, 1000);
-    AtspiAccessible *message = agent_control((unsigned int)pid, ATSPI_ROLE_LABEL, message_text);
+    int retired = strcmp(argv[2], "retired") == 0;
+    AtspiAccessible *message = retired ? NULL : agent_control((unsigned int)pid, ATSPI_ROLE_LABEL, message_text);
     int result = -1;
-    if (message != NULL) {
+    if (retired) result = agent_dialog_retired(display, (unsigned int)pid);
+    else if (message != NULL) {
         g_object_unref(message);
         if (strcmp(argv[2], "cancel") == 0) result = agent_click((unsigned int)pid, "Cancel");
         else if (strcmp(argv[2], "select") == 0) result = agent_select((unsigned int)pid);
@@ -232,8 +262,8 @@ int main(int argc, char **argv) {
         PasswordPromptScan diagnostic;
         if (scan_password_prompt((unsigned int)pid, &diagnostic, 1) != 0)
             fputs("POLKIT_DIALOG_DIAGNOSTIC=incomplete\n", stderr);
-    } else printf("LINUX_POLKIT_DIALOG=pass action=%s pid=%lu operation=%s controls=gtk-atspi input=xtest\n",
-                  argv[2], pid, argv[3]);
+    } else printf("LINUX_POLKIT_DIALOG=pass action=%s pid=%lu operation=%s controls=%s input=%s\n",
+                  argv[2], pid, argv[3], retired ? "x11" : "gtk-atspi", retired ? "none" : "xtest");
     atspi_exit();
     XCloseDisplay(display);
     return result == 0 ? 0 : 1;

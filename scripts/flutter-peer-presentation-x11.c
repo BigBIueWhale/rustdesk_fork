@@ -4114,11 +4114,12 @@ static int camera_failure(const ViewerWindow *viewer, int coord, int busy) {
     int visible = 0;
     while (monotonic_millis() < deadline) {
         AtspiAccessible *error = NULL;
-        if (query_accessible((unsigned int)viewer->pid, "Camera capture failed", deadline,
-                             &error, 1, 1, NULL) != 0) return -1;
+        int queried = query_accessible((unsigned int)viewer->pid, "Camera capture failed", deadline,
+                                       &error, 1, 1, NULL);
         visible = error != NULL;
         if (error != NULL) g_object_unref(error);
         if (session_socket_counts(&connected, &listeners) != 0 || listeners != 1U) return -1;
+        if (queried != 0) break;
         retired = visible && connected == 0U ? retired + 1U : 0U;
         if (retired == 10U) {
             printf("FLUTTER_PEER_CAMERA_%s_OK error=visible connected_sockets=0 listener=preserved\n",

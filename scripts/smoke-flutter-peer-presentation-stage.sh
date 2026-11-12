@@ -1369,6 +1369,7 @@ PY
       /usr/bin/python3 -I -S /source/scripts/flutter-peer-camera.py observe "$SERVER_PID" "$SERVER_START"
     elif [ "$PEER_SCENARIO" = camera-busy ]; then
       /usr/bin/python3 -I -S /source/scripts/flutter-peer-camera.py busy "$SERVER_PID" "$SERVER_START"
+      emit_runtime_logs SERVER "$HOME/.local/share/logs"
     fi
     stop_seen=0
     credential_rotated=0

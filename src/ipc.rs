@@ -9499,7 +9499,9 @@ pub(crate) async fn set_user_incoming_recording(enabled: bool) -> crate::incomin
                     enabled: Some(config::option2bool(key, &effective.value)) };
             }
         Ok(MainIpcResponse::OptionSet { result: IpcMutationResult::Rejected, .. }) => RecordingSettingOutcome::Denied,
-        Ok(MainIpcResponse::OptionSet { result: IpcMutationResult::InternalFailure, .. }) => RecordingSettingOutcome::Failed,
+        // A receiver worker can fail after persistence; its failure reply does
+        // not establish that the value stayed unchanged.
+        Ok(MainIpcResponse::OptionSet { result: IpcMutationResult::InternalFailure, .. }) => RecordingSettingOutcome::Uncertain,
         result => {
             log::warn!("Incoming recording change lacks confirmation: {result:?}");
             RecordingSettingOutcome::Uncertain

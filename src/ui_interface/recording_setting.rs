@@ -145,8 +145,8 @@ pub(super) mod desktop {
                     let Some(command) = command else { return; };
                     let result = change(command.enabled).await;
                     *SETTING.lock().unwrap() = IncomingRecordingSetting { enabled: result.enabled, pending: false };
-                    if command.reply.send(result).is_err() {
-                        log::debug!("Incoming recording change completed after its UI waiter left");
+                    if let Err(err) = command.reply.try_send(result) {
+                        log::debug!("Incoming recording confirmation could not reach its UI waiter: {err}");
                     }
                     drop(command);
                 }

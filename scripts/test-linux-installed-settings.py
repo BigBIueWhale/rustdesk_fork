@@ -902,6 +902,7 @@ def scenario(receiver, probe_sha, network_before):
                 if stage.endswith('-submit'):
                     recording_option(recording_enabled)
                     authenticate(receiver, authority, requester, record, committed,
+                                 password_delay=2,
                                  action='com.carriez.RustDesk.set-incoming-recording')
                 elif stage in ('recording-enable', 'recording-disable'):
                     recording_enabled = stage == 'recording-enable'

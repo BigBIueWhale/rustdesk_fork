@@ -8890,6 +8890,8 @@ int main(int argc, char **argv) {
             if (strcmp(argv[5], keyboard_phases[i]) == 0) keyboard_generation = i + 1U;
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
+    if (argc == 6 && strcmp(argv[5], "--camera-unavailable") == 0)
+        expected_remote_title_suffix = " - View camera - RustDesk";
     if (language_direction && language_generation == 2U)
         expected_remote_title_suffix = " - שלוט בשולחן עבודה מרוחק - RustDesk";
     else if (!language_direction && language_generation == 2U)

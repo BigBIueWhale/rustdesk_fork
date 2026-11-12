@@ -7171,6 +7171,14 @@ impl Connection {
                 _ = second_timer.tick() => {
                     #[cfg(windows)]
                     conn.portable_check();
+                    #[cfg(target_os = "linux")]
+                    if conn.is_authed_view_camera_conn()
+                        && conn.camera_catalog.as_ref().map_or(false, |catalog| catalog.is_retired())
+                    {
+                        conn.send_close_reason_no_retry("Camera capture failed").await;
+                        conn.on_close("camera capture failed", false).await;
+                        break;
+                    }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
                     if let Some(lease) = conn.terminal_service_lease.as_ref() {
                         if let Err(err) = lease.ensure_attached_authority() {

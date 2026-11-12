@@ -150730,3 +150730,14 @@ next camera validation can address installed competing-device ownership using
 the same app; no rebuild is justified by this pass. This append preserves the
 prior 16,138,852-byte audit prefix, SHA-256
 df4bc69cc4d1fd05bd5acdba56ce9279dbdaac95343d67a8ce22ee9e8379d573.
+
+Fresh ledger count at 057280bd, NwxKOenfDe/tool34280, passes: 416,846 tokens /
+1,901,860 bytes, SHA-256
+f2475331b344f2a8a02b749ee8274776807b5ea04473bf6e1854196c30bc9882.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-installed-recovery-ledger-057280bd.json binds eight files/116,023 bytes
+on CTE/TUF. QEMU 3366484 joins zero after 30.857 seconds with three zero listener
+deltas and exact private/process/socket/RAM retirement. The approximate
+400,000-token target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,141,667-byte audit prefix, SHA-256
+a7e9a740542b688781855e4c591bbc0ecd0348435d8011a242df566b59def86c.

@@ -1298,7 +1298,13 @@ impl VideoRenderer {
         }
     }
 
-    fn update_pixelbuffer_texture(&self, display: usize, ptr: usize, register: bool) -> bool {
+    fn update_pixelbuffer_texture(
+        &self,
+        display: usize,
+        ptr: usize,
+        register: bool,
+        request_frame: impl FnOnce() -> ResultType<()>,
+    ) -> bool {
         if ptr == 0 {
             return false;
         }
@@ -1314,7 +1320,7 @@ impl VideoRenderer {
             return true;
         }
 
-        if let Some(info) = sessions_lock.get_mut(&display) {
+        if let Some(info) = sessions_lock.get(&display) {
             if info.texture_rgba_ptr == ptr {
                 return true;
             }
@@ -1327,6 +1333,16 @@ impl VideoRenderer {
                 );
                 return false;
             }
+        }
+        // Frames decoded before publication have no texture destination. Admit a
+        // fresh frame through the nonblocking mailbox while holding the publication
+        // lock, so its decoder cannot outrun pointer installation. A failed request
+        // leaves the pointer unowned.
+        if let Err(err) = request_frame() {
+            log::error!("pixelbuffer initial frame request failed for display {display}: {err}");
+            return false;
+        }
+        if let Some(info) = sessions_lock.get_mut(&display) {
             info.texture_rgba_ptr = ptr;
             info.render_notified = false;
         } else {
@@ -1453,6 +1469,7 @@ impl FlutterHandler {
         display: usize,
         ptr: usize,
         register: bool,
+        request_frame: impl FnOnce() -> ResultType<()>,
     ) -> Option<bool> {
         let handlers = self.session_handlers.read().unwrap();
         let handler = handlers.get(session_id)?;
@@ -1465,7 +1482,7 @@ impl FlutterHandler {
         Some(
             handler
                 .renderer
-                .update_pixelbuffer_texture(display, ptr, register),
+                .update_pixelbuffer_texture(display, ptr, register, request_frame),
         )
     }
 }
@@ -3434,6 +3451,11 @@ pub fn session_register_pixelbuffer_texture(
             display,
             ptr,
             register,
+            || {
+                let display = i32::try_from(display)
+                    .map_err(|_| anyhow!("pixelbuffer display is invalid"))?;
+                s.refresh_video(display)
+            },
         ) {
             if !admitted {
                 log::debug!("Refusing pixelbuffer texture operation for session {session_id}");
@@ -5323,7 +5345,9 @@ mod mobile_session_lifecycle_tests {
             .read()
             .unwrap()
             .is_empty());
-        assert!(handler.renderer.update_pixelbuffer_texture(4, 41, true));
+        assert!(handler
+            .renderer
+            .update_pixelbuffer_texture(4, 41, true, || Ok(())));
         let handlers = HashMap::from([(session_id, handler)]);
 
         assert_eq!(
@@ -6297,7 +6321,7 @@ mod mobile_session_lifecycle_tests {
             );
         }
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &old_owner, 0, 41, true),
+            handler.update_pixelbuffer_texture(&session_id, &old_owner, 0, 41, true, || Ok(())),
             Some(true)
         );
 
@@ -6315,16 +6339,22 @@ mod mobile_session_lifecycle_tests {
             );
         }
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &replacement_owner, 0, 84, true,),
+            handler.update_pixelbuffer_texture(
+                &session_id, &replacement_owner, 0, 84, true, || Ok(())
+            ),
             Some(true)
         );
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &old_owner, 0, 99, true),
+            handler.update_pixelbuffer_texture(&session_id, &old_owner, 0, 99, true, || {
+                panic!("stale owner requested a frame")
+            }),
             Some(false),
             "a late old create must not replace the new texture"
         );
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &old_owner, 0, 41, false),
+            handler.update_pixelbuffer_texture(&session_id, &old_owner, 0, 41, false, || {
+                panic!("teardown requested a frame")
+            }),
             Some(false),
             "a late old teardown must not clear the new texture"
         );
@@ -6350,21 +6380,27 @@ mod mobile_session_lifecycle_tests {
         );
 
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &owner, 5, 41, true),
+            handler.update_pixelbuffer_texture(&session_id, &owner, 5, 41, true, || {
+                panic!("unowned display requested a frame")
+            }),
             Some(false),
             "publication cannot create presentation state for an unowned display"
         );
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 41, true),
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 41, true, || Ok(())),
             Some(true)
         );
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 84, true),
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 84, true, || {
+                panic!("replacement pointer requested a frame")
+            }),
             Some(false),
             "a live exact pointer cannot be replaced"
         );
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 84, false),
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 84, false, || {
+                panic!("teardown requested a frame")
+            }),
             Some(false),
             "a stale pointer cannot unpublish the current texture"
         );
@@ -6375,14 +6411,115 @@ mod mobile_session_lifecycle_tests {
             assert_eq!(displays.get(&4).unwrap().texture_rgba_ptr, 41);
         }
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 41, false),
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 41, false, || {
+                panic!("teardown requested a frame")
+            }),
             Some(true)
         );
         assert_eq!(
-            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 41, false),
+            handler.update_pixelbuffer_texture(&session_id, &owner, 4, 41, false, || {
+                panic!("teardown requested a frame")
+            }),
             Some(false),
             "exact unpublication is single-use"
         );
+    }
+
+    #[test]
+    fn pixelbuffer_publication_admits_a_fresh_frame_before_exposing_the_pointer() {
+        let mut renderer = VideoRenderer::default();
+        renderer.set_size(0, 640, 360);
+        let (sender, receiver) = viewer_video_refresh_channel();
+        assert!(renderer.update_pixelbuffer_texture(0, 41, true, || {
+            assert!(renderer.map_display_sessions.try_write().is_err());
+            sender.request(ViewerVideoRefreshRequest::Display(0)).unwrap();
+            Ok(())
+        }));
+        assert_eq!(
+            receiver.try_recv(),
+            Some(ViewerVideoRefreshRequest::Display(0))
+        );
+        {
+            let displays = renderer.map_display_sessions.read().unwrap();
+            let display = displays.get(&0).unwrap();
+            assert_eq!(display.texture_rgba_ptr, 41);
+            assert_eq!(display.size, (640, 360));
+            assert!(!display.render_notified);
+        }
+        assert!(renderer.update_pixelbuffer_texture(0, 41, true, || {
+            panic!("duplicate registration requested a frame")
+        }));
+        assert_eq!(receiver.try_recv(), None);
+        assert!(renderer.update_pixelbuffer_texture(0, 41, false, || {
+            panic!("teardown requested a frame")
+        }));
+        assert!(renderer.map_display_sessions.read().unwrap().is_empty());
+    }
+
+    #[test]
+    fn pixelbuffer_publication_refuses_a_closed_round_without_retaining_the_pointer() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+        let session_id = SessionID::new_v4();
+        let owner = SessionID::new_v4();
+        let session = sessions::insert_test_session_for_owner(
+            session_id,
+            owner,
+            "texture-camera",
+            ConnType::VIEW_CAMERA,
+        );
+        {
+            let mut lc = session.lc.write().unwrap();
+            let mut peer_info = PeerInfo::new();
+            peer_info.displays = vec![DisplayInfo::new()];
+            lc.peer_info = Some(peer_info);
+            lc.version = hbb_common::get_version_number("1.4.7");
+        }
+        session
+            .session_handlers
+            .write()
+            .unwrap()
+            .get_mut(&session_id)
+            .unwrap()
+            .displays = vec![0];
+        let (sender, receiver) = viewer_video_refresh_channel();
+        *session.video_refresh_sender.write().unwrap() = Some(sender);
+        assert!(session_register_pixelbuffer_texture(
+            session_id, owner, 0, 41, true
+        ));
+        assert_eq!(
+            receiver.try_recv(),
+            Some(ViewerVideoRefreshRequest::Display(0))
+        );
+        assert!(session_register_pixelbuffer_texture(
+            session_id, owner, 0, 41, false
+        ));
+        drop(receiver);
+        for size in [None, Some((640, 360))] {
+            if let Some((width, height)) = size {
+                assert_eq!(
+                    session.ui_handler.set_exact_owned_display_size(
+                        &session_id, &owner, 0, width, height
+                    ),
+                    Some(true)
+                );
+            }
+            assert!(!session_register_pixelbuffer_texture(
+                session_id, owner, 0, 84, true
+            ));
+            let handlers = session.session_handlers.read().unwrap();
+            let renderer = &handlers.get(&session_id).unwrap().renderer;
+            let displays = renderer.map_display_sessions.read().unwrap();
+            match size {
+                None => assert!(displays.is_empty()),
+                Some(size) => {
+                    let display = displays.get(&0).unwrap();
+                    assert_eq!(display.texture_rgba_ptr, 0);
+                    assert_eq!(display.size, size);
+                }
+            }
+        }
+        sessions::clear_for_test();
     }
 
     #[test]

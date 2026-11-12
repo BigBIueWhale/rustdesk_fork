@@ -1073,6 +1073,24 @@ PY
       verify_regular "$view_mode_test_binary"
       printf 'VIEW_MODE_COMMAND_TESTS=pass tests=2 artifact_sha256=%s\n' \
         "$(sha256sum "$view_mode_test_binary" | awk '{print $1}')"
+      for test_name in \
+        pixelbuffer_publication_admits_a_fresh_frame_before_exposing_the_pointer \
+        pixelbuffer_publication_refuses_a_closed_round_without_retaining_the_pointer \
+        r_s11ex_retired_desktop_ui_owner_cannot_replace_or_clear_texture \
+        r_s11iv_pixelbuffer_publication_is_display_and_pointer_exact; do
+        exact_test="flutter::mobile_session_lifecycle_tests::$test_name"
+        /usr/bin/timeout --signal=TERM --kill-after=10s 30s \
+          "$view_mode_test_binary" "$exact_test" --exact --test-threads=1 \
+          > /tmp/pixelbuffer-publication-test.log 2>&1 \
+          || { cat /tmp/pixelbuffer-publication-test.log; fail "Pixelbuffer test $test_name failed"; }
+        cat /tmp/pixelbuffer-publication-test.log
+        grep -Fxq "test $exact_test ... ok" /tmp/pixelbuffer-publication-test.log \
+          || fail "Pixelbuffer test $test_name did not execute"
+        grep -Fq 'test result: ok. 1 passed; 0 failed; 0 ignored;' /tmp/pixelbuffer-publication-test.log \
+          || fail "Pixelbuffer test $test_name total differs"
+      done
+      printf 'PIXELBUFFER_PUBLICATION_TESTS=pass tests=4 artifact_sha256=%s\n' \
+        "$(sha256sum "$view_mode_test_binary" | awk '{print $1}')"
       readonly CORE_LIB=$BUILD_SOURCE/target/release/liblibrustdesk.so
       verify_regular "$CORE_LIB"
       readelf --wide --dyn-syms "$CORE_LIB" \

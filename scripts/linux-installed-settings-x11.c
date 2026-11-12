@@ -205,37 +205,46 @@ static int settings_open_password(Display *display, Window main, unsigned int pi
 static int settings_recording_checked(unsigned int pid, int expected, int enabled) {
     uint64_t deadline = monotonic_millis() + 5000U;
     unsigned int stable = 0U;
-    int checked = -1, available = 0, role = -1;
+    int checked = -1, available = 0, role = -1, actions = -1;
     while (monotonic_millis() < deadline) {
         AtspiAccessible *control = NULL;
         AtspiStateSet *states = NULL;
+        AtspiAction *action = NULL;
         GError *error = NULL;
+        actions = -1;
         if (query_named_accessible(pid, "Automatically record incoming sessions",
                                    deadline, &control, 0) != 0) return -1;
         if (control != NULL) {
             atspi_accessible_clear_cache(control);
             role = (int)atspi_accessible_get_role(control, &error);
             states = atspi_accessible_get_state_set(control);
+            action = atspi_accessible_get_action_iface(control);
+            if (error == NULL && action != NULL)
+                actions = atspi_action_get_n_actions(action, &error);
         }
         available = states != NULL && error == NULL && role == ATSPI_ROLE_CHECK_BOX &&
             atspi_state_set_contains(states, ATSPI_STATE_VISIBLE) &&
             atspi_state_set_contains(states, ATSPI_STATE_SHOWING) &&
             atspi_state_set_contains(states, ATSPI_STATE_ENABLED) == enabled &&
-            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) == enabled &&
+            /* This engine uses SENSITIVE for a specified enabled/disabled state. */
+            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
+            (enabled ? actions > 0 : actions == 0) &&
             !atspi_state_set_contains(states, ATSPI_STATE_INDETERMINATE);
         checked = states != NULL ? atspi_state_set_contains(states, ATSPI_STATE_CHECKED) : -1;
         g_clear_error(&error);
+        g_clear_object(&action);
         g_clear_object(&states);
         g_clear_object(&control);
         stable = available && checked == expected ? stable + 1U : 0U;
         if (stable == 3U) {
-            printf("LINUX_INSTALLED_RECORDING_CHECKBOX=pass checked=%d enabled=%d\n", checked, enabled);
+            printf("LINUX_INSTALLED_RECORDING_CHECKBOX=pass checked=%d enabled=%d actions=%d\n",
+                   checked, enabled, actions);
             return 0;
         }
         if (sleep_millis(100U) != 0) return -1;
     }
-    fprintf(stderr, "LINUX_INSTALLED_RECORDING_CHECKBOX_FAIL expected=%d checked=%d available=%d role=%d\n",
-            expected, checked, available, role);
+    fprintf(stderr, "LINUX_INSTALLED_RECORDING_CHECKBOX_FAIL expected=%d checked=%d available=%d role=%d actions=%d\n",
+            expected, checked, available, role, actions);
     return -1;
 }
 

@@ -4395,11 +4395,12 @@ static int exercise_input_outage(Display *source, Display *display, ViewerWindow
     unsigned int quiet_samples = 0U;
     ConnectionIdentity current = {{0}, {0}, 0UL};
     ViewerWindow same_viewer = {0};
-    int result = -1;
+    int result = -1, restore_needed = 0;
     const char *phase = "apply";
     if (cycle >= sizeof(holds_ms) / sizeof(holds_ms[0]) ||
-        *expected < 0 || *expected + 1 >= X11_FRAME_HISTORY_LIMIT ||
-        network_profile("loss", &before_drops, &before_packets) != 0) goto out;
+        *expected < 0 || *expected + 1 >= X11_FRAME_HISTORY_LIMIT) goto out;
+    restore_needed = 1;
+    if (network_profile("loss", &before_drops, &before_packets) != 0) goto out;
     request_us = x11_frame_monotonic_us();
     phase = "request";
     if (request_us == 0U || send_response_request(display, request) != 0) goto out;
@@ -4417,8 +4418,9 @@ static int exercise_input_outage(Display *source, Display *display, ViewerWindow
     restored_us = x11_frame_monotonic_us();
     phase = "restore";
     if (restored_us < previous || quiet_samples < holds_ms[cycle] / 100U ||
-        network_profile("healthy", &after_drops, &after_packets) != 0 ||
-        after_drops <= before_drops) goto out;
+        network_profile("healthy", &after_drops, &after_packets) != 0) goto out;
+    restore_needed = 0;
+    if (after_drops <= before_drops) goto out;
     ++*expected;
     phase = "pending-response";
     if (wait_for_input_response(display, viewer, history, *expected, request_us,
@@ -4439,7 +4441,7 @@ out:
     if (result != 0) {
         fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-recovery phase=%s cycle=%u request=%u\n",
                 phase, cycle + 1U, request);
-        if (network_profile("healthy", &after_drops, &after_packets) != 0)
+        if (restore_needed && network_profile("healthy", &after_drops, &after_packets) != 0)
             fputs("FLUTTER_PEER_X11_FAIL input recovery restoration; supervisor retains cleanup\n", stderr);
     }
     return result;

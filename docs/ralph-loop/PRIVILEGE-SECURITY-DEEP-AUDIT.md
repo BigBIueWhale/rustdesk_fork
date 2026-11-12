@@ -148656,3 +148656,15 @@ Next: exercise those bounded worker edge cases before the updated app checkpoint
 Complete recording, privilege-immunity, R-S0/R-F5 and release claims remain OPEN.
 This append preserves the prior 15,994,890-byte audit prefix, SHA-256
 6239b09550a726a28d60e0ead64205fad775af4dbcba089dc8bb5520e000ab2d.
+
+Fresh ledger count at 17c01c09, vtVRnNXXWp/tool37354 exits zero: 412,078 tokens /
+1,880,568 bytes, SHA-256
+00120994355bf84d5f3a4ebdb000eb53cd435e57547dd747b0735cbad9b1fb66.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and complete
+round trip pass. incoming-worker-ledger-17c01c09.json binds eight files/116,022
+bytes verified on both hosts. QEMU 3048670 joins zero after 30.304 seconds;
+RAM scratch peaks at 403,058,688 bytes. Three zero listener deltas and exact
+private/QEMU/socket/RAM absence are verified. Approximate 400,000-token compression
+remains OPEN. This audit-only append preserves the counted ledger and prior
+15,999,648-byte audit prefix, SHA-256
+708d3950256eb1f8d712351a88e5167cd7f288de15d07a3782600c39ff4c00cb.

@@ -9318,19 +9318,12 @@ uses production scrap's Rust 2018 edition. `camera-catalog-b09f3420.json` binds
 eight files/193,712 bytes verified on CTE/TUF, joined owners and RAM retirement,
 and three zero listener deltas. The earlier `e93f8660` component pass is retained.
 
-The exact `b09f3420` full Linux Flutter app builds successfully in `YCdB71iRXT`,
-including the changed server/connection code and test target. Thirteen view-mode,
-eight recording widget/model and two native command controls pass; the changed
-camera-generation acknowledgement test compiles but is not selected by this build.
-The 74-payload manifest is
-`ac77e9c1b36a44bbb3144b121a6d32e32d6c7e09b3c3b6a5eed6b3f8f717f60e`.
-Only the Rust library and readiness helper differ from `4468059d`; the other 72
-payloads, inputs, engine and recipe match. `camera-catalog-app-b09f3420.json`
-binds ten files/327,550 bytes on both hosts, enforced compiler limits, four zero
-listener deltas and joined cleanup. Two preceding import-related compile failures
-and their fixes are preserved in the audit. Linux authenticated/shared capture
-now passes the application scenario below; physical hotplug/device loss,
-installed-service camera behavior and Windows acceptance remain OPEN.
+The original full app `b09f3420` builds in `YCdB71iRXT` with thirteen view-mode,
+eight recording and two native command controls passing. Its camera-generation
+acknowledgement test compiles but is not selected. Exact payload/input comparison,
+manifest and joined cleanup are retained in `camera-catalog-app-b09f3420.json`;
+the audit preserves the preceding compile failures. Later application acceptance
+and remaining platform gaps are recorded below.
 
 **Full application camera interruption and reacquisition — PASS on Linux/vivid.**
 App `e4c7550e` includes device-loss correction `2d86a69d` and texture-publication
@@ -9366,19 +9359,37 @@ session whose retained catalog retires. Two runs decoded an initial frame but
 presented none (`camera-recovery-bd06e8a3.json`, `camera-loss-replay-843003fe.json`).
 `72b52022` requests a fresh frame before publishing a new texture pointer under
 the exact owner/display and renderer locks; failed admission retains no pointer,
-and duplicate registration/teardown cannot request frames. Four native ownership/
-publication checks and the 13 view-mode, eight recording and two command controls
-pass in full build `qJYmF7IVwp`. Its 74-payload manifest is
-`68f8b8ff82c1cb13a34882195066bd1b04a60c46efd45ace5b06826007849a55`;
-only the Rust library differs from `843003fe`. `camera-initial-app-e4c7550e.json`
-binds ten files/328,526 bytes on both hosts, compiler limits, four zero listener
-deltas and joined cleanup. The native checks and successful application runs
-support the correction; forced-order reproduction of the earlier startup race
-has not been performed. Stream-open failure retirement, physical devices,
-installed-service behavior, Windows and broader network/long-session acceptance
-remain OPEN. Next: exercise camera stream-open failure and recovery. Superseded
-`4468059d`/`b09f3420` payloads are retired with manifests/evidence retained; the
-four-app cap now holds `6429f3cb`, `a36e5581`, `843003fe` and `e4c7550e`.
+and duplicate registration/teardown cannot request frames. Full build `qJYmF7IVwp`
+passes four publication/ownership, thirteen view-mode, eight recording and two
+command controls. `camera-initial-app-e4c7550e.json` retains its exact manifest,
+payload comparison and joined cleanup. These checks and the application runs
+support the correction; forced-order startup-race reproduction remains unperformed.
+
+**Busy camera failure and recovery — CORRECTED; full application PASS.**
+`2eb7015e` routes stream-start errors through the same catalog retirement as fatal
+frame-read errors; missed frame deadlines remain retryable. Baseline `e4c7550e`
+authenticates but repeatedly receives native EBUSY without a visible failure;
+both TCP halves remain connected at five seconds. Two runs and the preserved
+competing buffer owner are retained in `camera-busy-f66e192f.json` and
+`camera-busy-diagnostic-cdfe3332.json`. Corrected app `2eb7015e` passes the same
+test: visible failure and zero connected sockets, viewer join and zero server
+device handles while the competing reservation stays held, then fresh authenticated
+green/blue capture after release on the unchanged server. Both viewers and all
+fixture owners join (`camera-busy-accepted-2eb7015e.json`).
+
+Its full build passes the same 27 controls and retains 74 payloads; only the Rust
+library differs from `e4c7550e`. Manifest:
+`88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a`
+(`camera-busy-app-2eb7015e.json`). The same-app shared-camera regression passes
+all eight color/descriptor phases, 3,079 ms of withheld frames with 525 ms recovery
+on unchanged TCP, visible device loss and fresh capture
+(`camera-busy-regression-2eb7015e.json`). Each build/replay has four zero host
+listener deltas and joined VM/RAM/private-state retirement, with evidence copied
+to CTE/TUF. Physical cameras, other stream-start failure classes, installed-service
+camera behavior, Windows and broader network/long-session acceptance remain OPEN.
+Next camera acceptance gap: installed-service behavior. Superseded `4468059d`,
+`b09f3420` and `843003fe` payloads are retired with manifests/evidence retained;
+the four-app cap holds `6429f3cb`, `a36e5581`, `e4c7550e` and `2eb7015e`.
 
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production

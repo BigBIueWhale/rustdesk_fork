@@ -150489,3 +150489,66 @@ QEMU 3283415 joins zero after 30.274 seconds, with three zero listener deltas
 and exact private/process/socket/RAM retirement. This audit-only append preserves
 the counted ledger and prior 16,124,672-byte audit prefix, SHA-256
 13c2e5e4dd3185f01e0ab580a93adb9a0216ac354571c374eb1756bd96e2e890.
+
+### 2026-11-12 — Busy camera reports failure and permits fresh application capture
+
+R-F1/R-S0 require a functional ViewCamera failure/recovery path. Linux V4L2
+assigns streaming ownership when a filehandle allocates buffers, while separate
+opens remain possible. Derive the fixture from the primary kernel contract:
+https://docs.kernel.org/6.1/userspace-api/media/v4l/open.html
+https://docs.kernel.org/6.1/userspace-api/media/v4l/vidioc-reqbufs.html
+https://docs.kernel.org/6.1/userspace-api/media/v4l/vidioc-querybuf.html
+https://raw.githubusercontent.com/torvalds/linux/v6.1/include/uapi/linux/videodev2.h
+The guest-only vivid controller reserves two MMAP buffers, proves independent
+REQBUFS receives EBUSY, and retains that exact handle through the first viewer's
+failure/join. QUERYBUF verifies unchanged offset/length; release and independent fresh
+allocation precede the second login. This proves buffer ownership, not incumbent
+video frames. No physical host device or product instrumentation is used.
+
+Fixture f66e192f reproduces absent failure UI on app e4c7550e. Diagnostic cdfe3332
+also observes both connected TCP halves and the preserved listener at five seconds.
+Each run completes real password entry and nine EBUSY service retries; fresh
+capture is not reached. The first observer returned at the accessibility deadline
+before reporting socket counts; the second retains that diagnostic. Both preserve
+the competing reservation. In CameraCatalog::frame, open_stream's early return
+bypassed retirement, leaving ServiceTmpl::run to retry and the connection timer
+unable to close the catalog. 2eb7015e composes stream-open and frame-read results
+through one fatal-error retirement path; WouldBlock remains live. The existing
+exact-camera timer reports Camera capture failed and closes normally.
+
+The corrected full app passes four publication/ownership, thirteen view-mode,
+eight recording and two command controls. Library/test compilation takes
+5m16s/6m46s. Its 74-payload manifest is
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a;
+only librustdesk.so differs from e4c7550e, with identical build-app body, inputs
+and engine. Compiler memory stays within 10 GiB, swap/OOM are zero and minimum
+host available memory is 21,041,565,696 bytes. The unchanged diagnostic observer
+5e8220ce88fdc8f080c1fd7f4e21d657b3b81fef383098b91acbb4eba40619ba
+now observes the visible error and zero sockets. The first viewer joins and the
+server reaches zero device handles before reservation release. A fresh real
+password login displays green/blue, three samples of all 24,000 pixels each;
+four descriptor phases have ten stable observations, and both viewers join.
+The same-app shared-camera regression passes all eight color/descriptor phases,
+three password entries, 3,079 ms of withheld frames and 525 ms recovery under the
+2,500 ms limit on unchanged TCP, visible ENODEV loss, fresh capture and all joins.
+
+| Capsule prefix | Run / tool | Seconds through cleanup | Retained files / bytes |
+| --- | --- | ---: | ---: |
+| camera-busy-f66e192f | DXLGhAlaO9 / 48187 | 137.953 | 9 / 258,141 |
+| camera-busy-diagnostic-cdfe3332 | TzOjZvZ9bM / 1634 | 136.214 | 9 / 255,650 |
+| camera-busy-app-2eb7015e | tMAlEaV5NV / 57003 | 1,235.307 | 10 / 327,187 |
+| camera-busy-accepted-2eb7015e | pVfuTqyW7A / 98863 | 143.803 | 9 / 196,703 |
+| camera-busy-regression-2eb7015e | Jj4BluU86J / 77716 | 177.883 | 9 / 178,114 |
+
+All capsules/raw files are verified on CTE/TUF. Each QEMU joins zero with four
+zero listener deltas and exact private/process/socket/RAM absence. Build scratch
+peaks at 11,915,587,584 bytes; replay peaks stay below 3,607,000,000 bytes and retire.
+Before building, verify all 74 old/new payloads and retire superseded 843003fe,
+releasing 70,774,784 allocated bytes. camera-busy-retired-843003fe retains three
+manifest/inventory/receipt files, 32,184 bytes on both hosts. Removed original
+library bytes are not retained. The four-app cap preserves 6429f3cb, a36e5581,
+e4c7550e and 2eb7015e. No job remains live. Installed-service/physical-camera,
+Windows, other start-failure classes and broader release acceptance remain OPEN;
+installed-service camera is the next camera acceptance gap. This append preserves
+the prior 16,125,445-byte audit prefix, SHA-256
+7620815fa783cedeb11ce099f9aebe68facb9b1387fa4b00facab1a6e805373c.

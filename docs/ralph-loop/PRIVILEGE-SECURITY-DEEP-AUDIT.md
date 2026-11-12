@@ -149945,3 +149945,14 @@ owned-catalog/capture-service correction with these production baseline cases;
 do not substitute ordinal remapping alone for retained device ownership.
 The prior 16,087,432-byte audit prefix is preserved, SHA-256
 f00ed1d1d5fb508d0bd6a222d3af249597432c4e1d3d00bf1a56a70c94cf1833.
+
+Fresh ledger count at 8257ae7e, PFZYkFhFxF/tool4135, passes: 414,838 tokens /
+1,893,332 bytes, SHA-256
+3795cf9c9bcc3fab00dfb7dcad18e074c84bf0b63a5d60c4a37e12b47fbf4bc7.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-module-ledger-8257ae7e.json binds eight files/116,013 bytes verified on
+CTE/TUF. QEMU 2371530 joins zero; three zero listener deltas and exact private/
+process/socket/RAM retirement pass. The approximate 400,000-token target remains
+OPEN. This audit-only append preserves the counted ledger and prior
+16,089,200-byte audit prefix, SHA-256
+730b4c41b9a3d003c2d6781235c03bb96e1d90eea2a54977444946c69f83cb01.

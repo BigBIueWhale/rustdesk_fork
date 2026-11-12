@@ -148719,3 +148719,15 @@ concurrency, installed/root and other-platform recording, and full R-S0/R-F5 and
 release acceptance remain OPEN. This append preserves the prior 16,000,399-byte
 audit prefix, SHA-256
 4f4b01c0cd39e00e690604ba25abd52202e737432d66aa71d33c817deb9ed3cd.
+
+Fresh ledger count at 438e9fc4, cInhveDoco/tool42497 exits zero: 412,188 tokens /
+1,881,089 bytes, SHA-256
+da77633d1f21db81d9c00460cdffadd4ad74d6dae1e494c6e29ad360d1ab0a20.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and complete
+round trip pass. incoming-worker-edges-ledger-438e9fc4.json binds eight files /
+115,585 bytes verified on both hosts. QEMU 3121935 joins zero after 30.563 seconds;
+RAM scratch peaks at 403,058,688 bytes. Three zero listener deltas and exact
+private/QEMU/socket/RAM absence are verified. Approximate 400,000-token compression
+remains OPEN. This audit-only append preserves the counted ledger and prior
+16,003,774-byte audit prefix, SHA-256
+8ce27b15c1f8a3a928f3d6b072eaeb3c1c869d334212c92da81f9c4c11c9977e.

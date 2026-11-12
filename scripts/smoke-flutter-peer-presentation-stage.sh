@@ -1643,6 +1643,9 @@ PY
         return 1
       fi
       wait "$VIEWER_LOG_PID" || return 1
+      printf '\nFLUTTER_PEER_VIEWER_STDERR_BEGIN\n' >>/tmp/viewer.log || return 1
+      cat /tmp/viewer-stderr.log >>/tmp/viewer.log || return 1
+      printf 'FLUTTER_PEER_VIEWER_STDERR_END\n' >>/tmp/viewer.log || return 1
       [ "$(stat -c '%d:%i:%u:%g:%a' /tmp/viewer.pipe)" = "$VIEWER_PIPE_ID" ] \
         && [ -p /tmp/viewer.pipe ] && [ ! -L /tmp/viewer.pipe ] || return 1
       rm -- /tmp/viewer.pipe || return 1
@@ -1790,8 +1793,8 @@ PY
     if [ "$PEER_SCENARIO" = recording-directory ]; then
       mkfifo -m 600 /tmp/viewer.pipe
       VIEWER_PIPE_ID=$(stat -c '%d:%i:%u:%g:%a' /tmp/viewer.pipe)
-      # The application-wide file-size fault must not suppress abort diagnostics.
-      cat </tmp/viewer.pipe >/tmp/viewer.log &
+      # Keep stderr writable while the recording fault also denies stdout writes.
+      cat </tmp/viewer.pipe >/tmp/viewer-stderr.log &
       VIEWER_LOG_PID=$!
       VIEWER_LOG_START=$("$READY" --identity "$VIEWER_LOG_PID")
       viewer_output=/tmp/viewer.pipe
@@ -1799,6 +1802,9 @@ PY
     (cd /app/bundle
       # Let the recording fault return EFBIG instead of terminating the fixture app.
       [ "$PEER_SCENARIO" != recording-directory ] || trap '' XFSZ
+      if [ "$PEER_SCENARIO" = recording-directory ]; then
+        exec > /tmp/viewer.log
+      fi
       exec env "${viewer_environment[@]}" RUST_LOG="$viewer_rust_log" "$APP" --connect 127.0.0.1) \
       >"$viewer_output" 2>&1 &
     VIEWER_PID=$!

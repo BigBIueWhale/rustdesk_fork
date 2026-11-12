@@ -8278,6 +8278,10 @@ static int exercise_rejected_password(Display *display, const ViewerWindow *view
 }
 
 int main(int argc, char **argv) {
+    if (setvbuf(stdout, NULL, _IOLBF, 0) != 0) {
+        fputs("FLUTTER_PEER_X11_FAIL stdout buffering\n", stderr);
+        return 2;
+    }
     if (argc == 2 && strcmp(argv[1], "--wake-service") == 0) return run_wake_service();
     const char *source_name;
     const char *viewer_name;

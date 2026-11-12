@@ -149420,3 +149420,56 @@ are zero and private/socket/RAM retirement passes. The approximate 400,000-token
 compression target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,053,491-byte audit prefix, SHA-256
 bb81544984d56e69954f3862d2ec82c223f1e51eb85b964251f74667990302cd.
+
+## 2026-11-12 — Installed recording changes during a live session
+
+Selected R-S0's remaining live effect after installed output acceptance. The
+recording-policy receiver commits under fresh polkit authority and confirms the
+exact child's policy; video_service observes the change while retaining its
+recording-worker owner. Reuse the exact a36e5581 app/74-payload manifest instead
+of rebuilding. Settings, source and viewer use separate private X11 displays in
+the zero-NIC VM. The ordinary GUI changes policy through the actual checkbox;
+the controller verifies root persistence, unchanged credential/profile and exact
+GUI/service/viewer generations. The source and observer share the guest clock.
+Primary references support exact process/start/UID authorization and explicit
+virtual-display geometry; they do not establish product behavior:
+https://www.freedesktop.org/software/polkit/docs/latest/pkcheck.1.html
+https://xorg.freedesktop.org/releases/X11R6.9.0/doc/html/Xvfb.1.html
+
+f4515483, run uHk4HKJMcU/tool12481, exits 1. Both live changes and all three
+twelve-frame viewer samples pass, but the second recording ends with an
+unrecognized image after counter 79. Its retained native-decoded thumbnail is a
+blank desktop. The fixture terminated the counter source before observing final
+recording completion. 2d72ae74 retains that source until the actual UI confirms
+idle; no decoder allowance or product code changes. The failed capsule
+installed-recording-live-f4515483.json retains sixteen files/585,510 bytes plus
+a 174-byte retirement receipt. QEMU 1168698 joins zero after 204.540 seconds;
+scratch peaks at 4,216,967,168 bytes. Four zero host listener deltas and verified
+private/process/socket/RAM retirement pass after evidence copy.
+
+2d72ae74, run 4XngDfcZKg/tool94410, exits zero. The same TCP tuple/socket inode
+survives enabled/disabled/enabled phases. Each presents twelve distinct fresh
+counters; first fresh observations take 8/8/6 ms and maximum observed ages are
+348/314/326 ms, within the predeclared 2500 ms/1000 ms limits. These are phase
+samples, not continuous observation through authorization and policy transition.
+Two fresh administrator challenges perform live disable/re-enable, six total in
+the combined workflow. Pending controls retain their old value with no actions.
+Actual UI status confirms Recording/Not recording/Recording; completed output
+remains identical in inode, bytes, mtime and hash during twelve disabled frames.
+The two enabled periods contain counters 4..29 and 62..78: 43 native-decoded
+images in three private UID/GID-4001 mode-0600 single-link VP9 WebM files, 283,809
+bytes total. Ordering/timing, same-inode/hash retention and all three truncated
+controls pass with zero startup allowances used. Both periods finish through
+the actual UI. Existing password/service recovery, seven CPace exchanges, three
+stale-password refusals and package restart/reinstall/remove/purge also pass.
+
+installed-recording-live-2d72ae74.json binds nine files/181,687 bytes copied and
+verified on CTE/TUF; outer SHA-256
+67493e3348a53ad11e8df5b3f449af1d44f789174d03a80de69ac1893e301f70.
+QEMU 1569306 joins zero after 210.047 seconds; scratch peaks at 4,284,272,640 bytes.
+Four zero host listener deltas and private/process/socket/RAM absence pass. No
+new app generation or persistent VM disk remains. Physical displays, continuous
+transition timing, impairment/long-session recovery, wrong/stale requesters,
+cancellation/concurrency, broader I/O failures and other platforms remain OPEN.
+This append preserves the prior 16,054,189-byte audit prefix, SHA-256
+1b64f410f7c7f1c3958a01a2dbc798da953d91a6fee0297e55f8560d237a8938.

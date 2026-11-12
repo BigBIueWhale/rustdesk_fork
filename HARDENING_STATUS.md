@@ -6918,6 +6918,20 @@ controls and joined VM/RAM cleanup with four zero host listener deltas. Two fail
 fixture attempts are retained separately: uppercase password input and a viewer
 too short to expose the complete 1024x768 counter. This is Xvfb desktop evidence.
 
+**Live recording changes — selected installed scenario passes at `2d72ae74`.**
+The same app and authenticated connection survive administrator-approved disable
+and re-enable. Twelve fresh displayed counters in each enabled/disabled/enabled
+phase have maximum observed ages of 348/314/326 ms. The actual UI agrees with the
+root-owned setting and recording state; completed files remain byte-for-byte
+unchanged throughout the disabled observation. Both enabled periods finalize and
+decode successfully: three private VP9 files, 283,809 bytes, 43 source counters,
+zero unrecognized images and three truncated-file refusals. Six actual admin
+challenges, the existing settings/package controls and joined cleanup pass.
+`installed-recording-live-2d72ae74.json` retains nine files/181,687 bytes with four
+zero host listener deltas. A failed fixture run removed its counter window before
+recording finished; the corrected fixture retains it until the UI confirms idle.
+This proves the sampled live workflow, not continuous transition timing or a soak.
+
 **Still OPEN:** physical-display and broader installed capture cases, wrong/stale
 requester and mutation lifecycle/concurrency coverage, native spawn and broader I/O
 failures, full-UI multiple writers and other platforms. Android's process-owned typed path

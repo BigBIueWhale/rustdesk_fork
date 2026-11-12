@@ -4493,8 +4493,11 @@ impl<T: InvokeUiSession> Remote<T> {
                     return self.publish_record_status(status, peer).await;
                 }
             }
-            if !self.recording_requested || self.video_threads.is_empty() {
+            if !self.recording_requested {
                 return self.publish_record_status(RecordingStatus::Stopped, peer).await;
+            }
+            if self.video_threads.is_empty() {
+                return self.publish_record_status(RecordingStatus::Starting, peer).await;
             }
             let attempt = RecordingAttempt::new(scrap::record::RecorderContext {
                 server: false,

@@ -85,6 +85,12 @@ async fn recording_status_case(fail_output: bool) {
 
     let result = AssertUnwindSafe(async {
         let (mut viewer, _peer) = keyed_pair().await;
+        assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
+        assert_eq!(remote.recording_status, RecordingStatus::Starting,
+            "recording requested before the first frame must remain cancellable");
+        assert!(!remote.handler.is_recording(), "pending recording falsely reports output");
+        assert!(remote.handle_msg_from_ui(Data::RecordScreen(false), &mut viewer).await);
+        assert_eq!(remote.recording_status, RecordingStatus::Stopped);
         assert!(remote.new_video_thread(0, &mut viewer).await, "real decoder worker admitted");
         if !fail_output {
             assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);

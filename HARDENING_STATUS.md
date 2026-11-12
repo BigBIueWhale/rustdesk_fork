@@ -6813,7 +6813,7 @@ in their named evidence capsules and the audit. The final informational outer
 summary's stale fourteen-test label is corrected; named results and checked
 artifact/guest receipts already require fifteen, so passed behavior is not rerun.
 
-**Incoming recording completion/status — Linux components and app integration ACCEPTED.**
+**Incoming recording completion/status — Linux components and controlled UI ACCEPTED.**
 `4e8d66a6` adds capture-owned checked finalization, bounded live writer counts
 and one retained historical failure. Completion follows the actual finish result;
 the status mutex is released during file I/O. Healthy new ownership does not erase
@@ -6835,12 +6835,25 @@ bounded compiler resources, four zero listener deltas and joined VM/RAM cleanup.
 The Dart payload, native core and readiness helper differ from `dbd57c51`; the
 other 71 payloads match. This is component and build integration evidence.
 
-Actual controlled capture-to-local-UI failure/completion, blocked recording I/O,
-full-UI multiple writers/late failures, broader finalization failures, installed/root
-settings/recording and other-platform recording remain OPEN. Next: exercise the
-retained app through an actual controlled recording session and observe the local
-status through failure and completion. These results do not close R-S0/R-F5 or
-the complete recording/release requirements.
+The retained app passes the actual controlled-side UI scenario at `b301e708`:
+native directory selection and automatic incoming recording, real EACCES with no
+output and visible Writing history, then a new authenticated session with one active
+writer and that same history. After disconnect, the same UI reports no active or
+finishing writer. Both viewers present twelve fresh frames (maximum ages 320/314 ms).
+Two finalized private WebMs decode into eighteen distinct source-counter frames;
+one additional initial image shows the connection window, with the counter visible
+66 ms later. Only automatic incoming recording permits a bounded initial desktop
+prefix; decoding/corruption checks cover every frame, subsequent counters and timing
+are checked, and truncated files and the strict zero-prefix control are refused.
+`incoming-ui-b301e708.json` binds ten files/128,846 bytes on both hosts, four zero
+listener deltas and joined VM/RAM cleanup. Six fixture/observation failures and their
+exact cleanup remain in the audit and named capsules; none is counted as a pass.
+
+Blocked recording I/O, full-UI multiple writers/late failures, broader finalization
+failures, installed/root settings/recording and other-platform recording remain OPEN.
+Next: isolate recording I/O from capture/presentation while retaining bounded ownership
+and truthful completion. These results do not close R-S0/R-F5 or complete recording
+and release acceptance.
 
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,

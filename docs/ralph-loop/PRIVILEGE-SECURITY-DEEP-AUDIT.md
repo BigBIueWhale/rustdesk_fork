@@ -148489,3 +148489,88 @@ private/QEMU/socket/RAM absence is verified. Approximate 400,000-token compressi
 remains OPEN. This audit-only append preserves the counted ledger and prior
 15,987,216-byte audit prefix, SHA-256
 a7248ca880efada3cce1f7a1091a78aefabf62b6114f619cabef36e659f3801e.
+
+## 2026-11-12 — actual incoming recording failure, retry and local UI completion
+
+Prior iteration: progress. The restored existing TUF SSH master supports the next
+decisive recording correctness check: observe the capture-owned state through the
+real controlled-side settings UI. This closes the missing application observation
+before changing the separate blocking-I/O boundary. Reuse full app f4a55367 and
+manifest 7f93ab278fefa2c1dd1b19b22ee8748533eddf956853ea638ae73cbeb6c1f949;
+this slice changes only the isolated scenario and evidence, not product code.
+
+The --incoming-recording scenario runs the actual server/capture and two successive
+Flutter viewers, plus one persistent controlled UI on its own private X display.
+Real pointer interaction selects /tmp/recording-selected-שלום and enables automatic
+incoming recording. An owned-directory fchmod and actual EACCES canary establish
+the first failed write; after viewer retirement, restored permissions admit a new
+authenticated session. PID/start/pidfd-bound AT-SPI observations distinguish the
+merged status card's stopped/failure, active/retained-history and completed states.
+The exact UI, observer, server, source and display processes are joined.
+
+The design uses the existing private D-Bus/AT-SPI closure and an exact read-only
+two-record passwd fixture for the controlled container. This supplies numeric UID
+identity for D-Bus without modifying host authentication. GTK's accessible process
+identity is checked in addition to retained process identity. Primary references:
+https://docs.gtk.org/atspi2/method.Accessible.get_process_id.html
+https://man7.org/linux/man-pages/man2/chmod.2.html
+https://man7.org/linux/man-pages/man2/open.2.html
+
+Initial runs are failed evidence, not product regressions or accepted scenarios:
+
+| Harness source / run | Observation and subsequent fixture correction |
+| --- | --- |
+| c12229f1 / oLYGO5FX2W | Guest parser lacked the new flag; 24b58b0e admits it. No native test ran. |
+| 24b58b0e / 1Ib0KN9sbJ | Native drivers compile reproducibly; controlled D-Bus lacks the UID's passwd entry. 832008bd adds the private identity fixture. |
+| 832008bd / dilBP8p66j | Actual chooser/settings work; the observer expected separate labels but Flutter merges the status card. cf21edd6 checks the exact complete card. |
+| cf21edd6 / wRxzGloozM | Failure and healthy retry complete with fresh viewer pixels. Completion fails and a short diagnostic tail hides the reason. f24153a8 retains bounded complete observer output. |
+| f24153a8 / 83jutaloR6 | First decoded VP9 image lacks a recognizable counter; strict outgoing-style pixel oracle rejects it. 3a0f0d3b retains a bounded thumbnail. |
+| 3a0f0d3b / pK7bptwwok | Thumbnail visually proves the actual connection-manager window covers the counter at recording startup. b301e708 accounts explicitly for this automatic-start behavior. |
+
+Each failed run has an incoming-ui-<source>.json capsule and bounded logs copied
+and hash-verified on CTE/TUF. Exact QEMU waits return zero, four listener deltas
+are zero and RAM/socket absence is verified. Failed private trees are inventoried
+and retired only after their logs match durable evidence; copied app payloads match
+the retained manifest and libxdo digest. Allocated private bytes retired respectively:
+3,452,928; 3,502,080; 3,543,040; 61,779,968; 61,788,160; 61,816,832.
+No disposable image or extra application build is retained.
+
+WebM timecodes describe media presentation time, while the source counter describes
+the captured desktop content. An ordinary captured overlay is not decoder corruption.
+Libvpx additionally requires checking its corruption flag after decoding; decode
+success alone is insufficient. The unchanged parser retains that check for every
+packet. Incoming-only startup allows at most 32 unrecognized images before the first
+counter and below 1,000 ms; the first counter must appear by 1,000 ms. All subsequent
+images must match ordered source history and timing within 500 ms relative to that
+first counter. At least twelve distinct counter images are required. Outgoing calls
+retain zero allowance. Truncation and, when applicable, the zero-allowance control
+must fail on the actual output. Primary references:
+https://www.webmproject.org/docs/container/
+https://raw.githubusercontent.com/webmproject/libvpx/main/vpx/vp8dx.h
+
+b301e708 / XELK9AzqxE / tool8594 exits zero. Both native drivers compile twice
+with identical bytes. Actual controlled UI shows Writing failure with no output,
+then one active writer retaining that history, then zero active/finishing writers
+after disconnect. Both viewers authenticate through their real password prompts
+and each presents twelve fresh frames; maximum ages are 320 and 314 ms. The same
+controlled UI process survives all observations. Two finalized 0600 WebMs total
+48,979 bytes and contain nineteen decoded images: eighteen distinct source counters
+72 through 89 plus one initial connection-window image. That file's first counter
+appears at 66 ms. All subsequent source timing checks pass; both truncated copies
+and the applicable strict-startup control refuse.
+
+incoming-ui-b301e708.json binds ten files/128,846 bytes verified on both hosts,
+including the observed startup thumbnail. QEMU 2889184 joins zero after 124.813
+seconds; RAM scratch peaks at 3,026,673,664 bytes. Four zero listener deltas and
+exact private/QEMU/socket/RAM absence are verified. The existing app remains an
+inert retained development artifact; host SSH authentication and services are unchanged.
+
+This accepts the selected user-owned Linux capture-to-local-UI workflow. Blocking
+recording I/O, multiple concurrent writers/late failures through the full UI,
+installed/root recording settings, other-platform execution and complete recording,
+R-S0/R-F5 and release acceptance remain OPEN. Next: remove recording I/O from the
+capture/presentation path with bounded ownership and truthful finality. No broader
+privilege-immunity or latency-recovery conclusion follows from this short scenario.
+
+This append preserves the prior 15,987,971-byte audit prefix, SHA-256
+cf7123b3e143143e5c4b01cc39106002de75fbc73239b48d90701e1948227798.

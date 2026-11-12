@@ -214,7 +214,8 @@ static int recording_failure(Display *display, const ViewerWindow *viewer, Sourc
     phase = "failure-feedback";
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     while (monotonic_millis() < deadline && error == NULL) {
-        if (query_accessible_with_focus(pid, "Failed", deadline, &error, 0, 0, NULL, 0, 1) != 0)
+        if (query_accessible(pid, "Failed: Permission denied (os error 13)",
+                             deadline, &error, 1, 1, NULL) != 0)
             goto out;
         if (error == NULL && sleep_millis(100U) != 0) goto out;
     }
@@ -222,9 +223,16 @@ static int recording_failure(Display *display, const ViewerWindow *viewer, Sourc
     g_clear_object(&error);
     if (error_visible) {
         deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
-        if (query_named_accessible(pid, "Recording", deadline, &title, 0) != 0 ||
+        if (query_named_accessible(pid, "Recording", deadline, &title, 1) != 0 ||
             title == NULL || click_main_control(display, viewer->window, pid, "OK") != 0)
             goto out;
+        do {
+            g_clear_object(&title);
+            if (query_named_accessible(pid, "Recording", deadline, &title, 1) != 0)
+                goto out;
+            if (title != NULL && sleep_millis(50U) != 0) goto out;
+        } while (title != NULL && monotonic_millis() < deadline);
+        if (title != NULL) goto out;
     }
     deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     if (query_named_accessible(pid, "Stop session recording", deadline, &active, 0) != 0 ||

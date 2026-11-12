@@ -150678,3 +150678,14 @@ authenticated capture, using the retained app. Broader camera/platform/release
 obligations remain OPEN. This append preserves the prior 16,135,692-byte audit
 prefix, SHA-256
 caa0f7501d8c536aee4b1a681ef422ec5b05a28026f1b6c445e01495b0661da7.
+
+Fresh ledger count at e34d8597, ERF5foXAUB/tool50567, passes: 416,642 tokens /
+1,901,011 bytes, SHA-256
+437c295494aed4e0944402eb28531dd14f67adb21477fb154ae1e137b7a25cc8.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-limit-ledger-e34d8597.json binds eight files/117,398 bytes on CTE/TUF.
+QEMU 3362077 joins zero after 30.791 seconds with three zero listener deltas and
+exact private/process/socket/RAM retirement. The approximate 400,000-token target
+remains OPEN. This audit-only append preserves the counted ledger and prior
+16,138,188-byte audit prefix, SHA-256
+ce902ed644cd77426cf927036ce3382a9e254dc2201078775709196a5baa7f85.

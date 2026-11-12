@@ -25,6 +25,8 @@ use qos_apply::check_qos;
 #[path = "screenshot_png.rs"]
 mod screenshot_png;
 use screenshot_png::BoundedScreenshotPng;
+#[cfg(all(test, target_os = "linux"))]
+mod incoming_recording_tests;
 #[cfg(target_os = "linux")]
 use crate::common::SimpleCallOnReturn;
 #[cfg(target_os = "linux")]

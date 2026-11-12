@@ -2412,6 +2412,11 @@ impl VideoEgressFrame {
             _ => None,
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn test_message(&self) -> &Message {
+        &self.message
+    }
 }
 
 struct PendingVideoDelivery {

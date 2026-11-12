@@ -8351,13 +8351,13 @@ elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = reco
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-video ]; then
     mapfile -t viewer_video_artifacts < <(
         /usr/bin/tr -d '\r' <"$SERIAL_LOG" | /usr/bin/grep -oE \
-            'VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=14 unchanged=before-after execution_seconds=[0-9]+$'
+            'VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=15 unchanged=before-after execution_seconds=[0-9]+$'
     )
     [ "${#viewer_video_artifacts[@]}" -eq 1 ] \
         && [ "$(/usr/bin/grep -Fc 'VIEWER_VIDEO_ARTIFACT=' "$SERIAL_LOG")" -eq 1 ] \
         || fail 'viewer video artifact receipt differs'
     require_exact_fixed_receipt \
-        "VIEWER_VIDEO_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=14 target=linux-x86_64 scope=complete-parent-library-native-decoder-and-recording-outcomes rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
+        "VIEWER_VIDEO_VM=pass commit=$RUST_TEST_SOURCE_COMMIT tree=$RUST_TEST_SOURCE_TREE tests=15 target=linux-x86_64 scope=complete-parent-library-native-decoder-and-recording-outcomes rust=1.75.0 features=linux-pkg-config vendor=$SHA256_CARGO_VENDOR_CLOSURE_V1 devcheck_index=$DEV_CHECK_IMAGE_ID devcheck_runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined" \
         'viewer video compilation and native result'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'viewer video cloud-init completion'
 elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = option-ack ]; then

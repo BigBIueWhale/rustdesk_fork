@@ -1,4 +1,6 @@
 /* Actual installed Flutter controls. Reuse the bounded, PID-scoped X11/AT-SPI driver. */
+#define RECORDING_WIDTH 1024U
+#define RECORDING_HEIGHT 768U
 #define main rustdesk_peer_driver_main
 #include "flutter-peer-presentation-x11.c"
 #undef main
@@ -255,10 +257,44 @@ static int settings_recording_card(unsigned int pid, int denied) {
         : "Recording\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001", 1);
 }
 
+static int settings_recording_viewer(Display *display, unsigned int pid) {
+    ViewerWindow viewer = {0};
+    PasswordPromptScan prompt = {0};
+    SourceHistory history = {0};
+    ConnectionIdentity before, after;
+    uint64_t first = 0U, age = 0U;
+    int result = -1;
+    char path[64];
+    snprintf(path, sizeof(path), "/proc/%u/fd", pid);
+    connection_fds = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (connection_fds < 0 || find_viewer_window(display, pid, &viewer) != 0) goto out;
+    XRaiseWindow(display, viewer.window);
+    XSetInputFocus(display, viewer.window, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (wait_for_password_prompt(pid, &prompt) != 0 ||
+        type_password(display, "InstalledGui2026") != 0 ||
+        wait_for_password_character_count(pid, 16, &prompt) != 0 ||
+        fake_key(display, XK_Return) != 0 ||
+        wait_for_password_prompt_retirement(pid, &prompt) != 0 ||
+        read_connection_identity(&before) != 0 ||
+        wait_for_current_frames(display, &viewer, &history, AUTH_WAIT_MS, 12U, &first, &age) != 0 ||
+        read_connection_identity(&after) != 0 || !same_connection(&before, &after)) goto out;
+    printf("LINUX_INSTALLED_RECORDING_VIEWER=pass frames=12 maximum_age_ms=%llu "
+           "connection=retained password=actual-ui pixels=presented\n", (unsigned long long)age);
+    result = 0;
+out:
+    if (viewer.window != None && close_viewer(display, viewer.window) != 0) result = -1;
+    if (connection_fds >= 0 && close(connection_fds) != 0) result = -1;
+    connection_fds = -1;
+    return result;
+}
+
 int main(int argc, char **argv) {
     unsigned long parsed;
     char *end = NULL;
-    if (argc != 3 || getuid() != 4001 || geteuid() != 4001) return 2;
+    if ((argc != 3 && argc != 5) ||
+        ((strcmp(argv[2], "recording-output") == 0) != (argc == 5)) ||
+        getuid() != 4001 || geteuid() != 4001) return 2;
     errno = 0;
     parsed = strtoul(argv[1], &end, 10);
     if (errno != 0 || end == argv[1] || *end != '\0' || parsed <= 1UL || parsed > UINT_MAX)
@@ -270,11 +306,27 @@ int main(int argc, char **argv) {
     if (display == NULL) return 1;
     if (atspi_init() != 0) goto out;
     atspi_set_timeout(1000, 1000);
+    if (strcmp(argv[2], "recording-viewer") == 0) {
+        result = settings_recording_viewer(display, pid);
+        goto atspi_out;
+    }
     if (find_main_window(display, pid, &main) != 0) goto atspi_out;
     XRaiseWindow(display, main);
     XSetInputFocus(display, main, RevertToParent, CurrentTime);
     XSync(display, False);
-    if (strcmp(argv[2], "open") == 0) {
+    if (strcmp(argv[2], "recording-output") == 0) {
+        uint64_t times[2];
+        for (unsigned int i = 0U; i < 2U; ++i) {
+            const char *cursor = argv[3U + i];
+            if (x11_frame_number(&cursor, &times[i]) != 0 || *cursor != '\0') goto atspi_out;
+        }
+        int directory = open("/coord/output", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+        if (directory < 0) goto atspi_out;
+        int valid = times[0] > 0U && times[1] > times[0] &&
+            settings_recording_checked(pid, 1, 1) == 0 && settings_recording_card(pid, 0) == 0 &&
+            incoming_output(directory, times[0], times[1]) == 0;
+        if (close(directory) != 0 || !valid) goto atspi_out;
+    } else if (strcmp(argv[2], "open") == 0) {
         if (settings_graphics() != 0 || settings_visible(pid, "Connect", 1) != 0 ||
             activate_header_control(display, main, pid, "Settings") != 0 ||
             activate_named_control(pid, "Security") != 0 ||

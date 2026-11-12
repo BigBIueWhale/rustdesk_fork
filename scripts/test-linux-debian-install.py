@@ -281,7 +281,7 @@ def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_arc
     command(['/usr/bin/dpkg', '--install', *packages], 'desktop-accessibility')
     versions = {'at-spi2-core': ('2.46.0-5', 'install ok installed'),
                 'gsettings-desktop-schemas': ('43.0-1', 'install ok installed')}
-    drivers = [('driver-first', 'settings-driver')]
+    drivers = [('driver-first', 'settings-driver'), ('source-first', 'recording-source')]
     if agent_archive_sha is not None:
         settings.install_graphical_agent(agent_archive_sha)
         versions['policykit-1-gnome'] = ('0.105-8', 'install ok installed')

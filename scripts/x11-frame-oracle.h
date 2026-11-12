@@ -78,6 +78,8 @@ static int x11_frame_publication_line(SourceHistory *history, uint64_t now_us) {
     if (!history->ready) {
         if (strcmp(cursor, "FLUTTER_PEER_SOURCE_READY display=:98 dimensions=640x480 "
                    "interval_ms=250 identity=counter32 rows=4 bars=24 wrap=refused") != 0 &&
+            strcmp(cursor, "FLUTTER_PEER_SOURCE_READY display=:77 dimensions=1024x768 "
+                   "interval_ms=250 identity=counter32 rows=4 bars=24 wrap=refused") != 0 &&
             strcmp(cursor, "FLUTTER_PEER_SOURCE_READY display=:98 dimensions=1920x1080 "
                    "interval_ms=33 identity=counter32 rows=4 bars=24 wrap=refused") != 0) {
             return -1;

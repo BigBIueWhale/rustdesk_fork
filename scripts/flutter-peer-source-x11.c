@@ -27,8 +27,12 @@
 #include <time.h>
 #include <unistd.h>
 
+#ifndef SOURCE_WIDTH
 #define SOURCE_WIDTH 640U
+#endif
+#ifndef SOURCE_HEIGHT
 #define SOURCE_HEIGHT 480U
+#endif
 #define FRAME_INTERVAL_MS 250U
 #define DISPLAY_OPEN_ATTEMPTS 200U
 #define STATE_CODE_BARS 24U

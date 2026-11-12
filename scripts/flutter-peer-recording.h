@@ -5,6 +5,13 @@
 #include <vpx/vp8dx.h>
 #include <sys/resource.h>
 
+#ifndef RECORDING_WIDTH
+#define RECORDING_WIDTH 640U
+#endif
+#ifndef RECORDING_HEIGHT
+#define RECORDING_HEIGHT 480U
+#endif
+
 /* A bounded reader for this fixture's finalized, single-track WebM files.
  * It does not implement a general player. Native libvpx decodes every packet;
  * the existing pixel oracle binds the resulting images to the live source. */
@@ -89,14 +96,14 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
         recording_uint(&track, 0x83U, 1U) != 0 ||
         recording_child(&track, 0x86U, &codec_id) != 0 ||
         recording_child(&track, 0xe0U, &dimensions) != 0 ||
-        recording_uint(&dimensions, 0xb0U, 640U) != 0 ||
-        recording_uint(&dimensions, 0xbaU, 480U) != 0 ||
+        recording_uint(&dimensions, 0xb0U, RECORDING_WIDTH) != 0 ||
+        recording_uint(&dimensions, 0xbaU, RECORDING_HEIGHT) != 0 ||
         codec_id.size != 5U || (memcmp(codec_id.data, "V_VP8", 5U) != 0 &&
                                memcmp(codec_id.data, "V_VP9", 5U) != 0)) goto out;
     int vp9 = codec_id.data[4] == '9';
     video->codec = vp9 ? "vp9" : "vp8";
     vpx_codec_iface_t *interface = vp9 ? vpx_codec_vp9_dx() : vpx_codec_vp8_dx();
-    vpx_codec_dec_cfg_t config = {.threads = 1U, .w = 640U, .h = 480U};
+    vpx_codec_dec_cfg_t config = {.threads = 1U, .w = RECORDING_WIDTH, .h = RECORDING_HEIGHT};
     if (vpx_codec_dec_init(&decoder, interface, &config, 0) != VPX_CODEC_OK) goto out;
     initialized = 1;
     size_t offset = 0U;
@@ -133,7 +140,7 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
                 vpx_codec_stream_info_t stream = {.sz = sizeof(stream)};
                 if (vpx_codec_peek_stream_info(interface, block.data + payload,
                          (unsigned int)(block.size - payload), &stream) != VPX_CODEC_OK ||
-                    !stream.is_kf || stream.w != 640U || stream.h != 480U) goto out;
+                    !stream.is_kf || stream.w != RECORDING_WIDTH || stream.h != RECORDING_HEIGHT) goto out;
             }
             if (vpx_codec_decode(&decoder, block.data + payload,
                     (unsigned int)(block.size - payload), NULL, 0) != VPX_CODEC_OK) goto out;
@@ -144,15 +151,15 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
             vpx_image_t *frame;
             while ((frame = vpx_codec_get_frame(&decoder, &iterator)) != NULL) {
                 uint8_t pixels[X11_FRAME_BYTES];
-                if (++video->images > 512U || frame->d_w != 640U || frame->d_h != 480U ||
+                if (++video->images > 512U || frame->d_w != RECORDING_WIDTH || frame->d_h != RECORDING_HEIGHT ||
                     (frame->fmt & VPX_IMG_FMT_HIGHBITDEPTH) != 0 ||
-                    frame->planes[VPX_PLANE_Y] == NULL || frame->stride[VPX_PLANE_Y] < 640)
+                    frame->planes[VPX_PLANE_Y] == NULL || frame->stride[VPX_PLANE_Y] < (int)RECORDING_WIDTH)
                     goto out;
                 for (unsigned int y = 0U; y < X11_FRAME_HEIGHT; ++y)
                     for (unsigned int x = 0U; x < X11_FRAME_WIDTH; ++x) {
                         uint8_t luma = frame->planes[VPX_PLANE_Y][
-                            (y * 480U / X11_FRAME_HEIGHT) * frame->stride[VPX_PLANE_Y] +
-                            x * 640U / X11_FRAME_WIDTH];
+                            (y * RECORDING_HEIGHT / X11_FRAME_HEIGHT) * frame->stride[VPX_PLANE_Y] +
+                            x * RECORDING_WIDTH / X11_FRAME_WIDTH];
                         memset(pixels + (y * X11_FRAME_WIDTH + x) * 3U, luma, 3U);
                     }
                 int64_t identity = x11_frame_decode(pixels);

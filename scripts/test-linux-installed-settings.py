@@ -18,6 +18,7 @@ import shutil
 import signal
 import socket
 import stat
+import struct
 import subprocess
 import sys
 import tarfile
@@ -110,6 +111,17 @@ def prepare_drivers(graphical=False):
              '/work/scripts/linux-installed-settings-x11.c', *flags, '-o', f'/out/driver-{copy}'], timeout=60)
     if digest('/out/driver-first') != digest('/out/driver-second'):
         raise RuntimeError('repeated settings driver builds differ')
+    source_flags = run(['/usr/bin/pkg-config', '--cflags', '--libs', 'x11']).split()
+    for copy in ('first', 'second'):
+        run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
+             '-DSOURCE_WIDTH=1024U', '-DSOURCE_HEIGHT=768U',
+             '/work/scripts/flutter-peer-source-x11.c', *source_flags,
+             '-o', f'/out/source-{copy}'], timeout=60)
+    if digest('/out/source-first') != digest('/out/source-second'):
+        raise RuntimeError('repeated recording source builds differ')
+    run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
+         '/work/scripts/test-x11-frame-oracle.c', *flags, '-o', '/out/frame-oracle'], timeout=60)
+    print(run(['/out/frame-oracle', '--unit']), end='', flush=True)
     if graphical:
         for copy in ('first', 'second'):
             run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
@@ -449,6 +461,8 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
                 agent = None
             elif command != 'continue\n':
                 raise RuntimeError('GUI scenario lost its owning controller')
+        if restarted:
+            recording_session(environment, app.pid)
     finally:
         for process in (app, agent, bus):
             if process is not None:
@@ -456,6 +470,102 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
                     process.terminate()
                 process.wait(timeout=8)
         retire_children()
+
+
+def recording_session(environment, gui_pid):
+    """One actual installed viewer, followed by native decoding of the saved output."""
+    guard(4001)
+    coord = Path('/coord')
+    home = Path('/home/rdreceiver4001')
+    if list(home.glob('incoming_*.webm')) or list((coord / 'output').iterdir()):
+        raise RuntimeError('installed recording output is not initially empty')
+    viewer_environment = {**environment, 'DISPLAY': ':78', 'XAUTHORITY': str(coord / 'Xauthority')}
+    def field(value):
+        return struct.pack('!H', len(value)) + value
+    with os.fdopen(os.open(coord / 'Xauthority', os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), 'wb') as auth:
+        auth.write(struct.pack('!H', 65535) + field(b'') + field(b'78') + field(b'MIT-MAGIC-COOKIE-1')
+                   + field(os.urandom(16)))
+    processes = []
+    with ExitStack() as files:
+        def log(name):
+            return files.enter_context(os.fdopen(os.open(coord / name,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb'))
+        try:
+            xvfb = subprocess.Popen([str(WORK / 'Xvfb'), ':78', '-nolisten', 'tcp',
+                '-auth', viewer_environment['XAUTHORITY'], '-screen', '0', '1280x800x24',
+                '-xkbdir', str(WORK / 'xkb'), '-fp', 'built-ins'],
+                env=ENV, stdout=log('xvfb.log'), stderr=subprocess.STDOUT)
+            processes.append(xvfb)
+            deadline = time.monotonic() + 5
+            while not Path('/tmp/.X11-unix/X78').exists():
+                if xvfb.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError('recording viewer X11 display did not start')
+                time.sleep(0.05)
+            source = subprocess.Popen([str(WORK / 'recording-source')],
+                env={**environment, 'RUSTDESK_PRESENTATION_TRACE': '1'},
+                stdout=log('frame-source.log'), stderr=log('source-error.log'))
+            processes.append(source)
+            deadline = time.monotonic() + 5
+            while (coord / 'frame-source.log').stat().st_size == 0:
+                if source.poll() is not None or time.monotonic() >= deadline:
+                    raise RuntimeError('installed recording source did not publish')
+                time.sleep(0.05)
+            started = time.monotonic_ns() // 1000
+            viewer = subprocess.Popen(['/usr/share/rustdesk/rustdesk', '--connect', '127.0.0.1'],
+                env=viewer_environment, stdin=subprocess.DEVNULL,
+                stdout=log('viewer.log'), stderr=subprocess.STDOUT)
+            processes.append(viewer)
+            package_process(viewer.pid)
+            print(run([str(WORK / 'settings-driver'), str(viewer.pid), 'recording-viewer'],
+                      env=viewer_environment, timeout=60, output_limit=524288), end='', file=sys.stderr, flush=True)
+            # The controller closes the actual remote window before process retirement.
+            if viewer.poll() is None:
+                viewer.terminate()
+            viewer.wait(timeout=8)
+            stopped = time.monotonic_ns() // 1000
+            source.terminate()
+            if source.wait(timeout=8) != 0:
+                raise RuntimeError('installed source did not complete cleanly')
+            print(run([str(WORK / 'settings-driver'), str(gui_pid), 'recording-restarted'],
+                      env=environment, timeout=40, output_limit=524288), end='', file=sys.stderr, flush=True)
+            # Finalization is observed in the actual settings UI before retaining the
+            # exact owned files in a private directory for the existing strict decoder.
+            paths = sorted(home.glob('incoming_*.webm'))
+            if not 1 <= len(paths) <= 8:
+                raise RuntimeError(f'installed recording produced {len(paths)} files')
+            for path in paths:
+                info = path.lstat()
+                if (not stat.S_ISREG(info.st_mode) or info.st_uid != 4001 or info.st_gid != 4001
+                        or info.st_nlink != 1 or stat.S_IMODE(info.st_mode) != 0o600
+                        or not 0 < info.st_size <= 1048576):
+                    raise RuntimeError('installed recording file authority or bound differs')
+                sha = digest(path)
+                destination = coord / 'output' / path.name
+                path.rename(destination)
+                moved = destination.lstat()
+                if ((moved.st_dev, moved.st_ino, moved.st_size) != (info.st_dev, info.st_ino, info.st_size)
+                        or digest(destination) != sha):
+                    raise RuntimeError('retained recording differs from the finalized output')
+                print('LINUX_INSTALLED_RECORDING_SAVED=' + json.dumps({
+                    'path': str(path), 'bytes': info.st_size, 'sha256': sha, 'uid': info.st_uid,
+                    'mode': '0600', 'inode_preserved': True}, sort_keys=True), file=sys.stderr, flush=True)
+            print(run([str(WORK / 'settings-driver'), str(gui_pid), 'recording-output',
+                       str(started), str(stopped)], env=environment, timeout=40,
+                      output_limit=524288), end='', file=sys.stderr, flush=True)
+            print('LINUX_INSTALLED_RECORDING_OUTPUT=pass app=installed service=actual '
+                  'password=actual-ui viewer_frames=12 recording=native-decoded counters=source-bound '
+                  'finalization=actual-ui truncation=refused owner=4001', file=sys.stderr, flush=True)
+        finally:
+            for process in reversed(processes):
+                if process.poll() is None:
+                    process.terminate()
+                process.wait(timeout=8)
+            for name in ('source-error.log', 'viewer.log', 'xvfb.log'):
+                path = coord / name
+                if path.exists():
+                    if path.stat().st_size > 131072:
+                        raise RuntimeError('installed recording diagnostic exceeds its bound')
+                    print(path.read_text(), end='', file=sys.stderr, flush=True)
 
 
 def owned_log(directory, pid, uid, retained=None):
@@ -932,6 +1042,9 @@ def scenario(receiver, probe_sha, network_before):
         credential_network(receiver, restarted, probe_sha, 'gui-restarted')
         for pipe in (process.stdin, process.stdout):
             pipe.close()
+        for path in (Path('/coord'), Path('/coord/output')):
+            path.mkdir(mode=0o700)
+            os.chown(path, 4001, 4001)
         process = subprocess.Popen([*ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT), '--session-restart'],
                                    env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
         stopped = False
@@ -980,7 +1093,7 @@ def scenario(receiver, probe_sha, network_before):
                     raise RuntimeError('restarted recording workflow changed the user profile')
             process.stdin.write(b'continue\n')
             process.stdin.flush()
-        if process.wait(timeout=15) != 0:
+        if process.wait(timeout=100) != 0:
             raise RuntimeError('restarted GUI did not retire')
         credential_network(receiver, restarted, probe_sha, 'gui-service-recovered')
         print('LINUX_INSTALLED_SETTINGS_FAILURE=pass outcome=Failed service=absent '

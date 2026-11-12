@@ -8532,9 +8532,9 @@ PY
             || fail 'recording output artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-video ]; then
         [ "${#result_lines[@]}" -eq 6 ] || fail 'viewer video summary count differs'
-        [ "$(grep -Ec '^VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=26 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "$(grep -Ec '^VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=27 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_VIDEO_ARTIFACT=' "$output")" -eq 1 ] \
-            && [ "$(grep -Ec '^test ipc::recording_policy::tests::.* \.\.\. ok$' "$output")" -eq 5 ] \
+            && [ "$(grep -Ec '^test ipc::recording_policy::tests::.* \.\.\. ok$' "$output")" -eq 6 ] \
             && [ "$(grep -Ec '^test server::video_service::incoming_recording_tests::.* \.\.\. ok$' "$output")" -eq 6 ] \
             && [ "$(grep -Fxc 'test ipc::test::incoming_recording_status_uses_validated_main_frames ... ok' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^test client::video_handler_tests::.* \.\.\. ok$' "$output")" -eq 8 ] \
@@ -9462,9 +9462,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then
-            [ "$tests_passed" -eq 26 ] || fail 'viewer video total differs'
+            [ "$tests_passed" -eq 27 ] || fail 'viewer video total differs'
             grep -E '^test (ipc::recording_policy::tests::.*|ipc::test::incoming_recording_status_uses_validated_main_frames|server::video_service::incoming_recording_tests::.*|client::((video_handler_tests|io_loop::recording_status_tests)::.*|tests::r_s11fn_.*)) \.\.\. ok$|^VIEWER_VIDEO_BUILD=pass |^VIEWER_VIDEO_ARTIFACT=' "$output"
-            printf 'VIEWER_VIDEO_VM=pass commit=%s tree=%s tests=26 target=linux-x86_64 scope=complete-parent-library-native-decoder-and-recording-outcomes rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            printf 'VIEWER_VIDEO_VM=pass commit=%s tree=%s tests=27 target=linux-x86_64 scope=complete-parent-library-native-decoder-and-recording-outcomes rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = option-ack ]; then

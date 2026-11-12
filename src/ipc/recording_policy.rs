@@ -365,20 +365,23 @@ pub(crate) async fn client_setting() -> ResultType<IncomingRecordingSetting> {
 }
 
 pub(crate) async fn client_change(enabled: bool) -> RecordingSettingChange {
-    client_change_with_connector(enabled, Duration::from_secs(150), ||
-        super::connect_service(SERVICE_IPC_REQUEST_TIMEOUT_MS)).await
+    client_change_with_connector(enabled, Duration::from_secs(150), || async {
+        let stream = super::connect_service(SERVICE_IPC_REQUEST_TIMEOUT_MS).await?;
+        let owner = ipc_auth::linux_kernel_peer_process_identity(&stream, crate::POSTFIX_SERVICE)?;
+        Ok((stream, owner))
+    }).await
 }
 
 async fn client_change_with_connector<F, C, T>(enabled: bool, budget: Duration, mut connect: F) -> RecordingSettingChange
 where
     F: FnMut() -> C,
-    C: std::future::Future<Output = ResultType<super::ConnectionTmpl<T>>>,
+    C: std::future::Future<Output = ResultType<(super::ConnectionTmpl<T>, super::LinuxProcessIdentity)>>,
     T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
     let deadline = tokio::time::Instant::now() + budget;
     let operation_id = Uuid::new_v4().to_string();
-    let mut stream = match connect().await {
-        Ok(stream) => stream,
+    let (mut stream, owner) = match connect().await {
+        Ok(connection) => connection,
         Err(err) => {
             log::warn!("Incoming recording service unavailable before submission: {err}");
             return RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Failed);
@@ -406,7 +409,14 @@ where
         }
         let query = async {
             tokio::time::sleep(Duration::from_millis(250)).await;
-            let mut stream = connect().await?;
+            let (mut stream, current_owner) = connect().await?;
+            // History belongs to the receiving process. Its replacement cannot
+            // recover the result, even when the durable setting survived. Unknown
+            // history from the original owner may still precede admission.
+            if current_owner != owner {
+                log::warn!("Incoming recording operation {operation_id} lost its service owner");
+                return Ok(Some(complete_response(RecordingPolicyOutcome::Uncertain)));
+            }
             stream.send_service_request_timeout(&ServiceIpcRequest::IncomingRecordingPolicyChange {
                 operation_id: operation_id.clone(),
             }, SERVICE_IPC_REQUEST_TIMEOUT_MS).await?;
@@ -511,15 +521,19 @@ mod tests {
                             panic!("reply recovery must never resubmit the change");
                         };
                         assert_eq!(Some(value), *id.lock().unwrap());
-                        let response = if phase == 1 { change_response(RecordingOperationStatus::Pending) }
-                            else { complete_response(outcome) };
+                        let response = match phase {
+                            1 => change_response(RecordingOperationStatus::Unknown),
+                            2 => change_response(RecordingOperationStatus::Pending),
+                            _ => complete_response(outcome),
+                        };
                         peer.send_service_response_timeout(&response, 1000).await.unwrap();
                     }
                 }));
-                std::future::ready(Ok(ConnectionTmpl::new_protected_service(client)))
+                std::future::ready(Ok((ConnectionTmpl::new_protected_service(client),
+                    super::super::current_linux_process_identity().unwrap())))
             }).await;
             for job in jobs { job.await.unwrap(); }
-            assert_eq!(connections, 3);
+            assert_eq!(connections, 4);
             let expected = match outcome {
                 RecordingPolicyOutcome::Applied { enabled } => RecordingSettingChange { outcome: RecordingSettingOutcome::Applied, enabled: Some(enabled) },
                 RecordingPolicyOutcome::Denied => RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Denied),
@@ -545,14 +559,55 @@ mod tests {
                 if !first { assert!(matches!(request, ServiceIpcRequest::IncomingRecordingPolicyChange { .. })); }
                 peer.send_service_response_timeout(&change_response(RecordingOperationStatus::Unknown), 1000).await.unwrap();
             }));
-            std::future::ready(Ok(ConnectionTmpl::new_protected_service(client)))
+            std::future::ready(Ok((ConnectionTmpl::new_protected_service(client),
+                super::super::current_linux_process_identity().unwrap())))
         }).await;
         for job in jobs { job.await.unwrap(); }
         assert!(connections >= 2 && connections <= 3);
         assert_eq!(result, RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Uncertain));
         let result = client_change_with_connector(true, Duration::from_secs(1), ||
-            std::future::ready(Err::<ConnectionTmpl<super::super::ConnClient>, _>(anyhow!("owner is unavailable")))).await;
+            std::future::ready(Err::<(ConnectionTmpl<super::super::ConnClient>, super::super::LinuxProcessIdentity), _>(anyhow!("owner is unavailable")))).await;
         assert_eq!(result, RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Failed));
+    }
+
+    #[tokio::test]
+    async fn replaced_owner_ends_recovery_without_querying_or_resubmitting() {
+        use super::super::LinuxProcessIdentity;
+        use tokio::io::AsyncReadExt;
+        let original = LinuxProcessIdentity::for_test(100, 0, "1000".into());
+        for replacement in [
+            LinuxProcessIdentity::for_test(101, 0, "1000".into()),
+            LinuxProcessIdentity::for_test(100, 0, "1001".into()),
+            LinuxProcessIdentity::for_test(100, 1, "1000".into()),
+        ] {
+            let mut jobs = Vec::new();
+            let mut connections = 0;
+            let result = tokio::time::timeout(Duration::from_secs(2),
+                client_change_with_connector(true, Duration::from_secs(150), || {
+                    let (client, mut peer) = tokio::net::UnixStream::pair().unwrap();
+                    let first = connections == 0;
+                    connections += 1;
+                    jobs.push(tokio::spawn(async move {
+                        if first {
+                            let mut peer = ConnectionTmpl::new_protected_service(peer);
+                            let request = peer.next_service_request_timeout(1000).await;
+                            assert!(matches!(request.unwrap().unwrap(),
+                                ServiceIpcRequest::SetIncomingRecordingPolicy { enabled: true, .. }));
+                            // The result is lost when this owner exits.
+                        } else {
+                            let mut byte = [0];
+                            let read = tokio::time::timeout(Duration::from_secs(1), peer.read(&mut byte)).await;
+                            assert_eq!(read.unwrap().unwrap(), 0, "a replacement must receive no operation traffic");
+                        }
+                    }));
+                    let owner = if first { original.clone() } else { replacement.clone() };
+                    std::future::ready(Ok((ConnectionTmpl::new_protected_service(client), owner)))
+                }),
+            ).await.unwrap();
+            for job in jobs { job.await.unwrap(); }
+            assert_eq!(connections, 2);
+            assert_eq!(result, RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Uncertain));
+        }
     }
 
     #[tokio::test]

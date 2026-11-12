@@ -149639,3 +149639,52 @@ deltas and exact private/socket/RAM retirement pass. The approximate 400,000-tok
 compression target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,068,263-byte audit prefix, SHA-256
 307d0e49df64a6891a150b156d024a8b60cf9252278f8f85b044389ff570a58f.
+
+## Installed recording: service replacement leaves result recovery pending (2026-11-12)
+
+6515712d adds actual installed-GUI shutdown cases before administrator approval
+and after durable recording-policy commit with the exact child held by ptrace.
+The vendor systemd mixed kill mode sends SIGCONT during shutdown, so the existing
+owned trace barrier is necessary to observe the commit/drain boundary reliably.
+Primary reference: https://raw.githubusercontent.com/systemd/systemd/v252/man/systemd.kill.xml.
+
+Run Rvmy1Gofui/tool97754 exits 1 on unchanged a36e5581 app, manifest
+32e0888c5aa7d7780ef05ba30122f1a97da93150f42362c30a4a0e26d357d0b6.
+The unapproved stop reaps exact pkcheck/PAM helpers in 0.535967 seconds, preserves
+disabled state and reports Denied in the original GUI after restart. The admitted
+stop observes root enabled=true, all sixteen exact child threads traced, and the
+same supervisor deactivating; release drains the service in 1.557591 seconds,
+reaps its helper and preserves enabled=true across a third generation. Credential
+and user Config2 remain unchanged. The actual GUI then fails its five-second
+checkbox observation: unchecked, disabled, zero actions and a visible progress
+bar. Six of nine shutdown stages complete. This is not full scenario acceptance;
+fresh disable and the remaining package controls are not reached.
+
+installed-recording-stop-6515712d.json retains sixteen files/937,505 bytes,
+including the inspected screenshot, copied and hash-verified on CTE/TUF. Outer
+SHA-256 65dc41ad1a82806e388b11565f82269923937008d277e5b1b16a13b6dc084b27.
+QEMU 1893299 joins zero after 157.439 seconds; RAM scratch peaks at 4,218,048,512
+bytes. Four zero host listener deltas and exact process/socket/RAM absence pass.
+After evidence copy, the inventoried 4,112,384-byte private tree is retired;
+the separate 174-byte retirement receipt is verified on both hosts.
+
+The client treats every non-complete reply, including a new service's Unknown
+history, as pending until its 150-second deadline. Its single status owner cannot
+resume reads while that change awaits completion. The failed installed run proves
+pending after five seconds, not the eventual deadline outcome. The correction
+binds recovery to the original authenticated socket peer's PID/UID/start identity:
+a replacement yields Uncertain immediately without receiving a query or another
+mutation. Unknown from the original owner still waits, since it can precede
+admission. The existing status owner then reads the replacement's durable value.
+Root service authentication, receiver-side administrator authorization, commit
+ownership and one-submit semantics remain in force. Native Unix-pair controls
+cover missing history before admission, all terminal outcomes and replacement
+without outgoing traffic; compiled and installed validation are pending here.
+Linux SO_PEERCRED is captured at connection establishment; starttime is available
+without ptrace-only fields, and the existing identity helper checks a pidfd while
+collecting it. References: https://man7.org/linux/man-pages/man7/unix.7.html,
+https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html and
+https://man7.org/linux/man-pages/man2/pidfd_open.2.html.
+
+This append preserves the prior 16,068,951-byte audit prefix, SHA-256
+e92996a37962062135581ba109f47d41826f90d3d38099149c14899a600969d9.

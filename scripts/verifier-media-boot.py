@@ -76,7 +76,7 @@ def main():
         create(STATE, json.dumps(result, sort_keys=True).encode() + b'\n')
         unit = ('[Unit]\nDescription=Disposable native media fixture\n'
                 'After=local-fs.target\nConditionKernelCommandLine=rustdesk.media_vm=1\n'
-                '[Service]\nType=oneshot\nTimeoutStartSec=' + ('300' if contract['nokhwa'] else '60') + '\n'
+                '[Service]\nType=oneshot\nTimeoutStartSec=' + ('360' if contract['nokhwa'] else '60') + '\n'
                 'ExecStartPre=/usr/bin/mount -L RD_VERIFIER_INPUTS -o ro,nodev,nosuid,noexec'
                 ' /mnt/rustdesk-verifier-inputs\n'
                 'ExecStart=/usr/bin/python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --fixture\n'
@@ -119,6 +119,9 @@ def main():
             print('MEDIA_NOKHWA_FIXTURE=pass source=' + contract['source_commit']
                   + ' capture=decoded two-retained=independent node-reuse=fresh-handle stream=exclusive-retry'
                   + ' supplier=executed product=unexecuted cleanup=joined', flush=True)
+            print('MEDIA_CAMERA_MODULE=pass source=' + contract['source_commit']
+                  + ' advertised=ordinal-zero native=two resolution=ENOENT capture=ENOENT'
+                  + ' native-control=decoded application=unexecuted', flush=True)
 
 
 if __name__ == '__main__':

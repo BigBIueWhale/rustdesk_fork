@@ -149882,3 +149882,39 @@ process/socket/RAM retirement pass. The approximate 400,000-token target remains
 OPEN. This audit-only append preserves the counted ledger and prior
 16,084,425-byte audit prefix, SHA-256
 a59426306031d3e433c94bc321e9244f9b9bca0c175dd31ac2088965cc7d1ef2.
+
+## ViewCamera application-module baseline (2026-11-12)
+
+Continue R-F1/R-S0 after native backend acceptance. The application still
+advertises a native index-two camera at ordinal zero, then reconstructs native
+zero for resolution/capture. Login refreshes the global catalog separately from
+service subscription. Before replacing that interface, extend the existing
+native fixture to compile and execute the unchanged production camera module.
+The real protobuf_it generator/types and verbatim production frame/pixel-buffer
+declarations are used; unrelated display/encoder backends are not linked. All
+additional dependency records come from the product lock. This is component
+execution, not an authenticated RustDesk application/login acceptance claim.
+
+The negative requires advertised 640x360 metadata followed by ENOENT at both
+product resolution and capturer acquisition, while direct native-two capture
+still decodes current pixels. A separate native-zero control must capture four
+advancing frames through the actual product CameraCapturer and PixelBuffer.
+The previously accepted backend ownership scenarios remain regression controls.
+All source inputs join the existing immutable media contract; no host execution,
+new VM launcher, writable vendor cache or unbounded scratch is introduced.
+Runtime validation is pending.
+
+Ownership research also rules out moving nokhwa::Camera from a login task to
+the service thread: its backend trait is not Send and this build does not enable
+the supplier's optional unsafe camera-sync-impl. Retaining metadata alone is
+insufficient; device construction/use/retirement must have an explicit owner.
+Microsoft's capture contract uses retained activation/source objects and device
+symbolic links for loss notifications:
+https://learn.microsoft.com/en-us/windows/win32/medfound/enumerating-video-capture-devices
+and https://learn.microsoft.com/en-us/windows/win32/medfound/handling-video-device-loss .
+Linux node-number lifetime remains governed by
+https://docs.kernel.org/userspace-api/media/v4l/open.html . The existing V4L
+stream also leaves poll timeout unset, so cancellation/teardown behavior must
+be resolved in the ownership design; no native stalled-read result is claimed.
+The prior 16,085,079-byte audit prefix is preserved, SHA-256
+c9986e569efa28409675ef054911501b7464be8652216f74fe1c4f862dfa5c9b.

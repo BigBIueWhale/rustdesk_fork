@@ -3076,7 +3076,16 @@ fi
 ledger_token_inputs_before=
 if [ "$MODE" = media-kernel-tests ]; then
     media_sources=("$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" "$PIN_SOURCE" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh")
+    media_product_sources=()
     if [ "$MEDIA_NOKHWA" -eq 1 ]; then
+        media_product_sources=(
+            libs/protobuf_it/Cargo.toml libs/protobuf_it/build.rs libs/protobuf_it/src/lib.rs
+            libs/hbb_common/build.rs libs/hbb_common/src/protos/mod.rs
+            libs/hbb_common/protos/message.proto libs/hbb_common/protos/rendezvous.proto
+            libs/scrap/src/common/camera.rs libs/scrap/src/common/mod.rs
+            libs/scrap/src/common/x11.rs libs/scrap/src/common/frame_compare.rs
+        )
+        for source in "${media_product_sources[@]}"; do media_sources+=("$REPO_ROOT/$source"); done
         media_sources+=("$SCRIPT_DIR/verifier-media-nokhwa.py"
             "$SCRIPT_DIR/camera-native-probe/Cargo.toml" "$SCRIPT_DIR/camera-native-probe/Cargo.lock"
             "$SCRIPT_DIR/camera-native-probe/build.rs" "$SCRIPT_DIR/camera-native-probe/src/main.rs"
@@ -5044,7 +5053,7 @@ elif [ "$MODE" = media-kernel-tests ]; then
         "$VERIFIER_VM_KERNEL_RELEASE" "$VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
         "$SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE" "$SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE" \
         "$SIZE_VERIFIER_MEDIA_KERNEL" "$SHA256_VERIFIER_MEDIA_KERNEL" \
-        "$SHA256_VERIFIER_MEDIA_KERNEL_CONFIG" "$SOURCE_DATE_EPOCH_PIN" "$MEDIA_NOKHWA" "$PIN_SOURCE" <<'PY'
+        "$SHA256_VERIFIER_MEDIA_KERNEL_CONFIG" "$SOURCE_DATE_EPOCH_PIN" "$MEDIA_NOKHWA" "$PIN_SOURCE" "${media_product_sources[@]}" <<'PY'
 import hashlib,json,os,re,sys
 from pathlib import Path
 sources={}
@@ -5060,6 +5069,7 @@ nokhwa=sys.argv[13]=='1'
 if nokhwa:
     scripts=Path(sys.argv[3]).parent
     for name,path in [('nokhwa.py',scripts/'verifier-media-nokhwa.py'),
+                      *((f'product/{name}',scripts.parent/name) for name in sys.argv[15:]),
                       ('product-Cargo.toml',scripts.parent/'Cargo.toml'),
                       ('product-Cargo.lock',scripts.parent/'Cargo.lock'),
                       *((f'backend/{name}',scripts.parent/'libs/nokhwa-bindings-linux'/name)
@@ -5090,6 +5100,9 @@ PY
     )
     if [ "$MEDIA_NOKHWA" -eq 1 ]; then
         payload_identity=(-uid 1000 -gid 1000)
+        for source in "${media_product_sources[@]}"; do
+            lifecycle_payload_grafts+=("media/product/$source=$REPO_ROOT/$source")
+        done
         lifecycle_payload_grafts+=(
             "media/nokhwa.py=$SCRIPT_DIR/verifier-media-nokhwa.py"
             "media/probe=$SCRIPT_DIR/camera-native-probe"
@@ -6531,9 +6544,16 @@ if sys.argv[7]=='1':
     assert supplier['supplier_executed'] is True and supplier['rustdesk_product_executed'] is False
     for key in ('root_foreign_probe_refused','compiler_container_retired','daemon_joined','compile_network_canary_refused'):
         assert supplier[key] is True
-    capture,retained,reuse,ownership=supplier['scenarios']
+    assert supplier['rustdesk_camera_module_executed'] is True
+    capture,product,retained,reuse,ownership,product_zero=supplier['scenarios']
     assert capture['scenario']=='capture' and capture['indices']==[2]
     assert capture['device_handles_retired'] is True and len(set(capture['sample']['frame_sha256']))>=2
+    assert product['scenario']=='product-nonzero-baseline' and product['device_handles_retired'] is True
+    assert (product['advertised_count'],product['advertised_ordinal'],product['native_index'])==(1,0,2)
+    assert (product['width'],product['height'])==(640,360)
+    assert 'No such file or directory' in product['resolution_error'] and 'No such file or directory' in product['capture_error']
+    assert product_zero['scenario']=='product-zero-control' and product_zero['native_index']==0
+    assert product_zero['device_handles_retired'] is True
     assert retained['scenario']=='two-retained' and retained['device_handles_retired'] is True
     assert len(set(retained['retained_rdevs']))==2
     assert reuse['result']['scenario']=='reuse' and reuse['result']['device_handles_retired'] is True
@@ -6544,7 +6564,7 @@ if sys.argv[7]=='1':
     assert ownership['competing_error']
     samples=[capture['sample'],retained['first_sample'],retained['second_sample'],retained['resumed_sample'],
              reuse['readiness']['first_sample'],reuse['result']['replacement_sample'],reuse['result']['original_sample'],
-             ownership['initial'],ownership['preserved'],ownership['retry']]
+             ownership['initial'],ownership['preserved'],ownership['retry'],product['native_control'],product_zero['sample']]
     for sample in samples:
         assert sample['decoded_format']=='RGBA' and sample['frame_bytes']==sample['width']*sample['height']*4
         assert len(sample['frame_sha256'])==4 and len(set(sample['frame_sha256']))>=2
@@ -6563,6 +6583,7 @@ print('MEDIA_KERNEL_OBSERVATION='+json.dumps({'prepared':prepared,'fixture':resu
 PY
     if [ "$MEDIA_NOKHWA" -eq 1 ]; then
         require_exact_fixed_receipt "MEDIA_NOKHWA_FIXTURE=pass source=$FOCUSED_TEST_COMMIT capture=decoded two-retained=independent node-reuse=fresh-handle stream=exclusive-retry supplier=executed product=unexecuted cleanup=joined" 'native camera device ownership'
+        require_exact_fixed_receipt "MEDIA_CAMERA_MODULE=pass source=$FOCUSED_TEST_COMMIT advertised=ordinal-zero native=two resolution=ENOENT capture=ENOENT native-control=decoded application=unexecuted" 'production camera nonzero-device reproduction'
     fi
 elif [ "$MODE" = host-network-tests ]; then
     require_exact_fixed_receipt \

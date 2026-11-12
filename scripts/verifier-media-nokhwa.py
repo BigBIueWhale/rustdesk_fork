@@ -222,6 +222,7 @@ def compile_probe(pins):
               'test "$(cargo --version)" = "cargo 1.75.0 (1d8b05cdd 2023-11-20)"\n'
               'test "$(rustc --version)" = "rustc 1.75.0 (82e1608df 2023-12-21)"\n'
               'mkdir -p /work/source/scripts /work/source/libs\n'
+              'cp -R /product/. /work/source/\n'
               'cp -R /probe /work/source/scripts/camera-native-probe\n'
               'cp -R /backend /work/source/libs/nokhwa-bindings-linux\n'
               'chmod -R u+w /work/source\n'
@@ -255,6 +256,7 @@ def compile_probe(pins):
             '--env=CARGO_INCREMENTAL=0', '--env=SOURCE_DATE_EPOCH=' + pins['SOURCE_DATE_EPOCH_PIN'],
             '--env=PATH=/usr/local/cargo/bin:/usr/bin:/bin']
     mounts = [(MEDIA / 'probe', '/probe', True), (MEDIA / 'backend', '/backend', True),
+              (MEDIA / 'product', '/product', True),
               (MEDIA / 'cargo-vendor', '/online/cargo-vendor', True),
               (MEDIA / 'cargo-vendor-config.toml', '/config.toml', True), (build, '/work', False)]
     for source, target, readonly in mounts:
@@ -285,7 +287,7 @@ def compile_probe(pins):
                         if m['Type'] == 'bind')
         require(actual == sorted((str(s), t, not ro) for s, t, ro in mounts), 'compiler mounts differ')
         compiled = operation(['/usr/bin/docker', '--host', 'unix://' + str(SOCKET),
-                              '--config', str(CONFIG), 'start', '--attach', identifier], timeout=150)
+                              '--config', str(CONFIG), 'start', '--attach', identifier], timeout=180)
         print(compiled.stdout.decode(errors='replace'), flush=True)
         require(b'CAMERA_NATIVE_COMPILE_NETWORK_CANARY=refused' in compiled.stderr,
                 'native compiler network canary did not execute')
@@ -339,16 +341,16 @@ def native_scenarios(artifact):
         require(refused.returncode == 1 and not refused.stdout
                 and b'capture requires the exact unprivileged fixture principal' in refused.stderr,
                 'native root/foreign principal refusal differs')
-    for count in (1, 2):
+    for count, numbers in ((1, '2'), (2, '2,3'), (1, '0')):
         require(not list(Path('/dev').glob('video*')), 'native scenario starts with a camera')
         root_command(['/usr/sbin/modprobe', 'vivid', 'n_devs=' + str(count),
                       'node_types=' + ','.join(['1'] * count),
-                      'vid_cap_nr=' + ('2' if count == 1 else '2,3'),
+                      'vid_cap_nr=' + numbers,
                       'num_inputs=' + ','.join(['1'] * count),
                       'input_types=' + ','.join(['0'] * count)])
         try:
             root_command(['/usr/bin/udevadm', 'settle', '--timeout=10'])
-            expected = ['video2'] if count == 1 else ['video2', 'video3']
+            expected = ['video' + number for number in numbers.split(',')]
             require(sorted(p.name for p in Path('/dev').glob('video*')) == expected, 'native node inventory differs')
             for node in expected:
                 p = Path('/dev', node)
@@ -357,13 +359,22 @@ def native_scenarios(artifact):
                 os.chown(p, 4000, 4000)
                 os.chmod(p, 0o600)
             require(record(NATIVE) == artifact, 'native executable changed')
-            scenario = '--capture' if count == 1 else '--two-retained'
+            scenario = '--product-zero-control' if numbers == '0' else ('--capture' if count == 1 else '--two-retained')
             run = subprocess.run(native_argv(scenario), env=ENV, stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE, timeout=10)
             require(len(run.stdout) <= 16384 and len(run.stderr) <= 16384, 'native result exceeds bound')
-            if count == 1:
+            if numbers == '0':
+                require(run.returncode == 0 and not run.stderr,
+                        'production camera zero control failed: ' + run.stderr.decode(errors='replace'))
+                results.append(json.loads(run.stdout))
+            elif count == 1:
                 require(run.returncode == 0 and not run.stderr, 'nokhwa native capture failed: ' + run.stderr.decode(errors='replace'))
                 results.append(json.loads(run.stdout))
+                product = subprocess.run(native_argv('--product-nonzero-baseline'), env=ENV,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+                require(product.returncode == 0 and not product.stderr and len(product.stdout) <= 16384,
+                        'production camera baseline failed: ' + product.stderr.decode(errors='replace'))
+                results.append(json.loads(product.stdout))
             else:
                 require(run.returncode == 0 and not run.stderr,
                         'two retained devices failed: ' + run.stderr.decode(errors='replace'))
@@ -482,4 +493,5 @@ def verify(pins):
             'compile_network_canary_refused': True,
             'compiler_image': pins['DEV_CHECK_IMAGE_CONFIG_ID'],
             'cargo_vendor_sha256': pins['SHA256_CARGO_VENDOR_CLOSURE_V1'],
-            'supplier_executed': True, 'rustdesk_product_executed': False}
+            'supplier_executed': True, 'rustdesk_camera_module_executed': True,
+            'rustdesk_product_executed': False}

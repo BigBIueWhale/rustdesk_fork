@@ -14,6 +14,24 @@ use std::{
     os::unix::fs::{FileTypeExt, MetadataExt},
 };
 
+extern crate self as hbb_common;
+pub use protobuf_it::message_proto;
+mod common {
+    pub use anyhow::bail;
+    pub type ResultType<T> = anyhow::Result<T>;
+}
+#[allow(dead_code)]
+mod camera_types {
+    include!(concat!(env!("OUT_DIR"), "/camera_types.rs"));
+}
+pub use camera_types::{Frame, PixelBuffer, Pixfmt, TraitCapturer, TraitPixelBuffer};
+#[path = "../../../libs/scrap/src/common/frame_compare.rs"]
+mod frame_compare;
+pub use frame_compare::would_block_if_equal;
+#[path = "../../../libs/scrap/src/common/camera.rs"]
+#[allow(dead_code)]
+mod product_camera;
+
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
 
 fn require(condition: bool, message: &str) -> Result<()> {
@@ -122,6 +140,65 @@ fn main_result() -> Result<()> {
             require(video_handles()?.is_empty(), "native capture retained a device handle after drop")?;
             emit(json!({"scenario": "capture", "indices": indices, "name": name,
                         "sample": sample, "device_handles_retired": true}))
+        }
+        "--product-zero-control" => {
+            require(query_indices()? == [0], "product control requires only native index zero")?;
+            let advertised = product_camera::Cameras::all_info()?;
+            require(advertised.len() == 1 && advertised[0].online, "product zero discovery differs")?;
+            let resolution = product_camera::Cameras::get_camera_resolution(0)?;
+            require(resolution.width == advertised[0].width && resolution.height == advertised[0].height,
+                    "product resolution differs from its advertised metadata")?;
+            let mut selected = product_camera::Cameras::get_capturer(0)?;
+            let mut hashes = Vec::new();
+            for _ in 0..12 {
+                match selected.frame(std::time::Duration::from_millis(100)) {
+                    Ok(Frame::PixelBuffer(frame)) => {
+                        require(frame.width() == 640 && frame.height() == 360
+                                && frame.pixfmt() == Pixfmt::RGBA && frame.stride() == 2560
+                                && frame.data().len() == 921600, "product pixel layout differs")?;
+                        hashes.push(format!("{:x}", Sha256::digest(frame.data())));
+                        if hashes.len() == 4 { break; }
+                    }
+                    Ok(Frame::Texture(_)) => return Err("product camera unexpectedly returned a texture".into()),
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => continue,
+                    Err(error) => return Err(error.into()),
+                }
+            }
+            require(hashes.len() == 4 && hashes.iter().collect::<BTreeSet<_>>().len() >= 2,
+                    "product camera pixels did not advance")?;
+            drop(selected);
+            require(video_handles()?.is_empty(), "product zero control retained its handle")?;
+            emit(json!({"scenario": "product-zero-control", "native_index": 0,
+                        "sample": {"width": 640, "height": 360, "frame_bytes": 921600,
+                                   "decoded_format": "RGBA", "frame_sha256": hashes},
+                        "device_handles_retired": true}))
+        }
+        "--product-nonzero-baseline" => {
+            require(query_indices()? == [2], "product fixture requires only native index two")?;
+            let advertised = product_camera::Cameras::all_info()?;
+            require(advertised.len() == 1 && advertised[0].online
+                    && advertised[0].width == 640 && advertised[0].height == 360,
+                    "product did not advertise the actual native camera at ordinal zero")?;
+            require(product_camera::primary_camera_exists(), "product primary presence check failed")?;
+            require(video_handles()?.is_empty(), "product discovery retained a native device")?;
+            let resolution_error = product_camera::Cameras::get_camera_resolution(0)
+                .err().ok_or("product unexpectedly resolved the nonzero native camera")?.to_string();
+            let capture_error = product_camera::Cameras::get_capturer(0)
+                .err().ok_or("product unexpectedly opened the nonzero native camera")?.to_string();
+            require(resolution_error.contains("No such file or directory")
+                    && capture_error.contains("No such file or directory"),
+                    "product failure was not absent-node acquisition")?;
+            require(video_handles()?.is_empty(), "failed product acquisition left a device handle")?;
+            let mut native = camera(2)?;
+            let control = frames(&mut native)?;
+            drop(native);
+            require(video_handles()?.is_empty(), "positive native control retained its handle")?;
+            emit(json!({"scenario": "product-nonzero-baseline", "advertised_count": advertised.len(),
+                        "advertised_name": advertised[0].name, "width": advertised[0].width,
+                        "height": advertised[0].height, "advertised_ordinal": 0, "native_index": 2,
+                        "resolution_error": resolution_error, "capture_error": capture_error,
+                        "native_control": control, "device_handles_retired": true,
+                        "scope": "production-camera-module; full-application-unexecuted"}))
         }
         "--two-retained" => {
             require(query_indices()? == [2, 3], "two-device native discovery differs")?;

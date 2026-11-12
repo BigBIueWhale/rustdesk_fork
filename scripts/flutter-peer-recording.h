@@ -411,10 +411,19 @@ static int recording_output_attempt(Display *display, const ViewerWindow *viewer
         const RecordingVideo *video = &files[index].video;
         if (index > 0U) {
             const RecordingVideo *previous = &files[index - 1U].video;
-            if (video->first_frame < previous->last_frame) goto out;
+            if (video->first_frame < previous->last_frame) {
+                fprintf(stderr, "FLUTTER_PEER_RECORDING_BOUNDARY_FAIL epoch=%u previous=%lld next=%lld reason=backward\n",
+                        index + 1U, (long long)previous->last_frame, (long long)video->first_frame);
+                goto out;
+            }
             uint64_t gap = history->publication_us[video->first_frame] -
                            history->publication_us[previous->last_frame];
-            if (gap > 500000U) goto out;
+            if (gap > 500000U) {
+                fprintf(stderr, "FLUTTER_PEER_RECORDING_BOUNDARY_FAIL epoch=%u previous=%lld next=%lld gap_us=%llu limit_us=500000\n",
+                        index + 1U, (long long)previous->last_frame, (long long)video->first_frame,
+                        (unsigned long long)gap);
+                goto out;
+            }
             media_us += gap;
         }
         packets += video->packets;
@@ -426,7 +435,12 @@ static int recording_output_attempt(Display *display, const ViewerWindow *viewer
     duration_us = history->publication_us[last_frame] - history->publication_us[first_frame];
     if (images < 16U || images > 512U || packets > 512U || last_frame - first_frame < 12 ||
         duration_us < 3000000U || duration_us > 10000000U ||
-        media_us > duration_us + 500000U || duration_us > media_us + 500000U) goto out;
+        media_us > duration_us + 500000U || duration_us > media_us + 500000U) {
+        fprintf(stderr, "FLUTTER_PEER_RECORDING_AGGREGATE_FAIL files=%u packets=%u images=%u first=%lld last=%lld source_us=%llu media_us=%llu\n",
+                file_count, packets, images, (long long)first_frame, (long long)last_frame,
+                (unsigned long long)duration_us, (unsigned long long)media_us);
+        goto out;
+    }
     phase = "retire-or-retain";
     if (attempt == 5U) {
         receipt = open("/coord/recording-output.json", O_WRONLY | O_CREAT | O_EXCL |

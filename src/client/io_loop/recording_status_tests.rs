@@ -135,6 +135,9 @@ async fn recording_status_case(fail_output: bool) {
             let (status, frames, first_callback_drained) = ui.recording_observation();
             if first_callback_drained && !second_frame_sent {
                 frame.generation = 2;
+                // Keep this healthy control in one source-clock epoch.
+                let Some(video_frame::Union::Vp8s(encoded)) = &mut frame.union else { panic!("VP8 fixture"); };
+                encoded.frames[0].pts = 2000;
                 assert_eq!(remote.video_threads[&0].media_thread.admit_received_frame(
                     frame.clone(), true, std::time::Instant::now()
                 ), VideoFrameAdmission::Queued);
@@ -172,6 +175,8 @@ async fn recording_status_case(fail_output: bool) {
             let deadline = Instant::now() + Duration::from_secs(3);
             for generation in [3, 4] {
                 frame.generation = generation;
+                let Some(video_frame::Union::Vp8s(encoded)) = &mut frame.union else { panic!("VP8 fixture"); };
+                encoded.frames[0].pts = ((generation - 3) * 2000) as i64;
                 assert_eq!(remote.video_threads[&0].media_thread.admit_received_frame(
                     frame.clone(), true, std::time::Instant::now()
                 ), VideoFrameAdmission::Queued);

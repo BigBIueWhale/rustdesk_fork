@@ -622,11 +622,13 @@ def recording_session(environment, gui_pid):
             if viewer.poll() is None:
                 viewer.terminate()
             viewer.wait(timeout=8)
+            # Capture may finish after the viewer exits. Keep its source visible
+            # until the service's actual status confirms the recording is closed.
+            driver(gui_pid, 'recording-restarted')
             stopped = time.monotonic_ns() // 1000
             source.terminate()
             if source.wait(timeout=8) != 0:
                 raise RuntimeError('installed source did not complete cleanly')
-            driver(gui_pid, 'recording-restarted')
             retain_output(started, stopped, True)
             checkpoint('recording-live-finished')
             print('LINUX_INSTALLED_RECORDING_LIVE=pass app=installed service=actual '

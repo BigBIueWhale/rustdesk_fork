@@ -269,6 +269,14 @@ static int settings_recording_viewer(Display *display, unsigned int pid) {
     snprintf(path, sizeof(path), "/proc/%u/fd", pid);
     connection_fds = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (connection_fds < 0 || find_viewer_window(display, pid, &viewer) != 0) goto out;
+    /* The installed source is 1024x768; keep it fully visible at Original scale. */
+    XMoveResizeWindow(display, viewer.window, 0, 0, 1400U, 1100U);
+    XSync(display, False);
+    XWindowAttributes attributes;
+    if (XGetWindowAttributes(display, viewer.window, &attributes) == 0 ||
+        attributes.width != 1400 || attributes.height != 1100) goto out;
+    viewer.width = 1400U;
+    viewer.height = 1100U;
     XRaiseWindow(display, viewer.window);
     XSetInputFocus(display, viewer.window, RevertToParent, CurrentTime);
     XSync(display, False);
@@ -278,8 +286,7 @@ static int settings_recording_viewer(Display *display, unsigned int pid) {
     if (type_password(display, "InstalledGui2026") != 0 ||
         wait_for_password_character_count(pid, 16, &prompt) != 0) goto out;
     phase = "authentication";
-    if (
-        fake_key(display, XK_Return) != 0 ||
+    if (fake_key(display, XK_Return) != 0 ||
         wait_for_password_prompt_retirement(pid, &prompt) != 0 ||
         read_connection_identity(&before) != 0) goto out;
     phase = "pixels";
@@ -290,6 +297,7 @@ static int settings_recording_viewer(Display *display, unsigned int pid) {
     result = 0;
 out:
     if (result != 0) fprintf(stderr, "LINUX_INSTALLED_RECORDING_VIEWER_FAIL phase=%s\n", phase);
+    if (result != 0 && viewer.window != None) observe_scale_pixels_after_failure(display, viewer.window);
     if (viewer.window != None && close_viewer(display, viewer.window) != 0) result = -1;
     if (connection_fds >= 0 && close(connection_fds) != 0) result = -1;
     connection_fds = -1;

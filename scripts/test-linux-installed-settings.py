@@ -492,7 +492,7 @@ def recording_session(environment, gui_pid):
                 os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600), 'wb'))
         try:
             xvfb = subprocess.Popen([str(WORK / 'Xvfb'), ':78', '-nolisten', 'tcp',
-                '-auth', viewer_environment['XAUTHORITY'], '-screen', '0', '1280x800x24',
+                '-auth', viewer_environment['XAUTHORITY'], '-screen', '0', '1600x1200x24',
                 '-xkbdir', str(WORK / 'xkb'), '-fp', 'built-ins'],
                 env=ENV, stdout=log('xvfb.log'), stderr=subprocess.STDOUT)
             processes.append(xvfb)

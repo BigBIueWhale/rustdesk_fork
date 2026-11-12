@@ -151068,3 +151068,76 @@ and exact private/process/socket/RAM retirement. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,163,495-byte audit prefix, SHA-256
 9ff94907c0d492713e1388e7eb687632ee4c0be734d9cdaf63a7ed04c4923bcb.
+
+## 2026-11-13 — Transport design checkpoint and installed congestion acceptance
+
+Previous turn reproduced the long-outage failure twice. At clean 36c59f33,
+confirmed TUF's existing SSH master and identical source. Reviewed the transport
+contract and socket APIs before considering a product correction. R-F3/R-F4,
+R-D4 and section 4 require the direct keyed TCP stream; R-F5 requires surviving
+transport recovery in place. The fixture's 2,500-ms deadline is not a literal
+normative number. Preserve its failed verdicts; neither these failures nor the
+review proves permanent application backlog or a universally impossible goal.
+
+The actual setup is outbound TCP_NODELAY at hbb_common/src/tcp.rs:487 and accepted
+TCP_NODELAY plus 30/10-second keepalive at direct_service.rs:1240-1275. The
+connection-owned LatencyProbe retains one outstanding sample and, after its
+stalled reply, schedules two fresh serial measurements. Connection::start still
+checks its 30-second application idle lifetime. Changing this probe schedule
+does not by itself provide a TCP retransmission actuator.
+
+Primary-source findings and decisions:
+
+- [Linux 6.1 timer](https://raw.githubusercontent.com/torvalds/linux/v6.1/net/ipv4/tcp_timer.c)
+  resumes exponential backoff after the limited thin-stream retry window,
+  suppresses keepalive while data is outstanding and uses TCP_USER_TIMEOUT for
+  connection expiry. [The limit is six retries](https://raw.githubusercontent.com/torvalds/linux/v6.1/include/net/tcp.h).
+  None supplies a general fixed short recovery bound after an arbitrary outage.
+- [Linux 6.15 socket options](https://raw.githubusercontent.com/torvalds/linux/v6.15/net/ipv4/tcp.c)
+  add TCP_RTO_MAX_MS with a 1,000–120,000-ms range, absent from 6.14 and the current
+  6.1 guest. [Its timeout model](https://raw.githubusercontent.com/torvalds/linux/v6.15/net/ipv4/tcp_timer.c)
+  also uses this cap to derive connection expiry. A cap alone may shorten outage
+  survival; a candidate needs joint lifetime/congestion and both-endpoint native
+  validation. It is neither implemented nor a portable acceptance claim.
+- [Windows TCP_MAXRT](https://learn.microsoft.com/en-us/windows/win32/winsock/ipproto-tcp-socket-options)
+  specifies connection timeout; [SIO_TCP_INITIAL_RTO](https://learn.microsoft.com/en-us/windows/win32/winsock/sio-tcp-initial-rto)
+  concerns SYN/SYN+ACK before connection. [Apple TCP_RXT_CONNDROPTIME](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/netinet/tcp.h)
+  drops the connection. These reviewed controls do not establish an equivalent
+  established-stream retransmission cap across supported platforms.
+- [RFC 6298 sections 2.5 and 5](https://www.rfc-editor.org/rfc/rfc6298.html)
+  specify exponential backoff and a maximum RTO of at least sixty seconds.
+  A lower OS-supported cap needs a justified design; existence of an API is not
+  evidence of congestion safety or satisfaction of R-F5.
+
+Decision: no speculative socket-policy patch, forced reconnect, host network
+change or deadline relaxation. Transport recovery remains OPEN pending a justified
+end-to-end envelope/mechanism. At this research checkpoint, select already-wired
+installed congestion validation over repeating unchanged failures or rebuilding.
+
+TUF 02UE6P2daj/tool18620 exits zero using installed app 2eb7015e and manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a.
+Twenty-second jitter/bandwidth/combined cases recover four fresh pixel states in
+625/1,739/1,070 ms; three-second healthy maxima 320/342/370 ms compare with baseline
+327 ms. During-impairment distinct states are 79/26/22, with maximum ages 451/2,036/2,032 ms.
+The 32-kbit/s intervals deliver 78,590/76,072 bytes in 20.054/20.016 seconds, with
+actual token-bucket throttling. Calibration receives all eight datagrams, including
+four queued before restoration; sixteen measured jitter delays span 51–109 ms.
+There are 342 TCP observations retaining the same pair until ordinary closure,
+sampled send/receive queue maxima 5,063/0 bytes and netem queue maximum seven packets.
+RSS grows at most 8,904 KiB, FDs at most two and threads decline. Supervisor 7608,
+child 7731/start 7097/generation 8faec558-2185-4e0d-a5f5-10e59932343e, listener 23825,
+credential/profile and viewer window persist. Source publishes 319 states; normal
+actor/viewer/source/observer retirement and package reinstall/remove/purge pass.
+
+remote-installed-congestion-36c59f33.json binds nine files/979,046 bytes, copied and
+hash-verified on CTE/TUF before source/input unfreeze. Outer SHA-256
+0f5018cf2da764a5cee67a6000e35c5e6c3898661afada4c431eb6ea38735218.
+QEMU 3888904 joins zero after 225.851 seconds; peak RAM workspace 4,286,066,688 bytes
+and exact private identity 66306:78035127 retire. Four host listener deltas are zero.
+No product edit/build or additional app cache. Uncontrolled kernel jitter,
+software Xvfb observation, missing input/baseline-tail/long-session/cross-platform
+acceptance and original loss/outage failures remain explicit limitations.
+Next useful validation is installed input-to-visible recovery on the retained
+app; this does not close the unresolved transport design or broader R-F5 matrix.
+This append preserves the prior 16,164,154-byte audit prefix, SHA-256
+95b9f61b0d0a4000202108c666162aa8e3ae07a4f0716f961424776cda606ca6.

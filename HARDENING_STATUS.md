@@ -4105,7 +4105,7 @@ Desktop closure, authentication controls and reinstall/remove/purge pass.
 CTE/TUF, 235.311 seconds, 381 transport snapshots, four zero listener deltas
 and joined private/RAM cleanup. One earlier fixture attempt could not locate
 `modprobe` in the settings environment; its separate failed evidence is retained.
-Random/burst loss, bandwidth/jitter, input response, quantified baseline-tail
+The failed loss/outage bounds below, input response, quantified baseline-tail
 agreement, multi-hour drift, physical/other-platform and complete R-F5/release
 acceptance remain OPEN. No product change or full build was needed.
 
@@ -4128,7 +4128,7 @@ error does not replace the earlier pixel failure. Exact VM/private/RAM
 retirement and four zero host listener deltas are reconciled; nine evidence
 files/794,849 bytes match on CTE/TUF (`remote-installed-loss-2ace6bf8.json`).
 R-F5 remains OPEN; the fixed-outage follow-up below examines transport backoff.
-Bandwidth/jitter plumbing is added but its installed scenario has not run.
+The installed bandwidth/jitter scenario below now passes on the same app.
 No product fix or full build is claimed.
 
 **Fixed long-outage regression (`85647358`) — failure reproduced twice.**
@@ -4147,10 +4147,43 @@ controller error. This reproduces a transport contribution to late recovery;
 it neither fixes the product nor closes the original random-burst scenario.
 The two `remote-installed-backoff[-repeat]-85647358.json` capsules bind eighteen
 files/835,695 bytes on CTE/TUF, eight zero listener deltas and exact joined
-VM/private/RAM cleanup. Next assess connection-owned transport recovery against
-R-F3/R-F4/R-F5 using these traces; do not repeat unchanged runs or turn the
-observed late recovery into a passing deadline. Installed congestion and the
-broader R-F5 matrix remain OPEN.
+VM/private/RAM cleanup. The transport review below establishes no portable
+correction; both failed cases remain OPEN. Do not repeat unchanged runs or turn
+the observed late recovery into a passing deadline.
+
+**Transport-recovery design checkpoint — no socket-policy change justified.**
+The reviewed Linux 6.1 thin-stream option resumes exponential backoff after six
+linear retries; keepalive defers with outstanding data, and `TCP_USER_TIMEOUT`
+controls connection failure. Linux 6.15 adds per-socket `TCP_RTO_MAX_MS`, absent
+from the current 6.1 guest, but a lower cap also shortens its default connection
+failure horizon. Windows `TCP_MAXRT` and Apple's `TCP_RXT_CONNDROPTIME` govern
+connection expiry; Windows initial-RTO control concerns SYN/SYN+ACK. These APIs
+do not establish a portable in-place recovery correction. Primary-source links
+and design implications are in the audit's 2026-11-13 transport/congestion entry.
+The 2,500-ms threshold is the existing fixture acceptance bound, not a literal
+number in R-F5; its failures remain failures and do not alone demonstrate lasting
+application backlog. A justified recovery envelope and mechanism must reconcile
+R-F5 with the direct TCP contract and supported OS behavior. No forced reconnect,
+host policy change, deadline relaxation or product fix is claimed.
+
+**Installed Linux bandwidth/jitter recovery — three cycles PASS.**
+TUF `02UE6P2daj`, fixture `36c59f33`, reuses installed app `2eb7015e`.
+Twenty seconds each of 80±30-ms jitter, 32-kbit/s bandwidth and both combined
+recover four fresh displayed states in **625/1,739/1,070 ms**, within 2,500 ms.
+Three-second follow-up maximum ages are **320/342/370 ms** against a 327-ms
+baseline, within the unchanged 1,000-ms limit. During impairment the source
+advances and pixels continue changing; the two limited intervals deliver
+78,590/76,072 bytes in about twenty seconds. Native calibration proves queued
+datagrams survive restoration. All 342 transport observations retain the same
+socket pair until normal closure; maximum sampled TCP send/receive queues are
+5,063/0 bytes. Child/listener/credentials and viewer window persist, RSS grows
+at most 8,904 KiB and descriptors by two. Desktop retirement and ordinary package
+reinstall/remove/purge pass. `remote-installed-congestion-36c59f33.json` binds
+nine files/979,046 bytes on CTE/TUF, 225.851 seconds, four zero listener deltas
+and joined private/RAM cleanup. No new build or product change was required.
+Kernel jitter is uncontrolled; software Xvfb pixels do not establish physical
+scanout, input latency, baseline-tail equivalence, multi-hour drift or other
+platforms. Those obligations, the loss/outage failures and complete R-F5 remain OPEN.
 
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without

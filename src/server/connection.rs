@@ -8183,7 +8183,8 @@ impl Connection {
 
     #[cfg(target_os = "linux")]
     async fn prepare_camera_catalog(&mut self) -> ResultType<()> {
-        let server = self.server.upgrade().ok_or_else(|| anyhow!("Camera server retired"))?;
+        let server = self.server.upgrade()
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("Camera server retired"))?;
         let pool = Arc::clone(&server.read().unwrap().camera_pool);
         let started = std::time::Instant::now();
         loop {

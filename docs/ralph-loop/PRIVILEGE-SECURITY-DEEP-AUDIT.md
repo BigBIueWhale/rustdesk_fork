@@ -150092,3 +150092,13 @@ inventory on both hosts. Accepted 4468059d and baselines 6429f3cb/a36e5581 remai
 The four-generation cache bound is unchanged. The preceding 16,096,639-byte
 audit prefix is preserved, SHA-256
 332ff138a9a1ee897732b4156d9d2e564979c05cefdecfc817cbcaf3d5b65082.
+
+The 5f5aff18 integration retry Z5QtmpVuND/tool92761 compiles scrap, then finds
+that connection.rs imports anyhow! only on Windows. Qualify the new Linux call
+through hbb_common::anyhow; the accompanying pool type-inference diagnostic
+occurs downstream of that unresolved macro. Full compilation remains pending.
+camera-catalog-app-5f5aff18.json binds nine files/164,463 bytes verified on both
+hosts. QEMU 2382241 joins zero after 558.303 seconds; four listener deltas are
+zero, RAM retires, no app artifact exists, and failed private tree 66306:78035080
+is reconciled and removed. The prior 16,098,914-byte audit prefix is preserved,
+SHA-256 1feaf4bcd27e50fc25ff4a8f05f6041c5952c64dc0264da6abe56fb54eaf1825.

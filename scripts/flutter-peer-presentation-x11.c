@@ -3996,6 +3996,8 @@ static int prepare_main_settings(Display *display, const ViewerWindow *viewer, W
 
 /* Observe both halves in the fixture's shared, isolated network namespace.
  * TIME_WAIT has no owning socket inode and is not a retained application session. */
+static const char *expected_server_listener = "0100007F:527E";
+
 static int session_socket_counts(unsigned int *connected, unsigned int *listeners) {
     FILE *stream = fopen("/proc/net/tcp", "r");
     char line[512];
@@ -4010,10 +4012,12 @@ static int session_socket_counts(unsigned int *connected, unsigned int *listener
         if (strchr(line, '\n') == NULL ||
             sscanf(line, " %u: %31s %31s %x %*s %*s %*s %*s %*s %lu",
                    &slot, local, remote, &state, &inode) != 5) goto out;
-        if (strcmp(local, "0100007F:527E") != 0 &&
-            strcmp(remote, "0100007F:527E") != 0) continue;
-        if (state == 10U) *listeners += 1U;
-        else if (inode != 0UL) *connected += 1U;
+        if (state == 10U) {
+            if (strcmp(local, expected_server_listener) == 0) *listeners += 1U;
+        } else if (inode != 0UL && (strcmp(local, "0100007F:527E") == 0 ||
+                                    strcmp(remote, "0100007F:527E") == 0)) {
+            *connected += 1U;
+        }
     }
     if (ferror(stream) == 0) result = 0;
 out:
@@ -4183,18 +4187,24 @@ static int camera_interruption(Display *display, const ViewerWindow *viewer, int
     return camera_failure(viewer, coord, 0);
 }
 
-static int camera_reacquire(Display *display, const ViewerWindow *viewer) {
+static int camera_reacquire(Display *display, const ViewerWindow *viewer, int installed_recovery) {
     int coord = open("/coord", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
     if (coord < 0) return -1;
     ConnectionIdentity before = {{0}, {0}, 0UL}, after = {{0}, {0}, 0UL};
     int result = -1;
     if (camera_pixels(display, viewer, 1U) == 0 && read_connection_identity(&before) == 0 &&
-        isolation_marker(coord, "camera.reacquire.green", 1) == 0 &&
-        wait_isolation_marker(coord, "camera.reacquire.blue", 10000U) == 0 &&
+        isolation_marker(coord, installed_recovery ? "camera.installed.green" : "camera.reacquire.green", 1) == 0 &&
+        wait_isolation_marker(coord, installed_recovery ? "camera.installed.blue" : "camera.reacquire.blue", 10000U) == 0 &&
         camera_pixels(display, viewer, 2U) == 0 && read_connection_identity(&after) == 0 &&
         same_connection(&before, &after)) {
-        puts("FLUTTER_PEER_CAMERA_REACQUIRE_OK authenticated=true colors=2 stable_connection=true");
-        result = 0;
+        if (installed_recovery) {
+            result = camera_interruption(display, viewer, coord, &before);
+            if (result == 0)
+                puts("FLUTTER_PEER_CAMERA_INSTALLED_RECOVERY_OK authenticated=true colors=3 stable_until_device_loss=true");
+        } else {
+            puts("FLUTTER_PEER_CAMERA_REACQUIRE_OK authenticated=true colors=2 stable_connection=true");
+            result = 0;
+        }
     }
     if (close(coord) != 0) result = -1;
     return result;
@@ -8990,6 +9000,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--camera-shared-main") != 0 &&
                                     strcmp(argv[5], "--camera-shared-slow") != 0 &&
                                     strcmp(argv[5], "--camera-reacquire") != 0 &&
+                                    strcmp(argv[5], "--camera-installed-recovery") != 0 &&
                                     strcmp(argv[5], "--monitor-switch") != 0 &&
                                     strcmp(argv[5], "--recent-search") != 0 &&
                                     strcmp(argv[5], "--native-components") != 0 &&
@@ -9066,9 +9077,12 @@ int main(int argc, char **argv) {
             if (strcmp(argv[5], keyboard_phases[i]) == 0) keyboard_generation = i + 1U;
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
+    int installed_camera = argc == 6 && strcmp(argv[5], "--camera-installed-recovery") == 0;
+    if (installed_camera) expected_server_listener = "00000000:527E";
     int camera = argc == 6 && (strcmp(argv[5], "--camera-shared-main") == 0 ||
                                strcmp(argv[5], "--camera-busy") == 0 ||
                                strcmp(argv[5], "--camera-shared-slow") == 0 ||
+                               installed_camera ||
                                strcmp(argv[5], "--camera-reacquire") == 0);
     if (camera || (argc == 6 && strcmp(argv[5], "--camera-unavailable") == 0))
         expected_remote_title_suffix = " - View camera - RustDesk";
@@ -9250,8 +9264,8 @@ int main(int argc, char **argv) {
     }
 
     if (camera) {
-        int result = strcmp(argv[5], "--camera-reacquire") == 0
-            ? camera_reacquire(display, &viewer)
+        int result = installed_camera || strcmp(argv[5], "--camera-reacquire") == 0
+            ? camera_reacquire(display, &viewer, installed_camera)
             : strcmp(argv[5], "--camera-busy") == 0 ? camera_busy(&viewer)
             : camera_shared(display, &viewer, strcmp(argv[5], "--camera-shared-slow") == 0);
         if (atspi_exit() != 0) result = -1;

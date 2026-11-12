@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Presented camera pixels from the actual package's supervised desktop child."""
-from contextlib import ExitStack
+from contextlib import ExitStack, redirect_stdout
 import ctypes
 import importlib.util
 import json
@@ -12,6 +12,7 @@ import signal
 import stat
 import subprocess
 import sys
+import time
 
 
 SCRIPT = Path('/mnt/rustdesk-verifier-inputs/repo/scripts/test-linux-installed-camera.py')
@@ -68,27 +69,53 @@ def session():
             address = bus.stdout.readline(4096).decode().strip()
             require(address.startswith('unix:'), 'camera session bus is not local')
             environment['DBUS_SESSION_BUS_ADDRESS'] = address
-            camera.color(1)
-            viewer = subprocess.Popen(['/usr/share/rustdesk/rustdesk', '--view-camera', '127.0.0.1'],
-                                      env=environment, stdin=subprocess.DEVNULL,
-                                      stdout=sys.stderr, stderr=sys.stderr)
-            processes.append(viewer)
-            start = Path(f'/proc/{viewer.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
-            driver_log = files.enter_context((COORD / 'driver.log').open('xb'))
-            driver = subprocess.Popen([str(settings.WORK / 'camera-driver'), ':79', ':79',
-                                       str(viewer.pid), start, '--camera-reacquire'], env=environment,
-                                      stdout=driver_log, stderr=subprocess.STDOUT)
-            processes.append(driver)
-            camera.wait_for(viewer.pid, start, lambda: camera.marker('camera.reacquire.green'),
-                            'installed green pixels')
-            print(json.dumps({'stage': 'green', 'viewer': viewer.pid}), flush=True)
-            require(sys.stdin.readline() == 'continue\n', 'camera owner did not admit the next color')
-            camera.color(2)
-            camera.marker('camera.reacquire.blue', True)
-            require(driver.wait(timeout=25) == 0, 'installed camera pixel observer failed')
-            require(viewer.wait(timeout=10) == 0, 'camera viewer did not close normally')
-            print(json.dumps({'stage': 'closed', 'viewer': viewer.pid}), flush=True)
-            require(sys.stdin.readline() == 'continue\n', 'camera owner did not observe retirement')
+            for generation in ('installed', 'reacquire'):
+                camera.color(1)
+                viewer = subprocess.Popen(['/usr/share/rustdesk/rustdesk', '--view-camera', '127.0.0.1'],
+                                          env=environment, stdin=subprocess.DEVNULL,
+                                          stdout=sys.stderr, stderr=sys.stderr)
+                processes.append(viewer)
+                start = Path(f'/proc/{viewer.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
+                driver_log = files.enter_context((COORD / (generation + '.log')).open('xb'))
+                mode = '--camera-installed-recovery' if generation == 'installed' else '--camera-reacquire'
+                driver = subprocess.Popen([str(settings.WORK / 'camera-driver'), ':79', ':79',
+                                           str(viewer.pid), start, mode], env=environment,
+                                          stdout=driver_log, stderr=subprocess.STDOUT)
+                processes.append(driver)
+
+                def observed(stage):
+                    print(json.dumps({'stage': generation + '-' + stage, 'viewer': viewer.pid}), flush=True)
+                    require(sys.stdin.readline() == 'continue\n', 'camera owner did not observe ' + stage)
+
+                camera.wait_for(viewer.pid, start, lambda: camera.marker('camera.' + generation + '.green'),
+                                'installed green pixels')
+                observed('green')
+                camera.color(2)
+                camera.marker('camera.' + generation + '.blue', True)
+                if generation == 'installed':
+                    camera.wait_for(viewer.pid, start, lambda: camera.marker('camera.main.blue'), 'blue pixels')
+                    camera.drop_frames(100)
+                    time.sleep(0.5)
+                    camera.color(0)
+                    camera.marker('camera.stalled', True)
+                    camera.wait_for(viewer.pid, start, lambda: camera.marker('camera.stall.observed'),
+                                    'withheld camera frames')
+                    observed('stalled')
+                    restored = time.monotonic_ns() // 1_000_000
+                    camera.drop_frames(0)
+                    with (COORD / 'camera.restore-time').open('xb') as output:
+                        os.fchmod(output.fileno(), 0o600)
+                        output.write((str(restored) + '\n').encode())
+                    camera.marker('camera.restored', True)
+                    camera.wait_for(viewer.pid, start, lambda: camera.marker('camera.recovered'),
+                                    'same-connection camera recovery')
+                    observed('recovered')
+                    with redirect_stdout(sys.stderr):
+                        camera.disconnect()
+                    camera.marker('camera.disconnected', True)
+                require(driver.wait(timeout=25) == 0, 'installed camera pixel observer failed')
+                require(viewer.wait(timeout=10) == 0, 'camera viewer did not close normally')
+                observed('closed')
         finally:
             print('LINUX_INSTALLED_CAMERA_PROCESSES=' + json.dumps([
                 {'pid': process.pid, 'exit_before_cleanup': process.poll()}
@@ -98,10 +125,11 @@ def session():
                     process.terminate()
                 process.wait(timeout=8)
             settings.retire_children()
-            path = COORD / 'driver.log'
-            if path.exists():
-                require(path.stat().st_size <= 131072, 'camera observer output exceeds its bound')
-                print(path.read_text(), end='', file=sys.stderr, flush=True)
+            for generation in ('installed', 'reacquire'):
+                path = COORD / (generation + '.log')
+                if path.exists():
+                    require(path.stat().st_size <= 131072, 'camera observer output exceeds its bound')
+                    print(path.read_text(), end='', file=sys.stderr, flush=True)
 
 
 def scenario(settings, receiver, record):
@@ -110,6 +138,8 @@ def scenario(settings, receiver, record):
     COORD.mkdir(mode=0o700)
     os.chown(COORD, 4001, 4001)
     credential, profile = receiver.credential(), settings.user_credential()
+    listener = receiver.direct_listener(record)
+    require(listener is not None, 'installed camera listener absent')
     camera.retained(record['pid'], str(record['start']), 0, 'installed-before-viewer')
     log = settings.WORK / 'installed-camera.log'
     actor = None
@@ -117,7 +147,7 @@ def scenario(settings, receiver, record):
     def unchanged():
         require(receiver.child_record() == record and receiver.credential() == credential
                 and settings.user_credential() == profile
-                and receiver.direct_listener(record) is not None
+                and receiver.direct_listener(record) == listener
                 and not camera.descriptors(record['supervisor']),
                 'installed camera changed its child, authority, listener or supervisor device ownership')
 
@@ -136,21 +166,28 @@ def scenario(settings, receiver, record):
             actor = subprocess.Popen([*settings.ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
                                       str(SCRIPT), '--session'], env=settings.ENV,
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=output)
-            viewer = reply('green')
-            camera.retained(record['pid'], str(record['start']), 1, 'installed-green')
-            unchanged()
-            actor.stdin.write(b'continue\n')
-            actor.stdin.flush()
-            require(reply('closed') == viewer, 'installed camera replaced its viewer')
-            camera.retained(record['pid'], str(record['start']), 0, 'installed-after-viewer')
-            unchanged()
-            actor.stdin.write(b'continue\n')
-            actor.stdin.flush()
+            viewers = []
+            for generation in ('installed', 'reacquire'):
+                viewer = None
+                phases = ('green', 'stalled', 'recovered', 'closed') if generation == 'installed' else ('green', 'closed')
+                for phase in phases:
+                    current = reply(generation + '-' + phase)
+                    if viewer is None:
+                        viewer = current
+                    require(current == viewer, 'installed camera replaced its viewer')
+                    camera.retained(record['pid'], str(record['start']), 0 if phase == 'closed' else 1,
+                                    generation + '-' + phase)
+                    unchanged()
+                    actor.stdin.write(b'continue\n')
+                    actor.stdin.flush()
+                require(viewer not in viewers, 'installed camera reused its viewer identity')
+                viewers.append(viewer)
             require(actor.wait(timeout=15) == 0, 'installed camera session cleanup failed')
         print('LINUX_INSTALLED_CAMERA_PRESENTATION=' + json.dumps({
-            **record, 'viewer': viewer, 'colors': ['green', 'blue'], 'pixel_samples_per_color': 3,
+            **record, 'viewers': viewers, 'colors': ['green', 'blue', 'red', 'green', 'blue'], 'pixel_samples_per_color': 3,
             'pixels_per_sample': 24000, 'credential': 'unchanged', 'profile': 'unchanged',
-            'camera_descriptors': [0, 1, 0], 'supervisor_camera_descriptors': 0,
+            'camera_descriptors': [0, 1, 1, 1, 0, 1, 0], 'supervisor_camera_descriptors': 0,
+            'listener_inode': listener, 'interruption': 'recovered-in-place', 'device_loss': 'visible-and-retired',
             'viewer_exit': 0, 'session_exit': 0,
         }, sort_keys=True), flush=True)
     finally:

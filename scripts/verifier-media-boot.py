@@ -72,8 +72,6 @@ def application_fixture(guest, contract, previous):
     require(not list(Path('/dev').glob('video*')) and not Path('/sys/module/vivid').exists(),
             'application camera module retirement incomplete')
     population = 'viewers=2 generations=3' if argv[20] == '--camera-shared' else 'viewers=1 generations=2'
-    if argv[20] == '--installed-camera':
-        population = 'viewers=1 generations=1'
     print('MEDIA_APPLICATION_FIXTURE=pass source=' + contract['source_commit']
           + ' kernel=' + guest.RELEASE
           + ' native_node=2 ' + population + ' module=retired cleanup=joined', flush=True)

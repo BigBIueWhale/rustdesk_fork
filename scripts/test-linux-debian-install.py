@@ -751,7 +751,8 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
     settings.wait_network_retirement(network_before)
     if camera:
         print(f'LINUX_DEBIAN_CAMERA_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
-              'dependencies=apt-checked service=actual camera=vivid viewer=actual colors=2 '
+              'dependencies=apt-checked service=actual camera=vivid viewer=actual colors=5 '
+              'interruption=recovered loss=visible reacquisition=presented '
               'credential=preserved child=unchanged handles=retired desktop=retired '
               'reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
     elif conffiles:

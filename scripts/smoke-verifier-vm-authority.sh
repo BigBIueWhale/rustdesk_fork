@@ -9556,10 +9556,10 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 10 ]; then
         require_exact_fixed_receipt \
-            "LINUX_DEBIAN_CAMERA_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked service=actual camera=vivid viewer=actual colors=2 credential=preserved child=unchanged handles=retired desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined" \
-            'installed service camera presentation and retirement'
+            "LINUX_DEBIAN_CAMERA_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked service=actual camera=vivid viewer=actual colors=5 interruption=recovered loss=visible reacquisition=presented credential=preserved child=unchanged handles=retired desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined" \
+            'installed service camera interruption, recovery and retirement'
         require_exact_fixed_receipt \
-            "MEDIA_APPLICATION_FIXTURE=pass source=$FLUTTER_PEER_SOURCE_COMMIT kernel=6.1.0-50-amd64 native_node=2 viewers=1 generations=1 module=retired cleanup=joined" \
+            "MEDIA_APPLICATION_FIXTURE=pass source=$FLUTTER_PEER_SOURCE_COMMIT kernel=6.1.0-50-amd64 native_node=2 viewers=1 generations=2 module=retired cleanup=joined" \
             'installed camera kernel and device retirement'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
         require_exact_fixed_receipt \

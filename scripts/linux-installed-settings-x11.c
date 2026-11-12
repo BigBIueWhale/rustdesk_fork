@@ -257,6 +257,37 @@ static int settings_recording_card(unsigned int pid, int denied) {
         : "Recording\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001", 1);
 }
 
+static int settings_recording_refused(unsigned int pid) {
+    static const char *names[] = {
+        "Recording\nDenied\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001",
+        "Recording\nFailed\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001",
+    };
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    unsigned int stable = 0U;
+    int previous = -1;
+    while (monotonic_millis() < deadline) {
+        int found = -1;
+        for (unsigned int i = 0U; i < 2U; ++i) {
+            AtspiAccessible *control = NULL;
+            if (query_named_accessible(pid, names[i], deadline, &control, 0) != 0) return -1;
+            if (control != NULL) {
+                g_object_unref(control);
+                if (found != -1) return -1;
+                found = (int)i;
+            }
+        }
+        stable = found >= 0 && found == previous ? stable + 1U : 0U;
+        previous = found;
+        if (stable == 3U) {
+            printf("LINUX_INSTALLED_RECORDING_RACE_REFUSAL=pass outcome=%s pid=%u\n",
+                   found == 0 ? "Denied" : "Failed", pid);
+            return 0;
+        }
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    return -1;
+}
+
 static int settings_recording_viewer(Display *display, unsigned int pid, int authenticate, int finish) {
     ViewerWindow viewer = {0};
     PasswordPromptScan prompt = {0};
@@ -350,6 +381,22 @@ int main(int argc, char **argv) {
             settings_recording_card(pid, 0) == 0 &&
             incoming_output(directory, times[0], times[1]) == 0;
         if (close(directory) != 0 || !valid) goto atspi_out;
+    } else if (strcmp(argv[2], "recording-settings-open") == 0) {
+        if (settings_graphics() != 0 || settings_visible(pid, "Connect", 1) != 0 ||
+            activate_header_control(display, main, pid, "Settings") != 0 ||
+            activate_named_control(pid, "General") != 0 || settings_recording_checked(pid, 0, 1) != 0 ||
+            settings_recording_card(pid, 0) != 0) goto atspi_out;
+    } else if (strcmp(argv[2], "recording-race-submit") == 0) {
+        if (settings_recording_checked(pid, 0, 1) != 0) goto atspi_out;
+        puts("LINUX_INSTALLED_RECORDING_RACE_READY");
+        if (fflush(stdout) != 0 || getchar() != 'G' ||
+            click_main_control(display, main, pid, "Automatically record incoming sessions") != 0) goto atspi_out;
+    } else if (strcmp(argv[2], "recording-race-pending") == 0) {
+        if (settings_recording_checked(pid, 0, 0) != 0) goto atspi_out;
+    } else if (strcmp(argv[2], "recording-race-refused") == 0 ||
+               strcmp(argv[2], "recording-race-observed-enabled") == 0) {
+        if ((strcmp(argv[2], "recording-race-observed-enabled") == 0 &&
+             settings_recording_checked(pid, 1, 1) != 0) || settings_recording_refused(pid) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "recording-live") == 0 || strcmp(argv[2], "recording-live-enabled") == 0) {
         if (settings_recording_checked(pid, 1, 1) != 0 || settings_visible(pid,
             "Recording\nIncoming recordings\nRecording: 1\nDirectory:\n/home/rdreceiver4001", 1) != 0) goto atspi_out;

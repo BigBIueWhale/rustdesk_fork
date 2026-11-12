@@ -462,6 +462,9 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
             if graphical and command == 'recording\n' and agent is not None:
                 recording_graphical_session(environment, app, agent)
                 command = sys.stdin.readline()
+            if graphical and command == 'recording-concurrent\n' and agent is not None:
+                recording_concurrent_session(environment, app, agent)
+                command = sys.stdin.readline()
             if graphical and command in ('cancel\n', 'authenticate\n') and agent is not None:
                 if agent.poll() is not None:
                     raise RuntimeError('graphical authentication agent exited before its dialog action')
@@ -505,6 +508,99 @@ def recording_graphical_session(environment, app, agent):
                       env=environment, timeout=40, output_limit=524288), end='', file=sys.stderr, flush=True)
         elif command != 'continue\n':
             raise RuntimeError('recording cancellation lost its owning controller')
+
+
+def recording_concurrent_session(environment, app, agent):
+    guard(4001)
+    secondary = None
+
+    def checkpoint(stage, expected, **fields):
+        if app.poll() is not None or agent.poll() is not None:
+            raise RuntimeError('recording concurrency lost its GUI or agent')
+        print(json.dumps({'stage': stage, 'pid': app.pid, 'secondary_pid': secondary.pid,
+                          'agent_pid': agent.pid, **fields}), flush=True)
+        command = sys.stdin.readline().strip()
+        if command not in expected:
+            raise RuntimeError('recording concurrency lost its owning controller')
+        if command == 'authenticate':
+            print(run([str(WORK / 'agent-driver'), str(agent.pid), command, 'incoming-recording'],
+                      env=environment, timeout=40, output_limit=524288), end='', file=sys.stderr, flush=True)
+        return command
+
+    def drive(gui, env, stage):
+        output = run([str(WORK / 'settings-driver'), str(gui.pid), stage], env=env,
+                     timeout=40, output_limit=524288)
+        print(output, end='', file=sys.stderr, flush=True)
+        return output
+
+    with recording_display(environment, 78, '1024x768x24') as other_environment:
+        try:
+            secondary = subprocess.Popen(['/usr/bin/setpriv', '--no-new-privs', '/usr/share/rustdesk/rustdesk'],
+                env=other_environment, stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
+            drive(app, environment, 'recording-open')
+            drive(secondary, other_environment, 'recording-settings-open')
+            checkpoint('ready', ('continue',))
+            drivers = []
+            try:
+                for gui, env in ((app, environment), (secondary, other_environment)):
+                    drivers.append(subprocess.Popen([str(WORK / 'settings-driver'), str(gui.pid),
+                        'recording-race-submit'], env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT, bufsize=0))
+                for driver in drivers:
+                    deadline = time.monotonic() + 10
+                    total = 0
+                    while True:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0 or not select.select([driver.stdout], [], [], remaining)[0]:
+                            raise RuntimeError('recording click did not reach its ready barrier')
+                        line = driver.stdout.readline(4096)
+                        total += len(line)
+                        if not line.endswith(b'\n') or total > 524288:
+                            raise RuntimeError('recording click barrier output is incomplete or excessive')
+                        print(line.decode(), end='', file=sys.stderr, flush=True)
+                        if line == b'LINUX_INSTALLED_RECORDING_RACE_READY\n':
+                            break
+                for driver in drivers:
+                    driver.stdin.write(b'G')
+                    driver.stdin.close()
+                    driver.stdin = None
+                for driver in drivers:
+                    output, _ = driver.communicate(timeout=15)
+                    if len(output) > 524288:
+                        raise RuntimeError('recording concurrent click exceeded its output bound')
+                    print(output.decode(), end='', file=sys.stderr, flush=True)
+                    if driver.returncode != 0:
+                        raise RuntimeError('recording concurrent click failed')
+            finally:
+                for driver in drivers:
+                    if driver.poll() is None:
+                        driver.terminate()
+                    driver.wait(timeout=8)
+            owner = checkpoint('submitted', ('primary', 'secondary'))
+            winner, winner_env, loser, loser_env = ((app, environment, secondary, other_environment)
+                if owner == 'primary' else (secondary, other_environment, app, environment))
+            drive(winner, winner_env, 'recording-race-pending')
+            output = drive(loser, loser_env, 'recording-race-refused')
+            outcomes = re.findall(r'^LINUX_INSTALLED_RECORDING_RACE_REFUSAL=pass outcome=(Denied|Failed) pid='
+                                  + str(loser.pid) + r'$', output, re.M)
+            if len(outcomes) != 1:
+                raise RuntimeError('competing recording request has no explicit unsuccessful result')
+            checkpoint('contended', ('authenticate',), owner=owner, refused=outcomes[0])
+            drive(winner, winner_env, 'recording-enable')
+            drive(loser, loser_env, 'recording-race-observed-enabled')
+            checkpoint('applied', ('continue',))
+            drive(loser, loser_env, 'recording-disable-submit')
+            checkpoint('retry-submitted', ('authenticate',))
+            drive(loser, loser_env, 'recording-disable')
+            drive(winner, winner_env, 'recording-disable')
+            checkpoint('retry-applied', ('continue',))
+        finally:
+            if secondary is not None:
+                if secondary.poll() is None:
+                    secondary.terminate()
+                secondary.wait(timeout=8)
+    drive(app, environment, 'recording-return-security')
+    checkpoint('retired', ('continue',))
 
 
 @contextmanager
@@ -1421,6 +1517,135 @@ def recording_graphical_scenario(receiver, process, requester, record, agent_ide
           'retry=same-gui-and-agent enabled=confirmed disabled=confirmed', flush=True)
 
 
+def recording_concurrent_scenario(receiver, process, requester, record, agent_identity, session_cgroup):
+    credential, profile = receiver.credential(), user_recording_options()
+    listener = receiver.direct_listener(record)
+    identities = {'primary': requester}
+    helper = helper_fd = secondary_fd = owner = refused = None
+    helpers = []
+
+    def pending(wait_seconds=0):
+        deadline = time.monotonic() + wait_seconds
+        subjects = {f'{pid},{start},4001'.encode(): name for name, (pid, start) in identities.items()}
+        prefix = [b'/usr/bin/pkcheck', b'--action-id', b'com.carriez.RustDesk.set-incoming-recording']
+        while True:
+            matches = []
+            for proc in Path('/proc').iterdir():
+                if not proc.name.isdecimal():
+                    continue
+                try:
+                    fields = (proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()
+                    if int(fields[1]) != record['supervisor']:
+                        continue
+                    argv = (proc / 'cmdline').read_bytes().split(b'\0')
+                    if argv[:3] != prefix:
+                        continue
+                    if (len(argv) != 7 or argv[3] != b'--process' or argv[4] not in subjects
+                            or argv[5:] != [b'--allow-user-interaction', b'']):
+                        raise RuntimeError('concurrent recording helper has an unexpected subject or action')
+                    status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+                    if status['Uid'].split() != ['0'] * 4 or not (proc / 'exe').samefile('/usr/bin/pkcheck'):
+                        raise RuntimeError('concurrent recording helper has the wrong authority')
+                    matches.append((int(proc.name), int(fields[19]), subjects[argv[4]]))
+                except (FileNotFoundError, ProcessLookupError):
+                    continue
+            if len(matches) > 1:
+                raise RuntimeError('concurrent recording admitted more than one authorization helper')
+            if matches or time.monotonic() >= deadline:
+                return matches
+            time.sleep(0.01)
+
+    with ExitStack() as retained:
+        for stage in ('ready', 'submitted', 'contended', 'applied', 'retry-submitted', 'retry-applied', 'retired'):
+            if not select.select([process.stdout], [], [], 45)[0]:
+                raise RuntimeError('concurrent recording stage timed out')
+            raw = process.stdout.readline(4096)
+            if not raw or not raw.endswith(b'\n'):
+                raise RuntimeError(f'concurrent recording ended before {stage}')
+            event = json.loads(raw)
+            if stage == 'ready':
+                pid = event['secondary_pid']
+                secondary_fd = os.pidfd_open(pid)
+                retained.callback(os.close, secondary_fd)
+                identities['secondary'] = (pid, int(Path(f'/proc/{pid}/stat').read_bytes().rsplit(b') ', 1)[1].split()[19]))
+                if pid == requester[0]:
+                    raise RuntimeError('concurrent recording did not launch a second GUI')
+            expected = {'stage': stage, 'pid': requester[0], 'secondary_pid': identities['secondary'][0],
+                        'agent_pid': agent_identity[0]}
+            if stage == 'contended':
+                refused = event.get('refused')
+                if refused not in ('Denied', 'Failed'):
+                    raise RuntimeError('competing recording request did not report an explicit refusal')
+                expected.update(owner=owner, refused=refused)
+            if (event != expected or receiver.child_record() != record or receiver.direct_listener(record) != listener
+                    or receiver.credential() != credential or user_recording_options() != profile):
+                raise RuntimeError('concurrent recording changed its owner, credential, profile or service')
+            for name, identity in (*identities.items(), ('agent', agent_identity)):
+                proc = Path(f'/proc/{identity[0]}')
+                if name == 'secondary' and stage == 'retired':
+                    if not select.select([secondary_fd], [], [], 0)[0] or proc.exists():
+                        raise RuntimeError('secondary recording GUI was not reaped')
+                    continue
+                fields = (proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()
+                status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+                executable = GRAPHICAL_AGENT if name == 'agent' else Path('/usr/share/rustdesk/rustdesk')
+                parent = Path(f'/proc/{requester[0]}/stat').read_bytes().rsplit(b') ', 1)[1].split()[1]
+                if (int(fields[19]) != identity[1] or fields[0] in (b'Z', b'X') or fields[1] != parent
+                        or not (proc / 'exe').samefile(executable)
+                        or (proc / 'cmdline').read_bytes().split(b'\0') != [os.fsencode(executable), b'']
+                        or (proc / 'cgroup').read_text() != session_cgroup or status['Uid'].split() != ['4001'] * 4
+                        or status['NoNewPrivs'].strip() != ('0' if name == 'agent' else '1')
+                        or any(int(status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))):
+                    raise RuntimeError('concurrent recording requester or agent identity differs')
+                if name != 'agent':
+                    package_process(identity[0])
+            for pid in (record['supervisor'], record['pid']):
+                package_process(pid)
+            enabled = stage in ('applied', 'retry-submitted')
+            recording_option(enabled)
+            command = b'continue\n'
+            if stage in ('submitted', 'retry-submitted'):
+                matches = pending(5)
+                if len(matches) != 1:
+                    raise RuntimeError('recording submission has no pending authorization')
+                helper = matches[0]
+                if helper in helpers:
+                    raise RuntimeError('recording retry reused its authorization helper')
+                helper_fd = os.pidfd_open(helper[0])
+                retained.callback(os.close, helper_fd)
+                if pending() != [helper] or select.select([helper_fd], [], [], 0)[0]:
+                    raise RuntimeError('recording submission lost its exact helper')
+                helpers.append(helper)
+                if stage == 'submitted':
+                    owner = helper[2]
+                    command = (owner + '\n').encode()
+                else:
+                    if helper[2] == owner:
+                        raise RuntimeError('recording retry did not come from the previously refused GUI')
+                    command = b'authenticate\n'
+            elif stage == 'contended':
+                if pending() != [helper] or select.select([helper_fd], [], [], 0)[0]:
+                    raise RuntimeError('competing recording request displaced the original authorization')
+                command = b'authenticate\n'
+            else:
+                if pending():
+                    raise RuntimeError('completed recording operation left a pending helper')
+                if helper_fd is not None and (not select.select([helper_fd], [], [], 0)[0]
+                                              or Path(f'/proc/{helper[0]}').exists()):
+                    raise RuntimeError('completed recording operation did not reap its helper')
+            print('LINUX_INSTALLED_RECORDING_CONCURRENT_STAGE=' + json.dumps({**event,
+                'identities': identities, 'agent': agent_identity, 'service_generation': record['generation'],
+                'enabled': enabled, 'helper': helper, 'credential_unchanged': True,
+                'profile_unchanged': True}, sort_keys=True), flush=True)
+            process.stdin.write(command)
+            process.stdin.flush()
+    if len(helpers) != 2 or helpers[0][2] == helpers[1][2] or refused is None:
+        raise RuntimeError('recording concurrency coverage is incomplete')
+    print('LINUX_INSTALLED_RECORDING_CONCURRENT=pass guis=2 pending=one competing=explicit-refusal '
+          'authorization=preserved retry=other-gui enabled=confirmed disabled=confirmed '
+          'helpers=reaped credential=unchanged profile=unchanged', flush=True)
+
+
 def admin_failure_scenario(receiver, probe_sha, network_before, graphical=None):
     package_unit()
     authorization = ExitStack()
@@ -1621,6 +1846,11 @@ def admin_failure_scenario(receiver, probe_sha, network_before, graphical=None):
                     process.stdin.write(b'recording\n')
                     process.stdin.flush()
                     recording_graphical_scenario(receiver, process, requester, record, agent_identity, session_cgroup)
+                    Path('/coord').mkdir(mode=0o700)
+                    os.chown('/coord', 4001, 4001)
+                    process.stdin.write(b'recording-concurrent\n')
+                    process.stdin.flush()
+                    recording_concurrent_scenario(receiver, process, requester, record, agent_identity, session_cgroup)
                     command = b'retire-agent\n'
             elif stage == 'denied':
                 service_refusals(record, *requester, cancellations, exit_status=3 if graphical is not None else 1)

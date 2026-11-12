@@ -9318,12 +9318,9 @@ uses production scrap's Rust 2018 edition. `camera-catalog-b09f3420.json` binds
 eight files/193,712 bytes verified on CTE/TUF, joined owners and RAM retirement,
 and three zero listener deltas. The earlier `e93f8660` component pass is retained.
 
-The original full app `b09f3420` builds in `YCdB71iRXT` with thirteen view-mode,
-eight recording and two native command controls passing. Its camera-generation
-acknowledgement test compiles but is not selected. Exact payload/input comparison,
-manifest and joined cleanup are retained in `camera-catalog-app-b09f3420.json`;
-the audit preserves the preceding compile failures. Later application acceptance
-and remaining platform gaps are recorded below.
+`camera-catalog-app-b09f3420.json` retains the original full build and twenty-three
+selected controls; its camera-generation acknowledgement test was not selected.
+Current application acceptance follows.
 
 **Full application camera interruption and reacquisition — PASS on Linux/vivid.**
 App `e4c7550e` includes device-loss correction `2d86a69d` and texture-publication
@@ -9385,11 +9382,27 @@ all eight color/descriptor phases, 3,079 ms of withheld frames with 525 ms recov
 on unchanged TCP, visible device loss and fresh capture
 (`camera-busy-regression-2eb7015e.json`). Each build/replay has four zero host
 listener deltas and joined VM/RAM/private-state retirement, with evidence copied
-to CTE/TUF. Physical cameras, other stream-start failure classes, installed-service
-camera behavior, Windows and broader network/long-session acceptance remain OPEN.
-Next camera acceptance gap: installed-service behavior. Superseded `4468059d`,
-`b09f3420` and `843003fe` payloads are retired with manifests/evidence retained;
-the four-app cap holds `6429f3cb`, `a36e5581`, `e4c7550e` and `2eb7015e`.
+to CTE/TUF. Superseded `4468059d`, `b09f3420` and `843003fe` payloads are retired
+with manifests/evidence retained; the four-app cap holds `6429f3cb`, `a36e5581`,
+`e4c7550e` and `2eb7015e`.
+
+**Installed Linux camera presentation — PASS on the retained app and normal package.**
+TUF `kCAd1m7iqo`, fixture `f8c5137f`, installs app `2eb7015e` through offline APT.
+The root supervisor and PAM/logind-selected UID-4001 child map the exact packaged
+library. A real password-authenticated viewer displays green/blue on unchanged
+TCP: each color passes three observations of 24,000 pixels. Child camera handles
+follow 0/1/0, each stable over ten observations; the supervisor holds none.
+Viewer closure preserves the child generation and root/user credential fields.
+Desktop closure reaps the child; wrong-password/ordinary-user refusal and package
+reinstall/remove/purge pass. `camera-installed-f8c5137f.json` binds nine files /
+218,574 bytes on CTE/TUF, 175.566 seconds through joined cleanup, four zero listener
+deltas and retired RAM/private state. Explicit guest-only vivid device ownership
+does not establish physical-seat device permissions. The first attempt exited
+before pixels without a captured viewer exit status (`camera-installed-cce38c8a.json`).
+The fixture now records exits, uses a 256 MiB file ceiling and stops the service
+before failure-path user cleanup; the first exit's cause remains unclassified.
+That diagnosis, installed interruption/recovery, physical devices/seat permissions,
+other start failures, Windows and broader network/long-session acceptance remain OPEN.
 
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production

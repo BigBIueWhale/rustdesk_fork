@@ -150563,3 +150563,69 @@ and exact private/process/socket/RAM retirement. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,129,796-byte audit prefix, SHA-256
 12f9f2a9ff45740a8f67c54a1d63b2b95b27b464cfdd30128463404f4e17919d.
+
+### 2026-11-13 — Installed Linux camera presents pixels through the package service
+
+Select the R-F1/R-S0 installed ViewCamera acceptance gap after the standalone
+busy/loss/recovery checkpoint. Reuse app 2eb7015e and its manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a;
+no full application build or additional retained payload is needed. Primary
+contracts: https://www.freedesktop.org/software/systemd/man/252/pam_systemd.html
+registers actual sessions and runtime lifetimes; the fixture therefore retains
+the existing PAM/logind actor and observes the exact supervised child rather
+than merely setting desktop environment variables. The synthetic native source
+uses https://docs.kernel.org/6.1/admin-guide/media/vivid.html. Assigning its guest
+node explicitly to UID 4001 tests capture through that selected child, not
+automatic physical-seat ACL assignment or a physical camera.
+
+cce38c8a adds --installed-camera to the existing admitted replay/media-kernel
+handoff and Debian lifecycle. The ordinary preparation container builds the
+existing pixel observer twice with identical bytes. Offline APT installs the
+normal package/dependencies; the root supervisor provisions its credential
+before a real desktop session starts. The package child and supervisor map the
+manifest-bound Rust core. The viewer enters the public fixture password through
+the actual GUI, and the unchanged camera observer checks green then blue on
+one retained TCP connection. Root observations check the exact child record,
+credential fields, listener and native device handles across viewer lifetime.
+All device creation, installation, root orchestration and UI execution remain
+inside the no-NIC VM; host source/input files remain frozen through reconciliation
+and evidence copy.
+
+First run bL0Rp9ZrjX/tool2873 exits before camera pixels. It passes package
+installation and the CPace/wrong-password controls but the viewer retires before
+the observer finds its window. Its exit status was not captured. Failure-path
+desktop cleanup then reaches userdel while the service child still lives; the
+outer finally stops the service and the VM is joined. f8c5137f records process
+exit statuses, replaces the new fixture's overly restrictive 1 MiB per-file
+ceiling with 256 MiB, and stops/proves the exact installed service absent before
+failure-path desktop-user retirement. This does not prove the first exit's cause;
+it remains an open diagnostic item, not a claimed product correction.
+camera-installed-cce38c8a.json retains nine files/230,980 bytes on CTE/TUF.
+QEMU 3354296 joins zero after 107.898 seconds; scratch peaks at 4,800,724,992 bytes
+and retires. Four listener deltas are zero and the private tree is reconciled.
+
+The unchanged app passes kCAd1m7iqo/tool87538. Actual package archive SHA-256:
+30e0d38caf767c2222214a48538272394e9ea098ed14a575b76afe3df4800db8.
+Root supervisor 7491 selects child 7614/start7059/generation
+d4eff459-9600-401a-a0d2-d47d55f8d757 in actual PAM/logind session c1. Viewer 7712
+and observer 7713 exit zero after real password entry and green/blue presentation;
+each color matches all 24,000 pixels in three observations on unchanged TCP.
+Child camera handles are 0/1/0 across three ten-sample phases; the supervisor
+holds none. Protected/user credential fields and child generation remain unchanged.
+Normal desktop closure reaps the child and preserves the supervisor/credential.
+Two mutual CPace controls, receiver-confirmed wrong-password refusal, ordinary
+local password-change refusal, reinstall/remove/purge and final APT/dpkg checks
+pass. Four inode-zero TIME_WAIT records drain before exact network-baseline equality.
+The fixture session/bus/descendants, service, camera module and QEMU retire.
+
+camera-installed-f8c5137f.json binds nine files/218,574 bytes verified on CTE/TUF.
+QEMU 3355954 joins zero after 175.566 seconds, four listener deltas are zero, and
+4,727,656,448 bytes of peak scratch retire with exact private/process/socket/RAM
+absence. No job remains live. Both runs used the admitted 10 GiB guest and 7 GiB
+scratch ceiling. Initial viewer-exit diagnosis and installed camera failure/
+interruption/recovery remain open, alongside physical device/seat permissions,
+other platforms and broader release acceptance. The next camera step must resolve
+that early-exit uncertainty or establish installed interruption/recovery without
+rebuilding unchanged application bytes. This append preserves the prior
+16,130,460-byte audit prefix, SHA-256
+3bb77c4bdbee4bc3093f39d72782b5cc373b33983c003c262169ce8f2b131f3d.

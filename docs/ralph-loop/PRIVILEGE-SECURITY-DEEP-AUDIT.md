@@ -150786,3 +150786,14 @@ long-session/release acceptance remain OPEN. Reassess remaining release prioriti
 at this checkpoint; no new app build or repeat of passed camera cases is indicated.
 This append preserves the prior 16,142,344-byte audit prefix, SHA-256
 d7d0de3176532ed36582088fcba56e39e7ebc1336b7d798c8f53ce1fc6d2c9b2.
+
+Fresh ledger count at 9a7ea4f1, l9lE4nalDV/tool99490, passes: 417,064 tokens /
+1,902,827 bytes, SHA-256
+566b07e0c1276b95137ed5ac184911f8e103d5593a30ad3a6d8b3aaa5f13388e.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-installed-busy-ledger-9a7ea4f1.json binds eight files/117,587 bytes on
+CTE/TUF. QEMU 3433361 joins zero after 30.394 seconds with three zero listener
+deltas and exact private/process/socket/RAM retirement. The approximate
+400,000-token target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,145,458-byte audit prefix, SHA-256
+6c87b472b8f0f390b6d35c6868d7585fd1bbdeb09cf07d73f2c9cbdedb6d572c.

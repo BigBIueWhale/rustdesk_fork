@@ -6808,7 +6808,7 @@ Status remains finishing through accepted-prefix drain and checked finalization;
 healthy new ownership preserves historical failure. Desktop uses authenticated
 read-only status IPC, Android reads in-process, and iOS reports unavailable.
 Desktop/Android settings distinguish live counts, unavailable status and history;
-privileged setting-write authority is unchanged.
+Linux installed setting authority is implemented below; other platforms remain open.
 
 Baseline `d64bc142` produces zero subscriber frames during an actual recording write
 held for 1,001 ms. Corrected code delivers twelve changing decoded images while that
@@ -6864,37 +6864,52 @@ retains five failed fixture runs and their corrections; none is counted as a pas
 This is interposed I/O in a user-owned Linux full app, not physical-filesystem or
 installed/root acceptance; native kernel-write blocking has separate evidence.
 
-**Installed Linux incoming-recording toggle — reproduced failure, OPEN.** At
-`e5b602e9`, the same retained app installs with its declared APT runtime and passes
-sixteen actual password-control stages, including administrator-authorized commit
-and denied requests. The recording checkbox initially agrees with the saved off
-state. Clicking enable then yields `Option write was rejected by daemon`; the
-enabled checkbox stays unchecked and the actual UI displays Failed. The UI uses
-generic `SetOption`, which service-owned receivers reject. This is a required
-settings failure, not completed recording acceptance. No installed recording output,
-disable or restart persistence is proved. `installed-recording-e5b602e9.json` binds
-sixteen files/572,488 bytes, including the inspected screenshot, copied to CTE/TUF;
-the failed private tree and VM/RAM/process/socket state are retired with four zero
-host listener deltas. Native spawn failure, full-UI multiple writers, broader finalization
-failures and other platforms remain OPEN.
+**Installed Linux incoming-recording setting — selected package workflow passes.**
+The old `4d1d1153` app rejects the checkbox's generic `SetOption` and shows Failed
+(`installed-recording-e5b602e9.json`). `520cf729` replaces that path with typed
+FFI/UI operations and same-operation recovery. The `a7833e28` root receiver uses
+its separate `auth_admin` polkit action, fresh requester proof, durable service
+storage and exact-child confirmation. Sixteen bounded operation records bind
+UUID/requester/value; the client submits once and queries that UUID after lost
+replies. Unknown history stays Uncertain. The UI waits for the receiver's effective
+value, disables pending changes and distinguishes unavailable/Denied/Failed/
+Uncertain. `69b4239e` preserves uncertainty after a user-owned worker failure;
+`a36e5581` restores the disabled default for an authenticated absent preference.
+Generic service-owned writes and user-profile fallback remain unavailable.
 
-**Linux recording-policy receiver implemented; installed workflow remains OPEN.**
-`a7833e28` adds a closed boolean service operation with a separate `auth_admin`
-polkit action, fresh connected-requester proof before/after authorization and one
-owned writer through persistence/child confirmation. The supervisor owns the saved
-setting; the exact child bootstraps and refreshes it from its root parent. Serialized
-refresh prevents older replies from overwriting newer state. Applied requires child
-confirmation or supervisor-accounted absence; lost confirmation is Uncertain.
-Generic service-owned option writes remain rejected. Twenty-four compiled Linux
-component cases pass, including real Unix framing, ordinary-process refusal, fresh
-disk/corruption readback and the existing recording/video regressions
-(`recording-policy-a7833e28.json`). At `962c1217`, the service source guard, native IPC
-parent/listener controls and two-action package checks pass
-(`recording-policy-ipc-962c1217.json`, `recording-policy-package-962c1217.json`).
-These are component results. Next: connect the typed desktop client/checkbox with
-truthful unavailable/denied/uncertain state, then prove installed administrator
-success/refusal, child convergence, actual output and restart on a new full app.
-No modified full application has been built or installed yet.
+At `a36e5581`, all 26 compiled recording-policy/recording/video cases pass,
+including actual Unix frames, reply recovery, absent/Y/empty preference decoding,
+disk changes/corruption and existing worker/decoder controls
+(`recording-setting-a36e5581.json`). The source guard, fourteen native IPC-parent
+and 264 listener/framing controls pass at `69b4239e`
+(`recording-setting-ipc-69b4239e.json`). Earlier two-action package checks remain
+in `recording-policy-package-962c1217.json`.
+
+The exact `a36e5581` full Linux app passes eight recording widget/model,
+thirteen view-mode and two native command cases. Its 74-payload manifest is
+`32e0888c5aa7d7780ef05ba30122f1a97da93150f42362c30a4a0e26d357d0b6`
+(`recording-setting-app-a36e5581-admitted.json`). Compiler memory stays within
+10 GiB with zero swap/OOM events; the bounded VM/RAM workspace is retired.
+
+The normal Debian package replay at `e17c3844` passes 24 initial and eight
+restarted-GUI stages on that app. Recording enable is denied without an agent;
+administrator-approved enable/disable/re-enable agrees with root-owned persistence.
+Pending controls retain their old value and expose no actions. Delaying each
+administrator response past the first reply deadline exercises same-operation
+recovery. Service/GUI restart retains enabled, with user Config2 and unattended
+credential unchanged. Existing password failure/recovery, seven CPace exchanges,
+three stale-password refusals and package reinstall/remove/purge also pass.
+`installed-recording-e17c3844.json` binds nine files/159,720 bytes and joined
+cleanup with four zero host listener deltas. Two earlier driver failures reflected
+Flutter's merged labels and enabled/sensitive distinction; their inspected
+screenshots and corrections remain in the audit, not as acceptance passes.
+
+**Still OPEN:** actual installed recording output/capture, wrong/stale requester
+and mutation lifecycle/concurrency coverage, native spawn and broader I/O failures,
+full-UI multiple writers and other platforms. Android's process-owned typed path
+is implemented without new native evidence; installed Windows/macOS still lack
+their authorized operation and explicitly report unavailable. These results do
+not close R-S0/R-F5 or establish complete release acceptance.
 
 The installed check also exposed a packaging blocker: the exact required-library
 inventory omitted the directory-picker plugin. `dffc8670` adds it to the producer

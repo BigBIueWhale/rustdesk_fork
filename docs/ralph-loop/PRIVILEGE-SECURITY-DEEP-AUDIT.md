@@ -149167,3 +149167,170 @@ RAM absence pass. The approximate 400,000-token compression target remains OPEN.
 This audit-only append preserves the counted ledger and prior 16,036,113-byte
 audit prefix, SHA-256
 867eae12efec50a08fd18b4213de61a6000d07286e2151a1b8d6b928c1e45e76.
+
+## 2026-11-12 — Incoming-recording typed settings and reply recovery
+
+Prior turn: progress. The existing password-authenticated SSH master to TUF is
+usable without changing host authentication. Continue the reproduced R-S0 installed
+checkbox failure: completing the authorized settings path has higher release value
+than unrelated cleanup. The receiver remains the durable owner; the UI must show
+its confirmed effective value and distinguish denial, failure and uncertainty.
+
+520cf729 connects typed FFI, desktop/Android controls and an owned desktop command
+channel to the recording-policy receiver. a36e5581 retains the disabled default
+when an authenticated user-owned snapshot has no saved preference. Installed
+ownership is selected before endpoint availability; Linux uses the root service,
+user mode its authenticated main owner, Android its in-process Config. Installed
+Windows/macOS remain explicitly unavailable pending their privileged operation;
+iOS reports unavailable. No generic service-owned SetOption or profile fallback
+is reopened. The command owner shares the existing status runtime, serializes
+reads and changes, and retains the admission guard until its command finishes.
+Normal FRB exports execute on its worker pool; no nested runtime was added.
+The checkbox disables while pending, never publishes the requested value as
+success, and preserves uncertainty history through later current-value reads.
+
+Each Linux change carries one canonical nonnil UUID bound to the exact requester
+PID/UID/start/role. The service retains sixteen operation records with one writer;
+duplicates with the same requester/value query the existing result, while
+conflicting reuse is denied. The client submits once, then queries that operation
+after missing replies within its 150-second budget. Unknown/evicted/restarted
+history remains Uncertain. The durable write and exact-child confirmation remain
+owned through requester loss. UI setting reads take the writer slot; child runtime
+reads remain separate to avoid root-to-child-to-root deadlock. 69b4239e also changes
+user-owned InternalFailure to Uncertain, since a worker failure may follow commit,
+and uses nonblocking reply delivery in the async owner.
+
+Primary sources reviewed for these decisions:
+https://docs.rs/tokio/latest/tokio/sync/mpsc/struct.Receiver.html
+supports cancellation-safe receive/select and bounded async ownership;
+https://cjycode.com/flutter_rust_bridge/guides/concurrency and the v1 documentation
+https://cjycode.com/flutter_rust_bridge/v1/feature/async_dart.html describe normal
+Rust exports returning asynchronous Dart futures without blocking the UI. The pinned v1.80 generator
+was retained and compiled; current documentation was not used to assume an
+unsupported async-Rust export. The existing complete polkit process subject and
+exit-zero authority follow https://www.freedesktop.org/software/polkit/docs/latest/pkcheck.1.html.
+
+Compiled component evidence: at 36613c03, kMJr7miWyq passes all 26 cases
+(recording-setting-36613c03.json, nine files/91,508 bytes). At current a36e5581,
+REb8rjxVNo repeats only the affected parent-library group: 26 cases execute in
+eight seconds, including absent/Y/empty preferences through actual Unix frames
+and the UI snapshot conversion, same-UUID lost-reply recovery without Set retry,
+all terminal results, unknown-history expiry, closed frames, disk readback and
+existing recording/decoder/mailbox cases. Its artifact digest is
+9923ff11cd4cbd3bd735de159192afa231d3ae811ce0510e0349322d9c76a037.
+recording-setting-a36e5581.json binds nine files/91,408 bytes. QEMU 172000 joins
+zero after 268.601 seconds; scratch peaks at 5,336,174,592 bytes; four host listener
+deltas are zero and exact private/process/socket/RAM retirement passes.
+
+At 69b4239e, pYIblXLBBt passes the service source guard, fourteen native parent
+cases and 264 listener/framing controls; the adapter imports the real new enums,
+but does not claim recording authorization execution. recording-setting-ipc-69b4239e.json
+binds nine files/163,441 bytes, 106.734 seconds, QEMU 135286 joined zero,
+3,463,024,640-byte scratch peak and four zero host listener deltas.
+
+The earlier complete 69b4239e application passes eight recording widget/model,
+thirteen view-mode and two native command cases (X2PLxaK4V6,
+recording-setting-app-69b4239e.json, ten files/327,143 bytes). Manifest
+e88a626bea3dca9d2858da9fb8ffeff465aacd9fedfc96b6cd0ed8dcd685d831 binds 74
+payloads. This predates the user-owned default fix; it is not current-source
+installed acceptance. Its superseded payload tree was later fully hash-checked
+and retired, freeing 70,889,472 allocated bytes; bounded manifest/build evidence
+remains (recording-setting-retired-69b4239e.json). The previously superseded
+f4a55367 app was similarly retired, freeing 70,754,304 bytes. Required historical
+comparison artifacts and canonical offline inputs remain.
+
+Non-passing attempts are retained distinctly: m83koGtUuZ fails compilation because
+the test Unix stream differed from the production wrapper; aa157c0c generalizes
+only the injected connector stream. Hj2GwyfKk3 executes 26 cases but the old numeric
+24-case shell expectation refuses acceptance; 36613c03 corrects that count.
+tNOtfAGmja is stopped through the exact owned orchestration pidfd after the
+post-commit InternalFailure classification is found; it creates no accepted app.
+Their bounded capsules are recording-setting-520cf729.json,
+recording-setting-aa157c0c.json and recording-setting-app-36613c03.json; exact
+failed trees are inventoried, copied and retired, with QEMU joins and four zero
+listener deltas each. TIWuyf3mRL correctly refuses replay of the older app against
+a36e5581 production sources before boot (installed-recording-a36e5581.json).
+A current build initially refuses insufficient RAM (36,096 MiB available versus
+37,888 MiB required), then, after capacity recovers, OwXnvPcu2Y refuses a fifth
+retained artifact generation. Neither boots a VM; their bounded receipts remain
+and their private/RAM state is retired before the superseded artifact is removed.
+No resource limit or source-equality check was weakened.
+
+The current a36e5581 full app now builds successfully in z3UiyeGFso/tool2483.
+Eight recording widget/model, thirteen view-mode and two native command cases
+pass. The native command artifact is
+9a9a4ae4ed18695cf80d00cbd574baf73f08c6b902d22e60489b0cf0f7a956cc;
+the 74-payload app manifest is
+32e0888c5aa7d7780ef05ba30122f1a97da93150f42362c30a4a0e26d357d0b6.
+recording-setting-app-a36e5581-admitted.json binds ten files/327,727 bytes.
+QEMU 213536 joins zero after 1,268.621 seconds; scratch peaks at 11,912,257,536
+bytes. Compiler accounting stays within 10 GiB with zero swap/OOM events.
+Four zero host listener deltas and exact private/process/socket/RAM retirement
+pass. The current app replaces the retired superseded generation; the four-app
+cache bound remains enforced.
+
+The first current-app installed replay, 4MkzkCpQsD/tool80598, passes sixteen
+password stages and the initial recording read. The root service denies the
+recording request without an agent, and the inspected screenshot visibly shows
+Denied with the checkbox off. The driver nevertheless fails: it expects a
+separate Denied accessible node, while the actual card exposes the complete
+newline-separated name. installed-recording-current-a36e5581.json binds sixteen
+files/577,496 bytes, including that screenshot; a separate receipt records the
+private tree's retirement. QEMU 237964 joins zero after 153.860 seconds, scratch peaks at
+4,213,919,744 bytes, and all four listener deltas are zero. This failed run is
+not workflow acceptance. 4901e8cc checks the exact whole card text for both
+denied and normal states instead of searching for separate error nodes.
+The captured tree and Flutter's documented merged-label semantics support the
+correction: https://api.flutter.dev/flutter/widgets/MergeSemantics-class.html.
+The same already-built app is reused; production source matching stays enforced.
+
+The next replay uzw9jBY5zR/tool29951 passes the complete denial observation,
+then stops before submitting administrator credentials because the pending-state
+driver incorrectly requires SENSITIVE to clear alongside ENABLED. The captured
+screenshot shows the greyed checkbox and progress indicator; its exact AT-SPI
+node has ENABLED=0, SENSITIVE=1 and zero actions. The pinned Flutter engine's
+is_sensitive() tests whether the enabled tristate is specified; is_enabled()
+separately requires true:
+https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_accessible_node.cc
+e17c3844 keeps the exact enabled/check/visibility requirements and requires no
+actions while pending, with available actions when enabled. This corrects the
+fixture to the actual platform semantics. installed-recording-4901e8cc.json
+binds sixteen files/576,741 bytes and the inspected screenshot. QEMU 260297
+joins zero after 145.946 seconds; scratch peaks at 4,213,657,600 bytes; four
+listener deltas are zero. The copied inventory precedes exact private-tree
+retirement. Neither failed replay is treated as installed acceptance.
+
+The completed e17c3844 replay kYmagMR1sK/tool40856 exits zero against the exact
+a36e5581 app. Twenty-four initial UI stages and eight restarted-GUI stages pass.
+The recording request is refused without an authentication agent; three distinct
+administrator-authorized changes enable, disable and re-enable the root-owned
+setting. During each challenge the checkbox retains its prior value, is disabled
+and exposes zero actions; root state is checked before authorization. Each real
+administrator password is delayed two seconds, beyond the original one-second
+reply wait, so completion exercises same-operation status recovery. Exactly four
+administrator terminal events occur in total: one password change and three
+recording changes, each with one successful challenge. After confirmation, the
+checkbox and saved root value agree. The user Config2 and already-provisioned
+unattended credential stay unchanged through recording changes and subsequent
+service/GUI restarts. The fresh GUI observes enabled after restart.
+
+The same package passes existing unavailable-service Failed reporting and
+same-GUI recovery/denial, seven CPace exchanges, three stale-password refusals,
+reinstall/remove/purge and joined cleanup. These password/package controls do not
+establish additional recording lifecycle cases. installed-recording-e17c3844.json
+binds nine files/159,720 bytes, including the complete ordered event records,
+four administrator challenges and raw logs. QEMU 262654 joins zero after 192.990
+seconds; scratch peaks at 4,284,108,800 bytes. Four host listener deltas are zero;
+exact private/process/socket/RAM absence is verified before source edits resume.
+No failed private tree remains.
+
+Remaining acceptance: actual installed recording output and capture behavior;
+relevant wrong/stale principals, cancellation, restart during mutation and
+concurrency; broader I/O failure/long-session/resource cases; Android native
+execution and other supported platforms. The selected component/installed cases
+do not establish complete privilege-escalation immunity or release readiness.
+All evidence noted here is copied and hash-verified on CTE and TUF; host product,
+service, authentication and network configuration remain untouched.
+
+This append preserves the prior 16,036,861-byte audit prefix, SHA-256
+b90ad888a8e4be9a79aa218086fb464f0df28e8c61562dac580a15b809f55de9.

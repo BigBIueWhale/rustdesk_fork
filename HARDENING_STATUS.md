@@ -9358,6 +9358,23 @@ RAM/private state. This is virtual-device application evidence. Next: camera
 loss/recovery and reacquisition in the running application; physical-device,
 installed-service and Windows acceptance remain OPEN.
 
+**Camera interruption baseline — recovery passes; device-loss completion OPEN.**
+Replay `5a83eb4d` on `b09f3420` preserves actual blue pixels during a 3,085 ms
+camera stall, then displays red within 343 ms of restoration on the same TCP
+connection (2,500 ms deadline). Kernel-simulated disconnect returns ENODEV and
+retires the catalog, but the viewer shows no error and retains its connection.
+`2d86a69d` closes the exact authenticated camera session when that catalog retires,
+with a visible non-retrying error; corrected-app build/replay and fresh acquisition
+remain pending. `camera-recovery-5a83eb4d.json` binds nine files/433,517 bytes on
+CTE/TUF, four zero listener deltas and joined VM/RAM/private cleanup. An earlier
+run (`camera-recovery-bd06e8a3.json`) decoded an initial frame but never presented
+camera pixels; this intermittent first-image failure remains OPEN despite the
+successful subsequent startup. Stream-open failure retirement is also unverified.
+The full-build admission refused a fifth cache generation before VM creation.
+Verified retirement of superseded `4468059d` releases 70,823,936 allocated bytes;
+its manifest/inventory/evidence remain (`camera-loss-retired-4468059d.json`).
+The current `b09f3420` baseline and older required package/recording baselines remain.
+
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production
 frame/pixel-buffer declarations. With only `/dev/video2`, product discovery

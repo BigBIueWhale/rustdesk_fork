@@ -150271,3 +150271,68 @@ and exact private/process/socket/RAM retirement. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,110,135-byte audit prefix, SHA-256
 ba01075886da386c7b4e0695b66833e25ee7324e2fc318d53e32453bacabdc68.
+
+### 2026-11-12 — Camera stall recovery and missing device-loss completion
+
+Continue R-F1/R-S0 camera application acceptance. Fixture bd06e8a3 extends the
+same retained b09f3420 app scenario with a three-second camera stall, a 2,500 ms
+actual-presentation recovery deadline, kernel device disconnection, visible error
+and connection retirement, then a fresh authenticated capture on the unchanged
+server. It uses Linux vivid's documented dropped-buffer and Disconnect controls:
+https://docs.kernel.org/6.2/admin-guide/media/vivid.html
+Disconnect returns ENODEV and reconnects only after every open handle closes.
+Source/viewer monotonic time namespaces match. No network impairment is claimed.
+
+Initial TUF QihLl9Pkbo/tool99079 fails before interruption: the viewer completes
+password entry and decodes one independent frame, but the X11 observer finds no
+camera pixels in fifteen seconds; the native texture reports no frame. This is
+an intermittent first-image failure, not a completed camera-loss experiment.
+camera-recovery-bd06e8a3.json binds nine files/226,157 bytes on both hosts. QEMU
+2972510 joins zero after 208.270 seconds, RAM/private/socket state retires, and
+all four host listener deltas are zero. Observer SHA-256:
+efebb396129984ac902a115b6ab9716c470e42699c0022e40b5e66ec90deb9c5.
+
+Diagnostic-only 5a83eb4d retains server logs on early camera failures. TUF
+dr2wnXXvXP/tool99142 reuses the same app and observer. Both real viewers display
+red/green; after the first closes, the survivor displays blue on unchanged TCP.
+Thirty-one actual root-window samples preserve blue during 3,085 ms of withheld
+frames; red returns in 343 ms after restoration, within the 2,500 ms deadline.
+The same server retains one device descriptor through overlap, first closure,
+stall and recovery, each confirmed across ten observations. After the native
+disconnect returns ENODEV, the catalog retires and capture retries fail, but the
+viewer still has two connected socket halves, one listener and no visible error
+at the five-second deadline. Fresh acquisition is not reached.
+
+camera-recovery-5a83eb4d.json binds nine files/433,517 bytes verified on CTE/TUF.
+Outer SHA-256: 8ed7cd2847b1e1aa1dc8a4ae763f9fb3ce782e8e9eb0ce9051a17472d44b2f58.
+QEMU 2974216 joins zero after 177.410 seconds. RAM scratch peaks at 3,604,860,928
+bytes and retires; private diagnostics including duplicate failure payloads are
+removed after reconciliation. Four listener comparisons have zero additions and
+removals. Exact QEMU, RAM and private Unix-socket absence pass.
+
+Product 2d86a69d adds the missing connection response to retained-camera
+retirement in connection.rs's existing periodic lifecycle branch. Only an
+authenticated ViewCamera session whose exact catalog is retired sends the
+non-retrying Camera capture failed close reason, runs normal connection cleanup
+and exits. WouldBlock leaves the catalog and transport live. Source review binds
+retirement to camera.rs, source-owned service removal to server.rs, and the close
+reason to the existing client retry classifier. Diff hygiene passes; corrected
+full-app build and the unchanged native scenario remain pending. Initial frame
+publication and stream-open failures remain separate OPEN obligations.
+
+The first full-build admission qWW8Wr2xdK/tool34348 stops at the four-generation
+cache cap before QEMU/artifact creation. Its 2.712-second RAM workspace retires
+with zero bulk allocation; the exact private tree is then removed.
+camera-loss-app-2d86a69d.json binds three files/3,955 bytes on both hosts.
+To remain within that cap, verify all 74 payloads and the exact manifest of
+superseded 4468059d plus current b09f3420. Only the Rust library and readiness
+helper differ; engine, inputs and recipe match. Retire exact generation directory
+66306:87996312, releasing 70,823,936 allocated file bytes. Its manifest, payload
+inventory and camera-loss-retired-4468059d.json remain on CTE/TUF (three files,
+30,461 bytes). Removed payloads are not claimed reconstructible. The three
+retained application generations are 6429f3cb, a36e5581 and b09f3420.
+
+Next: build the corrected full app and rerun the same lifecycle scenario. Keep
+device-loss completion, fresh capture and the intermittent startup failure OPEN.
+This append preserves the prior 16,110,801-byte audit prefix, SHA-256
+3557e5a6fe495e0ca30887c6412d870eebf1efb8ea67a425c0073d12e920e569.

@@ -26,6 +26,12 @@ case "$1" in
       && [ "${HOME:-}" = /tmp/server-home ] \
       && [ "${XDG_RUNTIME_DIR:-}" = /tmp/server-runtime ] \
       || fail 'incoming recording server session paths differ'
+    [ -f /etc/passwd ] && [ ! -L /etc/passwd ] \
+      && [ "$(stat -c '%u:%g:%a:%h' /etc/passwd)" = "$(id -u):$(id -g):400:1" ] \
+      && [ "$(wc -l < /etc/passwd)" -eq 2 ] \
+      && [ "$(getent passwd "$(id -u)")" = \
+        "rustdesk-controlled:x:$(id -u):$(id -g):RustDesk controlled evidence:/tmp/server-home:/usr/sbin/nologin" ] \
+      || fail 'controlled user password-database identity differs'
     ;;
   viewer)
     viewer_display=:99

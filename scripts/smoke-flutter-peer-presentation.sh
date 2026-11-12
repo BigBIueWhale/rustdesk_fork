@@ -685,6 +685,7 @@ COORD=
 readonly EVIDENCE_ONLINE="$WORKSPACE/evidence-online"
 readonly BUILD_INPUT_ROOT="$WORKSPACE/build-input-root"
 readonly VIEWER_PASSWD="$WORKSPACE/viewer.passwd"
+readonly SERVER_PASSWD="$WORKSPACE/server.passwd"
 readonly VIEWER_PASSWD_ROOT_ENTRY="root:x:0:0:root:/root:/usr/sbin/nologin"
 readonly VIEWER_PASSWD_ENTRY="rustdesk-evidence:x:$HOST_UID:$HOST_GID:RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
 readonly SERVER_MACHINE_ID="$WORKSPACE/server.machine-id"
@@ -722,6 +723,14 @@ mv "$VIEWER_PASSWD.tmp" "$VIEWER_PASSWD"
   && [ "$(sed -n '2p' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
   || die 'private viewer passwd witness creation failed'
 readonly VIEWER_PASSWD_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_PASSWD")"
+SERVER_PASSWD_ID=
+if [ "$PEER_SCENARIO" = incoming-recording ]; then
+  printf '%s\nrustdesk-controlled:x:%s:%s:RustDesk controlled evidence:/tmp/server-home:/usr/sbin/nologin\n' \
+    "$VIEWER_PASSWD_ROOT_ENTRY" "$HOST_UID" "$HOST_GID" > "$SERVER_PASSWD"
+  chmod 0400 "$SERVER_PASSWD"
+  SERVER_PASSWD_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SERVER_PASSWD"):$(sha256sum "$SERVER_PASSWD")"
+fi
+readonly SERVER_PASSWD_ID
 printf '%s\n' "$SERVER_MACHINE_ID_VALUE" > "$SERVER_MACHINE_ID.tmp"
 printf '%s\n' "$VIEWER_MACHINE_ID_VALUE" > "$VIEWER_MACHINE_ID.tmp"
 printf '%s\n' "$SLOW_MACHINE_ID_VALUE" > "$SLOW_MACHINE_ID.tmp"
@@ -839,7 +848,10 @@ inspect_container_contract() {
   case "$label" in
     server)
       expected_machine_id_source=$SERVER_MACHINE_ID
-      [ "$PEER_SCENARIO" != incoming-recording ] || expected_atspi_mounts=1
+      if [ "$PEER_SCENARIO" = incoming-recording ]; then
+        expected_atspi_mounts=1
+        expected_passwd_source=$SERVER_PASSWD
+      fi
       ;;
     viewer|slow-viewer)
       expected_passwd_source=$VIEWER_PASSWD
@@ -997,8 +1009,12 @@ inspect_container_contract() {
     && [ "$impairment_mounts" -eq "$expected_impairment_mounts" ] \
     || die "$label runtime mount cardinality differs"
   if [ -n "$expected_passwd_source" ]; then
-    [ "$passwd_mounts" -eq 1 ] && [ "$diagnostic_mounts" -eq 1 ] \
-      || die 'viewer passwd or failure-diagnostic mount cardinality differs'
+    [ "$passwd_mounts" -eq 1 ] || die 'runtime passwd mount cardinality differs'
+    if [ "$label" = server ]; then
+      [ "$diagnostic_mounts" -eq 0 ] || die 'server received a viewer diagnostic mount'
+    else
+      [ "$diagnostic_mounts" -eq 1 ] || die 'viewer failure-diagnostic mount cardinality differs'
+    fi
   else
     [ "$passwd_mounts" -eq 0 ] && [ "$diagnostic_mounts" -eq 0 ] \
       || die 'non-viewer container received a viewer-only mount'
@@ -1365,6 +1381,7 @@ server_accessibility=()
 if [ "$PEER_SCENARIO" = incoming-recording ]; then
   server_session=smoke-private-atspi-session.sh
   server_accessibility=(
+    --mount "type=bind,source=$SERVER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled"
     --mount "type=bind,source=$ATSPI_ROOT,target=/atspi-root,readonly,bind-recursive=disabled"
     --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi-bus-launcher,target=/usr/libexec/at-spi-bus-launcher,readonly,bind-recursive=disabled"
     --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi2-registryd,target=/usr/libexec/at-spi2-registryd,readonly,bind-recursive=disabled"
@@ -1516,6 +1533,10 @@ inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
   && [ "$(sed -n '1p' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ROOT_ENTRY" ] \
   && [ "$(sed -n '2p' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
   || die 'private viewer passwd witness changed during runtime'
+if [ "$PEER_SCENARIO" = incoming-recording ]; then
+  [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SERVER_PASSWD"):$(sha256sum "$SERVER_PASSWD")" = "$SERVER_PASSWD_ID" ] \
+    || die 'private controlled-user passwd witness changed during runtime'
+fi
 [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$SERVER_MACHINE_ID")" = "$SERVER_MACHINE_ID_ID" ] \
   && [ "$(<"$SERVER_MACHINE_ID")" = "$SERVER_MACHINE_ID_VALUE" ] \
   && [ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_MACHINE_ID")" = "$VIEWER_MACHINE_ID_ID" ] \

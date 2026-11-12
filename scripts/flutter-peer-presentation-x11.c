@@ -9078,8 +9078,8 @@ int main(int argc, char **argv) {
         int result = -1;
         while (started != 0U && monotonic_millis() < deadline) {
             AtspiAccessible *error = NULL;
-            if (query_named_accessible((unsigned int)viewer_pid, "Camera is unavailable",
-                                      deadline, &error, 0) != 0) break;
+            if (query_accessible((unsigned int)viewer_pid, "Camera is unavailable",
+                                 deadline, &error, 1, 1, NULL) != 0) break;
             visible = error != NULL;
             if (error != NULL) g_object_unref(error);
             if (session_socket_counts(&connected, &listeners) != 0 || listeners != 1U) break;

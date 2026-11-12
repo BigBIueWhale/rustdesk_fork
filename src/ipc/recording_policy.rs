@@ -469,6 +469,14 @@ mod tests {
             assert!(matches!(sender.next_service_response_timeout(1000).await.unwrap(),
                 Some(ServiceIpcResponse::IncomingRecordingPolicyChange { status: actual }) if actual == status));
         }
+        for setting in [IncomingRecordingSetting::default(),
+            IncomingRecordingSetting { enabled: None, pending: true },
+            IncomingRecordingSetting { enabled: Some(false), pending: false },
+            IncomingRecordingSetting { enabled: Some(true), pending: false }] {
+            receiver.send_service_response_timeout(&ServiceIpcResponse::IncomingRecordingSetting(setting), 1000).await.unwrap();
+            assert!(matches!(sender.next_service_response_timeout(1000).await.unwrap(),
+                Some(ServiceIpcResponse::IncomingRecordingSetting(actual)) if actual == setting));
+        }
         for invalid in ["", "00000000-0000-0000-0000-000000000000", "A0B00000-0000-0000-0000-000000000001"] {
             assert!(operation_id(invalid).is_err());
         }

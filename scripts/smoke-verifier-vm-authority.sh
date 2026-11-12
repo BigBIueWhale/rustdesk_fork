@@ -9497,7 +9497,7 @@ elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
             'dependency-complete packaged GUI uncertainty and retained credential recovery'
     else
     require_exact_fixed_receipt \
-        'LINUX_INSTALLED_RECORDING_SETTINGS=pass enabled=confirmed disabled=confirmed persistence=user-profile credential=unchanged ui=actual' \
+        'LINUX_INSTALLED_RECORDING_SETTINGS=pass enabled=confirmed disabled=confirmed authorization=polkit-pam denial=no-agent pending=disabled persistence=root-service restart=service-and-gui profile=unchanged credential=unchanged ui=actual' \
         'installed incoming recording preference workflow'
     require_exact_fixed_receipt \
         'LINUX_INSTALLED_SETTINGS_AGENT=pass lifetime=through-applied cleanup=joined' \

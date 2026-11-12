@@ -202,7 +202,7 @@ static int settings_open_password(Display *display, Window main, unsigned int pi
     return -1;
 }
 
-static int settings_recording_checked(unsigned int pid, int expected) {
+static int settings_recording_checked(unsigned int pid, int expected, int enabled) {
     uint64_t deadline = monotonic_millis() + 5000U;
     unsigned int stable = 0U;
     int checked = -1, available = 0, role = -1;
@@ -220,8 +220,8 @@ static int settings_recording_checked(unsigned int pid, int expected) {
         available = states != NULL && error == NULL && role == ATSPI_ROLE_CHECK_BOX &&
             atspi_state_set_contains(states, ATSPI_STATE_VISIBLE) &&
             atspi_state_set_contains(states, ATSPI_STATE_SHOWING) &&
-            atspi_state_set_contains(states, ATSPI_STATE_ENABLED) &&
-            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) &&
+            atspi_state_set_contains(states, ATSPI_STATE_ENABLED) == enabled &&
+            atspi_state_set_contains(states, ATSPI_STATE_SENSITIVE) == enabled &&
             !atspi_state_set_contains(states, ATSPI_STATE_INDETERMINATE);
         checked = states != NULL ? atspi_state_set_contains(states, ATSPI_STATE_CHECKED) : -1;
         g_clear_error(&error);
@@ -229,7 +229,7 @@ static int settings_recording_checked(unsigned int pid, int expected) {
         g_clear_object(&control);
         stable = available && checked == expected ? stable + 1U : 0U;
         if (stable == 3U) {
-            printf("LINUX_INSTALLED_RECORDING_CHECKBOX=pass checked=%d available=true\n", checked);
+            printf("LINUX_INSTALLED_RECORDING_CHECKBOX=pass checked=%d enabled=%d\n", checked, enabled);
             return 0;
         }
         if (sleep_millis(100U) != 0) return -1;
@@ -264,16 +264,27 @@ int main(int argc, char **argv) {
             activate_named_control(pid, "Security") != 0 ||
             settings_open_password(display, main, pid) != 0 ||
             settings_visible(pid, "Set password", 1) != 0) goto atspi_out;
-    } else if (strcmp(argv[2], "recording-open") == 0) {
+    } else if (strcmp(argv[2], "recording-open") == 0 || strcmp(argv[2], "recording-restarted") == 0) {
         if (activate_named_control(pid, "General") != 0 ||
-            settings_recording_checked(pid, 0) != 0 ||
+            settings_recording_checked(pid, strcmp(argv[2], "recording-restarted") == 0, 1) != 0 ||
             settings_visible(pid, "Failed", 0) != 0) goto atspi_out;
+    } else if (strcmp(argv[2], "recording-denied") == 0) {
+        if (settings_recording_checked(pid, 0, 1) != 0 ||
+            click_main_control(display, main, pid, "Automatically record incoming sessions") != 0 ||
+            settings_visible(pid, "Denied", 1) != 0 ||
+            settings_recording_checked(pid, 0, 1) != 0) goto atspi_out;
+    } else if (strcmp(argv[2], "recording-enable-submit") == 0 ||
+               strcmp(argv[2], "recording-disable-submit") == 0) {
+        int enabled = strcmp(argv[2], "recording-enable-submit") == 0;
+        if (settings_recording_checked(pid, !enabled, 1) != 0 ||
+            click_main_control(display, main, pid, "Automatically record incoming sessions") != 0 ||
+            settings_recording_checked(pid, !enabled, 0) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "recording-enable") == 0 ||
                strcmp(argv[2], "recording-disable") == 0) {
         int enabled = strcmp(argv[2], "recording-enable") == 0;
-        if (settings_recording_checked(pid, !enabled) != 0 ||
-            click_main_control(display, main, pid, "Automatically record incoming sessions") != 0 ||
-            settings_recording_checked(pid, enabled) != 0 ||
+        if (settings_recording_checked(pid, enabled, 1) != 0 ||
+            settings_visible(pid, "Denied", 0) != 0 ||
+            settings_visible(pid, "Recording change is unconfirmed", 0) != 0 ||
             settings_visible(pid, "Failed", 0) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "cancel") == 0) {
         if (activate_named_control(pid, "Cancel") != 0 ||

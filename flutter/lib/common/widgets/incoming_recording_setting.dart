@@ -11,7 +11,9 @@ class IncomingRecordingSettingView extends StatelessWidget {
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: model,
-    builder: (context, _) => Column(
+    builder: (context, _) {
+      final enabled = model.enabled;
+      return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         CheckboxListTile(
@@ -20,9 +22,9 @@ class IncomingRecordingSettingView extends StatelessWidget {
           dense: true,
           title: Text(translate('Automatically record incoming sessions')),
           tristate: true,
-          value: model.enabled,
-          onChanged: fixed || model.pending || model.enabled == null ? null
-              : (_) => model.change(!model.enabled!),
+          value: enabled,
+          onChanged: fixed || model.pending || enabled == null ? null
+              : (_) => model.change(!enabled),
         ),
         if (model.pending) const LinearProgressIndicator(minHeight: 2),
         if (fixed) Text(translate('Set by policy')),
@@ -35,6 +37,7 @@ class IncomingRecordingSettingView extends StatelessWidget {
             _ => 'Recording change is unconfirmed',
           }), style: TextStyle(color: Theme.of(context).colorScheme.error)),
       ],
-    ),
+      );
+    },
   );
 }

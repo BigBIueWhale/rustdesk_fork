@@ -35,8 +35,9 @@ GRAPHICAL_AGENT = Path('/usr/lib/policykit-1-gnome/polkit-gnome-authentication-a
 GRAPHICAL_AGENT_SHA = '2a7cec811453d11b56cde55a4fba340767c7e996931179a474d4e5d5fcb70df0'
 STAGES = ('open', 'fill', 'cancel', 'reopen', 'submit', 'denied', 'reopen', 'submit', 'denied',
           'reopen', 'fill', 'submit-approved', 'applied', 'reopen', 'submit', 'denied',
-          'recording-open', 'recording-enable', 'recording-disable')
-RESTART_STAGES = ('open', 'fill', 'submit', 'failed', 'reopen', 'submit', 'denied')
+          'recording-open', 'recording-denied', 'recording-enable-submit', 'recording-enable',
+          'recording-disable-submit', 'recording-disable', 'recording-enable-submit', 'recording-enable')
+RESTART_STAGES = ('open', 'fill', 'submit', 'failed', 'reopen', 'submit', 'denied', 'recording-restarted')
 UNCERTAIN_STAGES = (('open', 'fill', 'submit-approved') + ('pending',) * 21
                     + ('uncertain', 'uncertain-preserved', 'cancel', 'reopen', 'submit', 'denied'))
 ADMIN_FAILURE_STAGES = ('open', 'fill', 'submit', 'denied', 'reopen', 'fill',
@@ -514,10 +515,11 @@ def owned_log(directory, pid, uid, retained=None):
     return path, data
 
 
-def service_refusals(record, requester, start, count, exit_status=2):
+def service_refusals(record, requester, start, count, exit_status=2,
+                     action='com.carriez.RustDesk.set-unattended-password'):
     path, data = owned_log(Path('/root/.local/share/logs/RustDesk/service'), record['supervisor'], 0)
     messages = data.decode().splitlines()
-    prefix = ('polkit denied action=com.carriez.RustDesk.set-unattended-password, '
+    prefix = (f'polkit denied action={action}, '
               f'subject={requester},{start},4001, status=exit status: ')
     refusals = [line for line in messages if line.endswith(prefix + str(exit_status))]
     print('LINUX_INSTALLED_SETTINGS_SERVICE_LOG=' + json.dumps(
@@ -590,7 +592,8 @@ def administrator(receiver, requester):
                     os.close(fd)
 
 
-def authenticate(receiver, authority, requester, record, before, password_delay=0, incorrect_password=False):
+def authenticate(receiver, authority, requester, record, before, password_delay=0, incorrect_password=False,
+                 action='com.carriez.RustDesk.set-unattended-password'):
     agent, terminal_fd = authority
     terminal = bytearray()
     chosen = sent = False
@@ -614,7 +617,7 @@ def authenticate(receiver, authority, requester, record, before, password_delay=
                 os.write(terminal_fd, matches[0] + b'\n')
                 chosen = True
             if not sent and b'Password:' in terminal and not termios.tcgetattr(terminal_fd)[3] & termios.ECHO:
-                if (b'com.carriez.RustDesk.set-unattended-password' not in terminal
+                if (action.encode() not in terminal
                         or b'rdreceiver4003' not in terminal or receiver.credential() != before
                         or receiver.child_record() != record):
                     raise RuntimeError('GUI authorization challenge or pre-approval state differs')
@@ -746,11 +749,11 @@ def user_credential():
 def recording_option(expected):
     import tomllib
 
-    path = Path('/home/rdreceiver4001/.config/rustdesk/RustDesk2.toml')
+    path = Path('/root/.config/rustdesk/RustDesk2.toml')
     values = {}
     if path.exists():
         metadata = path.lstat()
-        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 4001
+        if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 0
                 or metadata.st_nlink != 1 or metadata.st_size > 65536
                 or stat.S_IMODE(metadata.st_mode) & 0o077):
             raise RuntimeError('recording preference file authority differs')
@@ -758,7 +761,18 @@ def recording_option(expected):
     value = values.get('allow-auto-record-incoming', '')
     if value != ('Y' if expected else ''):
         raise RuntimeError('recording checkbox disagrees with the saved preference')
-    print(f'LINUX_INSTALLED_RECORDING_OPTION=pass enabled={str(expected).lower()} owner=4001', flush=True)
+    print(f'LINUX_INSTALLED_RECORDING_OPTION=pass enabled={str(expected).lower()} owner=0', flush=True)
+
+
+def user_recording_options():
+    path = Path('/home/rdreceiver4001/.config/rustdesk/RustDesk2.toml')
+    if not path.exists():
+        return None
+    metadata = path.lstat()
+    if (not stat.S_ISREG(metadata.st_mode) or metadata.st_uid != 4001
+            or metadata.st_nlink != 1 or metadata.st_size > 65536):
+        raise RuntimeError('user recording options identity differs')
+    return digest(path)
 
 
 def service_absent():
@@ -842,6 +856,8 @@ def scenario(receiver, probe_sha, network_before):
         requester = None
         committed = None
         authority = None
+        recording_profile = None
+        recording_enabled = False
         for index, stage in enumerate(STAGES):
             if not select.select([process.stdout], [], [], 45)[0]:
                 raise RuntimeError('installed GUI stage timed out')
@@ -878,7 +894,21 @@ def scenario(receiver, probe_sha, network_before):
                 authorization.close()
                 print('LINUX_INSTALLED_SETTINGS_AGENT=pass lifetime=through-applied cleanup=joined', flush=True)
             if stage.startswith('recording-'):
-                recording_option(stage == 'recording-enable')
+                if stage == 'recording-open':
+                    recording_profile = user_recording_options()
+                if stage == 'recording-denied':
+                    service_refusals(record, *requester, 1, action='com.carriez.RustDesk.set-incoming-recording')
+                    authority = authorization.enter_context(administrator(receiver, requester))
+                if stage.endswith('-submit'):
+                    recording_option(recording_enabled)
+                    authenticate(receiver, authority, requester, record, committed,
+                                 action='com.carriez.RustDesk.set-incoming-recording')
+                elif stage in ('recording-enable', 'recording-disable'):
+                    recording_enabled = stage == 'recording-enable'
+                if not stage.endswith('-submit'):
+                    recording_option(recording_enabled)
+                if user_recording_options() != recording_profile:
+                    raise RuntimeError('service recording change mutated the user profile')
             print('LINUX_INSTALLED_SETTINGS_OBSERVED=' + json.dumps({**event, 'index': index,
                   'credential': 'committed' if committed is not None else 'baseline',
                   'service_generation': record['generation']}, sort_keys=True), flush=True)
@@ -886,8 +916,7 @@ def scenario(receiver, probe_sha, network_before):
             process.stdin.flush()
         if process.wait(timeout=15) != 0:
             raise RuntimeError('installed GUI session did not retire successfully')
-        print('LINUX_INSTALLED_RECORDING_SETTINGS=pass enabled=confirmed disabled=confirmed '
-              'persistence=user-profile credential=unchanged ui=actual', flush=True)
+        authorization.close()
         refusals = service_refusals(record, *requester, 3)
         if committed is None or receiver.credential() != committed:
             raise RuntimeError('protected credential differs after the GUI workflow')
@@ -898,6 +927,7 @@ def scenario(receiver, probe_sha, network_before):
         record = restarted
         if receiver.credential() != committed:
             raise RuntimeError('GUI credential did not persist through service restart')
+        recording_option(True)
         credential_network(receiver, restarted, probe_sha, 'gui-restarted')
         for pipe in (process.stdin, process.stdout):
             pipe.close()
@@ -943,6 +973,10 @@ def scenario(receiver, probe_sha, network_before):
                 service_refusals(restarted, *restarted_requester, 1)
                 if user_credential() != profile_before:
                     raise RuntimeError('service recovery changed the user-profile credential')
+            elif stage == 'recording-restarted':
+                recording_option(True)
+                if user_recording_options() != recording_profile:
+                    raise RuntimeError('restarted recording workflow changed the user profile')
             process.stdin.write(b'continue\n')
             process.stdin.flush()
         if process.wait(timeout=15) != 0:
@@ -950,6 +984,9 @@ def scenario(receiver, probe_sha, network_before):
         credential_network(receiver, restarted, probe_sha, 'gui-service-recovered')
         print('LINUX_INSTALLED_SETTINGS_FAILURE=pass outcome=Failed service=absent '
               'protected=unchanged profile=unchanged recovery=same-gui-denied cleanup=joined', flush=True)
+        print('LINUX_INSTALLED_RECORDING_SETTINGS=pass enabled=confirmed disabled=confirmed '
+              'authorization=polkit-pam denial=no-agent pending=disabled persistence=root-service '
+              'restart=service-and-gui profile=unchanged credential=unchanged ui=actual', flush=True)
     except Exception:
         if record is not None:
             try:

@@ -151141,3 +151141,14 @@ Next useful validation is installed input-to-visible recovery on the retained
 app; this does not close the unresolved transport design or broader R-F5 matrix.
 This append preserves the prior 16,164,154-byte audit prefix, SHA-256
 95b9f61b0d0a4000202108c666162aa8e3ae07a4f0716f961424776cda606ca6.
+
+Fresh ledger count at a3763ee7, pQiOptus24/tool21851: 419,064 tokens /
+1,911,463 bytes, SHA-256
+d32598fe764375f8a3891cd48e836bd862750fdbccd7fec9000e7e085497585d.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+congestion-ledger-a3763ee7.json binds eight files/115,347 bytes on CTE/TUF.
+QEMU 3906777 joins zero after 30.760 seconds; three zero listener deltas and
+exact private/process/socket/RAM retirement pass. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,169,487-byte audit prefix, SHA-256
+e0898624ef264644e001784cb54a33e6cc4e4fe85b5a0e5d97818f92b8e9b55f.

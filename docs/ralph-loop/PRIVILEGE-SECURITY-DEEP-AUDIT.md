@@ -148325,3 +148325,63 @@ on both hosts. QEMU 2344325 joins zero after 30.389 seconds; peak RAM scratch
 absence are verified. Approximate 400,000-token compression remains OPEN.
 This audit-only append preserves the counted ledger and prior 15,976,599-byte
 audit prefix (SHA-256 8b3f72eeacac5bba42d0a3e822523a05eae64225a6c49dbc7bf6bd4e775ae15b).
+
+### 2026-11-12 — Incoming recording failure retires at the capture owner
+
+Previous goal turn: progress, native multiple-writer acceptance. The user reports
+TUF available; the existing password SSH master and clean matching checkout are
+verified. R-S0's required recording behavior takes priority here over another
+full application build: the ledger identifies an actual caller that discards
+write results. Source inspection confirms one capture-loop owner despite an
+Arc/Mutex wrapper, two synchronous frame calls, and no other recorder-message
+caller. Completion/UI reporting and blocked I/O are distinct remaining gaps.
+
+Rust documents Result as the channel for recoverable errors; Linux open(2)
+documents EACCES when the output parent's write permission is absent:
+https://doc.rust-lang.org/std/result/index.html
+https://man7.org/linux/man-pages/man2/open.2.html
+The design implication is to check typed writes at the owning capture loop,
+retire its failed recorder, and continue publishing encoded video. A recording
+failure must not become an encoder or remote-session failure.
+
+8d6b5ac8 adds a real native capture-caller scenario to the existing parent profile.
+The first run nd00bIf3me/tool86220 fails compilation because the fixture lacks
+hbb_common::libc; no behavior runs. eae0f747 adds that import only. Its baseline
+d3b8qmIFp8/tool79394 builds in 164 seconds and reaches the final retirement
+assertion, which fails. Prior assertions establish actual EACCES, no output or
+implicit retry after permission restoration, four changing VP8 images delivered
+through the same subscriber and decoded natively, and a new recorder producing
+one mode-0600 finalized WebM with both transmitted payloads. The fourteen later
+profile controls are unexecuted on this failed baseline. Artifact SHA-256:
+8013533a2c5a554d38a89795b3a1616d3538a0021dafc762d7f53c8e60104f3f.
+
+af9df1423c4b9863c3f51e75563aaf03b809891d removes Recorder::write_message,
+uses Option<Recorder> owned by the capture loop, and checks write_frame before
+ordinary video publication. A failure logs source/display context and drops that
+recorder. Initialization failure is also explicit. The test changes only its
+five ownership expressions to match this API; assertions and scenario remain.
+pAEluCQPmY/tool73305 passes all fifteen native tests in five seconds after a
+164-second build. Artifact SHA-256
+f58852fe4358afec5b8acd18e5a5257956245cdd1a283af2def0c3b64df9f3c0
+is unchanged before/after execution. Rust 1.75, pinned vendor inputs, UID 1000
+and the network-none guest container remain unchanged. The outer command exits
+zero; its final informational receipt still prints fourteen, while all fifteen
+named results and exact artifact/guest receipts pass. That single printed count
+is corrected with shell syntax/diff checks; passed native behavior is reused.
+
+Evidence capsules recording-incoming-baseline-8d6b5ac8.json,
+recording-incoming-baseline-eae0f747.json and recording-incoming-fixed-af9df142.json
+bind respectively nine files/105,419, 108,624 and 90,102 bytes, verified on both
+hosts. QEMU 2391750, 2407825 and 2413219 each join zero after 213.723, 225.895
+and 232.631 seconds. Every run has four zero listener deltas and exact process,
+socket and RAM-workspace absence. The two failed private trees are inventoried,
+matched to durable captures and retired by exact identity (3,387,392 and
+3,395,584 allocated bytes). The accepted run retires private state itself.
+
+This proves native capture-caller ownership, subscriber delivery and decoding,
+not actual desktop capture, transport/presentation latency, controlled-side UI
+feedback, product-level finalization reporting or installed/root acceptance.
+Those gaps, blocked I/O and other-platform execution remain OPEN. No full app
+rebuild, dependency/cache expansion, authentication or live-instruction change.
+The prior 15,977,311-byte audit prefix is preserved (SHA-256
+dbb9d9e3aca4a48fc2fcf1534828140569bfdbce540662045c2597e9bc84c8c5).

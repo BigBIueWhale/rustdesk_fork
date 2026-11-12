@@ -10633,7 +10633,7 @@ elif [ "$MODE" = android-rust-lifecycle-tests ]; then
         printf 'RECORDING_OUTPUT_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=38 scope=scrap-library-native-webm-and-parent-check network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then
-        printf 'VIEWER_VIDEO_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=14 scope=complete-parent-library-native-decoder-and-recording-outcomes network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
+        printf 'VIEWER_VIDEO_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=15 scope=complete-parent-library-native-decoder-and-recording-outcomes network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \
             "$HOST_UID" "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" "$vm_elapsed_seconds"
     elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
         printf 'OPTION_ACK_VM_OUTER=pass host_uid=%s commit=%s tree=%s tests=14 scope=complete-parent-library-option-and-keyboard-outcomes network=none listeners=no-harness-addition inputs=readonly-landlocked docker=guest-only cleanup=joined elapsed_seconds=%s\n' \

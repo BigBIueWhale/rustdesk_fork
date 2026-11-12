@@ -6793,10 +6793,27 @@ and joined VM/RAM cleanup. The first run is retained in `recording-multi-4cf5264
 This is the production library with callback observation and retained-owner
 fixtures; multi-display Flutter UI and installed/root evidence remain OPEN.
 
-Full-UI multiple writers/late failures, broader full-UI finalization failures,
-blocked recording I/O, installed/root and other-platform recording remain OPEN.
-Next: the controlled-side message wrapper still discards its write result. These
-results do not close R-S0/R-F5 or the complete recording/release requirements.
+**Incoming recording write failure — selected Linux native capture caller ACCEPTED.**
+`af9df142` removes the error-discarding message wrapper. Each capture loop owns its
+optional recorder directly, checks typed frame writes, logs a failure and retires
+the failed recorder while continuing video publication. Construction errors are
+also handled explicitly. Baseline `eae0f747` fails retirement after actual EACCES;
+its four changing decoded images and fresh-recording controls pass. The corrected
+production library passes all fifteen native tests in five seconds after a
+164-second build. The same subscriber receives changing VP8 images through denial
+and restored storage; new recorder ownership produces a private finalized WebM
+containing both transmitted payloads. `recording-incoming-fixed-af9df142.json`
+binds nine files/90,102 bytes verified on both hosts, four zero listener deltas
+and joined VM/RAM cleanup. Baseline and initial fixture compile failure remain
+in their named evidence capsules and the audit. The final informational outer
+summary's stale fourteen-test label is corrected; named results and checked
+artifact/guest receipts already require fifteen, so passed behavior is not rerun.
+
+Controlled-side UI error/completion reporting, blocked recording I/O, full-UI
+multiple writers/late failures, broader finalization failures, installed/root
+and other-platform recording remain OPEN. Next: controlled-side completion and
+failure reporting with capture lifetime preserved. These component results do
+not close R-S0/R-F5 or the complete recording/release requirements.
 
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,

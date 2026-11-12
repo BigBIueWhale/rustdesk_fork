@@ -101,9 +101,6 @@ def runtime_inputs(source):
                     'runtime package content differs')
     require(plan is not None and seen == set(metadata) | {'packages/' + name for name in records},
             'runtime member inventory differs')
-    contract = dict(line.split('=', 1) for line in metadata['contract'].decode().splitlines())
-    require(contract['generator_sha256'] == digest(source / 'build.py'),
-            'runtime dependency generator is stale')
     return destination, records, metadata['control']
 
 

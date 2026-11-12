@@ -1122,6 +1122,9 @@ static int inspect_viewer_candidate(Display *display, Window window, unsigned lo
     return discovery_window_gone ? 0 : status;
 }
 
+static int inspect_app_candidate(Display *display, Window window, unsigned long expected_pid,
+                                  const char *expected_title);
+
 static int check_retired_window_discovery(Display *display) {
     ViewerWindow candidate = {0};
     Window retired = XCreateSimpleWindow(display, RootWindow(display, DefaultScreen(display)),
@@ -1131,7 +1134,10 @@ static int check_retired_window_discovery(Display *display) {
     XSync(display, False);
     if (inspect_viewer_candidate(display, retired, 0UL, &candidate) != 0 ||
         !discovery_window_gone) return -1;
-    puts("FLUTTER_PEER_WINDOW_DISCOVERY_OK retired_candidate=refused exact_badwindow=true");
+    if (inspect_app_candidate(display, retired, 0UL, "RustDesk") != 0 ||
+        !discovery_window_gone) return -1;
+    puts("FLUTTER_PEER_WINDOW_DISCOVERY_OK retired_candidate=refused "
+         "retired_main_candidate=refused exact_badwindow=true");
     return 0;
 }
 
@@ -3779,10 +3785,41 @@ out:
     return result;
 }
 
+static int inspect_app_candidate(Display *display, Window window, unsigned long expected_pid,
+                                  const char *expected_title) {
+    XWindowAttributes attributes;
+    XClassHint hint = {0};
+    unsigned long pid;
+    char title[512];
+    Atom net_name = XInternAtom(display, "_NET_WM_NAME", False);
+    int matched = 0;
+    /* Tooltip and other transient windows can retire after the root-tree snapshot. */
+    XSync(display, False);
+    discovery_display = display;
+    discovery_window = window;
+    discovery_window_gone = 0;
+    discovery_previous_handler = XSetErrorHandler(discovery_error);
+    if (read_window_pid(display, window, &pid) != 0 || pid != expected_pid ||
+        XGetWindowAttributes(display, window, &attributes) == 0 ||
+        attributes.map_state != IsViewable || attributes.width < 320 ||
+        attributes.height < 40 ||
+        read_text_property(display, window, net_name, title, sizeof(title)) != 0 ||
+        strcmp(title, expected_title) != 0) goto out;
+    matched = XGetClassHint(display, window, &hint) != 0 &&
+        hint.res_name != NULL && hint.res_class != NULL &&
+        strcmp(hint.res_name, "rustdesk") == 0 && strcmp(hint.res_class, "Rustdesk") == 0;
+out:
+    if (hint.res_name != NULL) XFree(hint.res_name);
+    if (hint.res_class != NULL) XFree(hint.res_class);
+    XSync(display, False);
+    XSetErrorHandler(discovery_previous_handler);
+    discovery_display = NULL;
+    return !discovery_window_gone && matched;
+}
+
 static int find_app_window(Display *display, unsigned long expected_pid,
                            const char *expected_title, Window *window) {
     Window root = RootWindow(display, DefaultScreen(display));
-    Atom net_name = XInternAtom(display, "_NET_WM_NAME", False);
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     *window = None;
     while (monotonic_millis() < deadline) {
@@ -3796,24 +3833,10 @@ static int find_app_window(Display *display, unsigned long expected_pid,
             return -1;
         }
         for (unsigned int index = 0U; index < count; ++index) {
-            XWindowAttributes attributes;
-            XClassHint hint = {0};
-            unsigned long pid;
-            char title[512];
-            if (read_window_pid(display, children[index], &pid) != 0 || pid != expected_pid ||
-                XGetWindowAttributes(display, children[index], &attributes) == 0 ||
-                attributes.map_state != IsViewable || attributes.width < 320 ||
-                attributes.height < 40 ||
-                read_text_property(display, children[index], net_name, title, sizeof(title)) != 0 ||
-                strcmp(title, expected_title) != 0) continue;
-            if (XGetClassHint(display, children[index], &hint) != 0 &&
-                hint.res_name != NULL && hint.res_class != NULL &&
-                strcmp(hint.res_name, "rustdesk") == 0 && strcmp(hint.res_class, "Rustdesk") == 0) {
+            if (inspect_app_candidate(display, children[index], expected_pid, expected_title)) {
                 *window = children[index];
                 matches += 1U;
             }
-            if (hint.res_name != NULL) XFree(hint.res_name);
-            if (hint.res_class != NULL) XFree(hint.res_class);
         }
         if (children != NULL) XFree(children);
         if (matches > 1U) return -1;

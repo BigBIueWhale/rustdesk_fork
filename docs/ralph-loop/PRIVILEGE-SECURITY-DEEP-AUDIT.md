@@ -147793,3 +147793,13 @@ bd053a09 file-stage failure remains unclassified, and the complete native UI
 scenario is not yet accepted. Full-UI finalization failures, multiple/late
 writers, blocked I/O, installed/root and other-platform recording, controlled-side
 write-result propagation, R-S0/R-F5 and broader release acceptance remain OPEN.
+
+Fresh ledger count b36911c1/V5ahAUdpyF/tool70885 exits zero: 409,756 tokens /
+1,869,904 bytes, SHA-256
+a9ac817f04f5d39a658160669355be4e5f9487aeb4022a3eedf985c473251980.
+The pinned tokenizer, seven controls and complete-input round trip pass.
+recording-clock-ledger-b36911c1.json binds eight files/115,382 bytes verified
+on both hosts. QEMU 1569643 joins zero after 30.245 seconds; peak RAM scratch
+403,169,280 bytes, three zero listener deltas and exact private/socket/RAM
+absence are verified. The approximate 400,000-token compression remains OPEN.
+This audit-only append preserves the counted ledger.

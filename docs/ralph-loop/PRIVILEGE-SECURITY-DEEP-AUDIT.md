@@ -150409,3 +150409,71 @@ and exact private/process/socket/RAM retirement. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,119,301-byte audit prefix, SHA-256
 360f9ddf4c5642fb3b8fb8388abcc7d94bba66f9feb1b3db6992dcbb87a71062.
+
+### 2026-11-12 — Camera interruption, visible device loss and fresh capture pass
+
+Full application e4c7550e includes 72b52022's texture publication correction and
+2d86a69d's camera-loss close. TUF qJYmF7IVwp/tool99808 passes all four native
+publication/ownership checks, thirteen view-mode, eight recording and two native
+command controls. The native test executable SHA-256 is
+0d4dfbfadb6214db111343e756a497ef9c02fd56f7a74195ff1cfb7773b90d56.
+Rust library/test compilation takes 5m21s/6m44s. The 74-payload app manifest is
+68f8b8ff82c1cb13a34882195066bd1b04a60c46efd45ace5b06826007849a55;
+only bundle/lib/librustdesk.so differs from 843003fe. Engine and authenticated
+inputs match; the build recipe changes only by selecting four focused tests.
+camera-initial-app-e4c7550e.json binds ten files/328,526 bytes on CTE/TUF.
+QEMU 3233000 joins zero after 1,241.052 seconds through cleanup; scratch peaks
+at 11,914,772,480 bytes and retires. Compiler memory remains within 10 GiB with
+zero container swap/OOM; minimum host available memory is 21,033,189,376 bytes.
+Four listener deltas are zero and exact private/process/socket/RAM absence passes.
+
+Reuse those exact app bytes in the unchanged camera-shared scenario. TUF
+z5kOTb8Oem/tool57723 completes three real password entries across two initial
+viewers and a fresh viewer after camera loss. Initial red/green pixels appear
+in both viewers; the survivor displays blue on unchanged TCP after the first
+viewer closes. Thirty-one root-window observations preserve blue during 3,077 ms
+of withheld capture, then red returns in 448 ms after restoration, within the
+2,500 ms deadline and on the same connection. Kernel Disconnect returns ENODEV.
+The viewer then visibly reports Camera capture failed and reaches zero connected
+sockets within the five-second deadline, while the server/listener persists.
+After the old viewer joins and the device has zero retained handles, a fresh
+password-authenticated viewer presents green and blue on that same server.
+
+All eight color phases pass three samples of all 24,000 observed pixels. Eight
+descriptor phases, each with ten observations, show zero before login, one
+during two-viewer overlap/one viewer/stall/recovery, zero after loss, one during
+fresh capture and zero after final closure. All three viewer processes exit zero;
+server, fixture owners, containers and QEMU join and the guest vivid module
+unloads. Observer bytes remain efebb396129984ac902a115b6ab9716c470e42699c0022e40b5e66ec90deb9c5,
+identical to the failing baseline; its two builds also match. The existing guest
+loopback bind shim is unchanged; no texture-registration delay is injected.
+The surviving transport is not forcibly reconnected and the server is not
+restarted. This is camera capture interruption, not network impairment.
+camera-initial-replay-e4c7550e.json binds nine files/177,747 bytes on both hosts.
+QEMU 3279181 joins zero after 176.780 seconds, scratch peaks at 3,604,971,520 bytes
+and retires, with four zero listener deltas and exact private/process/socket
+absence.
+
+The shared texture change also affects Remote startup, so run the existing
+camera-unavailable/Remote scenario on the same app. TUF 8ROGQA0kbS/tool94488
+passes visible no-camera refusal, password-dialog retirement and zero connected
+sockets, followed by a fresh Remote password entry on the unchanged server.
+Four actual current frames present with maximum observed age 342 ms. Normal
+pointer-driven closure retires the connection and leaves the main UI/settings
+usable in the same process. Both viewers and all server/fixture owners join.
+camera-initial-remote-e4c7550e.json binds nine files/104,134 bytes on CTE/TUF.
+QEMU 3281071 joins zero after 122.248 seconds; scratch peaks at 3,028,557,824 bytes
+and retires, with four zero listener deltas and exact private/process/socket
+absence. The three jobs are terminal, all evidence is copied and no VM remains.
+
+This establishes the exercised Linux/vivid loss/recovery/reacquisition sequence
+and same-app Remote startup regression. Four native publication tests support
+the first-frame correction, but forced-order causal reproduction of the earlier
+intermittent failure has not been performed. Stream-open failures, physical
+devices, installed-service camera behavior, Windows, network impairment and
+long-session acceptance remain OPEN. Next: exercise camera stream-open failure
+and recovery; do not infer those results from this successful frame-loss sequence.
+Compress the current camera ledger around these results while preserving the
+baseline evidence and limits. This append preserves the prior 16,119,968-byte
+audit prefix, SHA-256
+7107d7fe172222883c8049e78b88c239b3973c149c01589459720dcc77de3b92.

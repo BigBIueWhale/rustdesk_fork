@@ -9332,63 +9332,53 @@ and their fixes are preserved in the audit. Linux authenticated/shared capture
 now passes the application scenario below; physical hotplug/device loss,
 installed-service camera behavior and Windows acceptance remain OPEN.
 
-**Full application camera-absence path — PASS.** Replay `018f712b` on the retained
-`b09f3420` app completes real ViewCamera password entry, receiver-side camera
-acquisition refusal, visible selectable error text and connection retirement.
-The same unchanged server then accepts a fresh Remote login, presents four current
-frames (maximum observed age 318 ms) and supports ordinary session closure.
-Both viewer processes and all server/fixture owners join. TUF `VlVfdMpkJA` takes
-125.106 seconds including cleanup; `camera-unavailable-018f712b.json` binds nine
-files/103,524 bytes verified on both hosts, four zero listener deltas and retired
-RAM/private state. This establishes the no-camera failure path.
+**Full application camera interruption and reacquisition — PASS on Linux/vivid.**
+App `e4c7550e` includes device-loss correction `2d86a69d` and texture-publication
+correction `72b52022`. TUF `z5kOTb8Oem` uses only native `/dev/video2`: two real
+password-authenticated viewers display red/green; after the first closes, the
+survivor displays blue on unchanged TCP. Thirty-one observations preserve blue
+during 3,077 ms of withheld capture; red returns 448 ms after restoration, within
+the 2,500 ms deadline on the same connection. Kernel disconnect returns ENODEV;
+the viewer visibly reports Camera capture failed and reaches zero connected
+sockets within five seconds. A fresh password-authenticated connection then
+displays green/blue on the unchanged server. All eight color phases pass three
+observations of 24,000 pixels. Eight device-descriptor phases, each stable across
+ten observations, prove sharing, preservation during interruption, zero handles
+after loss, fresh acquisition and final retirement. All three viewer processes,
+server, containers and QEMU join; the camera module unloads. The 176.780-second
+run is bound by `camera-initial-replay-e4c7550e.json`: nine files/177,747 bytes
+verified on CTE/TUF, four zero listener deltas and retired RAM/private state.
 
-**Full application shared camera capture — PASS on Linux/vivid.** Replay
-`ccecbee1` reuses the exact `b09f3420` app on the authenticated media kernel,
-with only native `/dev/video2`. Two independent viewers complete real password
-entry and display controlled red/green camera pixels through their actual X11
-root windows. After the first viewer closes and joins, the survivor displays
-blue on the same TCP connection. Five color phases each pass three observations
-of all 24,000 sampled pixels. The unchanged server retains exactly one native
-camera descriptor with two viewers and with one; none remain after both close.
-Each descriptor state is stable across ten observations. The server, viewers,
-containers and QEMU join, and the guest camera module unloads. TUF `pClBGbYGgf`
-takes 167.756 seconds through cleanup; `camera-shared-ccecbee1.json` binds nine
-files/175,095 bytes verified on both hosts, four zero listener deltas and retired
-RAM/private state. This is virtual-device application evidence. Next: camera
-loss/recovery and reacquisition in the running application; physical-device,
-installed-service and Windows acceptance remain OPEN.
+**Same-app camera absence and Remote startup — PASS.** TUF `8ROGQA0kbS` exercises
+visible no-camera refusal and connection retirement, then a fresh Remote login
+on the unchanged server. Four current frames present with maximum observed age
+342 ms; ordinary closure leaves the main UI/settings usable. Both viewers and
+all server/fixture owners join. `camera-initial-remote-e4c7550e.json` binds the
+122.248-second run, nine files/104,134 bytes on both hosts, four zero listener
+deltas and retired RAM/private state. Earlier camera-absence and shared-capture
+evidence remains in `camera-unavailable-018f712b.json` and
+`camera-shared-ccecbee1.json`.
 
-**Camera interruption baseline — recovery passes; device-loss completion OPEN.**
-Replay `5a83eb4d` on `b09f3420` preserves actual blue pixels during a 3,085 ms
-camera stall, then displays red within 343 ms of restoration on the same TCP
-connection (2,500 ms deadline). Kernel-simulated disconnect returns ENODEV and
-retires the catalog, but the viewer shows no error and retains its connection.
-`2d86a69d` adds a non-retrying close for the exact authenticated camera session
-when its catalog retires. Full app `843003fe` builds and passes thirteen view-mode,
-eight recording widget/model and two native command controls. Its 74-payload
-manifest is `a33f269fc87d77cc43cf640feccdc3767190f25b10a2859e500541200250192f`;
-only the Rust library differs from `b09f3420`. Replay again decodes the initial
-red frame but presents no pixels in fifteen seconds, so device-loss completion
-and fresh acquisition remain untested. The same startup symptom occurred in
-`camera-recovery-bd06e8a3.json`; a passing intervening startup does not close it.
-`camera-recovery-5a83eb4d.json`, `camera-loss-app-843003fe.json` and
-`camera-loss-replay-843003fe.json` retain the baseline/build/replay evidence on
-CTE/TUF, each with four zero listener deltas and joined VM/RAM/private cleanup.
-
-**Initial texture publication — correction implemented; native acceptance OPEN.**
-Frames decoded before pointer registration have no destination; an unchanged
-camera image need not produce another frame. `72b52022` admits a fresh-frame
-request under the exact owner/display and renderer publication locks before
-installing the pointer. Failure leaves it unpublished; duplicate registration
-and teardown do not request frames. The next isolated full build selects four
-publication/ownership checks, then the real application must pass startup and
-the interrupted-camera sequence. The source explains a race consistent with
-both failures; forced-order causal reproduction has not been performed.
-Stream-open retirement, physical devices, installed-service behavior and Windows
-remain OPEN. Verified retirement of superseded `4468059d` and `b09f3420` releases
-70,823,936 and 70,774,784 allocated bytes respectively, within the unchanged
-four-generation cap. Their manifests/evidence remain; `843003fe` and the older
-package/recording baselines are retained (`camera-initial-retired-b09f3420.json`).
+**Corrections and exact build.** Baseline `b09f3420` recovered a capture stall but
+retained its connection without an error after device loss
+(`camera-recovery-5a83eb4d.json`). `2d86a69d` closes only the authenticated camera
+session whose retained catalog retires. Two runs decoded an initial frame but
+presented none (`camera-recovery-bd06e8a3.json`, `camera-loss-replay-843003fe.json`).
+`72b52022` requests a fresh frame before publishing a new texture pointer under
+the exact owner/display and renderer locks; failed admission retains no pointer,
+and duplicate registration/teardown cannot request frames. Four native ownership/
+publication checks and the 13 view-mode, eight recording and two command controls
+pass in full build `qJYmF7IVwp`. Its 74-payload manifest is
+`68f8b8ff82c1cb13a34882195066bd1b04a60c46efd45ace5b06826007849a55`;
+only the Rust library differs from `843003fe`. `camera-initial-app-e4c7550e.json`
+binds ten files/328,526 bytes on both hosts, compiler limits, four zero listener
+deltas and joined cleanup. The native checks and successful application runs
+support the correction; forced-order reproduction of the earlier startup race
+has not been performed. Stream-open failure retirement, physical devices,
+installed-service behavior, Windows and broader network/long-session acceptance
+remain OPEN. Next: exercise camera stream-open failure and recovery. Superseded
+`4468059d`/`b09f3420` payloads are retired with manifests/evidence retained; the
+four-app cap now holds `6429f3cb`, `a36e5581`, `843003fe` and `e4c7550e`.
 
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production

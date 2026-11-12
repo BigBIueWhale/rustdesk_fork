@@ -341,6 +341,7 @@ case "$#:${8:-}" in
                 --debian-candidate-conffiles) FLUTTER_INSTALLED_SETTINGS=9 ;;
                 --installed-camera) FLUTTER_INSTALLED_SETTINGS=10 ;;
                 --installed-camera-busy) FLUTTER_INSTALLED_SETTINGS=11 ;;
+                --installed-remote) FLUTTER_INSTALLED_SETTINGS=12 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -14857,6 +14858,7 @@ run_flutter_peer_presentation() {
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 9 ] || settings_mode=--run-package-conffiles
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 10 ] || settings_mode=--run-package-camera
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 11 ] || settings_mode=--run-package-camera-busy
+        [ "$FLUTTER_INSTALLED_SETTINGS" -ne 12 ] || settings_mode=--run-package-remote
         settings_extra=()
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             settings_mode=--run-graphical

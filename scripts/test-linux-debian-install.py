@@ -426,7 +426,7 @@ def obsolete_conffiles(source, prepared, archive, settings, installed_state):
 
 
 def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None,
-         settings_mode=None, upgrade=False, conffiles=False, camera=False):
+         settings_mode=None, upgrade=False, conffiles=False, camera=False, remote=False):
     require(Path(__file__).resolve() == SCRIPT, 'package test entry differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
@@ -477,7 +477,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
     pidfds = []
     supervisors = []
     network_before = settings.network_state()
-    password = 'rustdesk-peer-9f2a7c4e' if camera else settings.BASELINE_PASSWORD
+    password = 'rustdesk-peer-9f2a7c4e' if camera or remote else settings.BASELINE_PASSWORD
 
     def sessionless_snapshot(phase):
         pid = supervisors[-1]
@@ -601,15 +601,19 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                 credential = receiver.credential()
             require(digest(receiver.PROBE) == probe_sha, 'installed CPace probe differs')
             desktop_runtime(settings, prepared)
-            camera_fixture = None
-            if camera:
+            presentation_fixture = None
+            if camera or remote:
                 desktop_accessibility(source)
-                settings.install(prepared / 'driver-first', WORK / 'camera-driver', 0o755)
-                require('not found' not in settings.run(['/usr/bin/ldd', str(WORK / 'camera-driver')]),
-                        'installed camera observer has an unresolved dependency')
-                spec = importlib.util.spec_from_file_location('installed_camera', SCRIPT.with_name('test-linux-installed-camera.py'))
-                camera_fixture = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(camera_fixture)
+                driver = WORK / ('presentation-driver' if remote else 'camera-driver')
+                settings.install(prepared / 'driver-first', driver, 0o755)
+                require('not found' not in settings.run(['/usr/bin/ldd', str(driver)]),
+                        'installed presentation observer has an unresolved dependency')
+                if remote:
+                    settings.install(prepared / 'source-first', WORK / 'presentation-source', 0o755)
+                spec = importlib.util.spec_from_file_location('installed_presentation', SCRIPT.with_name(
+                    'test-linux-installed-remote.py' if remote else 'test-linux-installed-camera.py'))
+                presentation_fixture = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(presentation_fixture)
 
             def desktop_bootstrap(actor, session, pam):
                 nonlocal credential
@@ -632,10 +636,11 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                                 'product loaded or inherited the private desktop runtime')
                     settings.credential_network(receiver, record, probe_sha, 'package-desktop-bootstrap',
                                                 new=password, old='Wrong-bootstrap-password-2026!')
-                    if camera:
-                        mapped_core(record, manifest, 'installed-camera')
+                    if camera or remote:
+                        mapped_core(record, manifest, 'installed-remote' if remote else 'installed-camera')
                         try:
-                            camera_fixture.scenario(settings, receiver, record, busy=camera == 'busy')
+                            presentation_fixture.scenario(settings, receiver, record,
+                                                          **({} if remote else {'busy': camera == 'busy'}))
                         except BaseException:
                             settings.stop_service(receiver, record)
                             raise
@@ -713,7 +718,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                     '/etc/init.d/rustdesk')), 'purge retained package-owned state')
         if conffiles:
             obsolete_conffiles(source, prepared, archive, settings, installed_state)
-        elif agent_archive_sha is None and settings_mode is None and not upgrade and not camera:
+        elif agent_archive_sha is None and settings_mode is None and not upgrade and not camera and not remote:
             administrator_units(source, archive, version, settings, receiver)
         command([*apt, 'check'], 'final-dependencies')
         require(command(['/usr/bin/dpkg', '--audit'], 'final-dpkg-audit') == '', 'final dpkg state is incomplete')
@@ -749,7 +754,12 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if camera == 'busy':
+    if remote:
+        print(f'LINUX_DEBIAN_REMOTE_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked service=actual viewer=actual pixels=fresh suspension_cycles=3 '
+              'recovery=preserved-connection credential=preserved child=unchanged desktop=retired '
+              'reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
+    elif camera == 'busy':
         print(f'LINUX_DEBIAN_CAMERA_BUSY_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked service=actual camera=vivid viewer=actual colors=2 '
               'busy=visible owner=preserved reacquisition=presented '
@@ -810,7 +820,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 if __name__ == '__main__':
     require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
             or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop',
-                                                     '--run-upgrade', '--run-conffiles', '--run-camera', '--run-camera-busy')),
+                                                     '--run-upgrade', '--run-conffiles', '--run-camera', '--run-camera-busy', '--run-remote')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
@@ -819,4 +829,5 @@ if __name__ == '__main__':
                         '--run-admin-failure': 'admin-failure',
                         '--run-concurrent-stop': 'concurrent-stop'}.get(sys.argv[1]),
          upgrade=sys.argv[1] == '--run-upgrade', conffiles=sys.argv[1] == '--run-conffiles',
-         camera={'--run-camera': 'recovery', '--run-camera-busy': 'busy'}.get(sys.argv[1], False))
+         camera={'--run-camera': 'recovery', '--run-camera-busy': 'busy'}.get(sys.argv[1], False),
+         remote=sys.argv[1] == '--run-remote')

@@ -149409,3 +149409,14 @@ wrong/stale-principal, mutation cancellation/concurrency, broader I/O, multi-wri
 long-session/network-recovery or other-platform acceptance. Those remain OPEN.
 This append preserves the prior 16,049,099-byte audit prefix, SHA-256
 905a5a475cfc49e67849e66c21886dde3529957d6c9aeb4ddf052facc0a816ba.
+
+Fresh ledger count at 77f8f7b7, VrwxihaDi1/tool52197 exits zero: 413,029 tokens /
+1,884,669 bytes, SHA-256
+5e4510ac667adebed4269bed5821cce72d01cbbb3e830ea16aab895abb2cdd4c.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and the full round trip pass.
+installed-recording-output-ledger-77f8f7b7.json binds eight files/115,711 bytes
+copied and verified on CTE/TUF. QEMU 380964 joins zero; three host listener deltas
+are zero and private/socket/RAM retirement passes. The approximate 400,000-token
+compression target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,053,491-byte audit prefix, SHA-256
+bb81544984d56e69954f3862d2ec82c223f1e51eb85b964251f74667990302cd.

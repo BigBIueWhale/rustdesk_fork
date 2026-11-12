@@ -4127,10 +4127,30 @@ installed controller's six-command success budget; that secondary fixture
 error does not replace the earlier pixel failure. Exact VM/private/RAM
 retirement and four zero host listener deltas are reconciled; nine evidence
 files/794,849 bytes match on CTE/TUF (`remote-installed-loss-2ace6bf8.json`).
-Keep R-F5 OPEN. Next: a reproducible regression for this retransmission state
-and post-deadline observation retaining the failed verdict. Bandwidth/jitter
-plumbing is added but its installed scenario has not run. No product fix or
-full build is claimed.
+R-F5 remains OPEN; the fixed-outage follow-up below examines transport backoff.
+Bandwidth/jitter plumbing is added but its installed scenario has not run.
+No product fix or full build is claimed.
+
+**Fixed long-outage regression (`85647358`) — failure reproduced twice.**
+An 18-second complete outage exercises long TCP backoff without a random loss
+sequence. TUF `3UQnDWmNdf` and independent repeat `eau4B3ri0Q` reuse app
+`2eb7015e`; both miss the unchanged 2,500-ms deadline with zero fresh states.
+The observer now retains that failure while watching recovery for up to another
+15 seconds, and avoids a redundant restoration after healthy readback.
+Both runs record nine drops, zero delivered packets during loss, TCP backoff 6
+and RTO 13,056 ms. Delivery resumes 8.61–8.89 seconds after restoration;
+first fresh pixels follow at about 9.03/9.00 seconds, with four distinct fresh
+states at **9,828/9,829 ms**. Three-second follow-up maximum ages are 368/364 ms
+against baselines 316/331 ms. Connection/window and resource bounds persist;
+the observer exits 1, preserving the failed verdict without the secondary
+controller error. This reproduces a transport contribution to late recovery;
+it neither fixes the product nor closes the original random-burst scenario.
+The two `remote-installed-backoff[-repeat]-85647358.json` capsules bind eighteen
+files/835,695 bytes on CTE/TUF, eight zero listener deltas and exact joined
+VM/private/RAM cleanup. Next assess connection-owned transport recovery against
+R-F3/R-F4/R-F5 using these traces; do not repeat unchanged runs or turn the
+observed late recovery into a passing deadline. Installed congestion and the
+broader R-F5 matrix remain OPEN.
 
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without

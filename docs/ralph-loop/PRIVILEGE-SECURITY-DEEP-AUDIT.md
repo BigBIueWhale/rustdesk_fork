@@ -151003,3 +151003,57 @@ and exact private/process/socket/RAM retirement. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,159,154-byte audit prefix, SHA-256
 eba0ecbd4a19b4b9dbd47654c396ff72f4ed6252a1d3d4d9e7cf79a189a89369.
+
+## 2026-11-13 — Fixed outage reproduces late recovery; failed verdict retained
+
+Previous turn was progress: installed burst-loss failure UUTuxoUiOi changed
+the next action. At clean f336d89b, select a reproducible transport-backoff
+regression before further random retries or product tuning. Commit 85647358
+adds one fixed 18-second total-loss case through the existing installed-package
+path. All existing 2,500-ms recovery/1,000-ms freshness limits stay intact.
+After a recovery failure, the actual pixel observer watches for four fresh
+states for up to fifteen additional seconds, then measures a three-second
+healthy follow-up. It always returns failure. A restored network is not
+restored again on cleanup, removing the secondary request-budget error.
+
+Same app 2eb7015e and manifest 88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a
+run in two independent TUF VMs: 3UQnDWmNdf/tool80712 and eau4B3ri0Q/tool10443.
+Both exit 1 at the original deadline with zero fresh states. Actual holds are
+18,022/18,007 ms, each dropping nine packets and delivering zero. TCP reaches
+backoff 6 and RTO 13,056 ms; its observed send queue peaks at 2,046 bytes.
+After healthy queue readback, viewer received-byte progress resumes between
+8,653–8,882 / 8,614–8,831 ms. First fresh pixels appear at approximately
+9,029/8,997 ms and four fresh states at 9,828/9,829 ms. Follow-up maximum ages
+368/364 ms compare with 316/331-ms baselines. Each source publishes 144 frames;
+147/148 TCP snapshots retain the original pair until normal viewer closure.
+Window/connection checks pass, FDs remain 45, RSS grows 4,288/4,808 KiB and
+thread counts decrease. Both observers exit 1 normally; redundant restoration
+and the old controller budget error are absent. Service stop succeeds, while
+the later package reinstall/remove/purge path is not reached. This is a
+repeatable missed recovery deadline with subsequent healthy presentation,
+not permanent display lag, a product correction or complete R-F5 acceptance.
+
+Primary-source design constraint: Linux v6.1 tcp_retransmit_timer doubles RTO
+under ordinary backoff; its keepalive timer defers when data is outstanding.
+tcp_write_timeout applies TCP_USER_TIMEOUT to connection failure. These do not
+provide a general healthy-network notification or an immediate in-place
+retransmission actuator. Source reviewed:
+https://github.com/torvalds/linux/blob/v6.1/net/ipv4/tcp_timer.c
+https://www.rfc-editor.org/rfc/rfc6298.html#section-5
+The application's LatencyProbe only completes a matching reply and schedules
+two fresh measurements after a stalled sample; changing that application timer
+alone cannot explain away the observed interval without TCP delivery. Next
+assess connection-owned transport recovery against R-F3/R-F4/R-F5. Preserve
+the failed cases; do not add a forced reconnect, alter host TCP policy, weaken
+the deadline or rerun unchanged cases as a substitute for a justified design.
+
+remote-installed-backoff-85647358.json and
+remote-installed-backoff-repeat-85647358.json bind nine files each, respectively
+410,210/425,485 bytes copied and hash-verified on CTE/TUF before unfreeze.
+QEMU 3720247/3724629 joins zero after 118.307/118.285 seconds. Peak RAM scratch
+4,214,870,016/4,215,525,376 bytes retires; eight host listener deltas are zero.
+Each owned failed private directory is reconciled against retained output and
+exact process/socket/RAM absence before removal. No product build or extra
+application artifact occurs. Installed congestion and broader acceptance stay
+OPEN. This append preserves the prior 16,159,821-byte audit prefix, SHA-256
+ad75455cc319b334993dbf7a5dbaa5c79786433dbbbe70f7feae9b657e4e7a45.

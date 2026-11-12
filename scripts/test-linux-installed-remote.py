@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Observe Remote pixels and paused-viewer recovery through the installed service."""
+"""Observe Remote pixels and viewer/network recovery through the installed service."""
 from contextlib import ExitStack
 import ctypes
 import importlib.util
@@ -21,6 +21,11 @@ SCRIPT = Path('/mnt/rustdesk-verifier-inputs/repo/scripts/test-linux-installed-r
 COORD = Path('/coord')
 NETWORK_ENDPOINT = '/netem.sock'
 NETWORK_HOLDS = [6000, 2000, 6000, 1750, 5750, 2250, 6250, 2500, 6500]
+NETWORK_PROFILES = {
+    'network': ['delay'] + ['loss'] * 8,
+    'loss': ['random3', 'random8', 'burst'],
+    'congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
+}
 
 
 def require(condition, message):
@@ -45,13 +50,13 @@ def network_request(request, refused=False):
                 'installed network attachment result differs')
 
 
-def observe_network(settings, actor):
+def observe_network(settings, actor, network):
     spec = importlib.util.spec_from_file_location('peer_netem', SCRIPT.with_name('flutter-peer-netem.py'))
     netem = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(netem)
-    owner = netem.Impairment(None)
+    owner = netem.Impairment(None, congestion=network == 'congestion')
     driver_pid = driver_fd = None
-    expected = ['delay', 'healthy'] + ['loss', 'healthy'] * 8
+    expected = [request for profile in NETWORK_PROFILES[network] for request in (profile, 'healthy')]
     profiles, refusals = [], 0
     require(not os.path.lexists(NETWORK_ENDPOINT), 'installed network endpoint occupied')
     subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=netem.ENV, check=True, timeout=3)
@@ -126,11 +131,12 @@ def observe_network(settings, actor):
                             and (current.st_dev, current.st_ino) == (identity.st_dev, identity.st_ino),
                             'installed network endpoint changed')
                     os.unlink(NETWORK_ENDPOINT)
-    print('LINUX_INSTALLED_NETWORK_RETIRED=pass profiles=18 actor_wrong_role=refused '
+    print(f'LINUX_INSTALLED_NETWORK_RETIRED=pass profiles={len(expected)} actor_wrong_role=refused '
           'observer=exact-child loopback=restored ingress=removed interface=removed socket=removed', flush=True)
 
 
 def session(network=False):
+    require(network is False or network in NETWORK_PROFILES, 'unknown Remote network scenario')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(settings)
@@ -192,7 +198,8 @@ def session(network=False):
             start = Path(f'/proc/{viewer.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
             driver = subprocess.Popen([str(settings.WORK / 'presentation-driver'), ':77', ':79',
                                        str(viewer.pid), start,
-                                       '--network-impairment' if network else '--viewer-suspend'],
+                                       {'network': '--network-impairment', 'loss': '--network-loss',
+                                        'congestion': '--network-congestion'}.get(network, '--viewer-suspend')],
                                       env={**environment, 'XAUTHORITY': str(authority)},
                                       stdout=log('driver.log'), stderr=subprocess.STDOUT)
             processes.append(driver)
@@ -229,6 +236,7 @@ def session(network=False):
 
 
 def scenario(settings, receiver, record, network=False):
+    require(network is False or network in NETWORK_PROFILES, 'unknown Remote network scenario')
     guard(settings, 0)
     COORD.mkdir(mode=0o700)
     os.chown(COORD, 4001, 4001)
@@ -240,10 +248,10 @@ def scenario(settings, receiver, record, network=False):
     try:
         with log.open('xb') as output:
             actor = subprocess.Popen([*settings.ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
-                                      str(SCRIPT), '--session-network' if network else '--session'], env=settings.ENV,
+                                      str(SCRIPT), '--session-' + network if network else '--session'], env=settings.ENV,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=output)
             if network:
-                observe_network(settings, actor)
+                observe_network(settings, actor, network)
             raw, _ = actor.communicate(timeout=180)
             require(actor.returncode == 0 and len(raw) <= 4096, 'installed Remote session failed')
             result = json.loads(raw)
@@ -256,8 +264,8 @@ def scenario(settings, receiver, record, network=False):
         print('LINUX_INSTALLED_REMOTE_PRESENTATION=' + json.dumps({
             **record, **result, 'listener_inode': listener, 'credential': 'unchanged',
             'profile': 'unchanged', 'session_exit': 0,
-            'scenario': 'network' if network else 'suspend',
-            'holds_ms': NETWORK_HOLDS if network else [2000, 6000, 12000],
+            'scenario': network or 'suspend',
+            'holds_ms': NETWORK_HOLDS if network == 'network' else [20000] * 3 if network else [2000, 6000, 12000],
             'recovery_limit_ms': 2500, 'freshness_limit_ms': 1000,
         }, sort_keys=True), flush=True)
     finally:
@@ -272,6 +280,7 @@ def scenario(settings, receiver, record, network=False):
 
 
 if __name__ == '__main__':
-    require(sys.argv[1:] in (['--session'], ['--session-network']),
+    require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion']),
             'closed installed Remote session request required')
-    session(network=sys.argv[1] == '--session-network')
+    session(network={'--session-network': 'network', '--session-loss': 'loss',
+                     '--session-congestion': 'congestion'}.get(sys.argv[1], False))

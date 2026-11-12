@@ -150336,3 +150336,14 @@ Next: build the corrected full app and rerun the same lifecycle scenario. Keep
 device-loss completion, fresh capture and the intermittent startup failure OPEN.
 This append preserves the prior 16,110,801-byte audit prefix, SHA-256
 3557e5a6fe495e0ca30887c6412d870eebf1efb8ea67a425c0073d12e920e569.
+
+Fresh ledger count at ba908480, 2jm20MoaKP/tool6433, passes: 416,134 tokens /
+1,899,054 bytes, SHA-256
+145c43340bb8268fd19cca16bcda508ef4255cc6a5af43d074c7b21b8fbddd72.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-loss-ledger-ba908480.json binds eight files/115,657 bytes on CTE/TUF.
+QEMU 2978172 joins zero after 30.479 seconds, with three zero listener deltas
+and exact private/process/socket/RAM retirement. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,115,183-byte audit prefix, SHA-256
+88fbf488bf744d7710de5f73e94a8e98370004e89f3ef947d41d8ad0a95ff354.

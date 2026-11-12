@@ -150206,3 +150206,57 @@ exact private/process/socket/RAM retirement. The approximate 400,000-token targe
 remains OPEN. This audit-only append preserves the counted ledger and prior
 16,105,827-byte audit prefix, SHA-256
 57986e7710a65c8c5e7127424276b3730e8a7b02121e3bf20b322271ad8b9c95.
+
+### 2026-11-12 — Two authenticated ViewCamera viewers and capture retirement
+
+Continue R-F1/R-S0 application acceptance on the retained b09f3420 app, manifest
+ac77e9c1b36a44bbb3144b121a6d32e32d6c7e09b3c3b6a5eed6b3f8f717f60e.
+Successful capture and shared ownership take priority over another component or
+absence replay: the product correction previously lacked this application proof.
+No product change or rebuild is needed.
+
+Fixture ccecbee1 connects the existing admitted Linux app replay to the pinned
+media-kernel handoff in the same no-NIC QEMU. The first boot provisions the
+authenticated kernel and two equal initrds; the second runs the common guest
+orchestrator. Only the application boot owns the framed output transaction.
+The guest creates one vivid camera at native index two, passes that exact device
+read/write only to the unprivileged server container, and unloads its module after
+all application containers retire. Viewers retain separate PID/IPC namespaces,
+homes and displays while sharing the closed loopback network. All containers
+drop capabilities and retain read-only roots and no-new-privileges.
+
+The observer uses Linux v6.1's documented vivid control IDs and menu identities:
+https://raw.githubusercontent.com/torvalds/linux/v6.1/drivers/media/test-drivers/vivid/vivid-ctrls.c
+https://raw.githubusercontent.com/torvalds/linux/v6.1/drivers/media/common/v4l2-tpg/v4l2-tpg-core.c
+https://docs.kernel.org/6.2/admin-guide/media/vivid.html
+It verifies controls through QUERYCTRL/QUERYMENU and reads back each setting.
+Solid red/green/blue images with OSD/border/square disabled distinguish camera
+pixels from the unrelated monitor fixture. The helper never captures or injects
+product frames. Each real viewer enters its password, matches its exact camera
+window, observes pixels from the X11 root and retains its own TCP socket identity.
+
+TUF pClBGbYGgf/tool55672 passes on the first run. Both viewers display red and
+green; the first closes and joins before blue is selected, and the remaining
+viewer displays blue without reconnecting. All five phases observe 24,000/24,000
+matching pixels in each of three successive samples. The unchanged server has
+zero camera descriptors before login, one during overlap, one after first-viewer
+closure, and zero after last-viewer closure, each across ten 50 ms observations.
+Both viewers exit zero, the same server exits zero, and the kernel module unloads
+after container retirement. Descriptor retirement is observed before server exit;
+the retained service thread handles are ultimately joined by server shutdown.
+
+camera-shared-ccecbee1.json binds nine files/175,095 bytes verified on CTE/TUF.
+Outer SHA-256: 2ca742d7f37c525a91dfaac24b865f10ecc20d6f2ca650fc1d943f394fc01110.
+QEMU 2848926 joins zero after 167.756 seconds through cleanup. RAM scratch peaks
+at 3,605,278,720 bytes and retires; all four host listener comparisons have zero
+additions/removals. Exact private-tree, Unix-socket and QEMU/RAM absence pass.
+The C observer compiles twice to identical bytes, SHA-256
+929f847fcff9124093897c51ab31b731ff3e50097ba9f9c20a29d073a0665258.
+The full application and authenticated caches are reused unchanged.
+
+This closes Linux/vivid positive shared-camera presentation and the exercised
+retirement sequence. Physical hotplug/device loss, running-app recovery and fresh
+reacquisition, installed-service camera behavior, Windows and broader release
+acceptance remain OPEN. Next: loss/recovery and reacquisition on the same running
+application. Preserve the prior 16,106,498-byte audit prefix, SHA-256
+f71f093d5d10c2ac552a4a23aa556458b7fb7babaf90dc74ef84fed73244d579.

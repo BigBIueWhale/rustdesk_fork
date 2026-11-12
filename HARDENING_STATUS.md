@@ -9328,9 +9328,9 @@ Only the Rust library and readiness helper differ from `4468059d`; the other 72
 payloads, inputs, engine and recipe match. `camera-catalog-app-b09f3420.json`
 binds ten files/327,550 bytes on both hosts, enforced compiler limits, four zero
 listener deltas and joined cleanup. Two preceding import-related compile failures
-and their fixes are preserved in the audit. Positive authenticated ViewCamera,
-concurrent service subscriptions, physical hotplug/device loss and Windows
-acceptance remain OPEN.
+and their fixes are preserved in the audit. Linux authenticated/shared capture
+now passes the application scenario below; physical hotplug/device loss,
+installed-service camera behavior and Windows acceptance remain OPEN.
 
 **Full application camera-absence path — PASS.** Replay `018f712b` on the retained
 `b09f3420` app completes real ViewCamera password entry, receiver-side camera
@@ -9340,9 +9340,23 @@ frames (maximum observed age 318 ms) and supports ordinary session closure.
 Both viewer processes and all server/fixture owners join. TUF `VlVfdMpkJA` takes
 125.106 seconds including cleanup; `camera-unavailable-018f712b.json` binds nine
 files/103,524 bytes verified on both hosts, four zero listener deltas and retired
-RAM/private state. This is the no-camera failure path, not successful camera
-capture. Next: run the retained app on the admitted media kernel for positive
-ViewCamera and simultaneous-viewer/service-retirement acceptance.
+RAM/private state. This establishes the no-camera failure path.
+
+**Full application shared camera capture — PASS on Linux/vivid.** Replay
+`ccecbee1` reuses the exact `b09f3420` app on the authenticated media kernel,
+with only native `/dev/video2`. Two independent viewers complete real password
+entry and display controlled red/green camera pixels through their actual X11
+root windows. After the first viewer closes and joins, the survivor displays
+blue on the same TCP connection. Five color phases each pass three observations
+of all 24,000 sampled pixels. The unchanged server retains exactly one native
+camera descriptor with two viewers and with one; none remain after both close.
+Each descriptor state is stable across ten observations. The server, viewers,
+containers and QEMU join, and the guest camera module unloads. TUF `pClBGbYGgf`
+takes 167.756 seconds through cleanup; `camera-shared-ccecbee1.json` binds nine
+files/175,095 bytes verified on both hosts, four zero listener deltas and retired
+RAM/private state. This is virtual-device application evidence. Next: camera
+loss/recovery and reacquisition in the running application; physical-device,
+installed-service and Windows acceptance remain OPEN.
 
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production

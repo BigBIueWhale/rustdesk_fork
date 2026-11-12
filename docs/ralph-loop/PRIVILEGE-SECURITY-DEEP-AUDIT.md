@@ -148166,3 +148166,70 @@ both hosts. QEMU 2074558 joins zero after 30.311 seconds; peak RAM scratch
 402,976,768 bytes, three zero listener deltas and exact private/socket/RAM
 absence are verified. Approximate 400,000-token compression remains OPEN.
 This audit-only append preserves the counted ledger bytes.
+
+### 2026-11-12 — Combined recording and diagnostic failure passes full UI
+
+Previous turn: progress, correcting the reproduced production logger panic and
+passing its unchanged native regression. This turn completes the selected R-S0
+Linux application acceptance before moving to another recording boundary.
+Prior audit prefix: 15,966,720 bytes, SHA-256
+c8b82ae9fdb8151154a2186fd8801809cff6da1117b1a0a03916361ab789c07a.
+No additional product change or new dependency decision is needed.
+
+The existing full build kE5H6wQaMI/tool63618 finishes at source
+dbd57c515f8b8b21c70d5b8300ae359f68cde9c8, tree
+5fdbaab951492cad8e2fbbc9192ee80530b87d52. Source and authenticated caches remain
+fixed through terminal exit, artifact verification and evidence copying. Rust
+1.75.0/Flutter 3.47.5 complete offline; thirteen Flutter checks and two Rust
+command checks pass. Two Cargo jobs stay below 10 GiB (peak 10,727,542,784 bytes),
+with zero swap and no OOM. All 74 payloads, modes, owners, inventory and digests
+match app-manifest.json SHA-256
+6a739b6928d1fde6c33f35635cf312dc3ab5dd173290f16ce857a15ac4302937.
+The engine matches the retained 7c58ad90 build and the new vendor closure is
+db9fc690b90b0b2272b281cd8a39b1edf97be19e637a9d1c3d81f6857cab26ac.
+Comparison finds two changed payloads, not the initially expected one:
+bundle/lib/librustdesk.so and smoke-readiness. The helper source is unchanged
+and links librustdesk/hbb_common; its rebuilt bytes are not claimed identical.
+The other 72 payloads match. The subsequent replay exercises the new helper,
+including its native self-test, as well as the corrected application.
+logger-app-dbd57c51.json binds ten files/320,021 bytes verified on both hosts.
+QEMU 2077259 joins zero after 1,268.230 seconds; peak RAM scratch is
+11,905,138,688 bytes. All four listener deltas are zero. Exact private tree,
+sockets, process and RAM workspace are absent after joined retirement.
+
+Y2UzbBLqdW/tool24100 reuses that exact artifact with --recording-directory and
+the same authenticated ddb1541d engine. Both stdout and stderr use the original
+regular /tmp/viewer.log, subject to the process-wide zero file-size limit.
+The fault, error/status/output/freshness bounds and five retry cycles are byte-
+identical to the d1ae1c63 combined-failure baseline; only the observer's line
+buffering differs. No diagnostic FIFO/reader exemption remains. The actual
+viewer now shows "Failed: Failed to finalize WebM recording", becomes inactive
+and offers retry. The two existing files (17,726 and 1,581 bytes) retain their
+identities and hashes. The limit restores, the same peer's 25 stopped threads
+resume after 631 ms, and four fresh images have maximum observed age 833 ms,
+within the unchanged 1,000 ms bound. The separate EACCES case also reports its
+error, becomes inactive, offers retry and recovers fresh display (306 ms).
+
+Five same-viewer focus/retry attempts each finalize three VP9 files while the
+viewer is alive: 21/23/22/23/23 decoded frames, 112 total. Aggregate durations
+are 4,800/5,046/4,798/5,047/5,057 ms. Every file independently decodes; timing,
+continuity, truncated-copy refusal and final files unchanged after viewer exit
+pass. Native Unicode folder selection, Cancel, restart persistence, typed IPC
+readiness, normal process exits and peer cleanup also pass. Raw observer
+receipts need no reassembly. Outer and orchestrator exit zero.
+native-recording-logger-dbd57c51.json binds nine files/137,589 bytes verified
+on both hosts. Raw output is 33,803 bytes, SHA-256
+4d376ef381838a248fc1e651e3986be125f4b1896768480099c87b3b2aa0e687.
+QEMU 2286626 joins zero after 160.658 seconds; peak RAM scratch is
+3,026,329,600 bytes. All four listener deltas are zero, and exact private tree,
+sockets, process and RAM workspace are absent. Only bounded evidence and the
+intentional authenticated application cache remain.
+
+This closes the selected Linux combined recording/diagnostic-write UI failure.
+It does not establish every logging failure, installed/root recording, other
+platforms or R-S0/R-F5 completion. Concurrent resident-log loss remains the
+known fifth-control failure; the complete logging profile is still 5/1.
+Multiple writers/late failures, blocked recording I/O, controlled-side discarded
+write results, whole online closure/cold reproduction and broader release
+acceptance remain OPEN. Next recording work is real multiple-writer/late-failure
+finality, using existing component facilities before another application build.

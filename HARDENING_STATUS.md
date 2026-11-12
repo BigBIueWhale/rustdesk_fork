@@ -6742,46 +6742,39 @@ both hosts, zero listener deltas and joined VM/RAM retirement. This closes the
 selected Linux integration gap; the earlier unclassified file-stage failure
 remains unclassified.
 
-**Recording finalization — Linux full-UI error/retry passes with writable diagnostics.**
-The unchanged `7c58ad90` application passes a kernel file-size-limit failure
-at Stop: the exact finalization error appears, recording becomes inactive,
-existing files retain their identities/bytes, and retry is available. Restoring
-the limit and resuming the same peer recovers fresh display (307 ms maximum
-observed age). Five same-viewer retries produce fifteen complete VP9 files and
-112 decoded frames, retaining the timing, truncated-copy and shutdown checks.
-`native-recording-finalize-diagnostic-280a3df9.json` binds this isolated run,
-source/artifact identities, zero listener deltas and joined VM/RAM cleanup.
+**Combined recording/diagnostic write failure — corrected Linux full-UI scenario ACCEPTED.**
+The `7c58ad90` baseline aborts after a process-wide zero file-size limit also
+denies regular-file diagnostics (`native-recording-finalize-d1ae1c63.json`).
+The production logger regression captures `flexi_logger` 0.27.4's diagnostic
+`eprintln!` panic after log-file/stderr EFBIG; release applications use panic=abort.
+`5ef04c3f` pins authenticated 0.28.0 and makes the shared release builder attempt
+diagnostics without panicking on their failure. The unchanged Rust 1.75 regression
+then returns, restores the limit and persists the next record. Native A/B evidence:
+`logger-write-baseline-d37acfd4-admitted.json`, `logger-write-fixed-5ef04c3f.json`.
+Four logging controls also pass; concurrent resident-log loss remains the sole
+failure, so the complete logging profile remains five passed/one failed.
 
-**Combined recording/diagnostic write failure — logger correction passes; full-UI acceptance OPEN.** The first run
-at `d1ae1c63` aborts the viewer after the same process-wide zero file-size limit
-also denies regular-file stdout/stderr writes. Its core is empty and no exact
-finalization feedback is observed (`native-recording-finalize-d1ae1c63.json`).
-At `1e3aa465`, regular-file stdout plus separately drained stderr passes the
-same full-UI finalization and five retry cycles. Observer line buffering also
-preserves every receipt without reassembly (`native-recording-stdout-1e3aa465.json`).
-This does not prove stdout was written during the fault. The focused production
-logger regression at `d37acfd4` proves stderr returns EFBIG, then captures the
-panic from `flexi_logger` 0.27.4's log-write error handler through `util.rs:90`'s
-`eprintln!`. Release applications use panic=abort. Four logging controls pass;
-the existing concurrent resident-log loss reproduces separately. Capsule
-`logger-write-baseline-d37acfd4-admitted.json` binds the Linux Rust 1.75 component
-artifact, stack, source, four zero listener deltas and joined VM/RAM retirement.
-`5ef04c3f` pins authenticated `flexi_logger` 0.28.0 and configures the shared
-release builder to attempt diagnostic output without panicking if it fails.
-The unchanged regression now passes on Rust 1.75: simultaneous log-file/stderr
-EFBIG returns, the limit restores, the next record persists, and the child joins.
-Four existing controls also pass; concurrent resident-log loss remains the sole
-failure, so the full logging profile still fails. `logger-write-fixed-5ef04c3f.json`
-binds the artifact, five-pass/one-fail result, dependency import, four zero listener
-deltas and joined VM/RAM cleanup. Each host adds only 702,300 source bytes to its
-authenticated vendor cache. The whole online-input closure is not repinned;
-complete cold-input reproduction remains OPEN.
-The diagnostic FIFO exemption is removed from the recording fixture. Next:
-build the corrected full application and require recording finalization feedback,
-inactive status, display recovery and five retries with regular-file stdout/stderr.
-The obsolete pre-clock `8543fa9e` application cache is retired after verifying
-all 74 payloads, freeing 70,606,848 allocated bytes for that build. Its manifest
-and native evidence remain; `7c58ad90` remains the combined-failure baseline.
+The corrected full application `dbd57c51` builds with thirteen Flutter and two
+Rust command checks. `logger-app-dbd57c51.json` authenticates all 74 payloads:
+the core library and rebuilt readiness helper differ from `7c58ad90`; the other
+72 files match. The replay uses the original combined-failure fixture with
+regular-file stdout/stderr and no diagnostic FIFO exemption. Its only change
+from `d1ae1c63` is observer line buffering. The exact finalization error appears,
+recording becomes inactive, two output files remain unchanged, and retry is
+available. Restoring the limit and resuming the same peer recovers fresh display
+(833 ms maximum observed age, within the unchanged 1,000 ms bound).
+Five same-viewer focus/retry cycles produce fifteen complete VP9 files and
+112 decoded frames. Timing/continuity, truncated-copy refusal, unchanged output
+after viewer exit, EACCES feedback/retry, Unicode folder selection, Cancel and
+restart persistence all pass. `native-recording-logger-dbd57c51.json` binds nine
+files/137,589 bytes verified on both hosts, four zero listener deltas and joined
+VM/RAM retirement. This closes the selected Linux combined-failure UI gap.
+
+The authenticated vendor cache adds 702,300 source bytes per host; whole online
+closure repinning and complete cold-input reproduction remain OPEN. The retired
+`8543fa9e` app freed 70,606,848 allocated bytes; its manifest/evidence and the
+`7c58ad90` baseline remain. Writable-diagnostic intermediate controls remain in
+the audit. Next recording work is actual multiple-writer/late-failure finality.
 
 Multiple writers and late failures, broader full-UI finalization failures,
 blocked recording I/O, installed/root and other-platform recording remain OPEN.

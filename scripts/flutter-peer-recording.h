@@ -156,7 +156,7 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
                         memset(pixels + (y * X11_FRAME_WIDTH + x) * 3U, luma, 3U);
                     }
                 int64_t identity = x11_frame_decode(pixels);
-                if (identity < 0 && video->images == 1U) {
+                if (identity < 0 && video->startup_images == 0U) {
                     GdkPixbuf *thumbnail = gdk_pixbuf_new_from_data(pixels, GDK_COLORSPACE_RGB,
                         FALSE, 8, X11_FRAME_WIDTH, X11_FRAME_HEIGHT, X11_FRAME_WIDTH * 3U, NULL, NULL);
                     gchar *png = NULL;
@@ -166,7 +166,8 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
                             "png", &error, NULL) && length <= 65536U) {
                         gchar *encoded = g_base64_encode((const guchar *)png, length);
                         if (encoded != NULL) {
-                            fprintf(stderr, "FLUTTER_PEER_RECORDING_FIRST_IMAGE png_base64=%s\n", encoded);
+                            fprintf(stderr, "FLUTTER_PEER_RECORDING_UNRECOGNIZED_IMAGE packet=%u pts_ms=%lld png_base64=%s\n",
+                                    video->packets, (long long)pts, encoded);
                             g_free(encoded);
                         }
                     }

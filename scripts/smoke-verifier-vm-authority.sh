@@ -9485,6 +9485,9 @@ elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
             'dependency-complete package replacement drains concurrent credential changes'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
         require_exact_fixed_receipt \
+            'LINUX_INSTALLED_RECORDING_GRAPHICAL=pass cancellation=gtk-selection-and-password cancelled=2 fresh_authorizations=4 helpers=reaped protected=preserved profile=unchanged retry=same-gui-and-agent enabled=confirmed disabled=confirmed' \
+            'installed recording cancellation and fresh graphical retry'
+        require_exact_fixed_receipt \
             "LINUX_DEBIAN_SETTINGS_NATIVE=pass cases=5 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked install=dpkg reinstall=same-version remove=preserved purge=retired ui=actual service=actual cancellation=gtk-selection-and-password authorization=polkit-pam helper=reaped protected=preserved profile=unchanged retry=same-gui-and-agent concurrent=gui-and-cli cpace=5 stale_refusals=1 cleanup=joined" \
             'dependency-complete packaged graphical cancellation and fresh authorized retry'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then

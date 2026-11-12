@@ -355,6 +355,11 @@ int main(int argc, char **argv) {
             "Recording\nIncoming recordings\nRecording: 1\nDirectory:\n/home/rdreceiver4001", 1) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "recording-live-disabled") == 0) {
         if (settings_recording_checked(pid, 0, 1) != 0 || settings_recording_card(pid, 0) != 0) goto atspi_out;
+    } else if (strcmp(argv[2], "recording-cancelled") == 0) {
+        if (settings_recording_checked(pid, 0, 1) != 0 || settings_recording_card(pid, 1) != 0) goto atspi_out;
+    } else if (strcmp(argv[2], "recording-return-security") == 0) {
+        if (activate_named_control(pid, "Security") != 0 || settings_open_password(display, main, pid) != 0 ||
+            activate_named_control(pid, "Cancel") != 0 || settings_visible(pid, "Set password", 0) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "open") == 0) {
         if (settings_graphics() != 0 || settings_visible(pid, "Connect", 1) != 0 ||
             activate_header_control(display, main, pid, "Settings") != 0 ||

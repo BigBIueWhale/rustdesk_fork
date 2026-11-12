@@ -48,6 +48,10 @@ ADMIN_FAILURE_STAGES = ('open', 'fill', 'submit', 'denied', 'reopen', 'fill',
 GRAPHICAL_STAGES = ('open', 'fill', 'submit', 'denied', 'reopen', 'fill', 'submit',
                     'agent-select', 'agent-password', 'agent-cancel', 'denied',
                     'reopen', 'fill', 'submit-approved', 'pending', 'applied', 'reopen', 'submit', 'denied')
+RECORDING_GRAPHICAL_STAGES = ('recording-open', 'recording-enable-submit', 'recording-cancelled',
+    'recording-enable-submit', 'recording-agent-select', 'recording-agent-password',
+    'recording-agent-cancel', 'recording-cancelled', 'recording-enable-submit',
+    'recording-enable', 'recording-disable-submit', 'recording-disable', 'recording-return-security')
 
 
 def run(argv, *, env=ENV, timeout=30, output_limit=131072):
@@ -444,7 +448,7 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
                 if agent is None or agent.poll() is not None:
                     raise RuntimeError('graphical agent exited before password-entry cancellation')
                 action = {'agent-select': 'select', 'agent-password': 'password', 'agent-cancel': 'cancel-password'}[stage]
-                driver = [str(WORK / 'agent-driver'), str(agent.pid), action]
+                driver = [str(WORK / 'agent-driver'), str(agent.pid), action, 'unattended-password']
             else:
                 driver = [str(WORK / 'settings-driver'), str(app.pid), stage]
             output = run(driver, env=environment,
@@ -455,10 +459,13 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
             print(json.dumps({'stage': stage, 'pid': app.pid,
                               **({'agent_pid': agent.pid if agent is not None else None} if graphical else {})}), flush=True)
             command = sys.stdin.readline()
+            if graphical and command == 'recording\n' and agent is not None:
+                recording_graphical_session(environment, app, agent)
+                command = sys.stdin.readline()
             if graphical and command in ('cancel\n', 'authenticate\n') and agent is not None:
                 if agent.poll() is not None:
                     raise RuntimeError('graphical authentication agent exited before its dialog action')
-                print(run([str(WORK / 'agent-driver'), str(agent.pid), command.strip()], env=environment,
+                print(run([str(WORK / 'agent-driver'), str(agent.pid), command.strip(), 'unattended-password'], env=environment,
                           timeout=40, output_limit=524288), end='', file=sys.stderr, flush=True)
             elif graphical and command == 'retire-agent\n' and agent is not None:
                 agent.terminate()
@@ -476,6 +483,28 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
                 process.wait(timeout=8)
         displays.close()
         retire_children()
+
+
+def recording_graphical_session(environment, app, agent):
+    guard(4001)
+    for stage in RECORDING_GRAPHICAL_STAGES:
+        if app.poll() is not None or agent.poll() is not None:
+            raise RuntimeError('recording cancellation lost its GUI or agent')
+        if stage.startswith('recording-agent-'):
+            action = {'recording-agent-select': 'select', 'recording-agent-password': 'password',
+                      'recording-agent-cancel': 'cancel-password'}[stage]
+            driver = [str(WORK / 'agent-driver'), str(agent.pid), action, 'incoming-recording']
+        else:
+            driver = [str(WORK / 'settings-driver'), str(app.pid), stage]
+        print(run(driver, env=environment, timeout=40, output_limit=524288),
+              end='', file=sys.stderr, flush=True)
+        print(json.dumps({'stage': stage, 'pid': app.pid, 'agent_pid': agent.pid}), flush=True)
+        command = sys.stdin.readline()
+        if command in ('cancel\n', 'authenticate\n'):
+            print(run([str(WORK / 'agent-driver'), str(agent.pid), command.strip(), 'incoming-recording'],
+                      env=environment, timeout=40, output_limit=524288), end='', file=sys.stderr, flush=True)
+        elif command != 'continue\n':
+            raise RuntimeError('recording cancellation lost its owning controller')
 
 
 @contextmanager
@@ -1298,6 +1327,100 @@ def pending_graphical_pam(agent_identity):
         time.sleep(0.01)
 
 
+def recording_graphical_scenario(receiver, process, requester, record, agent_identity, session_cgroup):
+    credential = receiver.credential()
+    profile = user_recording_options()
+    listener = receiver.direct_listener(record)
+    action = 'com.carriez.RustDesk.set-incoming-recording'
+    enabled = False
+    submitted = cancelled = 0
+    helper = helper_fd = pam_helper = pam_fd = cancelled_at = None
+    helpers = []
+    with ExitStack() as retained:
+        for stage in RECORDING_GRAPHICAL_STAGES:
+            if not select.select([process.stdout], [], [], 45)[0]:
+                raise RuntimeError('graphical recording stage timed out')
+            raw = process.stdout.readline(4096)
+            if not raw or not raw.endswith(b'\n'):
+                raise RuntimeError(f'graphical recording ended before {stage}')
+            event = json.loads(raw)
+            if (event != {'stage': stage, 'pid': requester[0], 'agent_pid': agent_identity[0]}
+                    or receiver.child_record() != record or receiver.direct_listener(record) != listener
+                    or receiver.credential() != credential or user_recording_options() != profile):
+                raise RuntimeError('graphical recording changed its owner, credential, profile or service')
+            for identity, executable, nnp in ((requester, Path('/usr/share/rustdesk/rustdesk'), '1'),
+                                               (agent_identity, GRAPHICAL_AGENT, '0')):
+                proc = Path(f'/proc/{identity[0]}')
+                fields = (proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()
+                status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+                if (int(fields[19]) != identity[1] or fields[0] in (b'Z', b'X')
+                        or not (proc / 'exe').samefile(executable)
+                        or (proc / 'cgroup').read_text() != session_cgroup
+                        or status['Uid'].split() != ['4001'] * 4 or status['NoNewPrivs'].strip() != nnp
+                        or any(int(status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))):
+                    raise RuntimeError('graphical recording requester or agent identity differs')
+            for pid in (requester[0], record['supervisor'], record['pid']):
+                package_process(pid)
+            if stage in ('recording-enable', 'recording-disable'):
+                enabled = stage == 'recording-enable'
+                if not select.select([helper_fd], [], [], 0)[0] or helper.exists():
+                    raise RuntimeError('approved recording change did not reap its authorization helper')
+            recording_option(enabled)
+            command = b'continue\n'
+            if stage.endswith('-submit'):
+                submitted += 1
+                helper, helper_start = receiver.pending_admin_helper(*requester, record, wait_seconds=5, action=action)
+                helper_fd = os.pidfd_open(int(helper.name))
+                retained.callback(os.close, helper_fd)
+                identity = (int(helper.name), helper_start)
+                if (identity in helpers or select.select([helper_fd], [], [], 0)[0]
+                        or int((helper / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]) != helper_start):
+                    raise RuntimeError('recording retry lacks a fresh live authorization helper')
+                helpers.append(identity)
+                if submitted == 1:
+                    cancelled_at = time.monotonic()
+                    command = b'cancel\n'
+                elif submitted >= 3:
+                    command = b'authenticate\n'
+            elif stage == 'recording-agent-select':
+                pam_helper, pam_start = pending_graphical_pam(agent_identity)
+                pam_fd = os.pidfd_open(int(pam_helper.name))
+                retained.callback(os.close, pam_fd)
+                if (pending_graphical_pam(agent_identity) != (pam_helper, pam_start)
+                        or select.select([pam_fd, helper_fd], [], [], 0)[0]):
+                    raise RuntimeError('recording password entry lost its pending PAM helper')
+            elif stage == 'recording-agent-password':
+                if (pending_graphical_pam(agent_identity) != (pam_helper, pam_start)
+                        or select.select([pam_fd, helper_fd], [], [], 0)[0]):
+                    raise RuntimeError('partial recording password unexpectedly completed authentication')
+                cancelled_at = time.monotonic()
+            elif stage == 'recording-cancelled':
+                cancelled += 1
+                service_refusals(record, *requester, cancelled, exit_status=3, action=action)
+                if (not select.select([helper_fd], [], [], 0)[0] or helper.exists()
+                        or time.monotonic() - cancelled_at >= 10
+                        or (pam_fd is not None and
+                            (not select.select([pam_fd], [], [], 0)[0] or pam_helper.exists()))):
+                    raise RuntimeError('cancelled recording authorization left a helper or exceeded its drain bound')
+                print('LINUX_INSTALLED_RECORDING_GRAPHICAL_CANCEL=' + json.dumps({
+                    'phase': 'password-entry' if pam_fd is not None else 'administrator-selection',
+                    'requester': requester, 'agent': agent_identity, 'helper': helpers[-1],
+                    'pam_helper': [int(pam_helper.name), pam_start] if pam_fd is not None else None,
+                    'helpers_reaped': True, 'setting': False, 'credential_unchanged': True,
+                    'profile_unchanged': True, 'seconds': time.monotonic() - cancelled_at}, sort_keys=True), flush=True)
+            print('LINUX_INSTALLED_RECORDING_GRAPHICAL_STAGE=' + json.dumps({**event,
+                  'requester_start': requester[1], 'agent_start': agent_identity[1],
+                  'service_generation': record['generation'], 'enabled': enabled,
+                  'credential_unchanged': True, 'profile_unchanged': True}, sort_keys=True), flush=True)
+            process.stdin.write(command)
+            process.stdin.flush()
+    if submitted != 4 or cancelled != 2 or enabled:
+        raise RuntimeError('graphical recording cancellation/retry coverage is incomplete')
+    print('LINUX_INSTALLED_RECORDING_GRAPHICAL=pass cancellation=gtk-selection-and-password '
+          'cancelled=2 fresh_authorizations=4 helpers=reaped protected=preserved profile=unchanged '
+          'retry=same-gui-and-agent enabled=confirmed disabled=confirmed', flush=True)
+
+
 def admin_failure_scenario(receiver, probe_sha, network_before, graphical=None):
     package_unit()
     authorization = ExitStack()
@@ -1495,6 +1618,9 @@ def admin_failure_scenario(receiver, probe_sha, network_before, graphical=None):
             elif stage == 'applied':
                 authorization.close()
                 if graphical is not None:
+                    process.stdin.write(b'recording\n')
+                    process.stdin.flush()
+                    recording_graphical_scenario(receiver, process, requester, record, agent_identity, session_cgroup)
                     command = b'retire-agent\n'
             elif stage == 'denied':
                 service_refusals(record, *requester, cancellations, exit_status=3 if graphical is not None else 1)

@@ -192,7 +192,13 @@ out:
 
 int main(int argc, char **argv) {
     char *end = NULL;
-    if (argc != 3 || getuid() != 4001 || geteuid() != 4001) return 2;
+    if (argc != 4 || getuid() != 4001 || geteuid() != 4001) return 2;
+    const char *message_text;
+    if (strcmp(argv[3], "unattended-password") == 0)
+        message_text = "Authentication is required to change the RustDesk unattended password";
+    else if (strcmp(argv[3], "incoming-recording") == 0)
+        message_text = "Authentication is required to change automatic recording of incoming RustDesk sessions";
+    else return 2;
     errno = 0;
     unsigned long pid = strtoul(argv[1], &end, 10);
     if (errno != 0 || *end != '\0' || pid <= 1 || pid > UINT_MAX) return 2;
@@ -210,8 +216,7 @@ int main(int argc, char **argv) {
     puts("LINUX_INSTALLED_SETTINGS_PNG=pass source=gtk-resource dimensions=16x16");
     if (atspi_init() != 0) { XCloseDisplay(display); return 1; }
     atspi_set_timeout(1000, 1000);
-    AtspiAccessible *message = agent_control((unsigned int)pid, ATSPI_ROLE_LABEL,
-        "Authentication is required to change the RustDesk unattended password");
+    AtspiAccessible *message = agent_control((unsigned int)pid, ATSPI_ROLE_LABEL, message_text);
     int result = -1;
     if (message != NULL) {
         g_object_unref(message);
@@ -227,7 +232,8 @@ int main(int argc, char **argv) {
         PasswordPromptScan diagnostic;
         if (scan_password_prompt((unsigned int)pid, &diagnostic, 1) != 0)
             fputs("POLKIT_DIALOG_DIAGNOSTIC=incomplete\n", stderr);
-    } else printf("LINUX_POLKIT_DIALOG=pass action=%s pid=%lu controls=gtk-atspi input=xtest\n", argv[2], pid);
+    } else printf("LINUX_POLKIT_DIALOG=pass action=%s pid=%lu operation=%s controls=gtk-atspi input=xtest\n",
+                  argv[2], pid, argv[3]);
     atspi_exit();
     XCloseDisplay(display);
     return result == 0 ? 0 : 1;

@@ -356,9 +356,10 @@ def change(uid, value, admitted):
         raise RuntimeError("denied password operation did not report failure")
 
 
-def pending_admin_helper(requester_pid, start, record, wait_seconds=0):
+def pending_admin_helper(requester_pid, start, record, wait_seconds=0,
+                         action="com.carriez.RustDesk.set-unattended-password"):
     expected = [b"/usr/bin/pkcheck", b"--action-id",
-                b"com.carriez.RustDesk.set-unattended-password", b"--process",
+                action.encode(), b"--process",
                 f"{requester_pid},{start},4001".encode(), b"--allow-user-interaction", b""]
     deadline = time.monotonic() + wait_seconds
     while True:

@@ -102,6 +102,7 @@ case "$#:${1:-}" in
         --mouse-retirement) PEER_SCENARIO=mouse-retirement ;;
         --screenshot-save) PEER_SCENARIO=screenshot-save ;;
         --recording-directory) PEER_SCENARIO=recording-directory ;;
+        --incoming-recording) PEER_SCENARIO=incoming-recording ;;
         --view-scaling) PEER_SCENARIO=view-scaling ;;
         --image-quality) PEER_SCENARIO=image-quality ;;
         --quality-restart) PEER_SCENARIO=quality-restart ;;
@@ -293,6 +294,11 @@ elif [ "$PEER_SCENARIO" = view-scaling ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined view_scaling=9 input_points=45 pixels=fresh stable_connection=true resources=bounded'
+elif [ "$PEER_SCENARIO" = incoming-recording ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined incoming_recording=passed generations=2 failure=visible retry=recorded completion=visible output=decoded pixels=fresh'
 elif [ "$PEER_SCENARIO" = recording-directory ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -831,7 +837,10 @@ inspect_container_contract() {
   fi
   local receipt_ends=0
   case "$label" in
-    server) expected_machine_id_source=$SERVER_MACHINE_ID ;;
+    server)
+      expected_machine_id_source=$SERVER_MACHINE_ID
+      [ "$PEER_SCENARIO" != incoming-recording ] || expected_atspi_mounts=1
+      ;;
     viewer|slow-viewer)
       expected_passwd_source=$VIEWER_PASSWD
       expected_machine_id_source=$VIEWER_MACHINE_ID
@@ -1351,7 +1360,22 @@ VIEWER_LOG="$WORKSPACE/viewer.$cycle.log"
 printf '== peer runtime cycle %s/%s, scenario=%s, instrumentation=none, network=none ==\n' \
   "$cycle" "$RUNTIME_CYCLES" "$PEER_SCENARIO"
 CID_FILES+=("$SERVER_CID_FILE")
+server_session=smoke-flutter-peer-presentation-stage.sh
+server_accessibility=()
+if [ "$PEER_SCENARIO" = incoming-recording ]; then
+  server_session=smoke-private-atspi-session.sh
+  server_accessibility=(
+    --mount "type=bind,source=$ATSPI_ROOT,target=/atspi-root,readonly,bind-recursive=disabled"
+    --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi-bus-launcher,target=/usr/libexec/at-spi-bus-launcher,readonly,bind-recursive=disabled"
+    --mount "type=bind,source=$ATSPI_ROOT/usr/libexec/at-spi2-registryd,target=/usr/libexec/at-spi2-registryd,readonly,bind-recursive=disabled"
+    --mount "type=bind,source=$ATSPI_ROOT/usr/share/defaults/at-spi2,target=/usr/share/defaults/at-spi2,readonly,bind-recursive=disabled"
+    --mount "type=bind,source=$ATSPI_ROOT/usr/share/dbus-1/accessibility-services,target=/usr/share/dbus-1/accessibility-services,readonly,bind-recursive=disabled"
+    --env DISPLAY=:98 --env HOME=/tmp/server-home --env XDG_RUNTIME_DIR=/tmp/server-runtime
+    --env XDG_DATA_DIRS=/atspi-root/usr/share:/usr/local/share:/usr/share
+  )
+fi
 peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
+  "${server_accessibility[@]}" \
   --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
@@ -1370,7 +1394,7 @@ peer_vm_docker run --detach --cidfile "$SERVER_CID_FILE" \
   --env "RUSTDESK_PRESENTATION_TRACE=$PRESENTATION_TRACE" \
   --env "FLUTTER_PEER_SCENARIO=$PEER_SCENARIO" \
   "$DEV_CHECK_IMAGE_CONFIG_ID" \
-  bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh server \
+  bash --noprofile --norc "/source/scripts/$server_session" server \
   >/dev/null
 SERVER_CID=$(<"$SERVER_CID_FILE")
 [[ "$SERVER_CID" =~ ^[0-9a-f]{64}$ ]] || die 'server container identity is malformed'

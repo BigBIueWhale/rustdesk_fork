@@ -12,13 +12,20 @@ fail() {
 
 [ "$(id -u)" -ne 0 ] || fail 'refuses root execution'
 [ "$(id -g)" -ne 0 ] || fail 'refuses a root primary group'
-[ "$#" -eq 1 ] || fail 'expected one stage: atspi-check or viewer'
+[ "$#" -eq 1 ] || fail 'expected one stage: atspi-check, server, or viewer'
 case "$1" in
   atspi-check)
     [ "${DISPLAY:-}" = :97 ] \
       && [ "${HOME:-}" = /tmp/atspi-home ] \
       && [ "${XDG_RUNTIME_DIR:-}" = /tmp/atspi-runtime ] \
       || fail 'AT-SPI preflight session paths differ'
+    ;;
+  server)
+    [ "${FLUTTER_PEER_SCENARIO:-}" = incoming-recording ] \
+      && [ "${DISPLAY:-}" = :98 ] \
+      && [ "${HOME:-}" = /tmp/server-home ] \
+      && [ "${XDG_RUNTIME_DIR:-}" = /tmp/server-runtime ] \
+      || fail 'incoming recording server session paths differ'
     ;;
   viewer)
     viewer_display=:99
@@ -30,7 +37,7 @@ case "$1" in
       && [ "${XDG_RUNTIME_DIR:-}" = /tmp/viewer-runtime ] \
       || fail 'viewer session paths differ'
     ;;
-  *) fail 'expected atspi-check or viewer stage' ;;
+  *) fail 'expected atspi-check, server, or viewer stage' ;;
 esac
 [ "${XDG_DATA_DIRS:-}" = /atspi-root/usr/share:/usr/local/share:/usr/share ] \
   || fail 'AT-SPI session data roots differ'

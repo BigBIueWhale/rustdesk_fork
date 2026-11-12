@@ -27,7 +27,7 @@ MENU_ACTION=pointer
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
   monitor-switch|monitor-burst) EXPECTED_RESTARTS=0 ;;
-  recent-search|native-components|recording-directory) EXPECTED_RESTARTS=0 ;;
+  recent-search|native-components|recording-directory|incoming-recording) EXPECTED_RESTARTS=0 ;;
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
   session-close|background-close|credential-retry|theme-restart|theme-appearance|theme-save-failure|language-restart|language-direction|quality-restart|viewer-isolation|viewer-soak|congestion-soak|input-latency|input-recovery|input-loss|input-congestion|input-soak|input-congestion-soak|image-quality|image-quality-save-failure|audio-mute) EXPECTED_RESTARTS=0 ;;
@@ -48,6 +48,23 @@ INPUT_RESPONSE=0
 case "$PEER_SCENARIO" in viewer-soak|congestion-soak|input-soak|input-congestion-soak) LONG_SOAK=1 ;; esac
 case "$PEER_SCENARIO" in input-latency|input-recovery|input-loss|input-congestion|input-soak|input-congestion-soak) INPUT_RESPONSE=1 ;; esac
 readonly LONG_SOAK INPUT_RESPONSE
+wait_incoming_marker() {
+  local name=$1
+  for _ in $(seq 1 600); do
+    if [ -e "/coord/$name" ]; then
+      [ -f "/coord/$name" ] && [ ! -L "/coord/$name" ] \
+        && [ "$(stat -c '%u:%g:%a:%h:%s' "/coord/$name")" = "$(id -u):$(id -g):600:1:6" ] \
+        && [ "$(<"/coord/$name")" = ready ] || fail "invalid incoming marker: $name"
+      return
+    fi
+    if [ -n "${INCOMING_OBSERVER_PID:-}" ] \
+      && ! "$READY" --is-running "$INCOMING_OBSERVER_PID" "$INCOMING_OBSERVER_START"; then
+      fail "incoming observer exited before marker: $name"
+    fi
+    sleep 0.1
+  done
+  fail "incoming marker timed out: $name"
+}
 ACCOUNT_STORE_PID= ACCOUNT_STORE_START=
 
 start_account_store_watch() {
@@ -1148,12 +1165,44 @@ PY
     export DISPLAY=:98 HOME=/tmp/server-home XDG_RUNTIME_DIR=/tmp/server-runtime
     export GDK_BACKEND=x11 LIBGL_ALWAYS_SOFTWARE=1
     export LD_LIBRARY_PATH="/app/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
-    mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
+    if [ "$PEER_SCENARIO" = incoming-recording ]; then
+      verify_atspi_closure
+      [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || fail 'controlled UI lacks private D-Bus'
+      for directory in "$HOME" "$XDG_RUNTIME_DIR"; do
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+          && [ "$(stat -c '%u:%g:%a' "$directory")" = "$(id -u):$(id -g):700" ] \
+          || fail 'controlled UI private session directory differs'
+      done
+    else
+      mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
+    fi
     mkdir -m 1777 /tmp/.X11-unix
     XVFB_PID= XVFB_START= SOURCE_PID= SOURCE_START= SERVER_PID= SERVER_START= SERVER_LOG=
+    INCOMING_UI_PID= INCOMING_UI_START= INCOMING_OBSERVER_PID= INCOMING_OBSERVER_START=
+    INCOMING_XVFB_PID= INCOMING_XVFB_START=
+    cleanup_incoming_ui() {
+      local pair pid start failed=0
+      for pair in "$INCOMING_OBSERVER_PID:$INCOMING_OBSERVER_START" \
+          "$INCOMING_UI_PID:$INCOMING_UI_START" "$INCOMING_XVFB_PID:$INCOMING_XVFB_START"; do
+        pid=${pair%%:*}; start=${pair#*:}
+        [ -n "$pid" ] || continue
+        if "$READY" --is-running "$pid" "$start"; then
+          "$READY" --stop "$pid" "$start" || failed=1
+        fi
+        wait "$pid" 2>/dev/null || true
+      done
+      INCOMING_OBSERVER_PID= INCOMING_UI_PID= INCOMING_XVFB_PID=
+      return "$failed"
+    }
     cleanup_server() {
       local status=$? cleanup_status=0
       trap - EXIT HUP INT TERM
+      cleanup_incoming_ui || cleanup_status=1
+      if [ "$PEER_SCENARIO" = incoming-recording ] && [ "$status" -ne 0 ]; then
+        for log in /tmp/incoming-observer.log /tmp/incoming-ui.log; do
+          [ ! -f "$log" ] || tail -n 100 "$log" >&2
+        done
+      fi
       if [ -n "$SERVER_PID" ] && [ -n "$SERVER_START" ] \
         && "$READY" --is-running "$SERVER_PID" "$SERVER_START"; then
         "$READY" --stop "$SERVER_PID" "$SERVER_START" || cleanup_status=$?
@@ -1214,6 +1263,12 @@ PY
     }
     source_geometry=640x480x24
     [ "$TWO_MONITORS" -eq 0 ] || source_geometry=1280x480x24
+    if [ "$PEER_SCENARIO" = incoming-recording ]; then
+      start_xvfb :96 1280x800x24 /tmp/incoming-xvfb.log
+      INCOMING_XVFB_PID=$XVFB_PID INCOMING_XVFB_START=$XVFB_START
+      XVFB_PID= XVFB_START=
+      mkdir -m 0700 /tmp/recording-selected-שלום
+    fi
     start_xvfb :98 "$source_geometry" /tmp/server-xvfb.log
     if [ "$TWO_MONITORS" -eq 1 ]; then
       /out/test-x11-monitor-topology prepare
@@ -1249,6 +1304,16 @@ PY
       || fail 'password-stdin completion marker differs'
     "$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START" "$SERVER_LOG" \
       "$PROBE" "$(id -u)"
+    if [ "$PEER_SCENARIO" = incoming-recording ]; then
+      (cd /app/bundle && DISPLAY=:96 RUST_LOG=info exec "$APP") >/tmp/incoming-ui.log 2>&1 &
+      INCOMING_UI_PID=$!
+      INCOMING_UI_START=$("$READY" --identity "$INCOMING_UI_PID")
+      /out/flutter-peer-presentation-x11 --incoming-owner "$INCOMING_UI_PID" "$INCOMING_UI_START" \
+        >/tmp/incoming-observer.log 2>&1 &
+      INCOMING_OBSERVER_PID=$!
+      INCOMING_OBSERVER_START=$("$READY" --identity "$INCOMING_OBSERVER_PID")
+      wait_incoming_marker incoming.ready
+    fi
     listener_is_exact || fail 'server listener is not exactly 127.0.0.1:21118'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'server network namespace has a UDP socket'
     printf 'server_pid=%s server_start=%s listener=127.0.0.1:21118\n' \
@@ -1541,6 +1606,14 @@ PY
     done
     [ "$stop_seen" -eq 1 ] || fail 'viewer completion marker timed out'
     completed_restarts=$((next_generation - 2))
+    if [ "$PEER_SCENARIO" = incoming-recording ]; then
+      wait_incoming_marker incoming.complete
+      wait "$INCOMING_OBSERVER_PID" || fail 'incoming recording observer failed'
+      INCOMING_OBSERVER_PID= INCOMING_OBSERVER_START=
+      cat /tmp/incoming-observer.log
+      cleanup_incoming_ui || fail 'controlled UI cleanup failed'
+      echo 'FLUTTER_PEER_INCOMING_UI_JOINED ui=true observer=true xvfb=true'
+    fi
     stop_server_generation "$((next_generation - 1))"
     if [ "$(<"$COORD/stop")" != viewer-complete ]; then
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN' >&2
@@ -1687,6 +1760,7 @@ PY
       viewer_generations=2
       mkdir -m 700 -- /tmp/recording-selected-שלום /tmp/recording-cancelled
     fi
+    [ "$PEER_SCENARIO" != incoming-recording ] || viewer_generations=2
     [ "$PEER_SCENARIO" != credential-restart ] || viewer_generations=2
     [ "$ROTATE_CREDENTIAL" -eq 0 ] || viewer_generations=3
     [ "$PEER_SCENARIO" != credential-menu ] || viewer_generations=3
@@ -1799,6 +1873,9 @@ PY
     elif [ "$PEER_SCENARIO" = recording-directory ]; then
       recording_phases=(directory restore)
       controller_args+=("--recording-${recording_phases[viewer_generation - 1]}")
+    elif [ "$PEER_SCENARIO" = incoming-recording ]; then
+      incoming_phases=(failure retry)
+      controller_args+=("--incoming-${incoming_phases[viewer_generation - 1]}")
     elif [ "$PEER_SCENARIO" = quality-restart ]; then
       quality_phases=(best low balanced restore)
       controller_args+=("--quality-${quality_phases[viewer_generation - 1]}")
@@ -1988,7 +2065,13 @@ PY
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     fi
-    if [ "$PEER_SCENARIO" = recording-directory ]; then
+    if [ "$PEER_SCENARIO" = incoming-recording ]; then
+      grep -Eq "^FLUTTER_PEER_INCOMING_VIEWER_OK generation=$viewer_generation fresh_pixels=12 maximum_age_ms=[0-9]+ stable_connection=true$" \
+        <<<"$controller_output" || fail 'incoming recording viewer observation is absent'
+      grep -Fxq 'FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false' \
+        <<<"$controller_output" || fail 'incoming recording session did not use the real password prompt'
+      viewer_result='viewer=joined xvfb=joined incoming_recording=passed generations=2 failure=visible retry=recorded completion=visible output=decoded pixels=fresh'
+    elif [ "$PEER_SCENARIO" = recording-directory ]; then
       grep -Eq "^FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=$viewer_generation cancel=unchanged path=exact fresh_pixels=4 maximum_age_ms=[0-9]+ stable_connection=true$" \
         <<<"$controller_output" || fail 'native recording directory result is absent'
       if [ "$viewer_generation" -eq 2 ]; then
@@ -2482,6 +2565,15 @@ PY
     esac
     [ "$viewer_status" -eq "$expected_viewer_status" ] \
       || { cat /tmp/viewer.log >&2; fail "viewer exited $viewer_status"; }
+    if [ "$PEER_SCENARIO" = incoming-recording ]; then
+      printf 'ready\n' > "$COORD/incoming.closed.$viewer_generation.tmp"
+      mv "$COORD/incoming.closed.$viewer_generation.tmp" "$COORD/incoming.closed.$viewer_generation"
+      if [ "$viewer_generation" -eq 1 ]; then
+        wait_incoming_marker incoming.retry.ready
+      else
+        wait_incoming_marker incoming.complete
+      fi
+    fi
     if grep -qF 'FlBinaryMessenger without an engine' /tmp/viewer.log; then
       cat /tmp/viewer.log >&2
       fail 'viewer used a Flutter messenger after engine retirement'

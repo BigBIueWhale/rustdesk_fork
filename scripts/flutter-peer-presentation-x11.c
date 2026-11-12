@@ -7802,6 +7802,216 @@ static int recording_path_visible(unsigned int pid) {
 
 #include "flutter-peer-recording.h"
 
+/* Observe the real controlled-side UI on its own X server so it cannot cover
+ * the capture fixture. Both app processes use the same private user profile. */
+static int incoming_status_visible(unsigned int pid, int active, int failed) {
+    const char *names[] = {"Incoming recordings", "Not recording", "Recording: 1",
+        "Starting: 1", "Finishing: 1", "Recording status unavailable",
+        "Last recording failure: Display 1 (Writing)"};
+    const int expected[] = {1, !active, active, 0, 0, 0, failed};
+    uint64_t deadline = monotonic_millis() + 10000U;
+    unsigned int stable = 0U;
+    while (monotonic_millis() < deadline) {
+        int exact = 1;
+        for (size_t i = 0U; i < sizeof(names) / sizeof(names[0]); ++i) {
+            AtspiAccessible *label = NULL;
+            int status = query_named_accessible(pid, names[i], deadline, &label, 0);
+            int found = label != NULL;
+            g_clear_object(&label);
+            if (status != 0) return -1;
+            if (found != expected[i]) exact = 0;
+        }
+        stable = exact ? stable + 1U : 0U;
+        if (stable == 3U) return 0;
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    fprintf(stderr, "FLUTTER_PEER_INCOMING_STATUS_FAIL active=%d failed=%d\n", active, failed);
+    return -1;
+}
+
+static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
+    int result = -1, file = -1;
+    unsigned int files = 0U, frames = 0U;
+    size_t bytes = 0U;
+    unsigned char *data = NULL;
+    SourceHistory history = {0};
+    int scan = openat(directory, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    DIR *entries = scan < 0 ? NULL : fdopendir(scan);
+    if (entries == NULL && scan >= 0) close(scan);
+    if (entries == NULL || x11_frame_refresh(&history, "/coord") != 0) goto out;
+    struct dirent *entry;
+    errno = 0;
+    while ((entry = readdir(entries)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        size_t length = strlen(entry->d_name);
+        if (++files > 8U || length < 20U || strncmp(entry->d_name, "incoming_", 9U) != 0 ||
+            strcmp(entry->d_name + length - 5U, ".webm") != 0) goto out;
+        file = openat(directory, entry->d_name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+        struct stat before, after;
+        if (file < 0 || fstat(file, &before) != 0 || !S_ISREG(before.st_mode) ||
+            before.st_uid != geteuid() || before.st_gid != getegid() || before.st_nlink != 1U ||
+            (before.st_mode & 07777U) != 0600U || before.st_size <= 0 ||
+            before.st_size > 1024 * 1024 - (off_t)bytes) goto out;
+        size_t size = (size_t)before.st_size, offset = 0U;
+        data = malloc(size);
+        if (data == NULL) goto out;
+        while (offset < size) {
+            ssize_t count = read(file, data + offset, size - offset);
+            if (count < 0 && errno == EINTR) continue;
+            if (count <= 0) goto out;
+            offset += (size_t)count;
+        }
+        RecordingVideo video, rejected;
+        if (recording_decode(data, size, &history, started, stopped, &video) != 0 ||
+            recording_decode(data, size - 1U, &history, started, stopped, &rejected) == 0 ||
+            fstat(file, &after) != 0 || before.st_dev != after.st_dev ||
+            before.st_ino != after.st_ino || before.st_size != after.st_size ||
+            before.st_mtim.tv_sec != after.st_mtim.tv_sec ||
+            before.st_mtim.tv_nsec != after.st_mtim.tv_nsec) goto out;
+        gchar *digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256, data, size);
+        if (digest == NULL) goto out;
+        printf("FLUTTER_PEER_INCOMING_FILE name=%s bytes=%zu sha256=%s decoded_frames=%u "
+               "first_frame=%lld last_frame=%lld mode=0600 truncated=refused\n",
+               entry->d_name, size, digest, video.images, (long long)video.first_frame,
+               (long long)video.last_frame);
+        g_free(digest);
+        free(data);
+        data = NULL;
+        bytes += size;
+        frames += video.images;
+        int closed = close(file);
+        file = -1;
+        if (closed != 0) goto out;
+        errno = 0;
+    }
+    if (errno != 0 || files == 0U || frames < 12U) goto out;
+    printf("FLUTTER_PEER_INCOMING_OUTPUT_OK files=%u decoded_frames=%u bytes=%zu completion=ui\n",
+           files, frames, bytes);
+    result = 0;
+out:
+    free(data);
+    if (file >= 0 && close(file) != 0) result = -1;
+    if (entries != NULL && closedir(entries) != 0) result = -1;
+    return result;
+}
+
+static int run_incoming_owner(const char *pid_text, const char *start) {
+    char *end = NULL, process_path[64], state;
+    errno = 0;
+    unsigned long parsed = strtoul(pid_text, &end, 10);
+    if (errno != 0 || end == pid_text || *end != '\0' || parsed == 0UL || parsed > UINT_MAX)
+        return 2;
+    unsigned int pid = (unsigned int)parsed;
+    int result = -1, directory = -1, coord = -1, process = -1, pidfd = -1, initialized = 0;
+    int changed = 0;
+    Display *display = XOpenDisplay(":96");
+    Window main = None;
+    const char *phase = "identity";
+    snprintf(process_path, sizeof(process_path), "/proc/%u", pid);
+    process = open(process_path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    pidfd = (int)syscall(SYS_pidfd_open, (pid_t)pid, 0U);
+    coord = open("/coord", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (display == NULL || process < 0 || pidfd < 0 || coord < 0 ||
+        !viewer_pidfd_alive(pidfd) || viewer_process_state(process, pid, start, &state) != 0 ||
+        atspi_init() != 0) goto out;
+    initialized = 1;
+    atspi_set_timeout(1000, 1000);
+    phase = "settings";
+    if (find_main_window(display, pid, &main) != 0) goto out;
+    XMoveResizeWindow(display, main, 0, 0, 1000U, 760U);
+    XRaiseWindow(display, main);
+    XSetInputFocus(display, main, RevertToParent, CurrentTime);
+    XSync(display, False);
+    if (activate_header_control(display, main, pid, "Settings") != 0 ||
+        choose_recording_directory(display, main, pid, "/tmp/recording-selected-שלום", 0) != 0 ||
+        incoming_status_visible(pid, 0, 0) != 0) goto out;
+    phase = "enable-and-refuse-write";
+    if (click_main_control(display, main, pid, "Automatically record incoming sessions") != 0)
+        goto out;
+    directory = open("/tmp/recording-selected-שלום", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat metadata;
+    if (directory < 0 || fstat(directory, &metadata) != 0 || metadata.st_uid != geteuid() ||
+        (metadata.st_mode & 07777U) != 0700U || fchmod(directory, 0500) != 0) goto out;
+    changed = 1;
+    errno = 0;
+    int probe = openat(directory, ".write-probe", O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+    int denied = errno;
+    if (probe >= 0) {
+        close(probe);
+        unlinkat(directory, ".write-probe", 0);
+        goto out;
+    }
+    if (denied != EACCES || isolation_marker(coord, "incoming.ready", 1) != 0) goto out;
+    phase = "failure";
+    if (wait_isolation_marker(coord, "incoming.failure.request", 60000U) != 0 ||
+        incoming_status_visible(pid, 0, 1) != 0) goto out;
+    int scan = openat(directory, ".", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+    DIR *entries = scan < 0 ? NULL : fdopendir(scan);
+    if (entries == NULL && scan >= 0) close(scan);
+    if (entries == NULL) goto out;
+    unsigned int count = 0U;
+    struct dirent *entry;
+    errno = 0;
+    while ((entry = readdir(entries)) != NULL)
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) ++count;
+    int scan_error = errno;
+    if (closedir(entries) != 0 || scan_error != 0 || count != 0U) goto out;
+    puts("FLUTTER_PEER_INCOMING_FAILURE_OK kernel=EACCES status=not-recording history=writing files=0");
+    if (isolation_marker(coord, "incoming.failure.observed", 1) != 0 ||
+        wait_isolation_marker(coord, "incoming.closed.1", 60000U) != 0 ||
+        incoming_status_visible(pid, 0, 1) != 0 || fchmod(directory, 0700) != 0) goto out;
+    changed = 0;
+    uint64_t started = x11_frame_monotonic_us();
+    phase = "healthy-retry";
+    if (isolation_marker(coord, "incoming.retry.ready", 1) != 0 ||
+        wait_isolation_marker(coord, "incoming.retry.request", 60000U) != 0 ||
+        incoming_status_visible(pid, 1, 1) != 0) goto out;
+    puts("FLUTTER_PEER_INCOMING_RETRY_OK active=1 history=writing ui=same-process");
+    if (isolation_marker(coord, "incoming.retry.observed", 1) != 0 ||
+        wait_isolation_marker(coord, "incoming.closed.2", 60000U) != 0) goto out;
+    uint64_t stopped = x11_frame_monotonic_us();
+    phase = "completion";
+    if (incoming_status_visible(pid, 0, 1) != 0 ||
+        incoming_output(directory, started, stopped) != 0 || !viewer_pidfd_alive(pidfd) ||
+        viewer_process_state(process, pid, start, &state) != 0) goto out;
+    puts("FLUTTER_PEER_INCOMING_COMPLETE_OK active=0 finishing=0 history=writing ui=same-process");
+    if (isolation_marker(coord, "incoming.complete", 1) != 0) goto out;
+    result = 0;
+out:
+    if (result != 0) {
+        PasswordPromptScan diagnostic;
+        fprintf(stderr, "FLUTTER_PEER_INCOMING_OWNER_FAIL phase=%s\n", phase);
+        if (initialized) (void)scan_password_prompt(pid, &diagnostic, 1);
+    }
+    if (changed && fchmod(directory, 0700) != 0) result = -1;
+    if (directory >= 0 && close(directory) != 0) result = -1;
+    if (coord >= 0 && close(coord) != 0) result = -1;
+    if (process >= 0 && close(process) != 0) result = -1;
+    if (pidfd >= 0 && close(pidfd) != 0) result = -1;
+    if (initialized && atspi_exit() != 0) result = -1;
+    if (display != NULL) XCloseDisplay(display);
+    return result == 0 ? 0 : 1;
+}
+
+static int exercise_incoming_viewer(Display *display, const ViewerWindow *viewer,
+                                    SourceHistory *history, const ConnectionIdentity *connection,
+                                    int retry) {
+    int coord = open("/coord", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    int result = -1;
+    uint64_t fresh, age;
+    ConnectionIdentity after = {{0}, {0}, 0UL};
+    if (coord < 0 || isolation_marker(coord, retry ? "incoming.retry.request" : "incoming.failure.request", 1) != 0 ||
+        wait_isolation_marker(coord, retry ? "incoming.retry.observed" : "incoming.failure.observed", 15000U) != 0 ||
+        wait_for_current_frames(display, viewer, history, 8000U, 12U, &fresh, &age) != 0 ||
+        read_connection_identity(&after) != 0 || !same_connection(connection, &after)) goto out;
+    printf("FLUTTER_PEER_INCOMING_VIEWER_OK generation=%u fresh_pixels=12 maximum_age_ms=%llu stable_connection=true\n",
+           retry ? 2U : 1U, (unsigned long long)age);
+    result = 0;
+out:
+    if (coord >= 0 && close(coord) != 0) result = -1;
+    return result;
+}
+
 static int exercise_recording_directory(Display *display, const ViewerWindow *viewer,
                                          SourceHistory *history, const char *start,
                                          const ConnectionIdentity *connection,
@@ -8283,6 +8493,8 @@ int main(int argc, char **argv) {
         return 2;
     }
     if (argc == 2 && strcmp(argv[1], "--wake-service") == 0) return run_wake_service();
+    if (argc == 4 && strcmp(argv[1], "--incoming-owner") == 0)
+        return run_incoming_owner(argv[2], argv[3]);
     const char *source_name;
     const char *viewer_name;
     char *end = NULL;
@@ -8333,6 +8545,8 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--screenshot-save") != 0 &&
                                     strcmp(argv[5], "--recording-directory") != 0 &&
                                     strcmp(argv[5], "--recording-restore") != 0 &&
+                                    strcmp(argv[5], "--incoming-failure") != 0 &&
+                                    strcmp(argv[5], "--incoming-retry") != 0 &&
                                     strcmp(argv[5], "--view-scaling") != 0 &&
                                     strcmp(argv[5], "--image-quality") != 0 &&
                                     strcmp(argv[5], "--quality-best") != 0 &&
@@ -8755,6 +8969,17 @@ int main(int argc, char **argv) {
         int result = theme_generation != 0U
             ? exercise_theme_restart(display, &viewer, &history, theme_generation, &current_connection)
             : exercise_theme_appearance(display, &viewer, &history, &current_connection);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
+    if (argc == 6 && (strcmp(argv[5], "--incoming-failure") == 0 ||
+                      strcmp(argv[5], "--incoming-retry") == 0)) {
+        int result = exercise_incoming_viewer(display, &viewer, &history, &current_connection,
+                                               strcmp(argv[5], "--incoming-retry") == 0);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

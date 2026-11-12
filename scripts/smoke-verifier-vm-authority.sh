@@ -780,6 +780,7 @@ case "$#:${1:-}" in
                 --mouse-retirement) FLUTTER_MOUSE_INPUT=2 ;;
                 --screenshot-save) FLUTTER_SCREENSHOT_SAVE=1 ;;
                 --recording-directory) FLUTTER_RECORDING_DIRECTORY=1 ;;
+                --incoming-recording) FLUTTER_RECORDING_DIRECTORY=2 ;;
                 --view-scaling) FLUTTER_VIEW_SCALING=1 ;;
                 --image-quality) FLUTTER_IMAGE_QUALITY=1 ;;
                 --quality-restart) FLUTTER_QUALITY_RESTART=1 ;;
@@ -5691,7 +5692,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         fi
         [ "$FLUTTER_VIEWER_SUSPEND" -eq 0 ] || guest_invocation+=' --viewer-suspend'
         [ "$FLUTTER_SCREENSHOT_SAVE" -eq 0 ] || guest_invocation+=' --screenshot-save'
-        [ "$FLUTTER_RECORDING_DIRECTORY" -eq 0 ] || guest_invocation+=' --recording-directory'
+        [ "$FLUTTER_RECORDING_DIRECTORY" -ne 1 ] || guest_invocation+=' --recording-directory'
+        [ "$FLUTTER_RECORDING_DIRECTORY" -ne 2 ] || guest_invocation+=' --incoming-recording'
         [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || guest_invocation+=' --view-scaling'
         [ "$FLUTTER_SESSION_CLOSE" -ne 1 ] || guest_invocation+=' --session-close'
         [ "$FLUTTER_MONITOR_SWITCH" -ne 1 ] || guest_invocation+=' --monitor-switch'
@@ -9511,7 +9513,8 @@ elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
 elif [ "$MODE" = flutter-peer-presentation ]; then
     peer_scenario=focus-reconnect-resource
     [ "$FLUTTER_SCREENSHOT_SAVE" -eq 0 ] || peer_scenario=screenshot-save
-    [ "$FLUTTER_RECORDING_DIRECTORY" -eq 0 ] || peer_scenario=recording-directory
+    [ "$FLUTTER_RECORDING_DIRECTORY" -ne 1 ] || peer_scenario=recording-directory
+    [ "$FLUTTER_RECORDING_DIRECTORY" -ne 2 ] || peer_scenario=incoming-recording
     [ "$FLUTTER_VIEW_SCALING" -eq 0 ] || peer_scenario=view-scaling
     [ "$FLUTTER_IMAGE_QUALITY" -eq 0 ] || peer_scenario=image-quality
     [ "$FLUTTER_QUALITY_RESTART" -eq 0 ] || peer_scenario=quality-restart

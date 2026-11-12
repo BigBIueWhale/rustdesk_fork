@@ -182,7 +182,8 @@ impl Recorder {
             let changed = self.ctx2.as_ref().map_or(false, |ctx| {
                 ctx.width != w || ctx.height != h || ctx.format != format
             });
-            if changed || self.pts.map_or(false, |pts| frame.pts < pts) {
+            // An encoder can restart at zero before its previous clock advances.
+            if changed || self.pts.map_or(false, |pts| frame.pts <= pts) {
                 if let Err(error) = self.close_epoch() {
                     self.failed = true;
                     log::error!("Failed to close recording epoch: {error:?}");

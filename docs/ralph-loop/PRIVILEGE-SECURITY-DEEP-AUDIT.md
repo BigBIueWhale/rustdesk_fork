@@ -147666,3 +147666,13 @@ Explicit full-UI finalization failures, multi-writer/late-failure and blocked-I/
 behavior, installed/root recording, other platforms and controlled-side outcome
 propagation remain OPEN. Broader R-S0/R-F5, current release artifacts, independent
 reproduction/review and the other binding release obligations remain OPEN.
+
+Fresh ledger count at 1056df4d/XcphJS14ay/tool48136 exits zero: 409,461 tokens /
+1,868,588 bytes, SHA-256
+f3155bf25e71b572ca9e093e3f874eb100b40a0376b60da34aa398dbf251c59a.
+The fixed tokenizer, seven controls and whole-input round trip pass. Eight files /
+116,208 bytes in recording-owner-ledger-1056df4d.json match both hosts. QEMU
+1104567 joins zero after 30.372 s; peak scratch 403,103,744 bytes, three zero
+listener deltas and exact private/socket/RAM absence are verified. The approximate
+400,000-token compression remains OPEN. This audit-only append preserves the
+counted ledger bytes.

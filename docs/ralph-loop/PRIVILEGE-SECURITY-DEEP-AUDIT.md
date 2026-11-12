@@ -150629,3 +150629,14 @@ that early-exit uncertainty or establish installed interruption/recovery without
 rebuilding unchanged application bytes. This append preserves the prior
 16,130,460-byte audit prefix, SHA-256
 3bb77c4bdbee4bc3093f39d72782b5cc373b33983c003c262169ce8f2b131f3d.
+
+Fresh ledger count at c9e65b9c, BDgfuQfm0J/tool14426, passes: 416,640 tokens /
+1,901,025 bytes, SHA-256
+2d3d796e2eb1f5fbed7f55c035c45c3a2f12fa98e35425402312da18de41fb7d.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-installed-ledger-c9e65b9c.json binds eight files/115,532 bytes on CTE/TUF.
+QEMU 3358554 joins zero after 30.783 seconds with three zero listener deltas and
+exact private/process/socket/RAM retirement. The approximate 400,000-token target
+remains OPEN. This audit-only append preserves the counted ledger and prior
+16,135,024-byte audit prefix, SHA-256
+9f126743a6de99fb8f57436998f1d2dd2e28e9e7a42ff7a4305ea6ca0efb7eea.

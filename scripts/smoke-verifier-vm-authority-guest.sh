@@ -1845,7 +1845,7 @@ assert lines[1].startswith("DEBIAN_PACKAGE_SELF_TEST_ARTIFACTS=")
 value=json.loads(lines[1].split("=",1)[1])
 assert ranges["valid"]["runner_sha256"]==value["runner_sha256"]
 assert set(value)=={"fixture_archive_sha256","production_archive_sha256","runner_sha256","libraries_sha256","compiler_sha256","cli_verified_archives","maintainer_cli_cases"}
-assert value["cli_verified_archives"]==2 and len(value["libraries_sha256"])==12
+assert value["cli_verified_archives"]==2 and len(value["libraries_sha256"])==13
 assert set(value["maintainer_cli_cases"])=={kind+"-"+name for kind in ("changed","missing-source") for name in ("preinst","postinst","prerm","postrm")}
 for case in value["maintainer_cli_cases"].values():
  assert set(case)=={"archive_sha256","source_sha256","returncode"} and case["returncode"]==1

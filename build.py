@@ -56,6 +56,7 @@ DEBIAN_FLUTTER_LIBRARIES = {
     "usr/share/rustdesk/lib/libapp.so",
     "usr/share/rustdesk/lib/libdesktop_drop_plugin.so",
     "usr/share/rustdesk/lib/libdesktop_multi_window_plugin.so",
+    "usr/share/rustdesk/lib/libfile_selector_linux_plugin.so",
     "usr/share/rustdesk/lib/libflutter_custom_cursor_plugin.so",
     "usr/share/rustdesk/lib/libflutter_linux_gtk.so",
     "usr/share/rustdesk/lib/librustdesk.so",

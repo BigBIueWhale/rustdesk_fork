@@ -46,6 +46,7 @@ FLUTTER_LIBRARIES = {
     "./usr/share/rustdesk/lib/libapp.so",
     "./usr/share/rustdesk/lib/libdesktop_drop_plugin.so",
     "./usr/share/rustdesk/lib/libdesktop_multi_window_plugin.so",
+    "./usr/share/rustdesk/lib/libfile_selector_linux_plugin.so",
     "./usr/share/rustdesk/lib/libflutter_custom_cursor_plugin.so",
     "./usr/share/rustdesk/lib/libflutter_linux_gtk.so",
     "./usr/share/rustdesk/lib/librustdesk.so",
@@ -1774,10 +1775,10 @@ def run_production_finalizer_self_test(repo, tmp, polkit_policy):
     missing_plugin = tmp / "missing-plugin"
     shutil.copytree(staging, missing_plugin, symlinks=True)
     (missing_plugin / "DEBIAN/md5sums").unlink()
-    (missing_plugin / "usr/share/rustdesk/lib/libwindow_size_plugin.so").unlink()
+    (missing_plugin / "usr/share/rustdesk/lib/libfile_selector_linux_plugin.so").unlink()
     expect_operation_failure(
         lambda: build_module.finalize_debian_package_tree(missing_plugin),
-        "missing files ['usr/share/rustdesk/lib/libwindow_size_plugin.so']",
+        "missing files ['usr/share/rustdesk/lib/libfile_selector_linux_plugin.so']",
     )
 
     unexpected_plugin = tmp / "unexpected-plugin"
@@ -2249,13 +2250,13 @@ def run_self_test(repo, polkit_policy):
             good_deb,
             missing_plugin_deb,
             data_transform=replace_tar_member(
-                "./usr/share/rustdesk/lib/libwindow_size_plugin.so",
+                "./usr/share/rustdesk/lib/libfile_selector_linux_plugin.so",
                 remove=True,
             ),
         )
         expect_validation_failure(
             missing_plugin_deb,
-            "missing files ['./usr/share/rustdesk/lib/libwindow_size_plugin.so']",
+            "missing files ['./usr/share/rustdesk/lib/libfile_selector_linux_plugin.so']",
         )
 
         extra_plugin_deb = tmp / "extra-plugin.deb"

@@ -240,7 +240,7 @@ def compile_probe(pins):
               "metadata=json.loads(Path('/work/metadata.json').read_text())\n"
               "backend,=[p for p in metadata['packages'] if p['name']=='nokhwa-bindings-linux']\n"
               "assert backend['source'] is None and backend['manifest_path']=='/work/source/libs/nokhwa-bindings-linux/Cargo.toml'\n"
-              "for name in ('Cargo.toml','src/lib.rs'):\n"
+              "for name in ('Cargo.toml','src/lib.rs','src/capture.rs'):\n"
               " assert Path('/backend',name).read_bytes()==Path('/work/source/libs/nokhwa-bindings-linux',name).read_bytes()\n"
               "print('CAMERA_NATIVE_LOCK='+json.dumps({'sha256':hashlib.sha256(raw).hexdigest(),"
               "'bytes':len(raw),'packages':len(selected),'identities_unchanged':True},sort_keys=True))\n"
@@ -367,6 +367,11 @@ def native_scenarios(artifact):
                 require(run.returncode == 0 and not run.stderr,
                         'production camera zero control failed: ' + run.stderr.decode(errors='replace'))
                 results.append(json.loads(run.stdout))
+                timeout = subprocess.run(native_argv('--product-timeout'), env=ENV,
+                                         stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+                require(timeout.returncode == 0 and not timeout.stderr and len(timeout.stdout) <= 16384,
+                        'production camera timeout recovery failed: ' + timeout.stderr.decode(errors='replace'))
+                results.append(json.loads(timeout.stdout))
             elif count == 1:
                 require(run.returncode == 0 and not run.stderr, 'nokhwa native capture failed: ' + run.stderr.decode(errors='replace'))
                 results.append(json.loads(run.stdout))

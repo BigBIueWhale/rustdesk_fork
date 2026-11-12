@@ -4138,6 +4138,9 @@ dependencies = [
 name = "nokhwa-bindings-linux"
 version = "0.1.1"
 dependencies = [
+ "libc",
+ "log",
+ "memmap2",
  "nokhwa-core",
  "v4l",
 ]

@@ -8,8 +8,11 @@ use nokhwa::{
     pixel_format::RgbAFormat,
     query,
     utils::{ApiBackend, CameraIndex, RequestedFormat, RequestedFormatType},
-    Camera,
 };
+#[cfg(target_os = "windows")]
+use nokhwa::Camera;
+#[cfg(target_os = "linux")]
+use nokhwa::{backends::capture::V4LCaptureDevice as Camera, camera_traits::CaptureBackendTrait};
 
 use hbb_common::message_proto::{DisplayInfo, Resolution};
 
@@ -128,10 +131,11 @@ impl Cameras {
         } else {
             RequestedFormatType::AbsoluteHighestResolution
         };
-        let result = Camera::new(
-            index.clone(),
-            RequestedFormat::new::<RgbAFormat>(format_type),
-        );
+        let requested = RequestedFormat::new::<RgbAFormat>(format_type);
+        #[cfg(target_os = "linux")]
+        let result = Camera::new(index, requested);
+        #[cfg(target_os = "windows")]
+        let result = Camera::new(index.clone(), requested);
         match result {
             Ok(camera) => Ok(camera),
             Err(e) => bail!("create camera{} error:  {}", index, e),
@@ -212,7 +216,7 @@ impl CameraCapturer {
 
 impl TraitCapturer for CameraCapturer {
     #[cfg(any(target_os = "windows", target_os = "linux"))]
-    fn frame<'a>(&'a mut self, _timeout: std::time::Duration) -> std::io::Result<Frame<'a>> {
+    fn frame<'a>(&'a mut self, timeout: std::time::Duration) -> std::io::Result<Frame<'a>> {
         // TODO: move this check outside `frame`.
         if !self.camera.is_stream_open() {
             if let Err(e) = self.camera.open_stream() {
@@ -222,7 +226,13 @@ impl TraitCapturer for CameraCapturer {
                 ));
             }
         }
-        match self.camera.frame() {
+        #[cfg(target_os = "linux")]
+        let frame = self.camera.frame_with_timeout(timeout);
+        #[cfg(target_os = "windows")]
+        let frame = self.camera.frame().map_err(|error| io::Error::new(
+            io::ErrorKind::Other, format!("Camera frame error: {}", error),
+        ));
+        match frame {
             Ok(buffer) => {
                 match buffer.decode_image::<RgbAFormat>() {
                     Ok(decoded) => {
@@ -267,10 +277,7 @@ impl TraitCapturer for CameraCapturer {
                     )),
                 }
             }
-            Err(e) => Err(io::Error::new(
-                io::ErrorKind::Other,
-                format!("Camera frame error: {}", e),
-            )),
+            Err(e) => Err(e),
         }
     }
 

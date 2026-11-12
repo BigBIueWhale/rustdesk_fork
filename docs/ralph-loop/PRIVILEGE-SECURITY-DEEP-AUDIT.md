@@ -149956,3 +149956,36 @@ process/socket/RAM retirement pass. The approximate 400,000-token target remains
 OPEN. This audit-only append preserves the counted ledger and prior
 16,089,200-byte audit prefix, SHA-256
 730b4c41b9a3d003c2d6781235c03bb96e1d90eea2a54977444946c69f83cb01.
+
+## ViewCamera bounded capture prerequisite (2026-11-12)
+
+Continue the selected R-F1/R-S0 camera ownership correction. A retained capture
+owner cannot shut down while the inherited V4L stream waits indefinitely for
+a frame. Merely setting its timeout is insufficient: next() queues arena_index
+again after a failed dequeue, even though the driver still owns that buffer.
+The fork-owned Linux backend now owns its mappings and explicitly distinguishes
+queued buffers from a successfully dequeued buffer. Nonblocking DQBUF plus a
+bounded poll returns WouldBlock without stopping/recreating capture. Only the
+reported payload is exposed; malformed buffer metadata and uncertain queue
+errors fail the stream. Explicit close reports errors; Drop logs cleanup errors
+without introducing another panic. The existing pinned memmap2 dependency owns
+mapping retirement. Linux's production CameraCapturer uses the concrete backend
+and preserves the caller's frame deadline and WouldBlock result. Its Send bound
+is compiler-derived, without the supplier's unsafe camera-sync feature.
+
+The focused native scenario stalls vivid at 100 percent dropped buffers. It
+checks the inherited bounded stream's TimedOut-then-EINVAL failure, repeated
+production deadlines before and after healthy frames, recovery through the same
+capturer, retirement while stalled and fresh capture acquisition. Existing
+backend ownership and production zero/nonzero scenarios remain controls.
+Native execution is pending; this slice does not correct the separate ordinal/
+catalog/service generation failure or establish physical-camera/application
+acceptance. The test remains inside the admitted no-NIC TUF media VM.
+
+Design sources: https://docs.kernel.org/userspace-api/media/v4l/func-poll.html ,
+https://docs.kernel.org/userspace-api/media/v4l/vidioc-qbuf.html and
+https://docs.kernel.org/userspace-api/media/v4l/mmap.html establish readiness,
+nonblocking EAGAIN, queue ownership and mapping lifetime. The pinned Linux 6.1
+vivid-ctrls.c defines the Percentage of Dropped Buffers control used by the
+fixture. The prior 16,089,854-byte audit prefix remains unchanged, SHA-256
+861717aa07812e369b1f7fd74348dbfa394ea2ae30ccbc41af936aae208851b7.

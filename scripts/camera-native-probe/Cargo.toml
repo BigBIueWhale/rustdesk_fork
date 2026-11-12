@@ -15,6 +15,7 @@ nokhwa = { git = "https://github.com/rustdesk-org/nokhwa.git", branch = "fix_fro
 protobuf_it = { path = "../../libs/protobuf_it" }
 serde_json = "=1.0.118"
 sha2 = "=0.10.8"
+v4l = { version = "=0.14.0", features = ["v4l2-sys"] }
 
 [profile.release]
 panic = "abort"

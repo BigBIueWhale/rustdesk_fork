@@ -3091,6 +3091,7 @@ if [ "$MODE" = media-kernel-tests ]; then
             "$SCRIPT_DIR/camera-native-probe/build.rs" "$SCRIPT_DIR/camera-native-probe/src/main.rs"
             "$REPO_ROOT/Cargo.toml" "$REPO_ROOT/Cargo.lock"
             "$REPO_ROOT/libs/nokhwa-bindings-linux/Cargo.toml" "$REPO_ROOT/libs/nokhwa-bindings-linux/src/lib.rs"
+            "$REPO_ROOT/libs/nokhwa-bindings-linux/src/capture.rs"
             "$REPO_ROOT/libs/nokhwa-bindings-linux/README.md" "$REPO_ROOT/libs/nokhwa-bindings-linux/LICENSE"
             "$SCRIPT_DIR/online-input-provenance.py")
     fi
@@ -5073,7 +5074,7 @@ if nokhwa:
                       ('product-Cargo.toml',scripts.parent/'Cargo.toml'),
                       ('product-Cargo.lock',scripts.parent/'Cargo.lock'),
                       *((f'backend/{name}',scripts.parent/'libs/nokhwa-bindings-linux'/name)
-                        for name in ('Cargo.toml','src/lib.rs','README.md','LICENSE')),
+                        for name in ('Cargo.toml','src/lib.rs','src/capture.rs','README.md','LICENSE')),
                       *((f'probe/{name}',scripts/'camera-native-probe'/name)
                         for name in ('Cargo.toml','Cargo.lock','build.rs','src/main.rs')),
                       *((f'../repo/scripts/{name}',scripts/name) for name in
@@ -6545,7 +6546,7 @@ if sys.argv[7]=='1':
     for key in ('root_foreign_probe_refused','compiler_container_retired','daemon_joined','compile_network_canary_refused'):
         assert supplier[key] is True
     assert supplier['rustdesk_camera_module_executed'] is True
-    capture,product,retained,reuse,ownership,product_zero=supplier['scenarios']
+    capture,product,retained,reuse,ownership,product_zero,timeout=supplier['scenarios']
     assert capture['scenario']=='capture' and capture['indices']==[2]
     assert capture['device_handles_retired'] is True and len(set(capture['sample']['frame_sha256']))>=2
     assert product['scenario']=='product-nonzero-baseline' and product['device_handles_retired'] is True
@@ -6562,9 +6563,15 @@ if sys.argv[7]=='1':
     assert reuse['readiness']['original_rdev']!=reuse['readiness']['replacement_rdev']
     assert ownership['scenario']=='stream-ownership' and ownership['device_handles_retired'] is True
     assert ownership['competing_error']
+    assert timeout['scenario']=='product-timeout' and timeout['inherited_retry_errno']==22
+    assert timeout['same_owner_recovery'] is True and timeout['device_handles_retired'] is True
+    assert len(timeout['waits_ms'])==4 and all(len(waits)==3 for waits in timeout['waits_ms'])
+    assert all(70<=elapsed<800 for waits in timeout['waits_ms'] for elapsed in waits)
+    assert timeout['close_ms']<800 and len(timeout['recoveries'])==3
     samples=[capture['sample'],retained['first_sample'],retained['second_sample'],retained['resumed_sample'],
              reuse['readiness']['first_sample'],reuse['result']['replacement_sample'],reuse['result']['original_sample'],
              ownership['initial'],ownership['preserved'],ownership['retry'],product['native_control'],product_zero['sample']]
+    samples.extend(timeout['recoveries'])
     for sample in samples:
         assert sample['decoded_format']=='RGBA' and sample['frame_bytes']==sample['width']*sample['height']*4
         assert len(sample['frame_sha256'])==4 and len(set(sample['frame_sha256']))>=2

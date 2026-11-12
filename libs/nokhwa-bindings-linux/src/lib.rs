@@ -15,7 +15,11 @@
  */
 
 #[cfg(target_os = "linux")]
+mod capture;
+
+#[cfg(target_os = "linux")]
 mod internal {
+    use crate::capture::{CaptureStream, MAX_FRAME_WAIT};
     use nokhwa_core::{
         buffer::Buffer,
         error::NokhwaError,
@@ -35,8 +39,6 @@ mod internal {
         control::{Control, Flags, Type, Value},
         frameinterval::FrameIntervalEnum,
         framesize::FrameSizeEnum,
-        io::traits::CaptureStream,
-        prelude::MmapStream,
         video::{capture::Parameters, Capture},
         Device, Format, FourCC,
     };
@@ -171,14 +173,14 @@ mod internal {
     /// To see what this does, please see [`CaptureBackendTrait`].
     /// # Quirks
     /// - Calling [`set_resolution()`](CaptureBackendTrait::set_resolution), [`set_frame_rate()`](CaptureBackendTrait::set_frame_rate), or [`set_frame_format()`](CaptureBackendTrait::set_frame_format) each internally calls [`set_camera_format()`](CaptureBackendTrait::set_camera_format).
-    pub struct V4LCaptureDevice<'a> {
+    pub struct V4LCaptureDevice {
         camera_format: CameraFormat,
         camera_info: CameraInfo,
         device: std::sync::Mutex<Device>,
-        stream_handle: Option<MmapStream<'a>>,
+        stream_handle: Option<CaptureStream>,
     }
 
-    impl<'a> V4LCaptureDevice<'a> {
+    impl V4LCaptureDevice {
         /// Creates a new capture device using the `V4L2` backend. Indexes are gives to devices by the OS, and usually numbered by order of discovery.
         /// # Errors
         /// This function will error if the camera is currently busy or if `V4L2` can't read device information.
@@ -406,9 +408,20 @@ mod internal {
             self.camera_format = camera_format;
             Ok(())
         }
+
+        /// Capture on the retained stream, preserving WouldBlock for a missed frame
+        /// deadline. The wait is capped at one second even for a larger timeout.
+        pub fn frame_with_timeout(&mut self, timeout: std::time::Duration) -> io::Result<Buffer> {
+            let format = self.camera_format;
+            let stream = self.stream_handle.as_mut().ok_or_else(|| {
+                io::Error::new(ErrorKind::NotConnected, "V4L2 stream not started")
+            })?;
+            let bytes = stream.next(timeout)?;
+            Ok(Buffer::new(format.resolution(), bytes, format.format()))
+        }
     }
 
-    impl<'a> CaptureBackendTrait for V4LCaptureDevice<'a> {
+    impl CaptureBackendTrait for V4LCaptureDevice {
         fn backend(&self) -> ApiBackend {
             ApiBackend::Video4Linux
         }
@@ -764,21 +777,11 @@ mod internal {
         }
 
         fn open_stream(&mut self) -> Result<(), NokhwaError> {
-            // Disable mut warning, since mut is only required when not using arena buffers
-            #[allow(unused_mut)]
-            let mut stream =
-                match MmapStream::new(&*self.lock_device()?, v4l::buffer::Type::VideoCapture) {
-                    Ok(s) => s,
-                    Err(why) => return Err(NokhwaError::OpenStreamError(why.to_string())),
-                };
-
-            // Explicitly start now, or won't work with the RPi. As a consequence, buffers will only be used as required.
-            // WARNING: This will cause drop of half of the frames
-            #[cfg(feature = "no-arena-buffer")]
-            match stream.start() {
-                Ok(s) => s,
-                Err(why) => return Err(NokhwaError::OpenStreamError(why.to_string())),
+            if self.stream_handle.is_some() {
+                return Ok(());
             }
+            let stream = CaptureStream::new(&*self.lock_device()?)
+                .map_err(|error| NokhwaError::OpenStreamError(error.to_string()))?;
             self.stream_handle = Some(stream);
             Ok(())
         }
@@ -799,8 +802,8 @@ mod internal {
 
         fn frame_raw(&mut self) -> Result<Cow<[u8]>, NokhwaError> {
             match &mut self.stream_handle {
-                Some(sh) => match sh.next() {
-                    Ok((data, _)) => Ok(Cow::Borrowed(data)),
+                Some(sh) => match sh.next(MAX_FRAME_WAIT) {
+                    Ok(data) => Ok(Cow::Borrowed(data)),
                     Err(why) => Err(NokhwaError::ReadFrameError(why.to_string())),
                 },
                 None => Err(NokhwaError::ReadFrameError(
@@ -810,9 +813,12 @@ mod internal {
         }
 
         fn stop_stream(&mut self) -> Result<(), NokhwaError> {
-            if self.stream_handle.is_some() {
-                self.stream_handle = None;
+            if let Some(stream) = self.stream_handle.as_mut() {
+                stream.close().map_err(|error| NokhwaError::ReadFrameError(
+                    format!("V4L2 stream close failed: {}", error),
+                ))?;
             }
+            self.stream_handle = None;
             Ok(())
         }
     }

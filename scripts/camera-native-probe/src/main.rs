@@ -12,6 +12,8 @@ use std::{
     fs,
     io::{self, Write},
     os::unix::fs::{FileTypeExt, MetadataExt},
+    os::fd::AsRawFd,
+    time::{Duration, Instant},
 };
 
 extern crate self as hbb_common;
@@ -112,6 +114,114 @@ fn sample_frames(camera: &mut Camera) -> Result<Value> {
               "frame_sha256": hashes, "decoded_format": "RGBA"}))
 }
 
+fn drop_frames(control: &fs::File, percentage: i32) -> Result<()> {
+    #[repr(C)]
+    struct Control { id: u32, value: i32 }
+    // Linux 6.1 vivid's Percentage of Dropped Buffers control. This is only
+    // called after the fixture has established its exact no-NIC guest/principal.
+    let mut value = Control { id: 0x00f0f040, value: percentage };
+    for request in [v4l::v4l2::vidioc::VIDIOC_S_CTRL, v4l::v4l2::vidioc::VIDIOC_G_CTRL] {
+        unsafe { v4l::v4l2::ioctl(control.as_raw_fd(), request, &mut value as *mut _ as *mut _)?; }
+        require(value.value == percentage, "vivid did not apply the exact frame-drop control")?;
+    }
+    Ok(())
+}
+
+fn product_sample(selected: &mut dyn TraitCapturer) -> Result<Value> {
+    let mut hashes = Vec::new();
+    for _ in 0..20 {
+        match selected.frame(Duration::from_millis(100)) {
+            Ok(Frame::PixelBuffer(frame)) => {
+                require(frame.width() == 640 && frame.height() == 360
+                        && frame.pixfmt() == Pixfmt::RGBA && frame.stride() == 2560
+                        && frame.data().len() == 921600, "recovered product pixel layout differs")?;
+                hashes.push(format!("{:x}", Sha256::digest(frame.data())));
+                if hashes.len() == 4 { break; }
+            }
+            Ok(Frame::Texture(_)) => return Err("camera returned a texture".into()),
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => continue,
+            Err(error) => return Err(error.into()),
+        }
+    }
+    require(hashes.len() == 4 && hashes.iter().collect::<BTreeSet<_>>().len() >= 2,
+            "recovered product pixels did not advance")?;
+    Ok(json!({"width": 640, "height": 360, "frame_bytes": 921600,
+              "decoded_format": "RGBA", "frame_sha256": hashes}))
+}
+
+fn stalled_reads(selected: &mut dyn TraitCapturer, allow_queued: bool) -> Result<Vec<u128>> {
+    let mut waits = Vec::new();
+    for attempt in 0..10 {
+        let started = Instant::now();
+        let result = selected.frame(Duration::from_millis(100));
+        let elapsed = started.elapsed().as_millis();
+        require(elapsed < 800, "stalled camera exceeded its bounded frame wait")?;
+        match result {
+            Ok(_) => require(allow_queued && attempt < 5, "camera produced frames while stalled")?,
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                // Duplicate buffered pixels may also return WouldBlock immediately.
+                if elapsed >= 70 { waits.push(elapsed); }
+                else { require(allow_queued && attempt < 5, "stalled camera spun without waiting")?; }
+            }
+            Err(error) => return Err(error.into()),
+        }
+        if waits.len() == 3 { break; }
+    }
+    require(waits.len() == 3, "three retryable frame deadlines were not observed")?;
+    Ok(waits)
+}
+
+fn product_timeout() -> Result<()> {
+    fn assert_send<T: Send>() {}
+    assert_send::<nokhwa::backends::capture::V4LCaptureDevice>();
+    require(query_indices()? == [0], "timeout fixture requires only native zero")?;
+    let control = fs::OpenOptions::new().read(true).write(true).open("/dev/video0")?;
+    drop_frames(&control, 100)?;
+    // The inherited v4l stream's bounded path fails on its second read: the
+    // timeout did not dequeue a buffer, but next() tries to queue index zero.
+    let inherited_retry_errno;
+    {
+        use v4l::io::traits::CaptureStream;
+        let device = v4l::Device::new(0)?;
+        let mut stream = v4l::io::mmap::Stream::new(&device, v4l::buffer::Type::VideoCapture)?;
+        stream.set_timeout(Duration::from_millis(100));
+        let first = stream.next().err().ok_or("inherited stream did not stall")?;
+        require(first.kind() == io::ErrorKind::TimedOut, "inherited timeout differs")?;
+        inherited_retry_errno = stream.next().err().ok_or("inherited retry unexpectedly succeeded")?.raw_os_error();
+        require(inherited_retry_errno == Some(libc::EINVAL), "inherited buffer retry failure differs")?;
+    }
+    product_camera::Cameras::all_info()?;
+    let mut selected = product_camera::Cameras::get_capturer(0)?;
+    let first_waits = stalled_reads(&mut *selected, false)?;
+    let handles = video_handles()?;
+    require(handles == [fs::metadata("/dev/video0")?.rdev(); 2], "timeout stream lost device ownership")?;
+    drop_frames(&control, 0)?;
+    let first_recovery = product_sample(&mut *selected)?;
+    drop_frames(&control, 100)?;
+    let second_waits = stalled_reads(&mut *selected, true)?;
+    drop_frames(&control, 0)?;
+    let second_recovery = product_sample(&mut *selected)?;
+    require(video_handles()? == handles, "recovery changed retained camera handles")?;
+    drop_frames(&control, 100)?;
+    let final_waits = stalled_reads(&mut *selected, true)?;
+    let started = Instant::now();
+    drop(selected);
+    let close_ms = started.elapsed().as_millis();
+    require(close_ms < 800 && video_handles()?.len() == 1, "stalled product stream did not retire")?;
+    // A fresh owner must be able to acquire buffers after the stopped owner.
+    let mut fresh = product_camera::Cameras::get_capturer(0)?;
+    let fresh_waits = stalled_reads(&mut *fresh, false)?;
+    drop_frames(&control, 0)?;
+    let fresh_recovery = product_sample(&mut *fresh)?;
+    drop(fresh);
+    drop(control);
+    require(video_handles()?.is_empty(), "timeout fixture retained a device handle")?;
+    emit(json!({"scenario": "product-timeout", "inherited_retry_errno": inherited_retry_errno,
+                "waits_ms": [first_waits, second_waits, final_waits, fresh_waits],
+                "recoveries": [first_recovery, second_recovery, fresh_recovery],
+                "same_owner_recovery": true, "close_ms": close_ms, "device_handles_retired": true}))
+}
+
 fn main_result() -> Result<()> {
     require(unsafe { libc::getuid() == 4000 && libc::getgid() == 4000
             && libc::geteuid() == 4000 && libc::getegid() == 4000
@@ -127,6 +237,7 @@ fn main_result() -> Result<()> {
     let args = std::env::args().skip(1).collect::<Vec<_>>();
     require(args.len() == 1, "one closed native scenario is required")?;
     match args[0].as_str() {
+        "--product-timeout" => product_timeout(),
         "--capture" => {
             let indices = query_indices()?;
             require(indices == [2], "nokhwa did not discover only native index two")?;

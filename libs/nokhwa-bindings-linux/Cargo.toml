@@ -13,4 +13,7 @@ nokhwa-core = { git = "https://github.com/rustdesk-org/nokhwa.git", branch = "fi
 no-arena-buffer = []
 
 [target.'cfg(target_os = "linux")'.dependencies]
+libc = "=0.2.171"
+log = "0.4"
+memmap2 = "=0.9.11"
 v4l = { version = "0.14", features = ["v4l2-sys"] }

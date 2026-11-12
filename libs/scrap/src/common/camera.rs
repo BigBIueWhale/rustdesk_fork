@@ -27,7 +27,10 @@ use crate::{PixelBuffer, Pixfmt};
 pub const PRIMARY_CAMERA_IDX: usize = 0;
 
 #[cfg(target_os = "linux")]
-use std::sync::{atomic::{AtomicBool, AtomicU64, Ordering}, Weak};
+use std::{
+    convert::TryFrom,
+    sync::{atomic::{AtomicBool, AtomicU64, Ordering}, Weak},
+};
 
 /// Linux currently publishes one primary camera. Each catalog retains that exact
 /// open device; protocol ordinal zero is never converted back to a native index.

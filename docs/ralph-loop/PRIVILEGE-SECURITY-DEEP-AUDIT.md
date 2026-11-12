@@ -150058,3 +150058,37 @@ Media Foundation, so transferring that camera between threads is not an accepted
 ownership design. The Windows correction and native evidence remain OPEN.
 The prior 16,094,431-byte audit prefix is preserved, SHA-256
 9a0d756fb1e62ee9b45425eb6e6eddcbcd69d0915b2a54f045af49bf6ff24bd3.
+
+Native component execution at e93f8660, TUF vvyCI3ZHHs/tool74928, passes all eight
+scenarios: eighteen samples decode seventy-two advancing 640x360 RGBA frames.
+Nonzero product capture succeeds, repeated acquisition shares the retained
+catalog, node replacement creates a distinct generation, old metadata and
+capture survive replacement, and retired-catalog admission refuses. Existing
+backend stream-ownership and twelve measured 100 ms timeout/recovery controls
+pass; stalled retirement measures below 1 ms. This does not exercise actual
+application login or concurrent service subscriptions. The 5,161,832-byte probe
+SHA-256 is 0956bae8a54ee381927158f07a6ace0837e3ee6acfb224145f8d76b5281281de.
+Its 150-package lock retains the previous identities and digest. The capsule
+camera-catalog-e93f8660.json binds eight files/193,697 bytes verified on CTE/TUF.
+QEMU 2379194 joins zero after 145.348 seconds; peak RAM scratch is 6,794,297,344
+bytes, with three zero listener deltas and exact private/process/socket/RAM
+retirement.
+
+The full application build E0wYyYMgts/tool75242 fails before server compilation:
+scrap uses Rust 2018, so i32::try_from requires an explicit TryFrom import. The
+probe's Rust 2021 prelude concealed that missing import. Add the production
+import and align the probe with scrap's 2018 edition. Both native revalidation
+and full integration retry are pending. camera-catalog-app-e93f8660.json binds
+nine files/159,096 bytes verified on both hosts; QEMU 2380638 joins zero after
+558.411 seconds, RAM retires, four listener deltas are zero and the exact failed
+private tree 66306:78035078 is removed after reconciliation. No app artifact was
+published by the failed build.
+
+Before that build, retire the superseded 4d1d1153 app under the shared/cache
+locks after verifying its manifest and all 74 payloads. Descriptor-owned removal
+of 66306:87734073 frees 70,680,576 allocated payload bytes; three evidence files/
+27,502 bytes in camera-catalog-retired-4d1d1153.json preserve the manifest and
+inventory on both hosts. Accepted 4468059d and baselines 6429f3cb/a36e5581 remain.
+The four-generation cache bound is unchanged. The preceding 16,096,639-byte
+audit prefix is preserved, SHA-256
+332ff138a9a1ee897732b4156d9d2e564979c05cefdecfc817cbcaf3d5b65082.

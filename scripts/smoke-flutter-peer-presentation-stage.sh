@@ -1918,7 +1918,7 @@ PY
     elif [ "$PEER_SCENARIO" = quality-restart ]; then
       quality_phases=(best low balanced restore)
       controller_args+=("--quality-${quality_phases[viewer_generation - 1]}")
-    elif [ "$viewer_generations" -gt 1 ]; then
+    elif [ "$viewer_generations" -gt 1 ] && [ "$PEER_SCENARIO" != camera-unavailable ]; then
       if [ "$viewer_generation" -eq 1 ]; then
         credential_phase=enroll
         controller_args+=(--credential-enroll)

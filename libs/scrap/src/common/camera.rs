@@ -130,10 +130,11 @@ impl CameraCatalog {
         if self.is_retired() {
             return Err(io::Error::new(io::ErrorKind::NotConnected, "Camera catalog retired"));
         }
-        if !camera.is_stream_open() {
-            camera.open_stream().map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;
-        }
-        let result = camera.frame_with_timeout(timeout);
+        let result = if camera.is_stream_open() {
+            Ok(())
+        } else {
+            camera.open_stream().map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))
+        }.and_then(|()| camera.frame_with_timeout(timeout));
         if matches!(&result, Err(error) if error.kind() != io::ErrorKind::WouldBlock) {
             self.retire();
             camera.stop_stream().map_err(|error| io::Error::new(io::ErrorKind::Other, error.to_string()))?;

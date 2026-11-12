@@ -147864,3 +147864,13 @@ Full-UI finalization failure/retry is the next recording acceptance gap;
 multiple/late writers, blocked I/O, controlled-side write-result propagation,
 installed/root and other-platform recording, R-S0/R-F5 and broader release
 acceptance remain OPEN. No live instruction or normative requirement changes.
+
+Fresh ledger count at 875afe4a, zpgoviMcKj/tool80714 exits zero: 410,038 tokens /
+1,871,098 bytes, SHA-256
+9fc1d1f88aa02382c3798ccae6b9a67d4841c0bda84f5bd4778a222599caa181.
+The pinned tokenizer, seven controls and whole-input round trip pass.
+recording-clock-ui-ledger-875afe4a.json binds eight files/115,466 bytes verified
+on both hosts. QEMU 1862079 joins zero after 30.510 seconds; peak RAM scratch
+402,972,672 bytes, three zero listener deltas and exact private/socket/RAM
+absence are verified. Approximate 400,000-token ledger compression remains OPEN.
+This audit-only append preserves the counted ledger bytes.

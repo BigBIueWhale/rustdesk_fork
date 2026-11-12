@@ -6833,37 +6833,39 @@ widget/model tests, thirteen view-mode tests and two native command tests pass.
 manifest `6c827f474e1cc30d35dbe493b314f64770dfe8f3bf772466ef5401716f96ee64`.
 The native core and readiness helper differ from retained `f4a55367`; 72 payloads
 match exactly. Compiler memory stays within 10 GiB with zero swap/OOM events.
-The same app passes native directory selection and automatic incoming recording,
-actual EACCES with no output and visible Writing history, then a new authenticated
-session with one active writer and that history. After disconnect, the same UI
-shows no active or finishing writer. Both viewers present twelve fresh frames
-(maximum observed ages 308/323 ms). Two finalized private WebMs decode eighteen
-distinct source-counter frames; one initial desktop/connection-window image precedes
-the counter by 66 ms. Every frame is decoded and checked for corruption; subsequent
-counters/timing, truncated-file refusal and strict zero-prefix refusal are checked.
-`incoming-worker-ui-4d1d1153.json` binds ten files/126,998 bytes. Both capsules are
-verified on CTE/TUF with four zero listener deltas each and joined VM/RAM cleanup.
+Earlier directory/EACCES/retry and overload runs remain in
+`incoming-worker-ui-4d1d1153.json` and `incoming-overload-ui-4b55a23c.json`.
 
-**Full-app overload — selected Linux scenario passes at `4b55a23c`, same app.**
-A test-only libc write interposer holds one 1,319-byte recording write for 6,360 ms.
-The actual queue-overflow error appears; the same settings UI remains Finishing
-while twelve fresh viewer frames arrive. Release finishes recording and a private
-64,744-byte WebM decodes into 25 distinct source counters before disconnection.
-Twelve further fresh frames arrive on the same connection; maximum observed ages
-are 304 ms while held and 319 ms afterward. Actual EACCES/healthy retry also pass.
-The startup desktop allowance remains bounded to one second/32 images, independently
-of first-counter ordering: the connection window can map after a counter was captured.
-Every image still passes native decoding/corruption checks; later images require
-source counters/timing, with truncated and strict zero-startup controls. This run has
-two initial desktop images and a first counter at 267 ms. The preceding failed image
-check and diagnostic-only pass remain in the audit; the failure is not counted as
-accepted. `incoming-overload-ui-4b55a23c.json` binds ten files/113,658 bytes verified
-on both hosts, four zero listener deltas and joined VM/RAM cleanup. This is interposed
-I/O in the full app; native kernel-write blocking has separate component evidence.
+**Full-app overload and finalization recovery — selected Linux scenarios pass at
+`b9f7f17e`, same app.** Four password-authenticated sessions exercise the native
+directory chooser, real EACCES with no output, healthy retry, overload and a later
+closing failure. A test-only libc interposer holds a 1,982-byte write for 6,642 ms;
+the real queue exhausts and settings remains Finishing while twelve fresh viewer
+frames arrive. Release finalizes 25 distinct saved source counters before disconnect;
+twelve further fresh frames arrive on the same connection. Maximum observed viewer
+ages during/after the hold are 307/311 ms.
 
-Next: exercise late finalization failure through the full app's settings UI.
-Native spawn failure, full-UI multiple writers/late failures, broader finalization
-failures, installed/root settings/recording and other platforms remain OPEN.
+A fresh active recorder then stops on normal disconnect. The interposer parses its
+existing WebM header and holds the Duration rewrite at offset 170 for 1,743 ms.
+Settings remains Finishing through repeated observations; file metadata/offset stay
+unchanged. Injected EIO produces one new finalization error, no live writer and
+Finishing failure history in the same UI. The fourth session becomes active with
+that history, then completes 18 distinct decoded source counters in independent
+output. All four viewers present twelve fresh frames; maximum observed ages range
+from 311 to 339 ms. Every image in the accepted recordings passes native decoding/corruption checks;
+recognized counters retain source-clock/order checks, and truncated files refuse.
+The one-second/32-image initial desktop allowance can cover one earliest file with
+no counter; the whole attempt still requires at least twelve distinct counters.
+Strict zero-startup controls refuse those images; outgoing decoding stays strict.
+
+`incoming-finalization-ui-b9f7f17e.json` binds eleven files/128,311 bytes verified
+on CTE/TUF, four zero listener deltas and joined process/VM/RAM cleanup. The audit
+retains five failed fixture runs and their corrections; none is counted as a pass.
+This is interposed I/O in a user-owned Linux full app, not physical-filesystem or
+installed/root acceptance; native kernel-write blocking has separate evidence.
+Next: validate authorized incoming-recording settings and output in installed Linux
+service mode. Native spawn failure, full-UI multiple writers, broader finalization
+failures and other platforms remain OPEN.
 These selected cases do not close R-S0/R-F5 or complete release acceptance.
 
 **Transport verification classification — source-wording checks removed.**

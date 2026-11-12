@@ -148903,3 +148903,76 @@ private/QEMU/socket/RAM absence are verified. The approximate 400,000-token
 compression target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,015,920-byte audit prefix, SHA-256
 c1c68220db7c6f35a4450bc37d2b2cfe28dcc02ccb281a99b43ebfa9a33d1eb6.
+
+## 2026-11-12 — full-app incoming finalization failure and healthy recovery
+
+Prior turn: progress. Pinned-source research identified the actual finalization
+boundary, changing the fixture design. Continue R-S0/R-F5 recording acceptance
+with retained app 4d1d1153, manifest
+6c827f474e1cc30d35dbe493b314f64770dfe8f3bf772466ef5401716f96ee64.
+No product change or rebuild. Installed settings/recording is the next broader
+workflow; first close the selected full-UI late-failure gap on these exact bytes.
+
+Cargo.lock pins webm-sys d2c4d3ac133c7b0e4c0f656da710b48391981e64.
+Its build.rs compiles libwebm/mkvmuxer/mkvmuxer.cc, not the flat historical headers.
+The inspected build/FFI/mux/util/ID files match their local vendor checksum entries.
+Segment::Finalize calls SegmentInfo::Finalize after cluster finalization; the latter
+rewrites the previously reserved float32 Duration=1 field. Cluster backpatches also
+occur during streaming, so a generic backward seek is insufficient. SerializeInt
+emits one-byte writes; the former payload-size selector cannot target that header.
+Rust WebmMux retains callback I/O errors and checks them after native finalization;
+the worker's outer recorder.finish reports FailureStage::Finish. Epoch-close errors
+during write_frame instead report Writing. Relevant source: record/webm_mux.rs,
+record.rs and src/server/incoming_recording.rs. Primary syscall references:
+https://man7.org/linux/man-pages/man2/lseek.2.html
+https://man7.org/linux/man-pages/man2/write.2.html
+
+369cc8cf adds two authenticated sessions to the existing incoming profile. A fresh
+writer must be active and present twelve fresh frames before arming. The private
+descriptor/path/metadata, non-append offset and bounded existing Segment/Info header
+identify the exact Duration rewrite. The test holds it until repeated Finishing
+observations, then returns EIO. A new native finalization error and new Finishing
+history must appear. The same UI observes a later healthy writer and completion
+with preserved failure history. Completed attempts are archived by exact directory
+identity with private-file hashes; failed files cannot supply recovery counters.
+
+Five failed executions are retained separately; none reached the finalization fault:
+
+| Source/run/tool | Observation and correction | Capsule files/bytes | Retired private allocated bytes |
+| --- | --- | --- | --- |
+| 369cc8cf / 9ighERT0go / 97434 | Existing overload passes; new setup fails after archive inspection. 3484597e adds exact setup diagnostics without changing acceptance. | incoming-finalization-ui-369cc8cf.json: 13 / 223,746 | 61,927,424 |
+| 3484597e / UdVAdIyDyS / 95997 | A one-image initial epoch contains only the connection window, while a later file contains 26 counters. The retained PNG was inspected. 36da6601 admits one earliest startup-only file within the existing one-second/32-image bound, retaining every native decode/corruption/truncation check and the aggregate twelve-counter minimum. Outgoing decoding remains strict. | incoming-finalization-ui-3484597e.json: 14 / 336,965 | 62,099,456 |
+| 36da6601 / KHapwWflzI / 66589 | The startup-only branch passes with 25 later counters; archive succeeds, then log baseline returns -1. a9479c7b adds metadata/read/count diagnostics. | incoming-finalization-ui-36da6601.json: 13 / 232,982 | 61,939,712 |
+| a9479c7b / MM2XEIjnQS / 42807 | Correctly owned 0600 single-link log is 280,495 bytes, exceeding the 262,144-byte reader ceiling. 6aabf58c selects info logging for this scenario. | incoming-finalization-ui-a9479c7b.json: 13 / 234,679 | 61,939,712 |
+| 6aabf58c / 7WIs2ai5Qr / 25156 | Info logging still reaches 264,188 bytes after two sessions. b9f7f17e uses 8-KiB chunks with bounded match overlap and a 1-MiB input ceiling for four sessions. Exact error-count/metadata checks remain. | incoming-finalization-ui-6aabf58c.json: 13 / 191,323 | 61,882,368 |
+
+Each failed run has four zero listener deltas, a joined QEMU exit zero and absent
+RAM/socket/process state. After complete private inventories, duplicate app/input
+verification and durable evidence copies to CTE, the exact retained trees were
+removed with verify-private-tree-closure.py. Each 175-byte retirement receipt is
+verified on both hosts. The logs/capsules bind timings and storage peaks; no failed
+private tree remains and no application cache was added.
+
+Final T7TtrGc2fY/tool91659 exits zero at b9f7f17e. The 1,982-byte overload write is
+held 6,642 ms; actual queue exhaustion, Finishing UI, twelve fresh frames during
+and after, and 25 decoded source counters before disconnect pass. Maximum observed
+viewer ages during/after are 307/311 ms. The next active recorder is held at Duration
+offset 170 in a 32,787-byte file for 1,743 ms. File metadata and offset remain
+unchanged; settings remains Finishing through both observations. EIO yields one
+new finalization error, zero live writers and Finishing history. The fourth session
+records eighteen distinct counters, retains that history and completes in the same
+UI. Its two files total 39,343 bytes, including one initial desktop-only image;
+strict zero-startup and truncation controls refuse. Both retained startup thumbnails
+show the connection window over the source. All four viewers present twelve fresh
+frames, maximum observed ages 339/311/329/313 ms, on their respective stable sessions.
+
+incoming-finalization-ui-b9f7f17e.json binds eleven files/128,311 bytes copied and
+hash-verified on CTE/TUF. QEMU 3680923 joins zero after 173.482 seconds; RAM scratch
+peaks at 3,027,169,280 bytes. Four zero listener deltas and exact private/QEMU/socket/
+RAM absence pass. The three drivers compile twice with byte equality; app build is
+absent. These are bounded interposed writes in a Linux user-owned full app, not
+physical-filesystem failure, durability, installed/root or cross-platform proof.
+Next: installed Linux incoming-recording settings and output through the authorized
+workflow. Broader worker/finalization/platform and complete R-S0/R-F5/release
+acceptance remain OPEN. This append preserves the prior 16,016,684-byte audit prefix,
+SHA-256 44a853e2df546e42c566930cbc946e49931924551e60db704c5d6dae11ac04dd.

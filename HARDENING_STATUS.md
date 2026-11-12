@@ -560,7 +560,10 @@ allocated bytes. Its manifest, inventory and cleanup receipt remain on both
 hosts (`recording-clock-retired-7e6f6459.json`); its original payload bytes
 are not retained. Subsequent verified retirement removes `8543fa9e` and
 superseded `fd93151b`; their evidence remains. The four retained generations
-are now `6429f3cb`, `7c58ad90`, `dbd57c51` and incoming-status app `f4a55367`.
+are now `4d1d1153`, `6429f3cb`, `a36e5581` and corrected app `4468059d`.
+The obsolete `7c58ad90` bundle is retired after exact 74-payload verification,
+releasing 70,672,384 allocated bytes. Its manifest, inventory and receipts remain
+on both hosts (`recording-stop-retired-7c58ad90.json`, four files/39,359 bytes).
 `incoming-status-retired-fd93151b.json` binds its manifest, exact 74-payload
 inventory and retirement, releasing 70,598,656 allocated bytes while retaining
 36,546 bytes of evidence on both hosts. Removed payloads are not claimed reconstructible.
@@ -6776,9 +6779,9 @@ VM/RAM retirement. This closes the selected Linux combined-failure UI gap.
 
 The authenticated vendor cache adds 702,300 source bytes per host; whole online
 closure repinning and complete cold-input reproduction remain OPEN. The retired
-`8543fa9e` app freed 70,606,848 allocated bytes; its manifest/evidence and the
-`7c58ad90` baseline remain. Writable-diagnostic intermediate controls remain in
-the audit.
+`8543fa9e` app freed 70,606,848 allocated bytes; its manifest/evidence remain.
+The superseded `7c58ad90` baseline is subsequently retired as recorded above.
+Writable-diagnostic intermediate controls remain in the audit.
 
 **Multiple writers and late finalization — selected Linux native component ACCEPTED.**
 `4cf52642` adds a real two-decoder recording case with one retained written
@@ -6965,7 +6968,7 @@ the existing cancellation/concurrency/password/package controls pass.
 VM/RAM cleanup with four zero host listener deltas. Other exit/admission timing
 and broader failures remain OPEN; hiding a window does not establish process exit.
 
-**Service-stop recovery — correction compiled; installed replay OPEN.**
+**Service-stop recovery — corrected installed Linux scenario passes.**
 At `6515712d`, the same installed app preserves disabled recording when stopped
 during partial administrator entry, then reports Denied after restart. A second
 stop after durable enable also preserves the setting and reaps its helper, but
@@ -6979,8 +6982,26 @@ within two seconds and zero outgoing bytes to the replacement, using Unix pairs
 and injected identity changes. `recording-stop-recovery-1aab2c22.json` binds nine
 files/88,994 bytes and joined cleanup with four zero host listener deltas. The
 failed installed run and a corrected fixture-count failure remain in the audit.
-Next: rebuild the full app and rerun the actual service-stop/UI/fresh-disable
-scenario. This component pass does not establish corrected installed behavior.
+
+The corrected full app `4468059d` passes eight recording widget/model, thirteen
+view-mode and two native command controls. Its 74-payload manifest is
+`9b7d78862dcc863c9774592c356ffaffc9042e790eadd5ab2647af904c0686e7`;
+only the Rust library differs from `a36e5581`, with inputs/recipe unchanged
+(`recording-stop-app-4468059d.json`, ten files/327,921 bytes).
+At `bbe55739`, all nine actual shutdown stages pass on that artifact. Stop during
+partial, unsubmitted administrator entry preserves disabled and reports Denied;
+stop after observed durable enable preserves enabled and reports Uncertain in
+the same surviving GUI. Both checkboxes recover within their five-second
+observation, and a fresh administrator-approved disable succeeds. Exact helpers
+are reaped, three service generations are distinguished, and credential/profile
+state stays unchanged. Existing recording cancellation/contention/requester-exit,
+password, five CPace exchanges, stale-password refusal and package lifecycle pass.
+`installed-recording-stop-bbe55739.json` binds nine files/384,828 bytes verified
+on CTE/TUF, four zero host listener deltas and joined VM/RAM cleanup. A preceding
+fixture failure ignored the correct 107-byte result label under a 96-byte scan
+limit; its inspected screenshot and bounded-limit correction remain in the audit.
+This closes the reproduced Linux recovery failure, not other stop/admission
+timing, arbitrary I/O failures, physical devices or other platforms.
 
 **Still OPEN:** physical-display and broader installed capture cases, wrong/stale
 requester and broader mutation lifecycle/concurrency coverage, native spawn and broader I/O

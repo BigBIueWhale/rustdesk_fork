@@ -149783,3 +149783,28 @@ its separate 174-byte retirement receipt is verified on CTE/TUF. This failed run
 does not establish full acceptance. The append preserves the prior
 16,075,361-byte audit prefix, SHA-256
 85241a3423348e57bfa22570bb13a867dfde1243295773158d80c6c7cf0e1833.
+
+The corrected result observer at bbe55739, jQsIIv2oVN/tool25671, exits zero on
+the unchanged 4468059d app and manifest above. All nine stop stages pass. The
+unapproved stop completes in 0.661887 seconds and the same GUI reports Denied,
+with disabled/root state preserved. The admitted stop observes all sixteen exact
+child threads traced and the supervisor deactivating after durable enable;
+release completes shutdown in 1.213653 seconds. Restart preserves enabled, the
+checkbox becomes usable within the unchanged five-second observation, and the
+actual merged card reports Uncertain. The same GUI 7864/start7672 and GTK agent
+9297/start12229 then authorize a fresh disable. Exact helpers are reaped and all
+nine observations retain unchanged credential/profile state across three service
+generations. Cancellation, two-window contention, requester exit, nineteen
+password stages, five mutual CPace exchanges, stale-password refusal and actual
+package reinstall/remove/purge also pass. This verifies the selected installed
+Linux correction; other stop/admission timing, arbitrary I/O failures, wrong/stale
+principals, physical-device and other-platform acceptance remain OPEN.
+
+installed-recording-stop-bbe55739.json binds nine files/384,828 bytes copied and
+verified on CTE/TUF; outer SHA-256
+9ece88bc6c571ebca812d6e8b9a637c92318a6c0a52aa2406fbc38ea8f51ef64.
+QEMU 2308146 joins zero after 210.269 seconds; RAM scratch peaks at 4,244,725,760
+bytes. Four zero host listener deltas and exact private/process/socket/RAM
+absence pass. No further product change or rebuild was necessary. This append
+preserves the prior 16,078,637-byte audit prefix, SHA-256
+76992273a13187af481707d08ce90afc220c75cc48b4ef8023f3741e2e729328.

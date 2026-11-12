@@ -6932,6 +6932,18 @@ zero host listener deltas. A failed fixture run removed its counter window befor
 recording finished; the corrected fixture retains it until the UI confirms idle.
 This proves the sampled live workflow, not continuous transition timing or a soak.
 
+**Graphical authorization cancellation — installed Linux passes at `3db6ee1d`.**
+On the same `a36e5581` app, Cancel at administrator selection and after partial
+password entry preserves disabled recording, the service credential and user
+profile. Actual Denied UI and re-enabled controls agree with polkit dismissal;
+exact pkcheck/PAM helpers are reaped within 0.67 seconds. The same GUI/agent then
+approves fresh enable and disable requests. Thirteen recording stages and the
+existing nineteen password stages, concurrent credential change, five CPace
+exchanges, stale-password refusal and package lifecycle pass.
+`installed-recording-cancel-3db6ee1d.json` retains nine files/221,659 bytes and
+joined cleanup with four zero host listener deltas. Recording mutation concurrency,
+requester exit and broader failure cases remain OPEN.
+
 **Still OPEN:** physical-display and broader installed capture cases, wrong/stale
 requester and mutation lifecycle/concurrency coverage, native spawn and broader I/O
 failures, full-UI multiple writers and other platforms. Android's process-owned typed path

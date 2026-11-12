@@ -149484,3 +149484,42 @@ three zero listener deltas and private/socket/RAM retirement pass. The approxima
 400,000-token compression target remains OPEN. This audit-only append preserves
 the counted ledger and prior 16,057,852-byte audit prefix, SHA-256
 f11e897380f521ff424d80d00494f0a68bd133aae595ac6d8c2dd6392e89c144.
+
+## 2026-11-12 — Installed recording authorization cancellation and retry
+
+Selected the remaining R-S0 cancellation workflow after live recording effect
+acceptance. The actual GTK agent now verifies the requested operation's exact
+message before driving it. The installed fixture retains the same GUI, agent,
+PAM/logind session, supervisor and child across cancellation and fresh retry.
+The root observer checks exact helper identities, root setting, credential and
+user profile; it requires helper exit/reap before counting a cancellation or
+approved result. The recording-policy receiver returns Denied before persistence
+when pkcheck rejects; its bounded UUID recovery keeps the same pending operation.
+Official pkcheck documentation identifies exit 3 as user dismissal; the native
+service log and actual UI must both agree with that outcome:
+https://www.freedesktop.org/software/polkit/docs/latest/pkcheck.1.html
+
+3db6ee1d run ev82WnLuTG/tool46202 exits zero on the unchanged a36e5581 app,
+manifest 32e0888c5aa7d7780ef05ba30122f1a97da93150f42362c30a4a0e26d357d0b6.
+Thirteen recording stages pass: Cancel at administrator selection and after five
+masked, unsubmitted password characters leaves recording disabled, the protected
+credential and profile unchanged, and the checkbox enabled. Exact pkcheck/PAM
+helpers exit and reap within 0.640351/0.660707 seconds of the cancellation stage,
+below the predeclared ten-second bound. The same GUI/agent then completes actual
+administrator-approved enable/disable, with four distinct authorization helpers
+across the recording sequence. The existing nineteen password stages, two GTK
+cancellations, concurrent GUI/root-CLI password changes, five CPace exchanges,
+one receiver-confirmed stale-password refusal and package restart/reinstall/
+remove/purge also pass. The shared C drivers compile twice with matching hashes;
+frame/history and bounded-log controls pass inside the disposable guest.
+
+installed-recording-cancel-3db6ee1d.json binds nine files/221,659 bytes copied and
+verified on CTE/TUF; outer SHA-256
+89845b145b31b2661b3529b86241e5976a5ca863fd4fe4c26ca682954f4b72b2.
+QEMU 1726084 joins zero after 183.172 seconds; scratch peaks at 4,271,767,552 bytes.
+Four zero host listener deltas and exact private/process/socket/RAM absence pass.
+No product change or new application build was required. Recording mutation
+concurrency, requester death, wrong/stale principals, broader failure paths,
+physical-device and other-platform acceptance remain OPEN. This append preserves
+the prior 16,058,559-byte audit prefix, SHA-256
+4618f2c498b2bc63322920268ff699b57ed3b3798c2b921730be3019823ae221.

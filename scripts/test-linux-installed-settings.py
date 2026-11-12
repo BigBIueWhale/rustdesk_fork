@@ -103,7 +103,7 @@ def install(source, target, mode=0o644):
 
 def prepare_drivers(graphical=False):
     flags = run(['/usr/bin/pkg-config', '--cflags', '--libs', 'x11', 'xtst', 'xi',
-                 'atspi-2', 'gobject-2.0', 'gtk+-3.0']).split()
+                 'atspi-2', 'gobject-2.0', 'gtk+-3.0', 'vpx']).split()
     for copy in ('first', 'second'):
         run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
              '/work/scripts/linux-installed-settings-x11.c', *flags, '-o', f'/out/driver-{copy}'], timeout=60)

@@ -759,6 +759,7 @@ case "$#:${1:-}" in
                 --debian-candidate-install) FLUTTER_INSTALLED_SETTINGS=7 ;;
                 --debian-candidate-upgrade) FLUTTER_INSTALLED_SETTINGS=8 ;;
                 --debian-candidate-conffiles) FLUTTER_INSTALLED_SETTINGS=9 ;;
+                --installed-camera) FLUTTER_INSTALLED_SETTINGS=10 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -1009,7 +1010,7 @@ readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
 readonly FLUTTER_CAMERA_UNAVAILABLE FLUTTER_CAMERA_SHARED FLUTTER_CAMERA_BUSY
-readonly FLUTTER_CAMERA_NATIVE=$((FLUTTER_CAMERA_SHARED + FLUTTER_CAMERA_BUSY))
+readonly FLUTTER_CAMERA_NATIVE=$((FLUTTER_CAMERA_SHARED + FLUTTER_CAMERA_BUSY + (FLUTTER_INSTALLED_SETTINGS == 10)))
 readonly FLUTTER_VIEWER_SOAK
 readonly FLUTTER_INPUT_LATENCY
 readonly FLUTTER_INPUT_SOAK
@@ -1825,7 +1826,7 @@ installed_settings_input_inventory() {
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 10 ]; then
         local runtime=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz
         [ -d "${runtime%/*}" ] && [ ! -L "${runtime%/*}" ] \
             && [ "$(/usr/bin/readlink -f -- "${runtime%/*}")" = "${runtime%/*}" ] \
@@ -1857,7 +1858,7 @@ installed_settings_input_inventory() {
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 10 ]; then
         # These four scripts are consumed by the current package constructor,
         # not compiled into the retained app. The archive validator exact-matches them.
         for file in preinst postinst prerm postrm; do
@@ -1898,6 +1899,12 @@ installed_settings_input_inventory() {
         verify_committed_test_source "$SCRIPT_DIR/$file"
         /usr/bin/sha256sum -- "$SCRIPT_DIR/$file"
     done
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 10 ]; then
+        for file in test-linux-installed-camera.py flutter-peer-camera.py flutter-peer-presentation-x11.c; do
+            verify_committed_test_source "$SCRIPT_DIR/$file"
+            /usr/bin/sha256sum -- "$SCRIPT_DIR/$file"
+        done
+    fi
 }
 
 ANDROID_OWNER_KOTLIN_JARS=()
@@ -5292,7 +5299,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 7 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ] \
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 1 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ] \
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 5 ] \
-           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ]; then
+           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 3 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 10 ]; then
             lifecycle_payload_grafts+=(
                 "debian-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz"
                 "repo/scripts/test-linux-debian-install.py=$SCRIPT_DIR/test-linux-debian-install.py"
@@ -5300,6 +5307,12 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         fi
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             lifecycle_payload_grafts+=("polkit-agent-candidate.tar.gz=$REPO_ROOT/online/candidates/polkit-agent/polkit-agent-candidate.tar.gz")
+        fi
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 10 ]; then
+            lifecycle_payload_grafts+=(
+                "repo/scripts/test-linux-installed-camera.py=$SCRIPT_DIR/test-linux-installed-camera.py"
+                "repo/scripts/flutter-peer-camera.py=$SCRIPT_DIR/flutter-peer-camera.py"
+            )
         fi
         lifecycle_payload_grafts+=(
             "settings-probe/probe_client=$REPO_ROOT/.harness-state/android-peer-artifacts/$INSTALLED_SETTINGS_PROBE_COMMIT/linux-x86_64-peer/probe_client"
@@ -5708,7 +5721,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 10 ]; then
+            guest_invocation+=' --installed-camera'
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
             guest_invocation+=' --debian-candidate-conffiles'
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ]; then
             guest_invocation+=' --debian-candidate-upgrade'
@@ -9539,7 +9554,14 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 10 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_DEBIAN_CAMERA_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked service=actual camera=vivid viewer=actual colors=2 credential=preserved child=unchanged handles=retired desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined" \
+            'installed service camera presentation and retirement'
+        require_exact_fixed_receipt \
+            "MEDIA_APPLICATION_FIXTURE=pass source=$FLUTTER_PEER_SOURCE_COMMIT kernel=6.1.0-50-amd64 native_node=2 viewers=1 generations=1 module=retired cleanup=joined" \
+            'installed camera kernel and device retirement'
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
         require_exact_fixed_receipt \
             "LINUX_DEBIAN_CONFFILES_NATIVE=pass cases=3 app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 predecessor=conffile-only-fixture current=actual-package unmodified=removed modified=preserved deleted=absent abort=restored remove=preserved purge=retired neighbor=unchanged cleanup=joined" \
             'actual Debian obsolete conffile migration'

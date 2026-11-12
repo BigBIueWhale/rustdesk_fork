@@ -37,7 +37,8 @@ def application_request(argv, contract, release):
         and argv[7] == release
         and argv[8] == contract['pins']['VERIFIER_VM_ROOT_FILESYSTEM_UUID']
         and argv[9:11] == ['--linux-flutter-app-replay', '/mnt/rustdesk-verifier-inputs/source.tar']
-        and argv[11] == contract['source_commit'] and argv[20] in ('--camera-shared', '--camera-busy'),
+        and argv[11] == contract['source_commit']
+        and argv[20] in ('--camera-shared', '--camera-busy', '--installed-camera'),
         'closed application replay request differs')
     require(all(re.fullmatch('[0-9a-f]{40}', argv[i]) for i in (11, 12, 14, 15))
             and all(re.fullmatch('[0-9a-f]{64}', argv[i]) for i in (6, 13, 16, 17))
@@ -59,10 +60,11 @@ def application_fixture(guest, contract, previous):
                 and stat.S_ISCHR(node.lstat().st_mode)
                 and Path('/sys/class/video4linux/video2/name').read_text().strip()
                 == 'vivid-000-vid-cap', 'application native camera identity differs')
-        os.chown(node, 1000, 1000)
+        uid = 4001 if argv[20] == '--installed-camera' else 1000
+        os.chown(node, uid, uid)
         os.chmod(node, 0o600)
-        # Common guest orchestration owns the unprivileged app containers and
-        # joins them before returning. The device is created only in this guest.
+        # Common guest orchestration joins the app containers or installed
+        # service before returning. The device is created only in this guest.
         subprocess.run(argv, check=True, timeout=840)
     finally:
         guest.run(['/usr/sbin/modprobe', '-r', 'vivid'])
@@ -70,6 +72,8 @@ def application_fixture(guest, contract, previous):
     require(not list(Path('/dev').glob('video*')) and not Path('/sys/module/vivid').exists(),
             'application camera module retirement incomplete')
     population = 'viewers=2 generations=3' if argv[20] == '--camera-shared' else 'viewers=1 generations=2'
+    if argv[20] == '--installed-camera':
+        population = 'viewers=1 generations=1'
     print('MEDIA_APPLICATION_FIXTURE=pass source=' + contract['source_commit']
           + ' kernel=' + guest.RELEASE
           + ' native_node=2 ' + population + ' module=retired cleanup=joined', flush=True)

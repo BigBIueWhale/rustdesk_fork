@@ -262,12 +262,7 @@ def administrator_units(source, archive, version, settings, receiver):
     print('LINUX_DEBIAN_ADMIN_UNITS=' + json.dumps(completed, sort_keys=True), flush=True)
 
 
-def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before,
-                      uncertain=False, admin_failure=False):
-    desktop_runtime(settings, prepared)
-    require(not Path('/etc/ld.so.conf.d/rustdesk-settings-fixture.conf').exists()
-            and not Path('/usr/local/lib/rustdesk-settings-fixture').exists(),
-            'package settings must use the ordinary installed libraries')
+def desktop_accessibility(source):
     packages = []
     for line in (source / 'scripts/smoke-atspi-packages.tsv').read_text().splitlines():
         if not line or line.startswith('#'):
@@ -279,6 +274,15 @@ def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_arc
         packages.append(str(path))
     require(len(packages) == 2, 'desktop accessibility package closure differs')
     command(['/usr/bin/dpkg', '--install', *packages], 'desktop-accessibility')
+
+
+def settings_workflow(source, prepared, settings, receiver, probe_sha, agent_archive_sha, network_before,
+                      uncertain=False, admin_failure=False):
+    desktop_runtime(settings, prepared)
+    require(not Path('/etc/ld.so.conf.d/rustdesk-settings-fixture.conf').exists()
+            and not Path('/usr/local/lib/rustdesk-settings-fixture').exists(),
+            'package settings must use the ordinary installed libraries')
+    desktop_accessibility(source)
     versions = {'at-spi2-core': ('2.46.0-5', 'install ok installed'),
                 'gsettings-desktop-schemas': ('43.0-1', 'install ok installed')}
     drivers = [('driver-first', 'settings-driver'), ('source-first', 'recording-source')]
@@ -422,7 +426,7 @@ def obsolete_conffiles(source, prepared, archive, settings, installed_state):
 
 
 def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_archive_sha=None,
-         settings_mode=None, upgrade=False, conffiles=False):
+         settings_mode=None, upgrade=False, conffiles=False, camera=False):
     require(Path(__file__).resolve() == SCRIPT, 'package test entry differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
@@ -473,6 +477,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
     pidfds = []
     supervisors = []
     network_before = settings.network_state()
+    password = 'rustdesk-peer-9f2a7c4e' if camera else settings.BASELINE_PASSWORD
 
     def sessionless_snapshot(phase):
         pid = supervisors[-1]
@@ -590,12 +595,21 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             credential = None
             if not upgrade:
                 started = time.monotonic()
-                receiver.change(0, settings.BASELINE_PASSWORD, True)
+                receiver.change(0, password, True)
                 print('LINUX_DEBIAN_INSTALL_PASSWORD_SECONDS=' + str(time.monotonic() - started), flush=True)
                 sessionless_snapshot('after-password')
                 credential = receiver.credential()
             require(digest(receiver.PROBE) == probe_sha, 'installed CPace probe differs')
             desktop_runtime(settings, prepared)
+            camera_fixture = None
+            if camera:
+                desktop_accessibility(source)
+                settings.install(prepared / 'driver-first', WORK / 'camera-driver', 0o755)
+                require('not found' not in settings.run(['/usr/bin/ldd', str(WORK / 'camera-driver')]),
+                        'installed camera observer has an unresolved dependency')
+                spec = importlib.util.spec_from_file_location('installed_camera', SCRIPT.with_name('test-linux-installed-camera.py'))
+                camera_fixture = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(camera_fixture)
 
             def desktop_bootstrap(actor, session, pam):
                 nonlocal credential
@@ -617,7 +631,10 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                                             for value in (proc / 'environ').read_bytes().split(b'\0')),
                                 'product loaded or inherited the private desktop runtime')
                     settings.credential_network(receiver, record, probe_sha, 'package-desktop-bootstrap',
-                                                new=settings.BASELINE_PASSWORD, old='Wrong-bootstrap-password-2026!')
+                                                new=password, old='Wrong-bootstrap-password-2026!')
+                    if camera:
+                        mapped_core(record, manifest, 'installed-camera')
+                        camera_fixture.scenario(settings, receiver, record)
                     if upgrade:
                         old_record = record
                         profile = settings.user_credential()
@@ -692,7 +709,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                     '/etc/init.d/rustdesk')), 'purge retained package-owned state')
         if conffiles:
             obsolete_conffiles(source, prepared, archive, settings, installed_state)
-        elif agent_archive_sha is None and settings_mode is None and not upgrade:
+        elif agent_archive_sha is None and settings_mode is None and not upgrade and not camera:
             administrator_units(source, archive, version, settings, receiver)
         command([*apt, 'check'], 'final-dependencies')
         require(command(['/usr/bin/dpkg', '--audit'], 'final-dpkg-audit') == '', 'final dpkg state is incomplete')
@@ -728,7 +745,12 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if conffiles:
+    if camera:
+        print(f'LINUX_DEBIAN_CAMERA_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked service=actual camera=vivid viewer=actual colors=2 '
+              'credential=preserved child=unchanged handles=retired desktop=retired '
+              'reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
+    elif conffiles:
         print(f'LINUX_DEBIAN_CONFFILES_NATIVE=pass cases=3 app_commit={commit} manifest_sha256={manifest_sha} '
               'predecessor=conffile-only-fixture current=actual-package unmodified=removed modified=preserved '
               'deleted=absent abort=restored remove=preserved purge=retired neighbor=unchanged cleanup=joined', flush=True)
@@ -777,7 +799,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 if __name__ == '__main__':
     require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
             or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop',
-                                                     '--run-upgrade', '--run-conffiles')),
+                                                     '--run-upgrade', '--run-conffiles', '--run-camera')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
@@ -785,4 +807,5 @@ if __name__ == '__main__':
          settings_mode={'--run-settings': 'failure', '--run-uncertain': 'uncertain',
                         '--run-admin-failure': 'admin-failure',
                         '--run-concurrent-stop': 'concurrent-stop'}.get(sys.argv[1]),
-         upgrade=sys.argv[1] == '--run-upgrade', conffiles=sys.argv[1] == '--run-conffiles')
+         upgrade=sys.argv[1] == '--run-upgrade', conffiles=sys.argv[1] == '--run-conffiles',
+         camera=sys.argv[1] == '--run-camera')

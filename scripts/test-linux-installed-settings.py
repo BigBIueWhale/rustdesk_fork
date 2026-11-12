@@ -109,14 +109,17 @@ def install(source, target, mode=0o644):
         raise RuntimeError(f'installed copy differs: {target}')
 
 
-def prepare_drivers(graphical=False):
+def prepare_drivers(graphical=False, camera=False):
     flags = run(['/usr/bin/pkg-config', '--cflags', '--libs', 'x11', 'xtst', 'xi',
                  'atspi-2', 'gobject-2.0', 'gtk+-3.0', 'vpx']).split()
     for copy in ('first', 'second'):
         run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
-             '/work/scripts/linux-installed-settings-x11.c', *flags, '-o', f'/out/driver-{copy}'], timeout=60)
+             '/work/scripts/' + ('flutter-peer-presentation-x11.c' if camera else 'linux-installed-settings-x11.c'),
+             *flags, '-o', f'/out/driver-{copy}'], timeout=60)
     if digest('/out/driver-first') != digest('/out/driver-second'):
         raise RuntimeError('repeated settings driver builds differ')
+    if camera:
+        return
     source_flags = run(['/usr/bin/pkg-config', '--cflags', '--libs', 'x11']).split()
     for copy in ('first', 'second'):
         run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
@@ -169,7 +172,7 @@ def historical_conffiles(source, inputs):
     return contents
 
 
-def prepare_package(single=False, graphical=False, settings=False, upgrade=False, conffiles=False):
+def prepare_package(single=False, graphical=False, settings=False, upgrade=False, conffiles=False, camera=False):
     if os.getuid() != 1000 or not Path('/.dockerenv').is_file():
         raise RuntimeError('candidate packaging requires the ordinary isolated container')
     os.chdir('/work')
@@ -270,10 +273,11 @@ def prepare_package(single=False, graphical=False, settings=False, upgrade=False
     if single:
         print(run(['/bin/bash', '/work/scripts/smoke-xvfb-prepare.sh'], timeout=60), end='', flush=True)
         shutil.copytree('/usr/share/X11/xkb', '/out/xkb')
-    if graphical or settings:
-        print(run(['/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-installed-settings-log.py']),
-              end='', flush=True)
-        prepare_drivers(graphical=graphical)
+    if graphical or settings or camera:
+        if not camera:
+            print(run(['/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-installed-settings-log.py']),
+                  end='', flush=True)
+        prepare_drivers(graphical=graphical, camera=camera)
         print(run(['/bin/bash', '/work/scripts/smoke-atspi-prepare.sh'], timeout=60), end='', flush=True)
     records = {str(p.relative_to('/out')): {'sha256': digest(p), 'bytes': p.stat().st_size}
                for p in Path('/out').rglob('*') if p.is_file()}
@@ -283,7 +287,7 @@ def prepare_package(single=False, graphical=False, settings=False, upgrade=False
 
 
 def prepare_runtime(source, execution, image, client, sock, config, graphical=False,
-                    package_install=False, settings=False, upgrade=False, conffiles=False):
+                    package_install=False, settings=False, upgrade=False, conffiles=False, camera=False):
     prepared = WORK / 'prepared'
     prepared.mkdir(mode=0o700)
     os.chown(prepared, 1000, 1000)
@@ -293,7 +297,7 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
         mounts.append((str(MEDIA / 'debian-upgrade'), '/upgrade-input', True))
     if conffiles:
         mounts.append((str(MEDIA / 'debian-conffiles'), '/conffile-input', True))
-    for kind in (('xvfb', 'atspi') if graphical or settings else ('xvfb',) if package_install else ()):
+    for kind in (('xvfb', 'atspi') if graphical or settings or camera else ('xvfb',) if package_install else ()):
         mounts.append((str(source / 'online/inputs' / (kind + '-debs')), f'/{kind}-inputs', True))
         for suffix in ('debs', 'root'):
             path = WORK / f'{kind}-{suffix}'
@@ -314,7 +318,7 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
     for host, target, readonly in mounts:
         args += ['--mount', f'type=bind,source={host},target={target},bind-recursive=disabled' + (',readonly' if readonly else '')]
     args += [image, '/usr/bin/python3', '-B', '-I', '-S', '/work/scripts/test-linux-installed-settings.py',
-             '--prepare-package-conffiles' if conffiles else '--prepare-package-upgrade' if upgrade
+             '--prepare-package-camera' if camera else '--prepare-package-conffiles' if conffiles else '--prepare-package-upgrade' if upgrade
              else '--prepare-package-graphical' if graphical
              else '--prepare-package-settings' if settings
              else '--prepare-package-install' if package_install
@@ -2601,7 +2605,7 @@ def concurrent_stop_scenario(receiver, probe_sha, archive, network_before):
 
 
 def main(arguments, uncertain=False, admin_failure=False, graphical=False, concurrent_stop=False, package=False,
-         settings=False, upgrade=False, conffiles=False):
+         settings=False, upgrade=False, conffiles=False, camera=False):
     guard()
     agent_archive_sha = None
     if graphical:
@@ -2629,7 +2633,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     execution = Path(execution)
     prepared = prepare_runtime(source, execution, image, client, sock, config, graphical=graphical,
                                package_install=package_install, settings=settings or uncertain or admin_failure,
-                               upgrade=upgrade, conffiles=conffiles)
+                               upgrade=upgrade, conffiles=conffiles, camera=camera)
     if not package:
         probe_manifest = MEDIA / 'settings-probe/peer-manifest.json'
         probe = MEDIA / 'settings-probe/probe_client'
@@ -2644,7 +2648,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-admin-failure' if admin_failure else '--run-concurrent-stop' if concurrent_stop
+                        '--run-camera' if camera else '--run-admin-failure' if admin_failure else '--run-concurrent-stop' if concurrent_stop
                         else '--run-conffiles' if conffiles
                         else '--run-upgrade' if upgrade else '--run-uncertain' if uncertain
                         else '--run-settings' if settings else '--run', str(source),
@@ -2660,7 +2664,9 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
 
 
 if __name__ == '__main__':
-    if sys.argv[1:] == ['--prepare-package-graphical']:
+    if sys.argv[1:] == ['--prepare-package-camera']:
+        prepare_package(single=True, camera=True)
+    elif sys.argv[1:] == ['--prepare-package-graphical']:
         prepare_package(single=True, graphical=True)
     elif sys.argv[1:] == ['--prepare-package-settings']:
         prepare_package(single=True, settings=True)
@@ -2684,11 +2690,11 @@ if __name__ == '__main__':
         session(admin_failure=True, graphical=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles'):
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles', '--run-package-camera'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
              package=sys.argv[1] == '--run-package',
              settings=sys.argv[1] == '--run', upgrade=sys.argv[1] == '--run-package-upgrade',
-             conffiles=sys.argv[1] == '--run-package-conffiles')
+             conffiles=sys.argv[1] == '--run-package-conffiles', camera=sys.argv[1] == '--run-package-camera')
     else:
         raise SystemExit('closed installed-settings arguments required')

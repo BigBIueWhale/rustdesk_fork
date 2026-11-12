@@ -9073,13 +9073,14 @@ int main(int argc, char **argv) {
         uint64_t started = monotonic_millis();
         uint64_t deadline = started + AUTH_WAIT_MS;
         unsigned int disconnected_samples = 0U;
+        unsigned int connected = 0U, listeners = 0U;
+        int visible = 0;
         int result = -1;
         while (started != 0U && monotonic_millis() < deadline) {
             AtspiAccessible *error = NULL;
-            unsigned int connected = 0U, listeners = 0U;
             if (query_named_accessible((unsigned int)viewer_pid, "Camera is unavailable",
                                       deadline, &error, 0) != 0) break;
-            int visible = error != NULL;
+            visible = error != NULL;
             if (error != NULL) g_object_unref(error);
             if (session_socket_counts(&connected, &listeners) != 0 || listeners != 1U) break;
             if (visible && connected == 0U) {
@@ -9096,8 +9097,14 @@ int main(int argc, char **argv) {
         if (result == 0)
             puts("FLUTTER_PEER_CAMERA_UNAVAILABLE_OK error=visible password=retired "
                  "connected_sockets=0 listener=preserved");
-        else
-            fputs("FLUTTER_PEER_X11_FAIL camera-unavailable UI or connection cleanup\n", stderr);
+        else {
+            fprintf(stderr, "FLUTTER_PEER_X11_FAIL camera-unavailable UI or connection cleanup "
+                    "error_visible=%d connected=%u listeners=%u samples=%u\n",
+                    visible, connected, listeners, disconnected_samples);
+            PasswordPromptScan diagnostic;
+            if (scan_password_prompt((unsigned int)viewer_pid, &diagnostic, 1) != 0)
+                fputs("FLUTTER_PEER_X11_FAIL camera diagnostic unavailable\n", stderr);
+        }
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

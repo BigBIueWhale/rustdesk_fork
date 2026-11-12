@@ -5755,7 +5755,7 @@ run_focused_rust_tests() {
                 common::record::tests::native_webm_clock_origin_is_zero
                 common::record::tests::native_webm_negative_clock_origin
                 common::record::tests::native_webm_zero_clock_intervals_preserved
-                common::record::tests::native_webm_clock_rollback_waits_for_key
+                common::record::tests::native_webm_nonadvancing_clock_starts_new_epoch
                 common::record::tests::native_webm_fast_rotation_keeps_distinct_outputs
                 common::record::tests::native_webm_interval_overflow_refused
                 common::record::tests::native_webm_initial_nonkey_waits_without_output

@@ -6656,7 +6656,7 @@ hardware and installed-root recording, creator/wrong-principal and authorized UI
 transactions, native Apple ACLs and Windows/macOS acceptance remain OPEN.
 These named Linux component results establish no overall recording or LPE closure.
 
-**Viewer recording failure status — Linux caller/native recovery checks pass; file-stage inconsistency OPEN.**
+**Viewer recording failure status — Linux caller/native recovery checks pass; repeated-start timing acceptance OPEN.**
 The retained native baseline `fd93151b` demonstrates EACCES with no error,
 a falsely active toolbar and no output, while the display stays fresh
 (`recording-failure-baseline-c99cea4d.json`). The unchanged scenario requires
@@ -6696,17 +6696,37 @@ and joined cleanup pass. Nine-file capsules
 `native-recording-retry-38d88ae3.json` and
 `native-recording-repeat-38d88ae3.json` bind the two runs.
 
-**An earlier file-stage failure remains OPEN.** On this same app,
-`native-recording-retry-bd053a09.json` passes error/status/freshness and UI retry
-but fails file acceptance before decode. Its coarse diagnostic cannot identify
-the failing file condition. `38d88ae3` adds precise bounded diagnostics without
-relaxing the one-file, metadata, timing or decode criteria; both later runs pass
-without product changes. The audit retains all failures, including corrected
-X11 retired-window and selectable-dialog-text observer defects. Next, resolve
-the file-stage inconsistency with exact file evidence and controlled start
-ordering; source/logs show refresh followed by a second encoder start when
-active status enables peer recording QoS, but do not prove that caused the
-file-stage failure. Two successful runs do not close that outstanding result.
+**Recording epochs — native clock correction passes; complete UI regression OPEN.**
+The multiple-file failure at `15584bf9` reveals an incorrect one-file
+assumption: clock rollback intentionally finalizes one file and opens another,
+as the existing native recorder coverage requires. The second filename coincides
+with a later refresh near Stop. The earlier `bd053a09` file-stage diagnostic remains
+unclassified; its missing file evidence cannot establish the same cause.
+
+`bfe86f5a` replaces the one-file assumption with independent decoding of every
+epoch, private metadata and complete/truncated-file checks, aggregate timing
+and frame bounds, and unchanged output after viewer exit. Five consecutive
+recordings each undergo real focus loss/return. On unchanged app `8543fa9e`,
+four two-file attempts pass before a fifth fails decoding. Exact diagnostics
+at `ce27e70b` then reproduce a timing error: source images 502,386 microseconds
+apart share timestamp zero. `native-recording-cycles-15584bf9.json`,
+`native-recording-epochs-bfe86f5a.json` and
+`native-recording-timing-ce27e70b.json` retain those runs and cleanup.
+
+The encoder resets its clock on restart; Recorder previously detected only
+strict decreases, merging two successive zero timestamps into one epoch.
+`a724ab7a` also closes an epoch when the timestamp repeats, checks finalization
+and waits for a keyframe. Identical native tests fail on the old product
+(37 controls pass) and pass all 38 cases after correction, including VP8/VP9
+rollback, repeated zero/nonzero timestamps and intervening nonkeys.
+The actual production parent compiles. The outer runner then fails on its
+obsolete expected test name; its registry is corrected and checked against all
+38 retained native passes. This is component acceptance, not a wrapper pass.
+Evidence is `recording-clock-baseline-a16f9d38.json` and
+`recording-clock-accepted-a724ab7a.json`; the audit binds exact artifacts.
+The next decisive step is a corrected full-app build and the unchanged
+five-attempt native UI scenario. Component acceptance does not close that
+integration result or identify the earlier unclassified file-stage failure.
 
 Explicit full-UI finalization failures, multiple writers and late failures,
 blocked recording I/O, installed/root and other-platform recording remain OPEN.

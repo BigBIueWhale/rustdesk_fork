@@ -147676,3 +147676,120 @@ The fixed tokenizer, seven controls and whole-input round trip pass. Eight files
 listener deltas and exact private/socket/RAM absence are verified. The approximate
 400,000-token compression remains OPEN. This audit-only append preserves the
 counted ledger bytes.
+
+## 2026-11-12 — Recording restart clocks: native UI reproduction and recorder correction
+
+Selected requirement: required recording functionality and truthful completion/error
+outcomes under R-S0/R-F1, preserving source-time behavior through live focus recovery.
+This continues the unresolved native recording result rather than selecting another
+surface. It advances a demonstrated correctness failure before broader recording work.
+Prior audit prefix: 15,933,860 bytes, SHA-256
+4eb0b0ac9fbda87299cf441143acb95597bde35d30e5bd29afa6e39cd0cc49d6.
+No live instruction or normative requirement changes.
+
+All UI runs reuse app 8543fa9e41df9d8c37418a93a4adb7a775dc12ca,
+manifest b6543af78a1cc3ba822a130e76558940e7630b94afe9409c87b4832453a67d4f,
+and the retained authenticated engine. No new full-app cache generation is made.
+They run in admitted TUF RAM-backed disposable VMs with kernel-denied host IP
+sockets, no guest network exposure, exact joins and verified RAM/private retirement.
+
+15584bf9/UIO51J6U4X/tool26336 exits 1. Denied-write error, inactive status, retry
+availability, no failed files and four fresh frames pass (maximum age 312 ms).
+Attempt one independently decodes 20 VP9 frames, source 114–132 over 4,328 ms,
+40,303 bytes, complete and private. Attempt two produces two filenames. The later
+file starts at 01:42:38.849, following a refresh at 01:42:38.780; the initial
+recording/QoS restart occurred about five seconds earlier. Existing Recorder
+clock-rollback rotation deliberately closes one file and opens another, and the
+prior native test explicitly required two files. Thus the one-file UI oracle
+cannot establish recording correctness across a legitimate refresh. This finding
+does not identify the earlier bd053a09 failure, whose coarse file diagnostic and
+missing file evidence remain insufficient.
+native-recording-cycles-15584bf9.json binds twelve files/804,495 bytes.
+QEMU 1257887 joins zero after 137.998 seconds; peak scratch 3,028,557,824 bytes.
+Four listener deltas are zero; exact duplicate failure capture retirement
+releases 62,857,216 allocated bytes.
+
+bfe86f5a replaces that assumption with 2–8 independently decoded epochs across a
+deliberate real X11 focus loss/return, repeated through five toolbar Start/Stop
+attempts. Every file retains finite-complete WebM, first-keyframe, dimensions,
+private metadata, source-pixel identity, per-frame timing and truncated-copy
+checks. The original whole-attempt frame/duration bounds apply to the aggregate;
+boundary ordering and a 500 ms gap bound apply between files. Total output remains
+at most 1 MiB per attempt. The final attempt retains and revalidates every file
+after viewer exit. No timing tolerance is relaxed.
+
+U03rSdYq7s/tool51804 exits 1. EACCES checks pass with 299 ms maximum fresh-frame
+age. Four attempts pass, each with two complete decoded files; attempt five
+fails during its second decoded image. The observer's diagnostic is extended
+at ce27e70b to print exact identity or source/media intervals on failure.
+native-recording-epochs-bfe86f5a.json binds twelve files/1,232,883 bytes.
+QEMU 1337378 joins zero after 159.257 seconds; peak scratch 3,029,082,112 bytes,
+four zero listener deltas and exact RAM/private absence. Verified duplicate
+failure capture retirement releases 63,635,456 allocated bytes.
+
+dS1qxRC1Zi/tool7739 exits 1 and makes the timing failure decisive:
+FLUTTER_PEER_RECORDING_TIMING_FAIL packet=2 first=141 identity=143
+source_us=502386 media_us=0 tolerance_us=500000.
+The independently decoded images represent source states 502,386 microseconds
+apart but both occupy timestamp zero. The first recording/focus-recovery attempt
+passes; the second fails. EACCES feedback/status and freshness pass (318 ms).
+The server logs and source show successive encoder starts at zero; Recorder
+previously rotated only on a strict decrease, so a second zero after the first
+zero retained the old epoch and collapsed its source-time interval.
+native-recording-timing-ce27e70b.json binds twelve files/820,343 bytes.
+QEMU 1398220 joins zero after 141.058 seconds; peak scratch 3,027,660,800 bytes,
+four zero listener deltas and exact retirement. Verified duplicate failure
+capture removal releases 62,877,696 allocated bytes.
+
+Primary timing contracts read for the decision:
+https://raw.githubusercontent.com/webmproject/libvpx/v1.15.2/vpx/vpx_encoder.h
+https://www.matroska.org/technical/notes.html#timestamps
+Pinned libvpx requires strictly increasing input presentation timestamps within
+an encoder; its output preserves the frame PTS. Matroska timestamps scale the
+stored values; they cannot recover elapsed time erased by joining two restarted
+clocks. The repository's server run owns a fresh Instant and uses elapsed
+milliseconds as encoder PTS. The existing recording model already handles clock
+discontinuities by checked epoch finalization and independent keyframe restart.
+The correction uses that model for nonadvancing as well as decreasing clocks.
+No speculative peer QoS change, periodic restart or protocol change is made.
+
+a16f9d38 extends the existing native clock test, preserving its rollback case and
+adding repeated zero/nonzero timestamps with immediate keys and intervening
+nonkeys, in both real VP8 and VP9 codecs (ten scenarios within the existing
+38-test suite). The same tests run before and after the product correction.
+Baseline bpwleDKB1L/tool12404 exits 1: 37 controls pass and the new repeated-zero
+case fails because both epochs retain the same filename. The native test
+artifact a9f27a92e353a8ed05cbb6ab70f42d1e4ae0f97831927593ac003ef97f724a4a
+returns 101; parent compilation is correctly skipped.
+recording-clock-baseline-a16f9d38.json binds nine files/146,875 bytes.
+QEMU 1410393 joins zero after 127.291 seconds; peak scratch 3,817,947,136 bytes,
+four zero listener deltas and exact RAM/private absence. Failure-private cleanup
+releases 3,420,160 allocated bytes.
+
+a724ab7a changes Recorder's timestamp boundary from < to <=. A nonadvancing
+clock closes the previous epoch with checked finalization; nonkeys wait, and the
+next key opens a unique file at zero. All existing failure ownership, private
+file creation and completion semantics remain in the same path.
+jkXC694N1W/tool43047 executes all 38 native cases successfully, artifact
+8b866b735b8e259f5cfd5d4840aff1a5415079a0793858892b61aceb4273850a,
+with unchanged bytes through execution. The production parent compiles in
+95 seconds. The outer guest then exits 1 because its required-test inventory
+still names native_webm_clock_rollback_waits_for_key. This is a runner name
+mismatch after successful native execution/compilation, not an end-to-end
+wrapper pass. Its inventory is corrected to the new name and independently
+compared with the retained set of all 38 native pass records; no passed native
+test is repeated merely for that one-string correction.
+recording-clock-accepted-a724ab7a.json explicitly records outer exit 1,
+native exit 0 and parent compile success, binding nine files/118,908 bytes.
+QEMU 1431951 joins zero after 220.121 seconds; peak scratch 4,915,871,744 bytes,
+four zero listener deltas and exact RAM/private absence. Verified failure-private
+retirement releases 3,403,776 allocated bytes. All capsules above are copied
+and digest-verified on CTE and TUF.
+
+Next decisive step: build the corrected full Linux Flutter app, then execute
+the unchanged five-attempt focus/retry scenario and retain every-epoch evidence.
+The old full-app bundle does not contain this clock correction. The first
+bd053a09 file-stage failure remains unclassified, and the complete native UI
+scenario is not yet accepted. Full-UI finalization failures, multiple/late
+writers, blocked I/O, installed/root and other-platform recording, controlled-side
+write-result propagation, R-S0/R-F5 and broader release acceptance remain OPEN.

@@ -149334,3 +149334,14 @@ service, authentication and network configuration remain untouched.
 
 This append preserves the prior 16,036,861-byte audit prefix, SHA-256
 b90ad888a8e4be9a79aa218086fb464f0df28e8c61562dac580a15b809f55de9.
+
+Fresh ledger count at a8ba244a, 1LiERfhf8q/tool15651 exits zero: 412,792 tokens /
+1,883,593 bytes, SHA-256
+f37490dbeda48058fb82efd472be181c58ef607adf4d7b4425875a66a8ba285d.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and the full
+round trip pass. recording-setting-ledger-a8ba244a.json retains the exact raw
+receipts and copied evidence. Three zero host listener deltas and joined QEMU,
+private/socket/RAM retirement pass. The approximate 400,000-token compression
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,048,423-byte audit prefix, SHA-256
+64879f9987c068291b8bc9f627d23713a756f22f0a9584b1c685c9db033f3807.

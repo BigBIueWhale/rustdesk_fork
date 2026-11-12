@@ -148385,3 +148385,14 @@ Those gaps, blocked I/O and other-platform execution remain OPEN. No full app
 rebuild, dependency/cache expansion, authentication or live-instruction change.
 The prior 15,977,311-byte audit prefix is preserved (SHA-256
 dbb9d9e3aca4a48fc2fcf1534828140569bfdbce540662045c2597e9bc84c8c5).
+
+Fresh ledger count at 38cfacba, 3N0ptdM23m/tool77137 exits zero: 411,089 tokens /
+1,875,934 bytes, SHA-256
+373770129d41af80cfec2eb1b95db32a38ad9c44ebeb603307a319c5dbad0b2e.
+Pinned tokenizer, seven controls and whole-input round trip pass.
+recording-incoming-ledger-38cfacba.json binds eight files/117,365 bytes verified
+on both hosts. QEMU 2434609 joins zero after 30.469 seconds; peak RAM scratch
+403,107,840 bytes, three zero listener deltas and exact private/socket/RAM
+absence are verified. Approximate 400,000-token compression remains OPEN.
+This audit-only append preserves the counted ledger and prior 15,981,276-byte
+audit prefix (SHA-256 e4923ce70bba7392cdee50d8ab6793749a23f039da00f8723a691fac9d22c5fd).

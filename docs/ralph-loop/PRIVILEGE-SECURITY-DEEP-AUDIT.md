@@ -147952,3 +147952,13 @@ controlled-side error propagation, installed/root and other-platform recording,
 R-S0/R-F5 and complete release acceptance remain OPEN. Static shell/Python syntax
 and diff hygiene pass; the actual controller compiles twice to identical bytes
 inside each VM. No live instruction or normative requirement changes.
+
+Fresh ledger count at 05fe2367, CkJ2U43H1S/tool40664 exits zero: 410,323 tokens /
+1,872,436 bytes, SHA-256
+1ccf714bd1f5172fec553f8974fdf1706f96ee896a69bc37ccff14b59edfded8.
+Pinned tokenizer, seven controls and whole-input round trip pass.
+recording-finalize-ledger-05fe2367.json binds eight files/117,244 bytes verified
+on both hosts. QEMU 1922258 joins zero after 30.650 seconds; peak RAM scratch
+403,042,304 bytes, three zero listener deltas and exact private/socket/RAM
+absence are verified. Approximate 400,000-token compression remains OPEN.
+This audit-only append preserves the counted ledger bytes.

@@ -83,9 +83,185 @@ impl WriteObserver {
     }
 
     fn resume(&self, event: &Notification) {
+        self.respond(event, 0);
+    }
+
+    fn respond(&self, event: &Notification, error: i32) {
         self.validate(event);
-        let response = Response { id: event.id, value: 0, error: 0, flags: 1 }; // CONTINUE
+        assert!(error >= 0);
+        let response = Response {
+            id: event.id, value: 0, error: -error,
+            flags: if error == 0 { 1 } else { 0 }, // CONTINUE or injected errno
+        };
         assert_eq!(unsafe { libc::ioctl(self.0.as_raw_fd(), 0xc0182101 as libc::c_ulong, &response) }, 0);
+    }
+
+    fn recording_write(&self, dir: &RecordingDirectory) -> Notification {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            assert!(Instant::now() < deadline, "native recording write was not observed");
+            if let Some(event) = self.receive(20) {
+                let path = fs::read_link(format!("/proc/self/fd/{}", event.syscall.args[0])).unwrap();
+                self.validate(&event);
+                if path.parent() == Some(dir.0.as_path()) {
+                    assert!(path.file_name().unwrap().to_str().unwrap().starts_with("incoming_"));
+                    assert!(event.syscall.args[2] > 0);
+                    return event;
+                }
+                self.resume(&event);
+            }
+        }
+    }
+
+    fn drive_until(&self, mut complete: impl FnMut() -> bool) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !complete() {
+            assert!(Instant::now() < deadline, "recording did not drain after release");
+            if let Some(event) = self.receive(20) { self.resume(&event); }
+        }
+    }
+}
+
+struct WorkerGroup {
+    producers: Vec<IncomingRecording>,
+    shutdown: Option<mpsc::Sender<()>>,
+    done: mpsc::Receiver<()>,
+}
+
+impl WorkerGroup {
+    fn close(&mut self) {
+        self.producers.clear();
+        self.shutdown.take();
+    }
+}
+
+fn with_workers(dir: &RecordingDirectory, count: usize, test: impl FnOnce(&WriteObserver, &mut WorkerGroup)) {
+    thread::scope(|scope| {
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let (shutdown, stop) = mpsc::channel::<()>();
+        let (done_tx, done) = mpsc::channel();
+        let owner = scope.spawn(move || {
+            let observer = WriteObserver::install();
+            let mut workers = RecordingWorkers::default();
+            let producers: Vec<_> = (0..count).map(|display_idx| workers.start(RecorderContext {
+                server: true, id: "worker-boundary".into(), dir: dir.0.to_str().unwrap().into(),
+                display_idx, camera: false,
+            }).unwrap()).collect();
+            ready_tx.send((producers, observer)).unwrap();
+            let _ = stop.recv();
+            drop(workers);
+            let _ = done_tx.send(());
+        });
+        let (producers, observer) = ready_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        let mut group = WorkerGroup { producers, shutdown: Some(shutdown), done };
+        // The observer closes on unwind before scope joins the owner, releasing
+        // intercepted writes with ENOSYS. Dropping shutdown also wakes the owner.
+        test(&observer, &mut group);
+        group.close();
+        observer.drive_until(|| match group.done.try_recv() {
+            Ok(()) => true,
+            Err(mpsc::TryRecvError::Empty) => false,
+            Err(error) => panic!("recording owner failed: {error}"),
+        });
+        owner.join().unwrap();
+        assert_eq!(crate::server::incoming_recording::retained_resources(), (0, 0));
+        assert_eq!(snapshot().writers(), 0);
+    });
+}
+
+#[test]
+fn blocked_writers_share_and_release_the_byte_budget() {
+    use crate::server::incoming_recording::retained_resources;
+    use scrap::codec::MAX_NATIVE_VIDEO_BATCH_BYTES;
+    let dir = RecordingDirectory::new();
+    let mut encoder = encoder();
+    let yuv = vec![128; encoder.yuvfmt().buffer_len];
+    let native = encoder.encode_to_message(EncodeInput::YUV(&yuv), 0).unwrap().unwrap().union.unwrap();
+    let video_frame::Union::Vp8s(batch) = &native else { panic!("native VP8 output"); };
+    assert_eq!(batch.frames.len(), 1);
+    let payload = batch.frames[0].data.clone();
+    let budget = 2 * MAX_NATIVE_VIDEO_BATCH_BYTES;
+    with_workers(&dir, 3, |observer, group| {
+        for producer in &mut group.producers[..2] { producer.enqueue_frame(&native, 64, 48).unwrap(); }
+        let held = [observer.recording_write(&dir), observer.recording_write(&dir)];
+        assert_ne!(held[0].tid, held[1].tid, "two independently blocked workers");
+        assert_eq!(retained_resources(), (3, 2 * payload.len()));
+        // These synthetic payloads test admission/accounting only. The held
+        // real writes fail below, so these bytes never enter the native muxer.
+        for producer in &mut group.producers[..2] {
+            let mut fill = native.clone();
+            let video_frame::Union::Vp8s(batch) = &mut fill else { unreachable!(); };
+            batch.frames[0].data = vec![0x7f; MAX_NATIVE_VIDEO_BATCH_BYTES - payload.len()].into();
+            producer.enqueue_frame(&fill, 64, 48).unwrap();
+        }
+        assert_eq!(retained_resources(), (3, budget));
+        assert!(group.producers[2].enqueue_frame(&native, 64, 48).is_err(),
+            "another writer cannot borrow capacity beyond the process budget");
+        assert_eq!(retained_resources(), (3, budget), "refusal cannot consume credits");
+        assert_eq!(snapshot().last_failure, Some(RecordingFailure {
+            display: 2, camera: false, stage: FailureStage::Write,
+        }));
+        for event in &held { observer.respond(event, libc::EIO); }
+    });
+    let files: Vec<_> = fs::read_dir(&dir.0).unwrap().map(|entry| entry.unwrap().path()).collect();
+    assert_eq!(files.len(), 2);
+    assert!(files.iter().all(|path| fs::metadata(path).unwrap().len() == 0));
+    // Recovered credits admit a genuinely encoded frame and finalized output.
+    let history = snapshot().last_failure;
+    let mut workers = RecordingWorkers::default();
+    let mut retry = dir.recorder(&mut workers);
+    retry.enqueue_frame(&native, 64, 48).unwrap();
+    wait_status(|status| status.active == 1);
+    drop(retry);
+    drop(workers);
+    assert_eq!(retained_resources(), (0, 0));
+    assert_eq!(snapshot().writers(), 0);
+    assert_eq!(snapshot().last_failure, history);
+    let outputs: Vec<_> = fs::read_dir(&dir.0).unwrap().map(|entry| entry.unwrap().path())
+        .filter(|path| !files.contains(path)).collect();
+    assert_eq!(outputs.len(), 1);
+    let bytes = fs::read(&outputs[0]).unwrap();
+    assert!(bytes.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]));
+    assert!(bytes.windows(payload.len()).any(|part| part == payload.as_ref()));
+}
+
+#[test]
+fn blocked_finalization_retains_status_and_join_ownership() {
+    use crate::server::incoming_recording::retained_resources;
+    for fail in [false, true] {
+        let dir = RecordingDirectory::new();
+        let mut encoder = encoder();
+        let yuv = vec![128; encoder.yuvfmt().buffer_len];
+        let frame = encoder.encode_to_message(EncodeInput::YUV(&yuv), 0).unwrap().unwrap();
+        let history = snapshot().last_failure;
+        let mut before = Vec::new();
+        with_workers(&dir, 1, |observer, group| {
+            group.producers[0].enqueue_frame(frame.union.as_ref().unwrap(), 64, 48).unwrap();
+            observer.drive_until(|| snapshot().active == 1 && retained_resources().1 == 0);
+            let files: Vec<_> = fs::read_dir(&dir.0).unwrap().map(|entry| entry.unwrap().path()).collect();
+            assert_eq!(files.len(), 1);
+            before = fs::read(&files[0]).unwrap();
+            // All admitted frames have completed before closing. The next file
+            // write can therefore only belong to actual native finalization.
+            group.close();
+            let held = observer.recording_write(&dir);
+            assert!(matches!(group.done.recv_timeout(Duration::from_millis(100)),
+                Err(mpsc::RecvTimeoutError::Timeout)), "owner must wait for native finalization");
+            observer.validate(&held);
+            assert_eq!((snapshot().starting, snapshot().active, snapshot().finishing), (0, 0, 1));
+            assert_eq!(snapshot().last_failure, history);
+            assert_eq!(retained_resources(), (1, 0), "worker slot outlives its final frame");
+            assert_eq!(fs::read(&files[0]).unwrap(), before);
+            observer.respond(&held, if fail { libc::EIO } else { 0 });
+        });
+        let path = fs::read_dir(&dir.0).unwrap().next().unwrap().unwrap().path();
+        if fail {
+            assert_eq!(snapshot().last_failure.unwrap().stage, FailureStage::Finish);
+            assert_eq!(fs::read(path).unwrap(), before, "failed finalization cannot rewrite bytes");
+        } else {
+            assert_eq!(snapshot().last_failure, history);
+            assert_ne!(fs::read(path).unwrap(), before, "released finalization must reach the file");
+        }
     }
 }
 
@@ -136,20 +312,7 @@ fn blocked_recording_write_preserves_capture_progress() {
         // Closing this descriptor during unwinding releases intercepted writes
         // with ENOSYS before the scoped capture thread is joined.
         let observer = observer_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(5);
-        let held = loop {
-            assert!(Instant::now() < deadline, "native recording write was not observed");
-            if let Some(event) = observer.receive(50) {
-                let path = fs::read_link(format!("/proc/self/fd/{}", event.syscall.args[0])).unwrap();
-                observer.validate(&event);
-                if path.parent() == Some(dir.0.as_path()) {
-                    assert!(path.file_name().unwrap().to_str().unwrap().starts_with("incoming_"));
-                    assert!(event.syscall.args[2] > 0);
-                    break event;
-                }
-                observer.resume(&event);
-            }
-        };
+        let held = observer.recording_write(&dir);
         let held_at = Instant::now();
         let mut samples = Vec::new();
         while samples.len() < 12 && held_at.elapsed() < Duration::from_secs(1) {

@@ -150025,3 +150025,36 @@ process/socket/RAM retirement pass. The approximate 400,000-token target remains
 OPEN. This audit-only append preserves the counted ledger and prior
 16,093,775-byte audit prefix, SHA-256
 197ceb9e0b7b5d5a9573c7b4c524aac6464d8cf6282805aeab6d7836b50007b8.
+
+## Linux ViewCamera retained catalog and service ownership (2026-11-12)
+
+Continue R-F1/R-S0 from the reproduced nonzero-device failure and accepted
+bounded reads. Linux CameraCatalog now retains the independently opened device,
+its immutable metadata and a nonwrapping generation. Discovery runs on a
+blocking worker. A fresh node open and retained-handle capability/format check
+permit sharing the same live catalog; a replaced node gets another generation.
+Login reservations, display queries, service names, capture and frame feedback
+carry that catalog/generation. Final connection retirement stops its service,
+retains the exact thread handle in a bounded draining list and joins completed
+workers on subsequent server activity or server drop. No join of a live worker
+is added to Connection::drop. Resolution queries use advertised metadata instead
+of reopening a native index reconstructed from a protocol ordinal.
+
+The existing no-NIC media fixture now expects real product capture with only
+native index two, shared live ownership, independent replacement and old-device
+capture with immutable metadata, and refusal of a retired catalog. Existing
+backend independence, exclusive-stream retry and bounded stalled-read recovery
+remain controls. The acknowledgement test also distinguishes two camera
+generations at the same display index. Native execution and full server
+compilation are pending at this source checkpoint; no acceptance is claimed.
+
+Linux node numbering and per-filehandle stream ownership follow
+https://docs.kernel.org/userspace-api/media/v4l/open.html . Descriptor inode/device
+identity plus retained QUERYCAP is a reuse check, not a claim that a node-rename
+fixture proves physical hotplug. Installed application logins, shared-service
+concurrency, device loss and physical drivers remain OPEN. Windows stays on its
+existing path: its supplier initializes thread-local COM and synchronously reads
+Media Foundation, so transferring that camera between threads is not an accepted
+ownership design. The Windows correction and native evidence remain OPEN.
+The prior 16,094,431-byte audit prefix is preserved, SHA-256
+9a0d756fb1e62ee9b45425eb6e6eddcbcd69d0915b2a54f045af49bf6ff24bd3.

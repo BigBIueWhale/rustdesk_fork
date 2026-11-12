@@ -17,6 +17,7 @@ use std::{
 };
 
 extern crate self as hbb_common;
+pub use anyhow;
 pub use protobuf_it::message_proto;
 mod common {
     pub use anyhow::bail;
@@ -149,6 +150,29 @@ fn product_sample(selected: &mut dyn TraitCapturer) -> Result<Value> {
               "decoded_format": "RGBA", "frame_sha256": hashes}))
 }
 
+fn product_selected(index: u32) -> Result<()> {
+    require(query_indices()? == [index], "product selection fixture has a different native node")?;
+    let mut pool = product_camera::CameraCatalogPool::default();
+    let catalog = pool.acquire()?;
+    let display = catalog.display(0).ok_or("product did not advertise its primary camera")?.clone();
+    require(display.online && display.width == 640 && display.height == 360,
+            "retained product metadata differs")?;
+    require(catalog.display(1).is_none() && catalog.capturer(1).is_err(), "ordinal escaped its catalog")?;
+    require(video_handles()? == [fs::metadata(format!("/dev/video{index}"))?.rdev()],
+            "product discovery did not retain the actual device")?;
+    let mut selected = catalog.capturer(0)?;
+    let sample = product_sample(&mut *selected)?;
+    let shared = pool.acquire()?;
+    require(std::sync::Arc::ptr_eq(&catalog, &shared), "overlapping login replaced the active device")?;
+    drop(shared);
+    drop(selected);
+    drop(catalog);
+    require(video_handles()?.is_empty(), "product catalog retained an unowned device")?;
+    emit(json!({"scenario": if index == 0 {"product-zero-control"} else {"product-nonzero"},
+                "native_index": index, "advertised_ordinal": 0, "advertised_name": display.name,
+                "sample": sample, "overlapping_login_shared": true, "device_handles_retired": true}))
+}
+
 fn stalled_reads(selected: &mut dyn TraitCapturer, allow_queued: bool) -> Result<Vec<u128>> {
     let mut waits = Vec::new();
     for attempt in 0..10 {
@@ -190,8 +214,9 @@ fn product_timeout() -> Result<()> {
         inherited_retry_errno = stream.next().err().ok_or("inherited retry unexpectedly succeeded")?.raw_os_error();
         require(inherited_retry_errno == Some(libc::EINVAL), "inherited buffer retry failure differs")?;
     }
-    product_camera::Cameras::all_info()?;
-    let mut selected = product_camera::Cameras::get_capturer(0)?;
+    let mut pool = product_camera::CameraCatalogPool::default();
+    let catalog = pool.acquire()?;
+    let mut selected = catalog.capturer(0)?;
     let first_waits = stalled_reads(&mut *selected, false)?;
     let handles = video_handles()?;
     require(handles == [fs::metadata("/dev/video0")?.rdev(); 2], "timeout stream lost device ownership")?;
@@ -206,14 +231,18 @@ fn product_timeout() -> Result<()> {
     let final_waits = stalled_reads(&mut *selected, true)?;
     let started = Instant::now();
     drop(selected);
+    catalog.retire();
+    drop(catalog);
     let close_ms = started.elapsed().as_millis();
     require(close_ms < 800 && video_handles()?.len() == 1, "stalled product stream did not retire")?;
     // A fresh owner must be able to acquire buffers after the stopped owner.
-    let mut fresh = product_camera::Cameras::get_capturer(0)?;
+    let fresh_catalog = pool.acquire()?;
+    let mut fresh = fresh_catalog.capturer(0)?;
     let fresh_waits = stalled_reads(&mut *fresh, false)?;
     drop_frames(&control, 0)?;
     let fresh_recovery = product_sample(&mut *fresh)?;
     drop(fresh);
+    drop(fresh_catalog);
     drop(control);
     require(video_handles()?.is_empty(), "timeout fixture retained a device handle")?;
     emit(json!({"scenario": "product-timeout", "inherited_retry_errno": inherited_retry_errno,
@@ -252,64 +281,50 @@ fn main_result() -> Result<()> {
             emit(json!({"scenario": "capture", "indices": indices, "name": name,
                         "sample": sample, "device_handles_retired": true}))
         }
-        "--product-zero-control" => {
-            require(query_indices()? == [0], "product control requires only native index zero")?;
-            let advertised = product_camera::Cameras::all_info()?;
-            require(advertised.len() == 1 && advertised[0].online, "product zero discovery differs")?;
-            let resolution = product_camera::Cameras::get_camera_resolution(0)?;
-            require(resolution.width == advertised[0].width && resolution.height == advertised[0].height,
-                    "product resolution differs from its advertised metadata")?;
-            let mut selected = product_camera::Cameras::get_capturer(0)?;
-            let mut hashes = Vec::new();
-            for _ in 0..12 {
-                match selected.frame(std::time::Duration::from_millis(100)) {
-                    Ok(Frame::PixelBuffer(frame)) => {
-                        require(frame.width() == 640 && frame.height() == 360
-                                && frame.pixfmt() == Pixfmt::RGBA && frame.stride() == 2560
-                                && frame.data().len() == 921600, "product pixel layout differs")?;
-                        hashes.push(format!("{:x}", Sha256::digest(frame.data())));
-                        if hashes.len() == 4 { break; }
-                    }
-                    Ok(Frame::Texture(_)) => return Err("product camera unexpectedly returned a texture".into()),
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => continue,
-                    Err(error) => return Err(error.into()),
-                }
-            }
-            require(hashes.len() == 4 && hashes.iter().collect::<BTreeSet<_>>().len() >= 2,
-                    "product camera pixels did not advance")?;
-            drop(selected);
-            require(video_handles()?.is_empty(), "product zero control retained its handle")?;
-            emit(json!({"scenario": "product-zero-control", "native_index": 0,
-                        "sample": {"width": 640, "height": 360, "frame_bytes": 921600,
-                                   "decoded_format": "RGBA", "frame_sha256": hashes},
-                        "device_handles_retired": true}))
-        }
-        "--product-nonzero-baseline" => {
-            require(query_indices()? == [2], "product fixture requires only native index two")?;
-            let advertised = product_camera::Cameras::all_info()?;
-            require(advertised.len() == 1 && advertised[0].online
-                    && advertised[0].width == 640 && advertised[0].height == 360,
-                    "product did not advertise the actual native camera at ordinal zero")?;
-            require(product_camera::primary_camera_exists(), "product primary presence check failed")?;
-            require(video_handles()?.is_empty(), "product discovery retained a native device")?;
-            let resolution_error = product_camera::Cameras::get_camera_resolution(0)
-                .err().ok_or("product unexpectedly resolved the nonzero native camera")?.to_string();
-            let capture_error = product_camera::Cameras::get_capturer(0)
-                .err().ok_or("product unexpectedly opened the nonzero native camera")?.to_string();
-            require(resolution_error.contains("No such file or directory")
-                    && capture_error.contains("No such file or directory"),
-                    "product failure was not absent-node acquisition")?;
-            require(video_handles()?.is_empty(), "failed product acquisition left a device handle")?;
-            let mut native = camera(2)?;
-            let control = frames(&mut native)?;
-            drop(native);
-            require(video_handles()?.is_empty(), "positive native control retained its handle")?;
-            emit(json!({"scenario": "product-nonzero-baseline", "advertised_count": advertised.len(),
-                        "advertised_name": advertised[0].name, "width": advertised[0].width,
-                        "height": advertised[0].height, "advertised_ordinal": 0, "native_index": 2,
-                        "resolution_error": resolution_error, "capture_error": capture_error,
-                        "native_control": control, "device_handles_retired": true,
-                        "scope": "production-camera-module; full-application-unexecuted"}))
+        "--product-zero-control" => product_selected(0),
+        "--product-nonzero" => product_selected(2),
+        "--product-reuse" => {
+            require(query_indices()? == [2, 3], "product reuse requires native two and three")?;
+            let mut pool = product_camera::CameraCatalogPool::default();
+            let first = pool.acquire()?;
+            let first_info = first.display(0).ok_or("missing primary metadata")?.clone();
+            let first_generation = first.generation();
+            let mut first_capture = first.capturer(0)?;
+            let original = fs::metadata("/dev/video2")?.rdev();
+            let replacement = fs::metadata("/dev/video3")?.rdev();
+            require(video_handles()? == [original], "product selection did not retain native two")?;
+            let sample = product_sample(&mut *first_capture)?;
+            emit(json!({"scenario": "product-reuse-ready", "original_rdev": original,
+                        "replacement_rdev": replacement, "first_sample": sample}))?;
+            let mut request = String::new();
+            io::stdin().read_line(&mut request)?;
+            require(request == "reuse\n", "product reuse handoff differs")?;
+            let second = pool.acquire()?;
+            require(second.generation() != first_generation, "replacement inherited the original generation")?;
+            require(first.display(0) == Some(&first_info), "replacement changed the old catalog metadata")?;
+            let retained = video_handles()?;
+            let mut expected = vec![original, replacement];
+            expected.sort_unstable();
+            require(retained == expected, "catalogs did not retain distinct native handles")?;
+            let mut second_capture = second.capturer(0)?;
+            let replacement_sample = product_sample(&mut *second_capture)?;
+            let repeated = pool.acquire()?;
+            require(std::sync::Arc::ptr_eq(&second, &repeated), "overlapping login did not share the current owner")?;
+            drop(repeated);
+            second.retire();
+            require(second.capturer(0).is_err(), "retired catalog admitted another capturer")?;
+            drop(second_capture);
+            drop(second);
+            let original_sample = product_sample(&mut *first_capture)?;
+            require(first.generation() == first_generation, "old generation changed during replacement")?;
+            drop(first_capture);
+            drop(first);
+            require(video_handles()?.is_empty(), "catalog replacement retained a device handle")?;
+            emit(json!({"scenario": "product-reuse", "current_node_rdev": replacement,
+                        "retained_rdevs": retained, "replacement_sample": replacement_sample,
+                        "original_sample": original_sample, "device_handles_retired": true,
+                        "metadata_preserved": true, "generations_distinct": true,
+                        "overlapping_login_shared": true, "retired_capture_refused": true}))
         }
         "--two-retained" => {
             require(query_indices()? == [2, 3], "two-device native discovery differs")?;

@@ -725,14 +725,14 @@ pub fn retire_video_frame_connection(conn_id: i32) {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum VideoSource {
     Monitor,
-    Camera,
+    Camera(u64),
 }
 
 impl VideoSource {
     pub fn service_name_prefix(&self) -> &'static str {
         match self {
             VideoSource::Monitor => "monitor",
-            VideoSource::Camera => "camera",
+            VideoSource::Camera(_) => "camera",
         }
     }
 
@@ -741,7 +741,7 @@ impl VideoSource {
     }
 
     pub fn is_camera(&self) -> bool {
-        matches!(self, VideoSource::Camera)
+        matches!(self, VideoSource::Camera(_))
     }
 }
 
@@ -750,6 +750,8 @@ pub struct VideoService {
     sp: GenericService,
     idx: usize,
     source: VideoSource,
+    #[cfg(target_os = "linux")]
+    camera_catalog: Option<Arc<camera::CameraCatalog>>,
     #[cfg(target_os = "android")]
     android_generation: u64,
 }
@@ -769,18 +771,24 @@ impl DerefMut for VideoService {
 }
 
 pub fn get_service_name(source: VideoSource, idx: usize) -> String {
-    format!("{}{}", source.service_name_prefix(), idx)
+    match source {
+        VideoSource::Monitor => format!("monitor{}", idx),
+        VideoSource::Camera(generation) => format!("camera{}-{}", generation, idx),
+    }
 }
 
 pub fn new(
     source: VideoSource,
     idx: usize,
+    #[cfg(target_os = "linux")] camera_catalog: Option<Arc<camera::CameraCatalog>>,
     #[cfg(target_os = "android")] android_generation: u64,
 ) -> GenericService {
     let vs = VideoService {
         sp: GenericService::new(get_service_name(source, idx), true),
         idx,
         source,
+        #[cfg(target_os = "linux")]
+        camera_catalog,
         #[cfg(target_os = "android")]
         android_generation,
     };
@@ -1002,8 +1010,14 @@ fn get_capturer_monitor(
     })
 }
 
-fn get_capturer_camera(current: usize) -> ResultType<CapturerInfo> {
+fn get_capturer_camera(
+    current: usize,
+    #[cfg(target_os = "linux")] catalog: &Arc<camera::CameraCatalog>,
+) -> ResultType<CapturerInfo> {
+    #[cfg(not(target_os = "linux"))]
     let cameras = camera::Cameras::get_sync_cameras();
+    #[cfg(target_os = "linux")]
+    let cameras = catalog.display(current).cloned().into_iter().collect::<Vec<_>>();
     let ncamera = cameras.len();
     if ncamera <= current {
         bail!("Failed to get camera {}, cameras len: {}", current, ncamera,);
@@ -1014,7 +1028,10 @@ fn get_capturer_camera(current: usize) -> ResultType<CapturerInfo> {
             current
         );
     };
+    #[cfg(not(target_os = "linux"))]
     let capturer = camera::Cameras::get_capturer(current)?;
+    #[cfg(target_os = "linux")]
+    let capturer = catalog.capturer(current)?;
     let (width, height) = (camera.width as usize, camera.height as usize);
     let origin = (camera.x as i32, camera.y as i32);
     let name = &camera.name;
@@ -1047,6 +1064,7 @@ fn get_capturer_camera(current: usize) -> ResultType<CapturerInfo> {
 fn get_capturer(
     source: VideoSource,
     current: usize,
+    #[cfg(target_os = "linux")] catalog: Option<&Arc<camera::CameraCatalog>>,
     #[cfg(target_os = "android")] android_generation: u64,
 ) -> ResultType<CapturerInfo> {
     match source {
@@ -1055,7 +1073,12 @@ fn get_capturer(
             #[cfg(target_os = "android")]
             android_generation,
         ),
-        VideoSource::Camera => get_capturer_camera(current),
+        VideoSource::Camera(generation) => {
+            #[cfg(target_os = "linux")]
+            let catalog = catalog.filter(|catalog| catalog.generation() == generation)
+                .ok_or_else(|| anyhow!("Camera capture generation is unavailable"))?;
+            get_capturer_camera(current, #[cfg(target_os = "linux")] catalog)
+        }
     }
 }
 
@@ -1091,6 +1114,8 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
     let mut c = get_capturer(
         source,
         display_idx,
+        #[cfg(target_os = "linux")]
+        vs.camera_catalog.as_ref(),
         #[cfg(target_os = "android")]
         vs.android_generation,
     )?;
@@ -1141,7 +1166,7 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
             )?
         }
     };
-    let mut recorder = get_recorder(record_incoming, display_idx, source == VideoSource::Camera, recordings);
+    let mut recorder = get_recorder(record_incoming, display_idx, source.is_camera(), recordings);
     #[cfg(feature = "vram")]
     c.set_output_texture(encoder.input_texture());
     #[cfg(target_os = "android")]
@@ -1606,7 +1631,7 @@ fn get_encoder_config(
     _source: VideoSource,
 ) -> EncoderCfg {
     #[cfg(all(windows, feature = "vram"))]
-    if c.is_gdi() || _source == VideoSource::Camera {
+    if c.is_gdi() || _source.is_camera() {
         log::info!("gdi:{}", c.is_gdi());
         VRamEncoder::set_not_use(_name, true);
     }
@@ -1911,7 +1936,8 @@ fn try_broadcast_display_changed(
     ) {
         log::info!("Display {} changed", display);
         if let Some(msg_out) =
-            make_display_changed_msg(display_idx, Some(display), VideoSource::Monitor)
+            make_display_changed_msg(display_idx, Some(display), VideoSource::Monitor,
+                #[cfg(target_os = "linux")] None)
         {
             let msg_out = Arc::new(msg_out);
             sp.send_shared(msg_out.clone());
@@ -1930,14 +1956,18 @@ pub fn make_display_changed_msg(
     display_idx: usize,
     opt_display: Option<DisplayInfo>,
     source: VideoSource,
+    #[cfg(target_os = "linux")] catalog: Option<&Arc<camera::CameraCatalog>>,
 ) -> Option<Message> {
     let display = match opt_display {
         Some(d) => d,
         None => match source {
             VideoSource::Monitor => display_service::get_display_info(display_idx)?,
-            VideoSource::Camera => camera::Cameras::get_sync_cameras()
-                .get(display_idx)?
-                .clone(),
+            VideoSource::Camera(generation) => {
+                #[cfg(target_os = "linux")]
+                { catalog.filter(|catalog| catalog.generation() == generation)?.display(display_idx)?.clone() }
+                #[cfg(not(target_os = "linux"))]
+                { camera::Cameras::get_sync_cameras().get(display_idx)?.clone() }
+            }
         },
     };
     let mut misc = Misc::new();
@@ -1949,7 +1979,7 @@ pub fn make_display_changed_msg(
         height: display.height,
         cursor_embedded: match source {
             VideoSource::Monitor => display_service::capture_cursor_embedded(),
-            VideoSource::Camera => false,
+            VideoSource::Camera(_) => false,
         },
         #[cfg(not(target_os = "android"))]
         resolutions: Some(SupportedResolutions {
@@ -1961,8 +1991,7 @@ pub fn make_display_changed_msg(
                         crate::platform::resolutions(&display.name)
                     }
                 }
-                VideoSource::Camera => camera::Cameras::get_camera_resolution(display_idx)
-                    .ok()
+                VideoSource::Camera(_) => display.original_resolution.as_ref().cloned()
                     .into_iter()
                     .collect(),
             },
@@ -2181,16 +2210,21 @@ mod video_frame_ack_tests {
     fn r_s11eg_monitor_and_camera_acknowledgements_are_source_exact() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let monitor = VideoFrameController::new(VideoSource::Monitor, 10_001).unwrap();
-        let camera = VideoFrameController::new(VideoSource::Camera, 10_001).unwrap();
+        let camera = VideoFrameController::new(VideoSource::Camera(1), 10_001).unwrap();
+        let replacement = VideoFrameController::new(VideoSource::Camera(2), 10_001).unwrap();
         let monitor_round = prepare(&monitor, &ids(&[11]), 1);
         let camera_round = prepare(&camera, &ids(&[12]), 1);
+        let replacement_round = prepare(&replacement, &ids(&[12]), 1);
 
         notify_video_frame_fetched(VideoSource::Monitor, 10_001, monitor_round, 11, None);
         assert!(monitor.wait_for_progress(Duration::ZERO));
         assert!(!camera.wait_for_progress(Duration::ZERO));
 
-        notify_video_frame_fetched(VideoSource::Camera, 10_001, camera_round, 12, None);
+        notify_video_frame_fetched(VideoSource::Camera(1), 10_001, camera_round, 12, None);
         assert!(camera.wait_for_progress(Duration::ZERO));
+        assert!(!replacement.wait_for_progress(Duration::ZERO));
+        notify_video_frame_fetched(VideoSource::Camera(2), 10_001, replacement_round, 12, None);
+        assert!(replacement.wait_for_progress(Duration::ZERO));
     }
 
     #[test]
@@ -2262,7 +2296,7 @@ mod video_frame_ack_tests {
     fn r_s11fb_local_disconnect_retires_all_exact_pending_sources() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let monitor = VideoFrameController::new(VideoSource::Monitor, 10_004).unwrap();
-        let camera = VideoFrameController::new(VideoSource::Camera, 10_004).unwrap();
+        let camera = VideoFrameController::new(VideoSource::Camera(0), 10_004).unwrap();
         prepare(&monitor, &ids(&[31]), 1);
         prepare(&camera, &ids(&[31]), 1);
 
@@ -2339,7 +2373,7 @@ mod video_frame_ack_tests {
             })
             .collect::<Result<Vec<_>, _>>()
             .unwrap();
-        assert!(VideoFrameController::new(VideoSource::Camera, 30_000).is_err());
+        assert!(VideoFrameController::new(VideoSource::Camera(0), 30_000).is_err());
         assert!(
             VideoFrameController::new(VideoSource::Monitor, 20_000).is_err(),
             "an active stream key must not be adopted or replaced"
@@ -2494,7 +2528,7 @@ mod screenshot_ownership_tests {
         pending
             .replace(
                 31,
-                VideoSource::Camera,
+                VideoSource::Camera(0),
                 2,
                 "replacement".to_owned(),
                 replacement_tx.clone(),
@@ -2502,7 +2536,7 @@ mod screenshot_ownership_tests {
             .unwrap();
 
         pending.cancel(31, &stale_tx);
-        let work = pending.take_for_frame(VideoSource::Camera, 2);
+        let work = pending.take_for_frame(VideoSource::Camera(0), 2);
         assert_eq!(work.len(), 1);
         assert_eq!(work[0].request.sid, "replacement");
         assert!(work[0].tx.same_channel(&replacement_tx));
@@ -2606,7 +2640,7 @@ mod screenshot_ownership_tests {
         pending
             .replace(
                 0,
-                VideoSource::Camera,
+                VideoSource::Camera(0),
                 1,
                 "replacement".to_owned(),
                 sender(),

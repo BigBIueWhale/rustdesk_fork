@@ -6546,13 +6546,12 @@ if sys.argv[7]=='1':
     for key in ('root_foreign_probe_refused','compiler_container_retired','daemon_joined','compile_network_canary_refused'):
         assert supplier[key] is True
     assert supplier['rustdesk_camera_module_executed'] is True
-    capture,product,retained,reuse,ownership,product_zero,timeout=supplier['scenarios']
+    capture,product,retained,reuse,product_reuse,ownership,product_zero,timeout=supplier['scenarios']
     assert capture['scenario']=='capture' and capture['indices']==[2]
     assert capture['device_handles_retired'] is True and len(set(capture['sample']['frame_sha256']))>=2
-    assert product['scenario']=='product-nonzero-baseline' and product['device_handles_retired'] is True
-    assert (product['advertised_count'],product['advertised_ordinal'],product['native_index'])==(1,0,2)
-    assert (product['width'],product['height'])==(640,360)
-    assert 'No such file or directory' in product['resolution_error'] and 'No such file or directory' in product['capture_error']
+    assert product['scenario']=='product-nonzero' and product['device_handles_retired'] is True
+    assert (product['advertised_ordinal'],product['native_index'])==(0,2)
+    assert product['overlapping_login_shared'] is True
     assert product_zero['scenario']=='product-zero-control' and product_zero['native_index']==0
     assert product_zero['device_handles_retired'] is True
     assert retained['scenario']=='two-retained' and retained['device_handles_retired'] is True
@@ -6563,6 +6562,12 @@ if sys.argv[7]=='1':
     assert reuse['readiness']['original_rdev']!=reuse['readiness']['replacement_rdev']
     assert ownership['scenario']=='stream-ownership' and ownership['device_handles_retired'] is True
     assert ownership['competing_error']
+    assert product_reuse['result']['scenario']=='product-reuse'
+    for key in ('device_handles_retired','metadata_preserved','generations_distinct','overlapping_login_shared','retired_capture_refused'):
+        assert product_reuse['result'][key] is True
+    assert product_reuse['result']['retained_rdevs']==sorted([product_reuse['readiness']['original_rdev'],product_reuse['readiness']['replacement_rdev']])
+    assert product_reuse['readiness']['original_rdev']!=product_reuse['readiness']['replacement_rdev']
+    assert product_reuse['result']['current_node_rdev']==product_reuse['readiness']['replacement_rdev']
     assert timeout['scenario']=='product-timeout' and timeout['inherited_retry_errno']==22
     assert timeout['same_owner_recovery'] is True and timeout['device_handles_retired'] is True
     assert len(timeout['waits_ms'])==4 and all(len(waits)==3 for waits in timeout['waits_ms'])
@@ -6570,7 +6575,8 @@ if sys.argv[7]=='1':
     assert timeout['close_ms']<800 and len(timeout['recoveries'])==3
     samples=[capture['sample'],retained['first_sample'],retained['second_sample'],retained['resumed_sample'],
              reuse['readiness']['first_sample'],reuse['result']['replacement_sample'],reuse['result']['original_sample'],
-             ownership['initial'],ownership['preserved'],ownership['retry'],product['native_control'],product_zero['sample']]
+             ownership['initial'],ownership['preserved'],ownership['retry'],product['sample'],product_zero['sample'],
+             product_reuse['readiness']['first_sample'],product_reuse['result']['replacement_sample'],product_reuse['result']['original_sample']]
     samples.extend(timeout['recoveries'])
     for sample in samples:
         assert sample['decoded_format']=='RGBA' and sample['frame_bytes']==sample['width']*sample['height']*4
@@ -6590,7 +6596,7 @@ print('MEDIA_KERNEL_OBSERVATION='+json.dumps({'prepared':prepared,'fixture':resu
 PY
     if [ "$MEDIA_NOKHWA" -eq 1 ]; then
         require_exact_fixed_receipt "MEDIA_NOKHWA_FIXTURE=pass source=$FOCUSED_TEST_COMMIT capture=decoded two-retained=independent node-reuse=fresh-handle stream=exclusive-retry supplier=executed product=unexecuted cleanup=joined" 'native camera device ownership'
-        require_exact_fixed_receipt "MEDIA_CAMERA_MODULE=pass source=$FOCUSED_TEST_COMMIT advertised=ordinal-zero native=two resolution=ENOENT capture=ENOENT native-control=decoded application=unexecuted" 'production camera nonzero-device reproduction'
+        require_exact_fixed_receipt "MEDIA_CAMERA_MODULE=pass source=$FOCUSED_TEST_COMMIT nonzero=decoded catalog=retained replacement=independent overlap=shared application=unexecuted" 'production retained camera catalog'
     fi
 elif [ "$MODE" = host-network-tests ]; then
     require_exact_fixed_receipt \

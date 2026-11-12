@@ -11,6 +11,8 @@ pub trait Service: Send + Sync {
     fn on_subscribe(&self, sub: ConnInner);
     fn on_unsubscribe(&self, id: i32);
     fn is_subed(&self, id: i32) -> bool;
+    fn stop(&self);
+    fn is_finished(&self) -> bool;
     fn join(&self);
     fn get_option(&self, opt: &str) -> Option<String>;
     fn set_option(&self, opt: &str, val: &str) -> Option<String>;
@@ -126,8 +128,16 @@ impl<T: Subscriber + From<ConnInner>> Service for ServiceTmpl<T> {
         }
     }
 
-    fn join(&self) {
+    fn stop(&self) {
         self.0.write().unwrap().active = false;
+    }
+
+    fn is_finished(&self) -> bool {
+        self.0.read().unwrap().handle.as_ref().map_or(true, JoinHandle::is_finished)
+    }
+
+    fn join(&self) {
+        self.stop();
         let handle = self.0.write().unwrap().handle.take();
         if let Some(handle) = handle {
             if let Err(e) = handle.join() {

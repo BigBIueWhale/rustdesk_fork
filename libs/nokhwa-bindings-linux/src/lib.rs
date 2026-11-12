@@ -419,6 +419,23 @@ mod internal {
             let bytes = stream.next(timeout)?;
             Ok(Buffer::new(format.resolution(), bytes, format.format()))
         }
+
+        /// Identity of the retained device node, never a lookup of its current pathname.
+        pub fn device_identity(&self) -> Result<(u64, u64, u64), NokhwaError> {
+            let device = self.lock_device()?;
+            let mut info: libc::stat = unsafe { std::mem::zeroed() };
+            if unsafe { libc::fstat(device.handle().fd(), &mut info) } != 0 {
+                return Err(NokhwaError::GetPropertyError {
+                    property: "Device identity".to_owned(),
+                    error: io::Error::last_os_error().to_string(),
+                });
+            }
+            // A disconnected V4L2 registration must not remain a reusable catalog.
+            device.query_caps().map_err(|error| NokhwaError::GetPropertyError {
+                property: "Device capabilities".to_owned(), error: error.to_string(),
+            })?;
+            Ok((info.st_dev as u64, info.st_ino as u64, info.st_rdev as u64))
+        }
     }
 
     impl CaptureBackendTrait for V4LCaptureDevice {

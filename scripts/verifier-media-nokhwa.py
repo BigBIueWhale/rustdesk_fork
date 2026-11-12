@@ -375,10 +375,10 @@ def native_scenarios(artifact):
             elif count == 1:
                 require(run.returncode == 0 and not run.stderr, 'nokhwa native capture failed: ' + run.stderr.decode(errors='replace'))
                 results.append(json.loads(run.stdout))
-                product = subprocess.run(native_argv('--product-nonzero-baseline'), env=ENV,
+                product = subprocess.run(native_argv('--product-nonzero'), env=ENV,
                                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
                 require(product.returncode == 0 and not product.stderr and len(product.stdout) <= 16384,
-                        'production camera baseline failed: ' + product.stderr.decode(errors='replace'))
+                        'production nonzero camera capture failed: ' + product.stderr.decode(errors='replace'))
                 results.append(json.loads(product.stdout))
             else:
                 require(run.returncode == 0 and not run.stderr,
@@ -388,6 +388,7 @@ def native_scenarios(artifact):
                         'retained device completion differs')
                 results.append(result)
                 results.append(reuse_scenario())
+                results.append(reuse_scenario(product=True))
                 owned = subprocess.run(native_argv('--stream-ownership'), env=ENV, stdout=subprocess.PIPE,
                                        stderr=subprocess.PIPE, timeout=10)
                 require(owned.returncode == 0 and not owned.stderr and len(owned.stdout) <= 16384,
@@ -405,8 +406,9 @@ def native_scenarios(artifact):
     return results
 
 
-def reuse_scenario():
-    process = subprocess.Popen(native_argv('--reuse'), env=ENV,
+def reuse_scenario(product=False):
+    scenario = 'product-reuse' if product else 'reuse'
+    process = subprocess.Popen(native_argv('--' + scenario), env=ENV,
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     moved_original = moved_replacement = False
     identities = {name: (Path('/dev', name).lstat().st_ino, Path('/dev', name).lstat().st_rdev)
@@ -423,7 +425,7 @@ def reuse_scenario():
             require(byte, 'native reuse exited before readiness')
             first_line.extend(byte)
         first = json.loads(first_line)
-        require(first['scenario'] == 'reuse-ready' and first['original_rdev'] == identities['video2'][1]
+        require(first['scenario'] == scenario + '-ready' and first['original_rdev'] == identities['video2'][1]
                 and first['replacement_rdev'] == identities['video3'][1], 'native reuse identities differ')
         move_node('video2', 'rustdesk-retained-video2')
         moved_original = True
@@ -433,7 +435,7 @@ def reuse_scenario():
         require(process.returncode == 0 and not error and len(output) <= 16384,
                 'native reuse failed: ' + error.decode(errors='replace'))
         result = json.loads(output)
-        require(result['scenario'] == 'reuse'
+        require(result['scenario'] == scenario
                 and result['retained_rdevs'] == sorted([identities['video2'][1], identities['video3'][1]])
                 and result['current_node_rdev'] == identities['video3'][1], 'native replacement-handle observation differs')
         return {'readiness': first, 'result': result, 'scope': 'guest-native-node-rename; physical-hotplug-unexecuted'}

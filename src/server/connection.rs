@@ -5107,6 +5107,8 @@ pub struct Connection {
     file_timer: crate::RustDeskInterval,
     file_transfer: Option<(String, bool)>,
     view_camera: bool,
+    #[cfg(target_os = "linux")]
+    camera_catalog: Option<Arc<camera::CameraCatalog>>,
     terminal: bool,
     // R-F1/R-S5: the dialed LOCAL target socket of a port-forward/RDP tunnel — a PLAINTEXT loopback/
     // LAN connection to the actual service (e.g. localhost:3389). The peer side of the relay is
@@ -6122,8 +6124,8 @@ mod video_delivery_tests {
 
     #[test]
     fn r_s11fk_exact_peer_receipt_then_local_write_completes() {
-        let mut delivery = pending(VideoSource::Camera, 3, 52);
-        assert!(delivery.observe_peer_receipt(Some(VideoSource::Camera), &receipt(3, 52)));
+        let mut delivery = pending(VideoSource::Camera(0), 3, 52);
+        assert!(delivery.observe_peer_receipt(Some(VideoSource::Camera(0)), &receipt(3, 52)));
         assert!(!delivery.is_complete());
         delivery.mark_writer_complete();
         assert!(delivery.is_complete());
@@ -6134,7 +6136,7 @@ mod video_delivery_tests {
         let mut delivery = pending(VideoSource::Monitor, 4, 63);
         for (source, receipt) in [
             (None, receipt(4, 63)),
-            (Some(VideoSource::Camera), receipt(4, 63)),
+            (Some(VideoSource::Camera(0)), receipt(4, 63)),
             (Some(VideoSource::Monitor), receipt(-1, 63)),
             (Some(VideoSource::Monitor), receipt(4, 0)),
             (Some(VideoSource::Monitor), receipt(4, 62)),
@@ -6354,7 +6356,7 @@ mod video_egress_tests {
         assert!(sender
             .send_video_frame(
                 encoded_video(7, true, b"seven", 21),
-                VideoSource::Camera,
+                VideoSource::Camera(0),
                 7,
                 21
             )
@@ -6378,7 +6380,7 @@ mod video_egress_tests {
             panic!("requeued first display must follow already-ready second display");
         };
         assert_eq!(first.identity(), identity(VideoSource::Monitor, 2, 20));
-        assert_eq!(second.identity(), identity(VideoSource::Camera, 7, 21));
+        assert_eq!(second.identity(), identity(VideoSource::Camera(0), 7, 21));
         assert_eq!(third.identity(), identity(VideoSource::Monitor, 2, 22));
         assert!(receiver.take_next().is_none());
     }
@@ -6550,6 +6552,8 @@ impl Connection {
             file_timer: crate::rustdesk_interval(time::interval(SEC30)),
             file_transfer: None,
             view_camera: false,
+            #[cfg(target_os = "linux")]
+            camera_catalog: None,
             terminal: false,
             port_forward_socket: None,
             port_forward_address: "".to_owned(),
@@ -8004,15 +8008,25 @@ impl Connection {
             log::info!("peer info supported_encoding: {:?}", supported_encoding);
             pi.encoding = Some(supported_encoding).into();
 
-            pi.displays = camera::Cameras::all_info().unwrap_or(Vec::new());
+            #[cfg(target_os = "linux")]
+            {
+                if let Err(error) = self.prepare_camera_catalog().await {
+                    log::error!("Camera login could not acquire its device: {error}");
+                    self.send_login_error("Camera is unavailable").await;
+                    return None;
+                }
+                pi.displays = self.camera_catalog.as_ref()
+                    .and_then(|catalog| catalog.display(camera::PRIMARY_CAMERA_IDX))
+                    .cloned().into_iter().collect();
+            }
+            #[cfg(not(target_os = "linux"))]
+            { pi.displays = camera::Cameras::all_info().unwrap_or(Vec::new()); }
             pi.current_display = camera::PRIMARY_CAMERA_IDX as _;
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
                 pi.resolutions = Some(SupportedResolutions {
-                    resolutions: camera::Cameras::get_camera_resolution(
-                        pi.current_display as usize,
-                    )
-                    .ok()
+                    resolutions: pi.displays.get(pi.current_display as usize)
+                    .and_then(|display| display.original_resolution.as_ref()).cloned()
                     .into_iter()
                     .collect(),
                     ..Default::default()
@@ -8167,10 +8181,30 @@ impl Connection {
         Some(cm_login_followup)
     }
 
+    #[cfg(target_os = "linux")]
+    async fn prepare_camera_catalog(&mut self) -> ResultType<()> {
+        let server = self.server.upgrade().ok_or_else(|| anyhow!("Camera server retired"))?;
+        let pool = Arc::clone(&server.read().unwrap().camera_pool);
+        let started = std::time::Instant::now();
+        loop {
+            let pool = Arc::clone(&pool);
+            let catalog = tokio::task::spawn_blocking(move || pool.lock().unwrap().acquire()).await??;
+            if server.write().unwrap().reserve_camera_connection(self.inner.id(), Arc::clone(&catalog))? {
+                self.camera_catalog = Some(catalog);
+                self.display_idx = camera::PRIMARY_CAMERA_IDX;
+                return Ok(());
+            }
+            if started.elapsed() >= std::time::Duration::from_secs(3) {
+                bail!("Camera generation changed during login");
+            }
+        }
+    }
+
     fn try_sub_camera_displays(&mut self) {
         if let Some(s) = self.server.upgrade() {
             let mut s = s.write().unwrap();
 
+            #[cfg(not(target_os = "linux"))]
             s.try_add_primary_camera_service();
             s.add_camera_connection(self.inner.clone());
         }
@@ -10366,6 +10400,8 @@ impl Connection {
                             display,
                             None,
                             self.video_source(),
+                            #[cfg(target_os = "linux")]
+                            self.camera_catalog.as_ref(),
                         ) {
                             self.send(msg_out).await;
                         }
@@ -10633,7 +10669,10 @@ impl Connection {
 
     fn peer_display_count(&mut self) -> Option<usize> {
         if self.view_camera {
-            Some(camera::Cameras::get_sync_cameras().len())
+            #[cfg(target_os = "linux")]
+            { self.camera_catalog.as_ref().map(|_| 1) }
+            #[cfg(not(target_os = "linux"))]
+            { Some(camera::Cameras::get_sync_cameras().len()) }
         } else {
             #[cfg(target_os = "android")]
             let displays =
@@ -10837,7 +10876,8 @@ impl Connection {
             // 2. Sciter version.
             // 3. Update `SupportedResolutions`.
             if let Some(msg_out) =
-                video_service::make_display_changed_msg(self.display_idx, None, self.video_source())
+                video_service::make_display_changed_msg(self.display_idx, None, self.video_source(),
+                    #[cfg(target_os = "linux")] self.camera_catalog.as_ref())
             {
                 self.send(msg_out).await;
             }
@@ -10847,7 +10887,10 @@ impl Connection {
 
     fn video_source(&self) -> VideoSource {
         if self.view_camera {
-            VideoSource::Camera
+            #[cfg(target_os = "linux")]
+            { VideoSource::Camera(self.camera_catalog.as_ref().map_or(0, |catalog| catalog.generation())) }
+            #[cfg(not(target_os = "linux"))]
+            { VideoSource::Camera(0) }
         } else {
             VideoSource::Monitor
         }
@@ -12967,7 +13010,10 @@ impl Connection {
         if self.is_authed_remote_conn() {
             Some(VideoSource::Monitor)
         } else if self.is_authed_view_camera_conn() {
-            Some(VideoSource::Camera)
+            #[cfg(target_os = "linux")]
+            { self.camera_catalog.as_ref().map(|catalog| VideoSource::Camera(catalog.generation())) }
+            #[cfg(not(target_os = "linux"))]
+            { Some(VideoSource::Camera(0)) }
         } else {
             None
         }

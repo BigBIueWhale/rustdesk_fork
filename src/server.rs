@@ -683,6 +683,12 @@ mod graceful_shutdown_tests {
 pub struct Server {
     connections: ConnMap,
     services: HashMap<String, Box<dyn Service>>,
+    #[cfg(target_os = "linux")]
+    camera_pool: Arc<Mutex<camera::CameraCatalogPool>>,
+    #[cfg(target_os = "linux")]
+    camera_connections: HashMap<i32, Arc<camera::CameraCatalog>>,
+    #[cfg(target_os = "linux")]
+    retiring_camera_services: Vec<Box<dyn Service>>,
     #[cfg(target_os = "android")]
     android_generation: Option<std::num::NonZeroU64>,
 }
@@ -712,6 +718,12 @@ pub fn new(#[cfg(target_os = "android")] android_generation: std::num::NonZeroU6
     let mut server = Server {
         connections: HashMap::new(),
         services: HashMap::new(),
+        #[cfg(target_os = "linux")]
+        camera_pool: Arc::new(Mutex::new(camera::CameraCatalogPool::default())),
+        #[cfg(target_os = "linux")]
+        camera_connections: HashMap::new(),
+        #[cfg(target_os = "linux")]
+        retiring_camera_services: Vec::new(),
         #[cfg(target_os = "android")]
         android_generation: Some(android_generation),
     };
@@ -900,45 +912,116 @@ async fn authenticate_tcp_stream(stream: &mut Stream, addr: SocketAddr) -> Resul
 impl Server {
     fn is_video_service_name(name: &str) -> bool {
         name.starts_with(VideoSource::Monitor.service_name_prefix())
-            || name.starts_with(VideoSource::Camera.service_name_prefix())
+            || name.starts_with(VideoSource::Camera(0).service_name_prefix())
     }
 
-    fn ensure_video_service(&mut self, source: VideoSource, display: usize) {
+    fn ensure_video_service(&mut self, source: VideoSource, display: usize) -> bool {
         let service_name = video_service::get_service_name(source, display);
         if self.contains(&service_name) {
-            return;
+            return true;
         }
+        #[cfg(target_os = "linux")]
+        let camera_catalog = match source {
+            VideoSource::Monitor => None,
+            VideoSource::Camera(generation) => {
+                self.reap_camera_services();
+                if self.retiring_camera_services.len() >= 16 {
+                    return false;
+                }
+                let Some(catalog) = self.camera_connections.values().find(|catalog| {
+                    catalog.generation() == generation && !catalog.is_retired()
+                        && catalog.display(display).is_some()
+                }) else { return false; };
+                Some(Arc::clone(catalog))
+            }
+        };
         #[cfg(target_os = "android")]
         let Some(android_generation) = self.android_generation
         else {
             log::error!(
                 "refusing to construct an Android video service without controlled MainService authority"
             );
-            return;
+            return false;
         };
         self.add_service(Box::new(video_service::new(
             source,
             display,
+            #[cfg(target_os = "linux")]
+            camera_catalog,
             #[cfg(target_os = "android")]
             android_generation.get(),
         )));
+        true
     }
 
+    #[cfg(not(target_os = "linux"))]
     pub fn try_add_primary_camera_service(&mut self) {
         if !camera::primary_camera_exists() {
             return;
         }
-        self.ensure_video_service(VideoSource::Camera, camera::PRIMARY_CAMERA_IDX);
+        self.ensure_video_service(VideoSource::Camera(0), camera::PRIMARY_CAMERA_IDX);
     }
 
     pub fn try_add_primay_video_service(&mut self) {
         self.ensure_video_service(VideoSource::Monitor, *display_service::PRIMARY_DISPLAY_IDX);
     }
 
+    #[cfg(target_os = "linux")]
+    fn reap_camera_services(&mut self) {
+        self.retiring_camera_services.retain(|service| {
+            if service.is_finished() {
+                service.join();
+                false
+            } else {
+                true
+            }
+        });
+    }
+
+    #[cfg(target_os = "linux")]
+    fn reserve_camera_connection(&mut self, id: i32, catalog: Arc<camera::CameraCatalog>) -> ResultType<bool> {
+        if catalog.is_retired() {
+            return Ok(false);
+        }
+        if self.camera_connections.contains_key(&id) {
+            bail!("Camera connection generation is unavailable");
+        }
+        let source = VideoSource::Camera(catalog.generation());
+        self.camera_connections.insert(id, catalog);
+        if !self.ensure_video_service(source, camera::PRIMARY_CAMERA_IDX) {
+            self.release_camera_connection(id);
+            bail!("Camera services are still draining");
+        }
+        Ok(true)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn release_camera_connection(&mut self, id: i32) {
+        if let Some(catalog) = self.camera_connections.remove(&id) {
+            if !self.camera_connections.values().any(|other| Arc::ptr_eq(other, &catalog)) {
+                catalog.retire();
+                let name = video_service::get_service_name(VideoSource::Camera(catalog.generation()), camera::PRIMARY_CAMERA_IDX);
+                if let Some(service) = self.services.remove(&name) {
+                    service.stop();
+                    self.retiring_camera_services.push(service);
+                }
+            }
+        }
+        self.reap_camera_services();
+    }
+
     pub fn add_camera_connection(&mut self, conn: ConnInner) {
+        #[cfg(target_os = "linux")]
+        if let Some(catalog) = self.camera_connections.get(&conn.id()) {
+            let name = video_service::get_service_name(VideoSource::Camera(catalog.generation()), camera::PRIMARY_CAMERA_IDX);
+            if let Some(service) = self.services.get(&name) {
+                service.on_subscribe(conn.clone());
+            }
+        }
+        #[cfg(not(target_os = "linux"))]
         if camera::primary_camera_exists() {
             let primary_camera_name =
-                video_service::get_service_name(VideoSource::Camera, camera::PRIMARY_CAMERA_IDX);
+                video_service::get_service_name(VideoSource::Camera(0), camera::PRIMARY_CAMERA_IDX);
             if let Some(s) = self.services.get(&primary_camera_name) {
                 s.on_subscribe(conn.clone());
             }
@@ -970,6 +1053,8 @@ impl Server {
             s.on_unsubscribe(conn.id());
         }
         self.connections.remove(&conn.id());
+        #[cfg(target_os = "linux")]
+        self.release_camera_connection(conn.id());
         #[cfg(target_os = "macos")]
         self.update_enable_retina();
     }
@@ -1086,6 +1171,10 @@ impl Drop for Server {
     fn drop(&mut self) {
         for s in self.services.values() {
             s.join();
+        }
+        #[cfg(target_os = "linux")]
+        for service in &self.retiring_camera_services {
+            service.join();
         }
         #[cfg(target_os = "linux")]
         wayland::clear();

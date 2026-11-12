@@ -120,8 +120,8 @@ def main():
                   + ' capture=decoded two-retained=independent node-reuse=fresh-handle stream=exclusive-retry'
                   + ' supplier=executed product=unexecuted cleanup=joined', flush=True)
             print('MEDIA_CAMERA_MODULE=pass source=' + contract['source_commit']
-                  + ' advertised=ordinal-zero native=two resolution=ENOENT capture=ENOENT'
-                  + ' native-control=decoded application=unexecuted', flush=True)
+                  + ' nonzero=decoded catalog=retained replacement=independent overlap=shared'
+                  + ' application=unexecuted', flush=True)
 
 
 if __name__ == '__main__':

@@ -154,6 +154,24 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
                         memset(pixels + (y * X11_FRAME_WIDTH + x) * 3U, luma, 3U);
                     }
                 int64_t identity = x11_frame_decode(pixels);
+                if (identity < 0 && video->images == 1U) {
+                    GdkPixbuf *thumbnail = gdk_pixbuf_new_from_data(pixels, GDK_COLORSPACE_RGB,
+                        FALSE, 8, X11_FRAME_WIDTH, X11_FRAME_HEIGHT, X11_FRAME_WIDTH * 3U, NULL, NULL);
+                    gchar *png = NULL;
+                    gsize length = 0U;
+                    GError *error = NULL;
+                    if (thumbnail != NULL && gdk_pixbuf_save_to_buffer(thumbnail, &png, &length,
+                            "png", &error, NULL) && length <= 65536U) {
+                        gchar *encoded = g_base64_encode((const guchar *)png, length);
+                        if (encoded != NULL) {
+                            fprintf(stderr, "FLUTTER_PEER_RECORDING_FIRST_IMAGE png_base64=%s\n", encoded);
+                            g_free(encoded);
+                        }
+                    }
+                    g_free(png);
+                    g_clear_error(&error);
+                    g_clear_object(&thumbnail);
+                }
                 if (identity < 0 || (uint64_t)identity >= history->count ||
                     identity < video->last_frame ||
                     history->publication_us[identity] + 1000000U < started_us ||

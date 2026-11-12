@@ -54,7 +54,7 @@ def observe_network(settings, actor):
     expected = ['delay', 'healthy'] + ['loss', 'healthy'] * 8
     profiles, refusals = [], 0
     require(not os.path.lexists(NETWORK_ENDPOINT), 'installed network endpoint occupied')
-    subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=settings.ENV, check=True, timeout=3)
+    subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=netem.ENV, check=True, timeout=3)
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
         listener.bind(NETWORK_ENDPOINT)
         identity = Path(NETWORK_ENDPOINT).lstat()

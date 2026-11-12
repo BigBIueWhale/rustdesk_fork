@@ -148396,3 +148396,84 @@ on both hosts. QEMU 2434609 joins zero after 30.469 seconds; peak RAM scratch
 absence are verified. Approximate 400,000-token compression remains OPEN.
 This audit-only append preserves the counted ledger and prior 15,981,276-byte
 audit prefix (SHA-256 e4923ce70bba7392cdee50d8ab6793749a23f039da00f8723a691fac9d22c5fd).
+
+## 2026-11-12 — controlled-side recording completion and retained status
+
+Prior iteration: progress. TUF's existing password-authenticated SSH master is
+reachable. Continue the selected recording correctness blocker after native
+incoming write-error retirement: completion and failures need an observable,
+read-only owner after capture callbacks restart. This takes priority over a new
+unrelated UI slice; blocking recording I/O remains a separate open correction.
+
+Rust Drop owns scope retirement but cannot return a fallible completion value;
+Linux RLIMIT_FSIZE can make an actual final write fail with EFBIG. The design
+uses a capture-owned recorder whose Drop explicitly checks Recorder::finish and
+publishes the outcome to bounded process state. Flutter's ChangeNotifier updates
+only observing status widgets through the existing status refresh schedule.
+Primary references:
+https://doc.rust-lang.org/std/ops/trait.Drop.html
+https://man7.org/linux/man-pages/man2/getrlimit.2.html
+https://docs.flutter.dev/data-and-backend/state-mgmt/simple
+
+4e8d66a6 adds incoming writer counts (starting/active/finishing, total capped at
+64) and one retained, typed historical failure with display/camera context.
+Completion is published after checked file finalization returns; the status
+mutex is not held around file I/O. A later healthy writer does not erase the
+previous failure, and status reads do not consume it. Desktop reuses authenticated
+MainStatusSnapshot; Android reads its in-process owner; iOS returns unavailable.
+The pure status type is outside the iOS-excluded server module. No credential,
+configuration-write authority or runtime creation changes. Desktop and Android
+recording settings show live counts, explicit unavailability and historical
+failure separately.
+
+The first native run ufcMqUEIcN/tool94362 exits one before tests because the new
+fixture references a private viewer-test module. f4a55367 generates its own
+64x48 native VP8 frame, leaving product behavior and assertions unchanged.
+VhnuFUFEYd/tool80780 then passes seventeen native parent-library tests in five
+seconds after a 160-second build. Artifact SHA-256
+c337c114b21cd09f760254b05a1aee395db778aeafca6dd77d338e74f476bd45
+is unchanged before/after execution. Actual EACCES preserves video publication
+and decoding plus retained failure; a separately joined child imposes a real
+file-size limit for late WebM finalization failure, preserves old bytes and
+pending ownership, then admits healthy new output without clearing history.
+Real Unix IPC framing accepts the bounded status and refuses excessive counts,
+unknown failure fields and invalid stages.
+
+incoming-status-4e8d66a6.json and incoming-status-f4a55367.json bind respectively
+nine files/105,974 and 93,201 bytes verified on both hosts. QEMU 2486975 and
+2487817 join zero after 205.282 and 229.414 seconds; peaks 5,241,884,672 and
+5,331,734,528 bytes of RAM scratch. Both have four zero host listener deltas
+and exact QEMU/socket/RAM absence. The failed private diagnostics are inventoried,
+matched to durable logs and retired by exact identity (3,391,488 allocated bytes).
+
+The superseded fd93151b application bundle is authenticated against its original
+manifest and all 74 payloads, then retired by exact parent identity 66306:82491103
+to free one of four cache generations. This releases 70,598,656 allocated bytes.
+incoming-status-retired-fd93151b.json retains the manifest, inventory and receipt:
+three files/36,546 bytes verified on both hosts. Historical native evidence
+remains; removed payload bytes are not claimed reconstructible. Installed-package
+baseline 6429f3cb, clock/finalization baseline 7c58ad90 and prior accepted
+diagnostic-write app dbd57c51 remain.
+
+Full Linux Flutter build AbzvwCctJY/tool12976 at f4a55367 exits zero.
+Four new status widget/model tests, thirteen existing view-mode tests and two
+native command tests pass after exact bridge generation. The optimized library
+build takes 5m14s and the command-test build 6m46s. Compiler peak is
+10,722,738,176 bytes under its 10 GiB limit, with no swap/OOM event.
+The 74-payload bundle contains 70,467,268 bytes; manifest SHA-256
+7f93ab278fefa2c1dd1b19b22ee8748533eddf956853ea638ae73cbeb6c1f949.
+Dart libapp.so, native librustdesk.so and smoke-readiness differ from dbd57c51;
+the other 71 payloads match. The pinned engine and persistent inputs reverify.
+incoming-status-app-f4a55367.json binds ten files/322,522 bytes verified on both
+hosts. QEMU 2543432 joins zero after 1244.649 seconds; RAM scratch peaks at
+11,907,555,328 bytes. Four zero listener deltas and exact private/QEMU/socket/RAM
+absence are verified. The bundle remains an inert development artifact.
+
+These are native component and application integration results. Actual controlled
+capture-to-local-UI failure/completion, blocked recording I/O, installed/root
+settings/recording, other-platform native execution and full release acceptance
+remain OPEN. Do not infer target-native mobile/macOS/Windows execution from shared
+source or Linux compilation. No live instruction or host authentication changes.
+
+This append preserves the prior 15,981,991-byte audit prefix,
+SHA-256 bb05f5e0e2a967a91981d4821da4fcad1f885e2a12f05404bcc4ec7b2af77769.

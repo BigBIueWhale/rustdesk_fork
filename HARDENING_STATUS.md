@@ -558,8 +558,12 @@ allocated bytes while retaining 62,717 bytes on both hosts
 retired after exact manifest/74-payload verification, releasing 70,594,560
 allocated bytes. Its manifest, inventory and cleanup receipt remain on both
 hosts (`recording-clock-retired-7e6f6459.json`); its original payload bytes
-are not retained. The four cache generations now hold `6429f3cb`, `fd93151b`,
-the recording baseline `8543fa9e` and corrected application `7c58ad90`.
+are not retained. Subsequent verified retirement removes `8543fa9e` and
+superseded `fd93151b`; their evidence remains. The four retained generations
+are now `6429f3cb`, `7c58ad90`, `dbd57c51` and incoming-status app `f4a55367`.
+`incoming-status-retired-fd93151b.json` binds its manifest, exact 74-payload
+inventory and retirement, releasing 70,598,656 allocated bytes while retaining
+36,546 bytes of evidence on both hosts. Removed payloads are not claimed reconstructible.
 Native recording-folder replay at `fc52d6a8`, TUF `WAK2813C72`, also passes on
 the same `fd93151b` bundle without rebuilding. The real GTK chooser selects an
 exact Unicode path; Cancel preserves that path and the settings file's identity
@@ -6809,11 +6813,34 @@ in their named evidence capsules and the audit. The final informational outer
 summary's stale fourteen-test label is corrected; named results and checked
 artifact/guest receipts already require fifteen, so passed behavior is not rerun.
 
-Controlled-side UI error/completion reporting, blocked recording I/O, full-UI
-multiple writers/late failures, broader finalization failures, installed/root
-and other-platform recording remain OPEN. Next: controlled-side completion and
-failure reporting with capture lifetime preserved. These component results do
-not close R-S0/R-F5 or the complete recording/release requirements.
+**Incoming recording completion/status — Linux components and app integration ACCEPTED.**
+`4e8d66a6` adds capture-owned checked finalization, bounded live writer counts
+and one retained historical failure. Completion follows the actual finish result;
+the status mutex is released during file I/O. Healthy new ownership does not erase
+failure history. Desktop reuses the authenticated read-only status snapshot;
+Android reads in-process, and iOS reports unavailable. Desktop/Android settings
+show live counts, unavailable status and historical failure distinctly. This
+changes no privileged setting-write authority.
+At `f4a55367`, seventeen native parent tests pass: real EACCES and late WebM
+finalization failure, retained status after owner retirement, healthy new output,
+continued decoded video, and bounded/malformed main-IPC status frames.
+`incoming-status-f4a55367.json` binds nine files/93,201 bytes on both hosts.
+The initial private-helper fixture compile error and its correction are retained
+separately; no behavioral result is claimed for that failed attempt.
+The full Linux Flutter app also builds at that source: four new status widget/model
+cases, thirteen existing view-mode cases and two native command cases pass.
+`incoming-status-app-f4a55367.json` binds ten files/322,522 bytes, exact 74-payload
+manifest `7f93ab278fefa2c1dd1b19b22ee8748533eddf956853ea638ae73cbeb6c1f949`,
+bounded compiler resources, four zero listener deltas and joined VM/RAM cleanup.
+The Dart payload, native core and readiness helper differ from `dbd57c51`; the
+other 71 payloads match. This is component and build integration evidence.
+
+Actual controlled capture-to-local-UI failure/completion, blocked recording I/O,
+full-UI multiple writers/late failures, broader finalization failures, installed/root
+settings/recording and other-platform recording remain OPEN. Next: exercise the
+retained app through an actual controlled recording session and observe the local
+status through failure and completion. These results do not close R-S0/R-F5 or
+the complete recording/release requirements.
 
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,

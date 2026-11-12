@@ -270,7 +270,8 @@ out:
 }
 
 
-static int recording_output(Display *display, const ViewerWindow *viewer, SourceHistory *history) {
+static int recording_output_attempt(Display *display, const ViewerWindow *viewer,
+                                    SourceHistory *history, unsigned int attempt) {
     static const char selected[] = "/tmp/recording-selected-שלום";
     DIR *directory = NULL;
     int file = -1, receipt = -1, result = -1;
@@ -357,13 +358,24 @@ static int recording_output(Display *display, const ViewerWindow *viewer, Source
         before.st_mtim.tv_nsec != after.st_mtim.tv_nsec) goto out;
     digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256, data, offset);
     if (digest == NULL) goto out;
-    receipt = open("/coord/recording-output.json", O_WRONLY | O_CREAT | O_EXCL |
-                   O_NOFOLLOW | O_CLOEXEC, 0600);
-    if (receipt < 0 || dprintf(receipt,
-        "{\"name\":\"%s\",\"bytes\":%zu,\"sha256\":\"%s\",\"device\":%llu,\"inode\":%llu}\n",
-        filename, offset, digest, (unsigned long long)before.st_dev,
-        (unsigned long long)before.st_ino) <= 0) goto out;
-    printf("FLUTTER_PEER_RECORDING_OUTPUT_OK codec=%s packets=%u decoded_frames=%u "
+    phase = "retire-or-retain";
+    if (attempt < 5U) {
+        if (fstatat(dirfd(directory), filename, &after, AT_SYMLINK_NOFOLLOW) != 0 ||
+            before.st_dev != after.st_dev || before.st_ino != after.st_ino ||
+            before.st_size != after.st_size || before.st_mtim.tv_sec != after.st_mtim.tv_sec ||
+            before.st_mtim.tv_nsec != after.st_mtim.tv_nsec ||
+            unlinkat(dirfd(directory), filename, 0) != 0) goto out;
+        printf("FLUTTER_PEER_RECORDING_REPEAT_OK attempt=%u ", attempt);
+    } else {
+        receipt = open("/coord/recording-output.json", O_WRONLY | O_CREAT | O_EXCL |
+                       O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (receipt < 0 || dprintf(receipt,
+            "{\"name\":\"%s\",\"bytes\":%zu,\"sha256\":\"%s\",\"device\":%llu,\"inode\":%llu}\n",
+            filename, offset, digest, (unsigned long long)before.st_dev,
+            (unsigned long long)before.st_ino) <= 0) goto out;
+        printf("FLUTTER_PEER_RECORDING_OUTPUT_OK ");
+    }
+    printf("codec=%s packets=%u decoded_frames=%u "
            "first_frame=%lld last_frame=%lld duration_ms=%llu bytes=%zu sha256=%s "
            "path=selected mode=0600 stopped=ui viewer=alive truncated=refused\n",
            video.codec, video.packets, video.images, (long long)video.first_frame,
@@ -374,11 +386,18 @@ out:
     if (receipt >= 0 && close(receipt) != 0) result = -1;
     if (directory != NULL && closedir(directory) != 0) result = -1;
     if (result != 0)
-        fprintf(stderr, "FLUTTER_PEER_RECORDING_OUTPUT_FAIL phase=%s bytes=%lld\n",
-                phase, (long long)before.st_size);
+        fprintf(stderr, "FLUTTER_PEER_RECORDING_OUTPUT_FAIL phase=%s bytes=%lld attempt=%u\n",
+                phase, (long long)before.st_size, attempt);
     g_free(digest);
     free(data);
     return result;
+}
+
+static int recording_output(Display *display, const ViewerWindow *viewer, SourceHistory *history) {
+    for (unsigned int attempt = 1U; attempt <= 5U; ++attempt)
+        if (recording_output_attempt(display, viewer, history, attempt) != 0) return -1;
+    puts("FLUTTER_PEER_RECORDING_CYCLES_OK attempts=5 stopped=ui decoded=true");
+    return 0;
 }
 
 #endif

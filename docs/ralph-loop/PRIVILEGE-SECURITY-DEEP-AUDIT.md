@@ -148891,3 +148891,15 @@ failure, broader finalization/concurrency, installed/root and other platforms, c
 R-S0/R-F5 and release acceptance remain OPEN. This append preserves the prior
 16,009,616-byte audit prefix, SHA-256
 e749a420efc80b3bd8d90879b5c4f45aaf0ed2ca59a9a6f80ade99ffefca4094.
+
+Fresh ledger count at d53927d1, fG6WnNqOXu/tool41001 exits zero: 411,981 tokens /
+1,879,906 bytes, SHA-256
+6a37f5694017dcd360270ba799f6f291737a14bcd3a333d88ffc38308aaab433.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and complete
+round trip pass. incoming-overload-ledger-d53927d1.json binds eight files/117,194
+bytes verified on both hosts. QEMU 3565357 joins zero after 29.839 seconds;
+RAM scratch peaks at 402,726,912 bytes. Three zero listener deltas and exact
+private/QEMU/socket/RAM absence are verified. The approximate 400,000-token
+compression target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,015,920-byte audit prefix, SHA-256
+c1c68220db7c6f35a4450bc37d2b2cfe28dcc02ccb281a99b43ebfa9a33d1eb6.

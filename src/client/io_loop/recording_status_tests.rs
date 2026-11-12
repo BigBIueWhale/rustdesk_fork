@@ -160,17 +160,21 @@ async fn recording_status_case(fail_output: bool) {
                 fixture.root.join("recordings").to_str().unwrap().to_owned(),
             );
             assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
+            let deadline = Instant::now() + Duration::from_secs(3);
             for generation in [3, 4] {
                 frame.generation = generation;
                 assert_eq!(remote.video_threads[&0].media_thread.admit_received_frame(
                     frame.clone(), true, std::time::Instant::now()
                 ), VideoFrameAdmission::Queued);
-            }
-            let deadline = Instant::now() + Duration::from_secs(3);
-            while remote.recording_status != RecordingStatus::Active || ui.recording_observation().1 < 4 {
-                assert!(Instant::now() < deadline, "same-viewer recording retry failed");
-                let _ = time::timeout(Duration::from_millis(10), remote.recording_changed.notified()).await;
-                assert!(remote.update_record_state(&mut viewer).await);
+                while remote.recording_status != RecordingStatus::Active
+                    || ui.recording_observation().1 < generation as usize
+                {
+                    assert!(Instant::now() < deadline,
+                        "same-viewer recording retry failed: status={:?} observation={:?}",
+                        remote.recording_status, ui.recording_observation());
+                    let _ = time::timeout(Duration::from_millis(10), remote.recording_changed.notified()).await;
+                    assert!(remote.update_record_state(&mut viewer).await);
+                }
             }
             assert!(remote.handler.is_recording());
             assert!(ui.take_errors().is_empty(), "retry reported an old failure");

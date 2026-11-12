@@ -1287,7 +1287,8 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     if environment.values != ["command", ".", "env_clear", "(", ")", ";"]:
         raise VerificationError(f"{environment.label}: pkcheck requires an empty environment")
     polkit = ipc.function("linux_pkcheck_authorizes_service_action")
-    ipc.function("polkit_id").require(
+    service_action = ipc.impl(("impl", "LinuxServiceAction"), "closed service actions")
+    ipc.function("polkit_id", parent=service_action.start - 1).require(
         ("Self", "::", "SetUnattendedPassword", "=>", '"com.carriez.RustDesk.set-unattended-password"'),
         "fixed password action identity", unique=True,
     )

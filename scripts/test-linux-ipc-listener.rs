@@ -31,6 +31,17 @@ include!("main_responses.rs");
 mod incoming_recording_status {
     include!("incoming_recording_status.rs");
 }
+mod recording_policy {
+    use super::*;
+    include!("recording_outcome.rs");
+    // This fixture exercises service liveness and framing, not policy authority.
+    pub(super) async fn read_service_policy() -> ServiceIpcResponse {
+        panic!("recording policy is outside the listener fixture")
+    }
+    pub(super) async fn set_service_policy(_: &Connection, _: bool) -> ServiceIpcResponse {
+        panic!("recording policy is outside the listener fixture")
+    }
+}
 mod argv_auth {
     use super::*;
     include!("argv_auth.rs");

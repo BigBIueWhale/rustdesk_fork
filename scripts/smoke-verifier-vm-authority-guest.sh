@@ -4664,7 +4664,7 @@ run_focused_rust_tests() {
         toolchain_mount=()
         bridge_mounts=(--mount "type=bind,source=$vendor/libc-0.2.171,target=/ipc-libc,readonly,bind-recursive=disabled")
         source_fingerprints=(Cargo.lock src/core_main.rs src/ipc/fs.rs src/ipc.rs src/ipc/auth.rs src/ipc/framed.rs src/ipc/main_config.rs libs/hbb_common/src/config.rs
-            libs/hbb_common/src/bytes_codec.rs src/incoming_recording_status.rs
+            libs/hbb_common/src/bytes_codec.rs src/incoming_recording_status.rs src/ipc/recording_policy.rs
             scripts/verify-linux-service-password-ipc.py scripts/run-linux-ipc-parent-tests.py
             scripts/test-linux-ipc-parent.rs scripts/run-linux-ipc-listener-tests.py
             scripts/test-linux-ipc-listener.rs scripts/test-cli-option-read.rs scripts/test-linux-ipc-listener-barrier.c)

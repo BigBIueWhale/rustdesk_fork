@@ -150,6 +150,13 @@ def build():
     url_methods = ipc.impl(('impl', 'DesktopUrlIpcRequest'), 'desktop URL request validation')
     connection += 'impl DesktopUrlIpcRequest {\n' + function(ipc, 'validate', parent=url_methods.start - 1) + '}\n'
     (work / 'connection.rs').write_text(connection)
+    recording = parsed(repo / 'src/ipc/recording_policy.rs')
+    outcome = recording.item('enum', 'RecordingPolicyOutcome')
+    start = recording.all().require(('enum', 'RecordingPolicyOutcome'),
+                                    'recording outcome', unique=True)
+    offset = recording.text.rindex('#[derive(', 0, recording.tokens[start].offset)
+    (work / 'recording_outcome.rs').write_text(
+        recording.text[offset:recording.tokens[outcome.end].offset + 1] + '\n')
     server = parsed(repo / 'src/server.rs')
     (work / 'url_server.rs').write_text(function(server, 'start_ipc_url_server'))
     responses = ''

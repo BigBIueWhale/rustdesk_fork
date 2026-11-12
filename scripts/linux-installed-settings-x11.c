@@ -257,10 +257,16 @@ static int settings_recording_card(unsigned int pid, int denied) {
         : "Recording\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001", 1);
 }
 
-static int settings_recording_refused(unsigned int pid) {
-    static const char *names[] = {
-        "Recording\nDenied\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001",
-        "Recording\nFailed\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001",
+enum RecordingResultCase { RECORDING_CONTENDED, RECORDING_STOP_UNAPPROVED, RECORDING_STOP_COMMITTED };
+
+static int settings_recording_result(unsigned int pid, enum RecordingResultCase scenario) {
+    const char *names[] = {
+        scenario == RECORDING_STOP_COMMITTED
+            ? "Recording\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001"
+            : "Recording\nDenied\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001",
+        scenario == RECORDING_CONTENDED
+            ? "Recording\nFailed\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001"
+            : "Recording\nRecording change is unconfirmed\nIncoming recordings\nNot recording\nDirectory:\n/home/rdreceiver4001",
     };
     uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
     unsigned int stable = 0U;
@@ -279,8 +285,12 @@ static int settings_recording_refused(unsigned int pid) {
         stable = found >= 0 && found == previous ? stable + 1U : 0U;
         previous = found;
         if (stable == 3U) {
-            printf("LINUX_INSTALLED_RECORDING_RACE_REFUSAL=pass outcome=%s pid=%u\n",
-                   found == 0 ? "Denied" : "Failed", pid);
+            if (scenario == RECORDING_CONTENDED)
+                printf("LINUX_INSTALLED_RECORDING_RACE_REFUSAL=pass outcome=%s pid=%u\n",
+                       found == 0 ? "Denied" : "Failed", pid);
+            else printf("LINUX_INSTALLED_RECORDING_STOP_RESULT=pass committed=%d outcome=%s pid=%u\n",
+                        scenario == RECORDING_STOP_COMMITTED,
+                        found == 1 ? "Uncertain" : scenario == RECORDING_STOP_COMMITTED ? "Applied" : "Denied", pid);
             return 0;
         }
         if (sleep_millis(100U) != 0) return -1;
@@ -396,7 +406,13 @@ int main(int argc, char **argv) {
     } else if (strcmp(argv[2], "recording-race-refused") == 0 ||
                strcmp(argv[2], "recording-race-observed-enabled") == 0) {
         if ((strcmp(argv[2], "recording-race-observed-enabled") == 0 &&
-             settings_recording_checked(pid, 1, 1) != 0) || settings_recording_refused(pid) != 0) goto atspi_out;
+             settings_recording_checked(pid, 1, 1) != 0) ||
+             settings_recording_result(pid, RECORDING_CONTENDED) != 0) goto atspi_out;
+    } else if (strcmp(argv[2], "recording-stop-unapproved") == 0 ||
+               strcmp(argv[2], "recording-stop-committed") == 0) {
+        int committed = strcmp(argv[2], "recording-stop-committed") == 0;
+        if (settings_recording_checked(pid, committed, 1) != 0 || settings_recording_result(pid,
+            committed ? RECORDING_STOP_COMMITTED : RECORDING_STOP_UNAPPROVED) != 0) goto atspi_out;
     } else if (strcmp(argv[2], "recording-live") == 0 || strcmp(argv[2], "recording-live-enabled") == 0) {
         if (settings_recording_checked(pid, 1, 1) != 0 || settings_visible(pid,
             "Recording\nIncoming recordings\nRecording: 1\nDirectory:\n/home/rdreceiver4001", 1) != 0) goto atspi_out;

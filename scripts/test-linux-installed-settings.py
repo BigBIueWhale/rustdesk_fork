@@ -478,6 +478,12 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
                 raise RuntimeError('GUI scenario lost its owning controller')
         if restarted:
             recording_session(environment, app.pid)
+        if graphical:
+            if agent is not None or sys.stdin.readline() != 'recording-stop\n':
+                raise RuntimeError('recording shutdown lost its owning controller')
+            agent = subprocess.Popen([str(GRAPHICAL_AGENT)], env=environment,
+                                     stdin=subprocess.DEVNULL, stdout=sys.stderr, stderr=sys.stderr)
+            recording_stop_session(environment, app, agent)
     finally:
         for process in (app, agent, bus):
             if process is not None:
@@ -486,6 +492,44 @@ def session(restarted=False, uncertain=False, admin_failure=False, graphical=Fal
                 process.wait(timeout=8)
         displays.close()
         retire_children()
+
+
+def recording_stop_session(environment, app, agent):
+    guard(4001)
+    stages = (
+        ('open', ('recording-open',)),
+        ('approval-submit', ('recording-enable-submit',)),
+        ('approval-password', ('agent-select', 'agent-password')),
+        ('approval-restarted', ('agent-retired', 'recording-stop-unapproved')),
+        ('commit-submit', ('recording-enable-submit',)),
+        ('commit-authorized', ('agent-authenticate',)),
+        ('commit-restarted', ('recording-stop-committed',)),
+        ('disable-submit', ('recording-disable-submit',)),
+        ('disabled', ('recording-disable',)),
+    )
+    for stage, actions in stages:
+        output = ''
+        for action in actions:
+            command = ([str(WORK / 'agent-driver'), str(agent.pid), action.removeprefix('agent-'), 'incoming-recording']
+                       if action.startswith('agent-') else [str(WORK / 'settings-driver'), str(app.pid), action])
+            output += run(command, env=environment, timeout=40, output_limit=524288)
+        print(output, end='', file=sys.stderr, flush=True)
+        if app.poll() is not None or agent.poll() is not None:
+            raise RuntimeError('recording shutdown lost its GUI or agent')
+        outcome = {}
+        if stage.endswith('-restarted'):
+            matches = re.findall(r'^LINUX_INSTALLED_RECORDING_STOP_RESULT=pass committed=([01]) '
+                                 r'outcome=(Applied|Denied|Uncertain) pid=' + str(app.pid) + r'$', output, re.M)
+            if len(matches) != 1 or matches[0][0] != ('1' if stage == 'commit-restarted' else '0'):
+                raise RuntimeError('restarted recording state has no exact UI result')
+            outcome['outcome'] = matches[0][1]
+        print(json.dumps({'stage': stage, 'pid': app.pid, 'agent_pid': agent.pid, **outcome}), flush=True)
+        command = sys.stdin.readline()
+        if command == 'authenticate\n' and stage == 'disable-submit':
+            print(run([str(WORK / 'agent-driver'), str(agent.pid), 'authenticate', 'incoming-recording'],
+                      env=environment, timeout=40, output_limit=524288), end='', file=sys.stderr, flush=True)
+        elif command != 'continue\n':
+            raise RuntimeError('recording shutdown lost its controller')
 
 
 def recording_graphical_session(environment, app, agent):
@@ -1081,7 +1125,7 @@ def user_credential():
     return hashlib.sha256(json.dumps(fields).encode()).hexdigest()
 
 
-def recording_option(expected):
+def recording_value():
     import tomllib
 
     path = Path('/root/.config/rustdesk/RustDesk2.toml')
@@ -1094,7 +1138,13 @@ def recording_option(expected):
             raise RuntimeError('recording preference file authority differs')
         values = tomllib.loads(path.read_text()).get('options', {})
     value = values.get('allow-auto-record-incoming', '')
-    if value != ('Y' if expected else ''):
+    if value not in ('Y', ''):
+        raise RuntimeError('saved recording preference is not a canonical boolean')
+    return value == 'Y'
+
+
+def recording_option(expected):
+    if recording_value() != expected:
         raise RuntimeError('recording checkbox disagrees with the saved preference')
     print(f'LINUX_INSTALLED_RECORDING_OPTION=pass enabled={str(expected).lower()} owner=0', flush=True)
 
@@ -1707,6 +1757,164 @@ def recording_concurrent_scenario(receiver, process, requester, record, agent_id
           'retry=surviving-gui-and-agent enabled=confirmed disabled=confirmed', flush=True)
 
 
+def recording_stop_scenario(receiver, process, requester, record, session_cgroup):
+    credential, profile = receiver.credential(), user_recording_options()
+    generations = [record['generation']]
+    helper = helper_fd = agent = pam_helper = pam_fd = trace = None
+    helpers = []
+    with ExitStack() as retained, ExitStack() as barrier:
+        def properties():
+            return dict(line.split('=', 1) for line in run(['/usr/bin/systemctl', 'show', 'rustdesk.service',
+                '--property=MainPID,ActiveState,SubState,Result,ExecMainStatus']).splitlines())
+
+        def restart(current, committed):
+            pidfds = [os.pidfd_open(pid) for pid in (current['supervisor'], current['pid'])]
+            for fd in pidfds:
+                retained.callback(os.close, fd)
+            if receiver.child_record() != current or select.select(pidfds, [], [], 0)[0]:
+                raise RuntimeError('recording stop lost its exact service generation')
+            began = time.monotonic()
+            run(['/usr/bin/systemctl', 'stop', '--no-block', 'rustdesk.service'])
+            if committed:
+                deadline = time.monotonic() + 3
+                while True:
+                    unit = properties()
+                    _, log = owned_log(Path('/root/.local/share/logs/RustDesk/service'), current['supervisor'], 0)
+                    if (unit['ActiveState'] == 'deactivating' and unit['MainPID'] == str(current['supervisor'])
+                            and log.count(b'R-T9: graceful shutdown initiated') == 1):
+                        break
+                    if time.monotonic() >= deadline:
+                        raise RuntimeError('recording stop did not reach the actual supervisor drain')
+                    time.sleep(0.02)
+                for tid in trace.attached:
+                    proc = Path(f'/proc/{current["pid"]}/task/{tid}')
+                    status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+                    if ((proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[0] != b't'
+                            or int(status['TracerPid']) != os.getpid()):
+                        raise RuntimeError('recording commit escaped the exact child stop barrier')
+                recording_option(True)
+                if receiver.child_record() != current or select.select(pidfds, [], [], 0)[0]:
+                    raise RuntimeError('recording commit lost its owner before the stop barrier released')
+                print('LINUX_INSTALLED_RECORDING_STOP_ADMITTED=' + json.dumps({**current,
+                    'unit': unit, 'threads': sorted(trace.attached), 'enabled': True,
+                    'credential_unchanged': receiver.credential() == credential}, sort_keys=True), flush=True)
+                barrier.close()
+            deadline = began + 10
+            while properties()['ActiveState'] != 'inactive':
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('recording stop exceeded ten seconds')
+                time.sleep(0.02)
+            stopped = service_absent()
+            pending_helpers = [(helper, helper_fd)] + ([] if committed else [(pam_helper, pam_fd)])
+            while any(not select.select([fd], [], [], 0)[0] or path.exists() for path, fd in pending_helpers):
+                if time.monotonic() >= deadline:
+                    raise RuntimeError('recording stop did not drain its authorization helpers within ten seconds')
+                time.sleep(0.02)
+            if (len(select.select(pidfds, [], [], 0)[0]) != 2
+                    or any(Path(f'/proc/{pid}').exists() for pid in (current['supervisor'], current['pid']))
+                    or not select.select([helper_fd], [], [], 0)[0] or helper.exists()
+                    or (not committed and (not select.select([pam_fd], [], [], 0)[0] or pam_helper.exists()))
+                    or receiver.credential() != credential or user_recording_options() != profile):
+                raise RuntimeError('recording stop did not reap its owners or preserve protected state')
+            recording_option(committed)
+            print('LINUX_INSTALLED_RECORDING_SERVICE_STOPPED=' + json.dumps({**current,
+                'committed': committed, 'seconds': time.monotonic() - began, 'unit': stopped,
+                'helper': helpers[-1], 'pam_helper': None if committed else [int(pam_helper.name), pam_start],
+                'helpers_reaped': True, 'credential_unchanged': True, 'profile_unchanged': True}, sort_keys=True), flush=True)
+            run(['/usr/bin/systemctl', 'start', 'rustdesk.service'])
+            fresh = receiver.ready(serving=True)
+            if (fresh['generation'] in generations or fresh['supervisor'] == current['supervisor']
+                    or fresh['pid'] == current['pid'] or receiver.credential() != credential):
+                raise RuntimeError('recording restart did not establish a fresh generation with the same credential')
+            generations.append(fresh['generation'])
+            return fresh
+
+        for stage in ('open', 'approval-submit', 'approval-password', 'approval-restarted',
+                      'commit-submit', 'commit-authorized', 'commit-restarted', 'disable-submit', 'disabled'):
+            if not select.select([process.stdout], [], [], 45)[0]:
+                raise RuntimeError('recording shutdown GUI stage timed out')
+            raw = process.stdout.readline(4096)
+            if not raw or not raw.endswith(b'\n'):
+                raise RuntimeError(f'recording shutdown ended before {stage}')
+            event = json.loads(raw)
+            if agent is None:
+                agent = (event['agent_pid'], int(Path(f'/proc/{event["agent_pid"]}/stat').read_bytes().rsplit(b') ', 1)[1].split()[19]))
+            expected = {'stage': stage, 'pid': requester[0], 'agent_pid': agent[0]}
+            if stage.endswith('-restarted'):
+                allowed = ('Applied', 'Uncertain') if stage == 'commit-restarted' else ('Denied', 'Uncertain')
+                if event.get('outcome') not in allowed:
+                    raise RuntimeError('recording restart reported an outcome inconsistent with the commit boundary')
+                expected['outcome'] = event['outcome']
+            if event != expected or receiver.child_record() != record:
+                raise RuntimeError('recording shutdown changed its GUI or service owner')
+            for identity, executable, nnp in ((requester, Path('/usr/share/rustdesk/rustdesk'), '1'),
+                                               (agent, GRAPHICAL_AGENT, '0')):
+                proc = Path(f'/proc/{identity[0]}')
+                fields = (proc / 'stat').read_bytes().rsplit(b') ', 1)[1].split()
+                status = dict(line.split(':', 1) for line in (proc / 'status').read_text().splitlines() if ':' in line)
+                if (int(fields[19]) != identity[1] or fields[0] in (b'Z', b'X')
+                        or not (proc / 'exe').samefile(executable)
+                        or (proc / 'cmdline').read_bytes().split(b'\0') != [os.fsencode(executable), b'']
+                        or (proc / 'cgroup').read_text() != session_cgroup or status['Uid'].split() != ['4001'] * 4
+                        or status['NoNewPrivs'].strip() != nnp
+                        or any(int(status[k], 16) for k in ('CapInh', 'CapPrm', 'CapEff', 'CapAmb'))):
+                    raise RuntimeError('recording shutdown GUI or agent authority changed')
+            command = b'continue\n'
+            if stage in ('approval-submit', 'commit-submit', 'disable-submit'):
+                helper, start = receiver.pending_admin_helper(*requester, record, wait_seconds=5,
+                    action='com.carriez.RustDesk.set-incoming-recording')
+                helper_fd = os.pidfd_open(int(helper.name))
+                retained.callback(os.close, helper_fd)
+                identity = (int(helper.name), start)
+                if (identity in helpers or select.select([helper_fd], [], [], 0)[0]
+                        or int((helper / 'stat').read_bytes().rsplit(b') ', 1)[1].split()[19]) != start):
+                    raise RuntimeError('recording shutdown lacks a fresh authorization helper')
+                helpers.append(identity)
+                if stage == 'commit-submit':
+                    barrier.enter_context(stopped_child(receiver, record))
+                    trace = receiver.TracedChildStop(record['pid'])
+                    barrier.callback(trace.release)
+                    child_fd = os.pidfd_open(record['pid'])
+                    retained.callback(os.close, child_fd)
+                    signal.pidfd_send_signal(child_fd, signal.SIGCONT)
+                elif stage == 'disable-submit':
+                    command = b'authenticate\n'
+            elif stage == 'approval-password':
+                pam_helper, pam_start = pending_graphical_pam(agent)
+                pam_fd = os.pidfd_open(int(pam_helper.name))
+                retained.callback(os.close, pam_fd)
+                if pending_graphical_pam(agent) != (pam_helper, pam_start) or select.select([pam_fd, helper_fd], [], [], 0)[0]:
+                    raise RuntimeError('recording service stop has no pending PAM conversation')
+                record = restart(record, False)
+            elif stage == 'commit-authorized':
+                deadline = time.monotonic() + 5
+                while not recording_value():
+                    if time.monotonic() >= deadline or receiver.child_record() != record:
+                        raise RuntimeError('approved recording change did not persist before shutdown')
+                    time.sleep(0.01)
+                record = restart(record, True)
+            elif stage == 'disabled':
+                if not select.select([helper_fd], [], [], 0)[0] or helper.exists():
+                    raise RuntimeError('post-stop recording retry did not reap its helper')
+            enabled = stage in ('commit-authorized', 'commit-restarted', 'disable-submit')
+            recording_option(enabled)
+            if receiver.credential() != credential or user_recording_options() != profile:
+                raise RuntimeError('recording shutdown changed the credential or user profile')
+            for pid in (requester[0], record['supervisor'], record['pid']):
+                package_process(pid)
+            print('LINUX_INSTALLED_RECORDING_STOP_STAGE=' + json.dumps({**event,
+                'requester': requester, 'agent': agent, 'service_generation': record['generation'],
+                'enabled': enabled, 'credential_unchanged': True, 'profile_unchanged': True}, sort_keys=True), flush=True)
+            process.stdin.write(command)
+            process.stdin.flush()
+    if len(generations) != 3 or len(helpers) != 3:
+        raise RuntimeError('recording shutdown coverage is incomplete')
+    print('LINUX_INSTALLED_RECORDING_STOP=pass unapproved=preserved admitted=persisted '
+          'outcomes=truthful generations=3 helpers=reaped credential=unchanged profile=unchanged '
+          'retry=same-gui-and-agent disabled=confirmed', flush=True)
+    return record
+
+
 def admin_failure_scenario(receiver, probe_sha, network_before, graphical=None):
     package_unit()
     authorization = ExitStack()
@@ -1924,6 +2132,9 @@ def admin_failure_scenario(receiver, probe_sha, network_before, graphical=None):
             process.stdin.write(command)
             process.stdin.flush()
         if graphical is not None:
+            process.stdin.write(b'recording-stop\n')
+            process.stdin.flush()
+            record = recording_stop_scenario(receiver, process, requester, record, session_cgroup)
             if pam.reply(process) != {'session': session_id, 'phase': 'application-closed'}:
                 raise RuntimeError('PAM-owned graphical application did not retire')
         elif process.wait(timeout=15) != 0:

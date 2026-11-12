@@ -1632,26 +1632,6 @@ PY
     mkdir -m 1777 /tmp/.X11-unix
     XVFB_PID= XVFB_START= VIEWER_PID= VIEWER_START= APPEARANCE_PID= APPEARANCE_START=
     WAKE_PID= WAKE_START=
-    VIEWER_LOG_PID= VIEWER_LOG_START= VIEWER_PIPE_ID=
-    drain_viewer_log() {
-      [ -n "$VIEWER_LOG_PID" ] || return 0
-      for _ in $(seq 1 100); do
-        "$READY" --is-running "$VIEWER_LOG_PID" "$VIEWER_LOG_START" || break
-        sleep 0.02
-      done
-      if "$READY" --is-running "$VIEWER_LOG_PID" "$VIEWER_LOG_START"; then
-        return 1
-      fi
-      wait "$VIEWER_LOG_PID" || return 1
-      printf '\nFLUTTER_PEER_VIEWER_STDERR_BEGIN\n' >>/tmp/viewer.log || return 1
-      cat /tmp/viewer-stderr.log >>/tmp/viewer.log || return 1
-      printf 'FLUTTER_PEER_VIEWER_STDERR_END\n' >>/tmp/viewer.log || return 1
-      [ "$(stat -c '%d:%i:%u:%g:%a' /tmp/viewer.pipe)" = "$VIEWER_PIPE_ID" ] \
-        && [ -p /tmp/viewer.pipe ] && [ ! -L /tmp/viewer.pipe ] || return 1
-      rm -- /tmp/viewer.pipe || return 1
-      VIEWER_LOG_PID= VIEWER_LOG_START=
-      VIEWER_PIPE_ID=
-    }
     cleanup_viewer() {
       local status=$? cleanup_status=0
       trap - EXIT HUP INT TERM
@@ -1659,13 +1639,6 @@ PY
         && "$READY" --is-running "$VIEWER_PID" "$VIEWER_START"; then
         "$READY" --stop "$VIEWER_PID" "$VIEWER_START" || cleanup_status=$?
         wait "$VIEWER_PID" 2>/dev/null || true
-      fi
-      if [ -n "$VIEWER_LOG_PID" ] && [ -n "$VIEWER_LOG_START" ]; then
-        if ! drain_viewer_log; then
-          "$READY" --stop "$VIEWER_LOG_PID" "$VIEWER_LOG_START" || cleanup_status=$?
-          wait "$VIEWER_LOG_PID" 2>/dev/null || true
-          cleanup_status=1
-        fi
       fi
       if [ -n "$WAKE_PID" ] && [ -n "$WAKE_START" ]; then
         if "$READY" --is-running "$WAKE_PID" "$WAKE_START"; then
@@ -1789,24 +1762,11 @@ PY
     if [ "$LONG_SOAK" -eq 1 ] || [ "$INPUT_RESPONSE" -eq 1 ]; then
       viewer_rust_log=info
     fi
-    viewer_output=/tmp/viewer.log
-    if [ "$PEER_SCENARIO" = recording-directory ]; then
-      mkfifo -m 600 /tmp/viewer.pipe
-      VIEWER_PIPE_ID=$(stat -c '%d:%i:%u:%g:%a' /tmp/viewer.pipe)
-      # Keep stderr writable while the recording fault also denies stdout writes.
-      cat </tmp/viewer.pipe >/tmp/viewer-stderr.log &
-      VIEWER_LOG_PID=$!
-      VIEWER_LOG_START=$("$READY" --identity "$VIEWER_LOG_PID")
-      viewer_output=/tmp/viewer.pipe
-    fi
     (cd /app/bundle
       # Let the recording fault return EFBIG instead of terminating the fixture app.
       [ "$PEER_SCENARIO" != recording-directory ] || trap '' XFSZ
-      if [ "$PEER_SCENARIO" = recording-directory ]; then
-        exec > /tmp/viewer.log
-      fi
       exec env "${viewer_environment[@]}" RUST_LOG="$viewer_rust_log" "$APP" --connect 127.0.0.1) \
-      >"$viewer_output" 2>&1 &
+      >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
     controller_args=(:98 "$VIEWER_DISPLAY" "$VIEWER_PID" "$VIEWER_START")
@@ -1919,10 +1879,6 @@ PY
       "$CONTROLLER" "${controller_args[@]}" 2>&1)"
     controller_status=$?
     set -e
-    if [ "$PEER_SCENARIO" = recording-directory ] \
-      && ! "$READY" --is-running "$VIEWER_PID" "$VIEWER_START"; then
-      drain_viewer_log || fail 'recording diagnostic pipe did not drain'
-    fi
     [ "$LONG_SOAK" -eq 0 ] || exec 3>&-
     printf '%s\n' "$controller_output"
     if [ "$PEER_SCENARIO" = wake-lock ]; then
@@ -2513,7 +2469,6 @@ PY
     viewer_status=$?
     set -e
     VIEWER_PID= VIEWER_START=
-    drain_viewer_log || fail 'recording diagnostic pipe did not drain after viewer exit'
     expected_viewer_status=0
     case "$PEER_SCENARIO" in
       keyboard-retirement|mouse-retirement) expected_viewer_status=137 ;;

@@ -148060,3 +148060,99 @@ both hosts. QEMU 1928492 joins zero after 30.572 seconds; peak RAM scratch
 403,042,304 bytes, three zero listener deltas and exact private/socket/RAM
 absence are verified. Approximate 400,000-token compression remains OPEN.
 This audit-only append preserves the counted ledger bytes.
+
+### 2026-11-12 — Non-panicking diagnostic writes pass native recovery
+
+Previous turn: progress, isolating the recording abort and reproducing the actual
+production logger panic. Selected R-S0 work remains the same recoverable failure;
+a full-application replay is the next acceptance layer. Prior audit prefix:
+15,959,634 bytes, SHA-256
+f6c10ca605a16d46b60b4d87998abeb7b4a57dec33bc5e7680bbd8e5a97be5b6.
+
+5ef04c3fd62a0aa81998ecb67b11b60ff817b37b updates only the selected dependency,
+its lock record, shared logger configuration and authenticated vendor pin/counts.
+flexi_logger is exactly 0.28.0; file_logger selects
+panic_if_error_channel_is_broken(false). Errors still attempt stderr output;
+failure of that diagnostic sink no longer causes the recording operation to
+panic before its own error/status handling. Production init_log callers all
+select Direct mode. The unchanged native test still demands real EFBIG, return
+from the failed log write, restored limit, durable subsequent record, absence
+of the refused record and exact child join. Its function is byte-identical to
+the d37acfd4 baseline.
+
+The upstream archive is authenticated against both the prior reviewed pin and
+crates.io's version metadata:
+https://static.crates.io/crates/flexi_logger/flexi_logger-0.28.0.crate
+SHA-256 f248c29a6d4bc5d065c9e9068d858761a0dcd796759f7801cc14db35db23abd8,
+221,676 bytes. The complete changed Rust source is reviewed against 0.27.4:
+the configurable error handling uses fallible writeln, process-global settings
+use OnceLock, optional kv/json additions remain disabled, and opt_format retains
+its enabled output fields. The other changes are formatter/display semantics,
+clone simplification and documentation/test changes. No dependency outside this
+package is upgraded; lazy_static remains elsewhere in the lock but is no longer
+a flexi_logger dependency. Official directory-source semantics:
+https://doc.rust-lang.org/cargo/reference/source-replacement.html
+The checksum JSON is change detection; archive authentication supplies provenance.
+
+Only this small static source package is imported on each host. No downloaded
+code, compiler, test or product executes on either host. The bounded archive is
+inspected entirely in memory: exactly 104 ordinary files, 692,352 content bytes,
+no links/special objects or escaping names, and only 0644/0755 source modes.
+Each file is written exclusively and synced beneath a private candidate, then
+sealed to 0400/0500 and directories to 0500. The generated .cargo-checksum.json
+contains the sorted per-file SHA-256 map and registry package checksum, using
+compact JSON separators and no trailing newline; its digest is
+0116c52c4b1120c938b0ae714c8c74eadc81f3d49bd892b750d5f839629551b4.
+No archive files are omitted. The imported package has 105 files/702,300 bytes.
+
+Under the shared VM and online-root locks, the existing complete vendor tree
+matches b1c746659a19393c8f38e5b36ab76f357d4f7089c53cf45ffca8a45ec7a4f1d6.
+The existing provenance walker computes the prospective root with the new child
+before mutation. Exact directory-descriptor, no-clobber rename then adds only
+the new package; existing packages remain byte-identical. Directory modes are
+restored and synced, and the full resulting tree is checked again:
+db9fc690b90b0b2272b281cd8a39b1edf97be19e637a9d1c3d81f6857cab26ac,
+50,955 files, 12,138 directories, 2,299,611,989 content bytes, zero symlinks and
+hardlink groups, and the same one case-collision group. Both hosts agree.
+The first rename refused because the sealed moved directory itself lacked
+write permission; the destination mode restored in finally, and revalidation
+preceded the retry with both exact owned directory descriptors temporarily
+writable. CTE's initial admission also refused an absent unused RAM-workspace
+directory before staging; absence is now accepted alongside verified emptiness.
+No root, broad cache copy, source replacement, key or service changes occur.
+The authenticated archive and publisher metadata remain in the small candidate
+cache. TUF stage/publication receipts and separate .cte.json receipts retain
+both identities. Whole online-closure repinning/cold reproduction remains OPEN.
+
+FrygXlWREO/tool55072 executes the unchanged six-test native profile on the new
+dependency, fully offline with Rust 1.75.0 and debug assertions disabled.
+The selected write-failure regression now passes. Rotation, bounded retention,
+forty builder restarts and forty actual-init restarts also pass. The known
+concurrent resident-log loss remains the sole failure. Overall five passed /
+one failed in 0.28 seconds; the wrapper truthfully exits 1. Artifact SHA-256:
+a654960738afa8674361317db75150fb686b7649068d5c1587a404334195d0ca.
+logger-write-fixed-5ef04c3f.json binds eleven files/127,685 bytes verified on
+both hosts, including the new vendor receipts. QEMU 1972656 joins zero after
+129.749 seconds, peak RAM scratch 3,518,095,360 bytes; four listener deltas are
+zero. Private output/console equal durable captures; exact process/socket/RAM
+absence and bounded inventory precede exact failed-tree retirement, releasing
+3,399,680 allocated bytes. A failing whole profile is not relabeled successful.
+
+The recording fixture now removes the temporary diagnostic FIFO and its reader/
+drain machinery. stdout and stderr both use the ordinary regular log again,
+so the next full-app run must tolerate the combined recording/log/diagnostic
+write failure. SIGXFSZ handling, real UI error, stopped status, unchanged output,
+fresh display, five focus/retry cycles, timing and shutdown checks remain.
+Shell syntax and diff hygiene pass. The obsolete Rust-version comment beside
+thiserror is removed without changing its dependency or rerunning native code.
+
+Before the required full build, the superseded 8543fa9e app cache is authenticated
+against its retained manifest and successful build receipt. All 74 payloads,
+directory inventory, owners, modes, hashes and sizes match. Exact parent
+66306:82491194 is retired under the shared run lock, freeing 70,606,848 allocated
+bytes. logger-retired-8543fa9e.json binds three files/36,490 bytes on both hosts.
+Its historical evidence remains; removed payloads are not claimed reconstructible.
+The 7c58ad90 combined-failure baseline and 6429f3cb/fd93151b apps remain cached.
+Next is the corrected full application build and regular-diagnostic recording
+replay. Full-UI correction, other platforms, concurrent retention and broader
+R-S0/release acceptance remain OPEN.

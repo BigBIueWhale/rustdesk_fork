@@ -6752,7 +6752,7 @@ observed age). Five same-viewer retries produce fifteen complete VP9 files and
 `native-recording-finalize-diagnostic-280a3df9.json` binds this isolated run,
 source/artifact identities, zero listener deltas and joined VM/RAM cleanup.
 
-**Combined recording/diagnostic write failure — logger panic reproduced; correction OPEN.** The first run
+**Combined recording/diagnostic write failure — logger correction passes; full-UI acceptance OPEN.** The first run
 at `d1ae1c63` aborts the viewer after the same process-wide zero file-size limit
 also denies regular-file stdout/stderr writes. Its core is empty and no exact
 finalization feedback is observed (`native-recording-finalize-d1ae1c63.json`).
@@ -6766,11 +6766,22 @@ panic from `flexi_logger` 0.27.4's log-write error handler through `util.rs:90`'
 the existing concurrent resident-log loss reproduces separately. Capsule
 `logger-write-baseline-d37acfd4-admitted.json` binds the Linux Rust 1.75 component
 artifact, stack, source, four zero listener deltas and joined VM/RAM retirement.
-This identifies a concrete applicable failure path; it is not a full-viewer
-stack trace or a fix. Next: authenticate a compatible upstream logger version,
-select non-panicking error-channel handling, and pass both the unchanged
-regression and full-UI failure with regular-file diagnostics. Published 0.28.0
-has the needed API and declares Rust 1.70; pinned-toolchain execution is pending.
+`5ef04c3f` pins authenticated `flexi_logger` 0.28.0 and configures the shared
+release builder to attempt diagnostic output without panicking if it fails.
+The unchanged regression now passes on Rust 1.75: simultaneous log-file/stderr
+EFBIG returns, the limit restores, the next record persists, and the child joins.
+Four existing controls also pass; concurrent resident-log loss remains the sole
+failure, so the full logging profile still fails. `logger-write-fixed-5ef04c3f.json`
+binds the artifact, five-pass/one-fail result, dependency import, four zero listener
+deltas and joined VM/RAM cleanup. Each host adds only 702,300 source bytes to its
+authenticated vendor cache. The whole online-input closure is not repinned;
+complete cold-input reproduction remains OPEN.
+The diagnostic FIFO exemption is removed from the recording fixture. Next:
+build the corrected full application and require recording finalization feedback,
+inactive status, display recovery and five retries with regular-file stdout/stderr.
+The obsolete pre-clock `8543fa9e` application cache is retired after verifying
+all 74 payloads, freeing 70,606,848 allocated bytes for that build. Its manifest
+and native evidence remain; `7c58ad90` remains the combined-failure baseline.
 
 Multiple writers and late failures, broader full-UI finalization failures,
 blocked recording I/O, installed/root and other-platform recording remain OPEN.

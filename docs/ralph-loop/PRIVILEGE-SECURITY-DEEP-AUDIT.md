@@ -149808,3 +149808,14 @@ bytes. Four zero host listener deltas and exact private/process/socket/RAM
 absence pass. No further product change or rebuild was necessary. This append
 preserves the prior 16,078,637-byte audit prefix, SHA-256
 76992273a13187af481707d08ce90afc220c75cc48b4ef8023f3741e2e729328.
+
+Fresh ledger count at a986a3f2, tgtbhWqeIA/tool90149, exits zero: 414,329 tokens /
+1,890,881 bytes, SHA-256
+4aad22360033c5038e925bac5078b2339306543d73a924d0e5ae2db3d17ac55c.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+recording-stop-accepted-ledger-a986a3f2.json binds eight files/116,847 bytes
+copied and verified on CTE/TUF. QEMU 2331930 joins zero; three zero listener
+deltas and exact private/process/socket/RAM retirement pass. The approximate
+400,000-token target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,080,359-byte audit prefix, SHA-256
+751f803aefac0406a52b26896e3b08e5301887f89258f4c7742a0550fea34697.

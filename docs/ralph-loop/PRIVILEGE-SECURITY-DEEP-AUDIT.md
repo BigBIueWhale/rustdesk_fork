@@ -149734,3 +149734,52 @@ private/process/socket/RAM retirement pass. The approximate 400,000-token target
 remains OPEN. This audit-only append preserves the counted ledger and prior
 16,074,691-byte audit prefix, SHA-256
 874555beea5db5cfda1d9523fcb9801a391306dac5fef1eaba9f65cd30b5fcde.
+
+## Recording service-stop correction: full app and result-label replay (2026-11-12)
+
+The full 4468059d application builds successfully in TUF run gyJyf7NKdL/tool6363.
+Eight recording widget/model, thirteen view-mode and two native command controls
+pass. Its 74-payload manifest is
+9b7d78862dcc863c9774592c356ffaffc9042e790eadd5ab2647af904c0686e7.
+Compared with the retained a36e5581 baseline, only bundle/lib/librustdesk.so
+differs; the other 73 payloads, engine, inputs and build recipe are identical.
+recording-stop-app-4468059d.json binds ten files/327,921 bytes copied and verified
+on CTE/TUF. Outer SHA-256
+04ab80533ed80f774aedc000dfe765c93591d0fab8a95237ed0d09d40c65f706.
+Compiler memory reaches the enforced 10 GiB ceiling with zero swap/OOM events.
+QEMU 2066662 joins zero after 1,283.499 seconds; RAM scratch peaks at
+11,913,691,136 bytes. Four zero listener deltas and exact private/process/socket/
+RAM absence pass. This build is evidence for the correction, not publication.
+
+Before building, the obsolete 7c58ad90 app is retired under the shared/cache locks
+after exact manifest, all 74 payloads, modes and tree identities are verified.
+Its clock correction and later logger correction already have accepted native
+evidence; a36e5581 retains the immediate pre-fix comparison. The retirement
+releases 70,672,384 allocated bytes and preserves four files/39,359 bytes on both
+hosts, bound by recording-stop-retired-7c58ad90.json. Original retired payloads
+are not retained. Current generations are 4d1d1153, 6429f3cb, a36e5581 and 4468059d.
+
+Installed replay yJQxGGn6LZ/tool97474 exits 1 on that corrected app. The first
+service stop completes in 0.457048 seconds, preserves disabled and reports
+Denied. After observed durable enable with sixteen child threads traced, the
+second stop completes in 1.490343 seconds and preserves enabled. Both reap their
+exact helpers and preserve credential/profile state. The original GUI now passes
+checked/enabled/actions=2 within its five-second observation. The next exact
+result-label check fails. Inspection of the retained PNG shows the expected
+Recording change is unconfirmed message and usable checked control. The merged
+107-byte accessibility label exceeds the driver's 96-byte name limit, so its
+scanner ignores the correct name. Increase that bounded limit to 128; exact
+matching, process identity, duplicate refusal and observation deadlines remain.
+No product or app-artifact change is needed. Rerun the installed scenario to
+establish all nine stop stages, fresh disable and final package acceptance.
+
+installed-recording-stop-4468059d.json binds sixteen files/983,985 bytes copied
+and verified on both hosts, including the inspected screenshot; outer SHA-256
+d8dd71e4311a76eed65c75b06e68d534214ceffe881340cbfa963c12b0c33290.
+QEMU 2293321 joins zero after 157.190 seconds; RAM scratch peaks at 4,216,127,488
+bytes. Four zero listener deltas and exact process/socket/RAM absence pass.
+After evidence copy, the inventoried 4,132,864-byte private tree is retired;
+its separate 174-byte retirement receipt is verified on CTE/TUF. This failed run
+does not establish full acceptance. The append preserves the prior
+16,075,361-byte audit prefix, SHA-256
+85241a3423348e57bfa22570bb13a867dfde1243295773158d80c6c7cf0e1833.

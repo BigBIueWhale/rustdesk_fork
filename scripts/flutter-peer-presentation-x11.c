@@ -51,7 +51,8 @@
 #define ACCESSIBLE_NODE_LIMIT 4096U
 #define ACCESSIBLE_CHILD_LIMIT 512
 #define ACCESSIBLE_DEPTH_LIMIT 64U
-#define ACCESSIBLE_NAME_LIMIT 96U
+/* Merged settings cards include the outcome and directory (107 bytes). */
+#define ACCESSIBLE_NAME_LIMIT 128U
 #define ACCESSIBLE_ACTION_LIMIT 32
 #define AUTH_WAIT_MS 30000U
 #define RECOVERY_LIMIT_MS 2500U

@@ -175,12 +175,14 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
                     g_clear_error(&error);
                     g_clear_object(&thumbnail);
                 }
-                /* Automatic incoming recording includes the connection manager's
-                 * initial window before the source raises itself again. Decode
-                 * and check corruption throughout; allow only this bounded prefix
-                 * before the first counter. Outgoing recording passes zero. */
-                if (identity < 0 && video->first_frame < 0 && (uint64_t)pts < startup_ms &&
+                /* The connection manager can map after a counter was captured;
+                 * the source raises itself on its next publication. Bound that
+                 * initial desktop interval by time/count, not first-counter order.
+                 * Decode/corruption checks cover every image. Outgoing passes zero. */
+                if (identity < 0 && (uint64_t)pts < startup_ms &&
                     video->startup_images < 32U) {
+                    printf("FLUTTER_PEER_RECORDING_STARTUP_IMAGE packet=%u pts_ms=%lld previous_counter=%lld\n",
+                           video->packets, (long long)pts, (long long)video->last_frame);
                     ++video->startup_images;
                     continue;
                 }

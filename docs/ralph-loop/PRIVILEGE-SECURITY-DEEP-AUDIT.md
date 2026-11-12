@@ -150347,3 +150347,54 @@ and exact private/process/socket/RAM retirement. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,115,183-byte audit prefix, SHA-256
 88fbf488bf744d7710de5f73e94a8e98370004e89f3ef947d41d8ad0a95ff354.
+
+### 2026-11-12 — Corrected camera app builds; first-image failure remains actionable
+
+TUF h5bFyidp87/tool40494 builds full app 843003fe with device-loss correction
+2d86a69d. Thirteen view-mode, eight recording and two native command controls
+pass. The 74-file manifest is
+a33f269fc87d77cc43cf640feccdc3767190f25b10a2859e500541200250192f;
+only bundle/lib/librustdesk.so differs from b09f3420. Engine/inputs and the
+build-app recipe body match; the enclosing recipe changed with replay edits.
+camera-loss-app-843003fe.json binds ten files/326,562 bytes verified on CTE/TUF.
+QEMU 2979086 joins zero after 1,253.978 seconds; scratch peaks at 11,915,321,344 bytes
+and retires. The compiler's 10 GiB limit holds with zero container swap/OOM;
+minimum host available memory is 13,368,934,400 bytes. Four listener deltas are
+zero and private/process/socket/RAM absence passes.
+
+Replay vIQOXPIh3x/tool56742 uses those exact bytes. The first viewer authenticates;
+server diagnostics decode its 219-byte VP9 keyframe as red at 20:02:38.128511,
+and the viewer independently decodes it at 20:02:38.129887. Texture creation is
+logged without a timestamp; subsequent native warnings report no frame and
+the X11 observer finds no red pixels in fifteen seconds. Stall/device-loss/fresh
+acquisition are not reached. This repeats the startup symptom from QihLl9Pkbo.
+camera-loss-replay-843003fe.json binds nine files/382,549 bytes on both hosts.
+QEMU 3040296 joins zero after 207.535 seconds; scratch peaks at 3,602,636,800 bytes
+and retires, with four zero listener deltas and exact private/process/socket
+absence. No VM remains live after reconciliation.
+
+Source review finds that VideoRenderer::on_rgba discards frames before pointer
+publication, while static camera capture suppresses equal frames. Flutter's
+Texture contract relies on backend frame arrival/notification:
+https://api.flutter.dev/flutter/widgets/Texture-class.html
+72b52022 makes first publication admit a fresh frame under the exact owner/display
+and renderer lock, before storing the pointer. Admission is the existing bounded
+nonblocking mailbox; decoder publication uses the same renderer lock. Failure
+leaves the pointer unowned, and stale owners/displays/pointers, duplicate
+registration and teardown cannot request frames. Review follows refresh_video,
+the network-round mailbox and decoder callback; LC guards are released before
+the decoder reaches presentation. Rust lock-order guidance:
+https://doc.rust-lang.org/std/sync/struct.RwLock.html
+The source race is consistent with the evidence; forced-order reproduction has
+not established causality. Four focused publication/ownership checks are selected
+on the existing full-app test binary. Their execution and actual app replay remain
+pending. Device-loss completion and stream-open failure retirement remain OPEN.
+
+Verify all 74 files of b09f3420 and 843003fe against their exact manifests; only
+the Rust library differs. Retire superseded b09f3420 within the existing four-app
+cap, releasing 70,774,784 allocated file bytes. camera-initial-retired-b09f3420.json
+binds the manifest/inventory/receipt: three files/32,125 bytes verified on both
+hosts. Removed original library bytes are not retained. Keep 843003fe as the
+first-image baseline, plus 6429f3cb and a36e5581 for package/recording comparisons.
+This append preserves the prior 16,115,846-byte audit prefix, SHA-256
+6c797c982dc8006072b4791bbc1c0934dff89f0004152838abc1c42708985274.

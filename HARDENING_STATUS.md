@@ -9363,17 +9363,32 @@ Replay `5a83eb4d` on `b09f3420` preserves actual blue pixels during a 3,085 ms
 camera stall, then displays red within 343 ms of restoration on the same TCP
 connection (2,500 ms deadline). Kernel-simulated disconnect returns ENODEV and
 retires the catalog, but the viewer shows no error and retains its connection.
-`2d86a69d` closes the exact authenticated camera session when that catalog retires,
-with a visible non-retrying error; corrected-app build/replay and fresh acquisition
-remain pending. `camera-recovery-5a83eb4d.json` binds nine files/433,517 bytes on
-CTE/TUF, four zero listener deltas and joined VM/RAM/private cleanup. An earlier
-run (`camera-recovery-bd06e8a3.json`) decoded an initial frame but never presented
-camera pixels; this intermittent first-image failure remains OPEN despite the
-successful subsequent startup. Stream-open failure retirement is also unverified.
-The full-build admission refused a fifth cache generation before VM creation.
-Verified retirement of superseded `4468059d` releases 70,823,936 allocated bytes;
-its manifest/inventory/evidence remain (`camera-loss-retired-4468059d.json`).
-The current `b09f3420` baseline and older required package/recording baselines remain.
+`2d86a69d` adds a non-retrying close for the exact authenticated camera session
+when its catalog retires. Full app `843003fe` builds and passes thirteen view-mode,
+eight recording widget/model and two native command controls. Its 74-payload
+manifest is `a33f269fc87d77cc43cf640feccdc3767190f25b10a2859e500541200250192f`;
+only the Rust library differs from `b09f3420`. Replay again decodes the initial
+red frame but presents no pixels in fifteen seconds, so device-loss completion
+and fresh acquisition remain untested. The same startup symptom occurred in
+`camera-recovery-bd06e8a3.json`; a passing intervening startup does not close it.
+`camera-recovery-5a83eb4d.json`, `camera-loss-app-843003fe.json` and
+`camera-loss-replay-843003fe.json` retain the baseline/build/replay evidence on
+CTE/TUF, each with four zero listener deltas and joined VM/RAM/private cleanup.
+
+**Initial texture publication — correction implemented; native acceptance OPEN.**
+Frames decoded before pointer registration have no destination; an unchanged
+camera image need not produce another frame. `72b52022` admits a fresh-frame
+request under the exact owner/display and renderer publication locks before
+installing the pointer. Failure leaves it unpublished; duplicate registration
+and teardown do not request frames. The next isolated full build selects four
+publication/ownership checks, then the real application must pass startup and
+the interrupted-camera sequence. The source explains a race consistent with
+both failures; forced-order causal reproduction has not been performed.
+Stream-open retirement, physical devices, installed-service behavior and Windows
+remain OPEN. Verified retirement of superseded `4468059d` and `b09f3420` releases
+70,823,936 and 70,774,784 allocated bytes respectively, within the unchanged
+four-generation cap. Their manifests/evidence remain; `843003fe` and the older
+package/recording baselines are retained (`camera-initial-retired-b09f3420.json`).
 
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production

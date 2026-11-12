@@ -9297,7 +9297,7 @@ Next: native ViewCamera and disposal/subtree replacement/FlView restart coverage
 platforms, original display-delay causation, sustained resources, installed-service loader/FFI
 authority and broader native/installed/release acceptance remain OPEN.
 
-**ViewCamera native identity — GUEST V4L2 FIXTURE PASS; PRODUCT IDENTITY/GENERATION FIX OPEN.**
+**ViewCamera native identity — PRODUCT-MODULE FAILURE REPRODUCED; CATALOG/GENERATION FIX OPEN.**
 `libs/scrap/src/common/camera.rs::all_info` selects an actual native camera index but publishes only
 ordinal `DisplayInfo`; resolution and capturer creation reconstruct `CameraIndex::Index` from that ordinal.
 A nonzero-only Linux node can therefore be advertised at ordinal zero and then opened as native zero.
@@ -9306,6 +9306,21 @@ The Linux name also comes from the first enumerated info when another index-zero
 ViewCamera logins replace that process-wide catalog while `src/server.rs` keys camera services by ordinal.
 The correction must bind advertised metadata, the selected native handle, connection and service to one
 owned catalog/capture generation. An index cache alone cannot establish that lifetime.
+
+**Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
+unchanged `camera.rs`, real generated protobuf types and verbatim production
+frame/pixel-buffer declarations. With only `/dev/video2`, product discovery
+advertises one online 640×360 camera at ordinal zero and the presence check
+succeeds, but product resolution and capturer acquisition both fail with ENOENT
+for native zero. Direct native-two capture produces current frames. A separate
+native-zero control decodes four advancing frames through the actual product
+CameraCapturer/PixelBuffer. All four backend ownership regressions also pass.
+`camera-module-05969769.json` binds eight files/183,161 bytes verified on both
+hosts, joined QEMU/owner cleanup, retired RAM and three zero listener deltas.
+This is native camera-module execution; authenticated application login, shared
+service concurrency and physical hotplug remain unexecuted. The next correction
+must retain the selected device with its metadata through capture ownership,
+without moving a non-Send Camera across threads or blocking shutdown forever.
 
 **Pinned supplier failures reproduced natively; backend corrected below.** The locked nokhwa revision
 `c2f74662b6ce117f7f94301693fdfadc0b1ec91a` uses a process-global weak device cache keyed only by numeric

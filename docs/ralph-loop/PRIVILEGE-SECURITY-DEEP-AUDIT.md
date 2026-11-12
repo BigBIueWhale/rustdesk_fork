@@ -149918,3 +149918,30 @@ stream also leaves poll timeout unset, so cancellation/teardown behavior must
 be resolved in the ownership design; no native stalled-read result is claimed.
 The prior 16,085,079-byte audit prefix is preserved, SHA-256
 c9986e569efa28409675ef054911501b7464be8652216f74fe1c4f862dfa5c9b.
+
+Native component baseline at 05969769, gzw3yzewMJ/tool44853, exits zero. With
+only native index two, the unchanged production module advertises one online
+640x360 vivid camera at ordinal zero and passes its primary-presence check.
+Its resolution and capturer methods both return create-camera-zero ENOENT;
+direct native-two capture still decodes four advancing frames. A separate
+native-zero fixture passes production discovery, resolution, CameraCapturer
+decode, RGBA PixelBuffer shape/stride, four advancing frames and handle retirement.
+The four previously accepted backend ownership scenarios also pass; twelve
+advancing samples contain forty-eight decoded frames in total. This is not an
+authenticated full-application or overlapping-login acceptance result.
+
+The 5,117,024-byte ELF SHA-256 is
+ae2824cfe5baa7196684a53b314c195063056cef056b99500fd6c8e31aba2e71.
+The normalized 149-package/35,086-byte lock retains approved identities;
+SHA-256 1918b089bb8cbb0d7d275cedc1316040ab1550a689aeeb7bcccb0c20dd767a42.
+camera-module-05969769.json binds eight files/183,161 bytes copied and verified
+on CTE/TUF; outer SHA-256
+4e5e05bc3c59d48fe8fc354053116e588dd0f0723bcb1c59fdb01ee99af10daa.
+QEMU 2369726 joins zero; the transaction takes 164.049 seconds and retires
+6,798,663,680 bytes peak RAM scratch. Three zero listener deltas, exact private/
+process/socket/RAM absence and compiler/native-device retirement pass.
+No application behavior is changed in this checkpoint. Continue the selected
+owned-catalog/capture-service correction with these production baseline cases;
+do not substitute ordinal remapping alone for retained device ownership.
+The prior 16,087,432-byte audit prefix is preserved, SHA-256
+f00ed1d1d5fb508d0bd6a222d3af249597432c4e1d3d00bf1a56a70c94cf1833.

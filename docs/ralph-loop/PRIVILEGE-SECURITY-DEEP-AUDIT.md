@@ -150853,3 +150853,14 @@ physical scanout and other platform/role combinations remain OPEN. The next
 decisive step is guest-only network impairment of this same installed path.
 This append preserves the prior 16,146,131-byte audit prefix, SHA-256
 51db8e373fa15192b0d1aa61debbf9629ddc5f7e2b64889804cb42901df83689.
+
+Fresh ledger count at 7393d420, UO4jgAotsU/tool15589, passes: 417,416 tokens /
+1,904,399 bytes, SHA-256
+fc8113e69b3588a66da445181b373e5df5c3948dc77ff3d0f1e7bf0477654a6f.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+remote-installed-ledger-7393d420.json binds eight files/117,042 bytes on
+CTE/TUF. QEMU 3625062 joins zero after 30.476 seconds with three zero listener
+deltas and exact private/process/socket/RAM retirement. The approximate
+400,000-token target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,149,935-byte audit prefix, SHA-256
+7bcae85b71d59261400e49c99f85e6d728994f927f5649eb2a333ebd44566d82.

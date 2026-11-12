@@ -19,6 +19,9 @@ import 'android_service_ui_state.dart';
 import 'model.dart';
 import 'server_status_refresh_loop.dart';
 import 'incoming_recording_status.dart';
+import 'incoming_recording_setting.dart';
+import 'package:flutter_hbb/generated_bridge.dart'
+    if (dart.library.html) 'package:flutter_hbb/web/bridge.dart' as native;
 
 const kLoginDialogTag = "LOGIN";
 
@@ -135,6 +138,15 @@ class ServerModel with ChangeNotifier {
   bool _directListenerBound = false;
   IncomingRecordingStatus? incomingRecordingStatus;
   String? _incomingRecordingJson;
+  final incomingRecordingSetting = IncomingRecordingSettingModel((enabled) async {
+    final result = await bind.mainSetIncomingRecording(enabled: enabled);
+    return IncomingRecordingChange(switch (result.outcome) {
+      native.RecordingSettingOutcome.Applied => IncomingRecordingChangeOutcome.applied,
+      native.RecordingSettingOutcome.Denied => IncomingRecordingChangeOutcome.denied,
+      native.RecordingSettingOutcome.Failed => IncomingRecordingChangeOutcome.failed,
+      native.RecordingSettingOutcome.Uncertain => IncomingRecordingChangeOutcome.uncertain,
+    }, result.enabled);
+  });
   bool _mediaOk = false;
   bool _inputOk = false;
   bool _audioOk = false;
@@ -231,6 +243,13 @@ class ServerModel with ChangeNotifier {
 
   Future<void> _refreshStatus() async {
     _refreshIncomingRecordingStatus();
+    try {
+      incomingRecordingSetting.update(IncomingRecordingSetting.decode(
+          bind.mainGetIncomingRecordingSetting()));
+    } catch (error) {
+      incomingRecordingSetting.update(const IncomingRecordingSetting(null, false));
+      debugPrint('Incoming recording setting unavailable: $error');
+    }
     if (isMobile) {
       final bound =
           bind.mainGetCommonSync(key: 'direct-listener-bound') == 'true';

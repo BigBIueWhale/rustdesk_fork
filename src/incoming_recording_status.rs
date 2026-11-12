@@ -40,3 +40,30 @@ impl IncomingRecordingStatus {
         Ok(self)
     }
 }
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct IncomingRecordingSetting {
+    pub enabled: Option<bool>,
+    pub pending: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RecordingSettingOutcome {
+    Applied,
+    Denied,
+    Failed,
+    Uncertain,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct RecordingSettingChange {
+    pub outcome: RecordingSettingOutcome,
+    pub enabled: Option<bool>,
+}
+
+impl RecordingSettingChange {
+    pub(crate) fn without_confirmation(outcome: RecordingSettingOutcome) -> Self {
+        Self { outcome, enabled: None }
+    }
+}

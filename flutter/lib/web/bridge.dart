@@ -9,6 +9,14 @@ import 'package:flutter_hbb/consts.dart';
 
 enum PasswordMutationOutcome { Applied, Denied, Failed, Uncertain }
 
+enum RecordingSettingOutcome { Applied, Denied, Failed, Uncertain }
+
+class RecordingSettingChange {
+  const RecordingSettingChange({required this.outcome, this.enabled});
+  final RecordingSettingOutcome outcome;
+  final bool? enabled;
+}
+
 class SoundInput {
   const SoundInput({required this.id, required this.label});
 
@@ -1101,6 +1109,11 @@ class RustdeskImpl {
   }
 
   String mainGetIncomingRecordingStatus({dynamic hint}) => 'null';
+
+  String mainGetIncomingRecordingSetting({dynamic hint}) => '{"enabled":null,"pending":false}';
+
+  Future<RecordingSettingChange> mainSetIncomingRecording({required bool enabled, dynamic hint}) async =>
+      const RecordingSettingChange(outcome: RecordingSettingOutcome.Denied);
 
   Future<String> mainGetAppName({dynamic hint}) {
     return Future.value(mainGetAppNameSync(hint: hint));

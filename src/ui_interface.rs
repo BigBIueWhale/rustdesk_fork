@@ -17,6 +17,9 @@ use std::{
 };
 use crate::password_mutation::PasswordMutationOutcome;
 
+#[path = "ui_interface/recording_setting.rs"]
+pub(crate) mod recording_setting;
+
 #[cfg(not(any(target_os = "ios")))]
 use crate::ipc;
 
@@ -695,9 +698,10 @@ pub fn video_save_directory(root: bool) -> String {
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn start_main_status_sync() {
     OPTION_STATUS_SYNC.call_once(|| {
+        let receiver = recording_setting::desktop::channel();
         if let Err(err) = std::thread::Builder::new()
             .name("main-ipc-status".to_owned())
-            .spawn(sync_main_status)
+            .spawn(move || sync_main_status(receiver))
         {
             log::error!("Failed to start main IPC status synchronization: {err}");
         }
@@ -718,7 +722,12 @@ pub fn get_user_default_option(key: String) -> String {
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[tokio::main(flavor = "current_thread")]
-async fn sync_main_status() {
+async fn sync_main_status(receiver: tokio::sync::mpsc::Receiver<recording_setting::desktop::Command>) {
+    tokio::join!(sync_main_status_loop(), recording_setting::desktop::run(receiver));
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+async fn sync_main_status_loop() {
     let is_cm = crate::common::is_cm();
     let mut was_connected = false;
 

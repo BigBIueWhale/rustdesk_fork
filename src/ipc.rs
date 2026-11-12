@@ -2454,7 +2454,11 @@ pub(crate) enum ServiceIpcRequest {
     #[cfg(target_os = "linux")]
     IncomingRecordingPolicy {},
     #[cfg(target_os = "linux")]
-    SetIncomingRecordingPolicy { enabled: bool },
+    IncomingRecordingSetting {},
+    #[cfg(target_os = "linux")]
+    SetIncomingRecordingPolicy { operation_id: String, enabled: bool },
+    #[cfg(target_os = "linux")]
+    IncomingRecordingPolicyChange { operation_id: String },
     #[cfg(target_os = "macos")]
     EnsurePasswordRightReady {},
     #[cfg(target_os = "windows")]
@@ -2469,8 +2473,10 @@ pub(crate) enum ServiceIpcResponse {
     #[cfg(target_os = "linux")]
     IncomingRecordingPolicy { enabled: Option<bool> },
     #[cfg(target_os = "linux")]
-    IncomingRecordingPolicySet {
-        outcome: recording_policy::RecordingPolicyOutcome,
+    IncomingRecordingSetting(crate::incoming_recording_status::IncomingRecordingSetting),
+    #[cfg(target_os = "linux")]
+    IncomingRecordingPolicyChange {
+        status: recording_policy::RecordingOperationStatus,
     },
     #[cfg(target_os = "macos")]
     PasswordRightReady { ready: bool },
@@ -7453,8 +7459,26 @@ async fn handle_service_request(
             }
         }
         #[cfg(target_os = "linux")]
-        ServiceIpcRequest::SetIncomingRecordingPolicy { enabled } => {
-            let response = recording_policy::set_service_policy(stream, enabled).await;
+        ServiceIpcRequest::IncomingRecordingSetting {} => {
+            let response = recording_policy::read_service_setting().await;
+            if let Err(err) = stream.send_service_response_timeout(
+                &response, SERVICE_IPC_REQUEST_TIMEOUT_MS,
+            ).await {
+                log::debug!("Failed to return incoming recording setting: {err}");
+            }
+        }
+        #[cfg(target_os = "linux")]
+        ServiceIpcRequest::SetIncomingRecordingPolicy { operation_id, enabled } => {
+            let response = recording_policy::set_service_policy(stream, operation_id, enabled).await;
+            if let Err(err) = stream.send_service_response_timeout(
+                &response, SERVICE_IPC_REQUEST_TIMEOUT_MS,
+            ).await {
+                log::debug!("Failed to return incoming recording policy outcome: {err}");
+            }
+        }
+        #[cfg(target_os = "linux")]
+        ServiceIpcRequest::IncomingRecordingPolicyChange { operation_id } => {
+            let response = recording_policy::service_change_status(stream, operation_id).await;
             if let Err(err) = stream.send_service_response_timeout(
                 &response, SERVICE_IPC_REQUEST_TIMEOUT_MS,
             ).await {
@@ -9448,6 +9472,40 @@ pub async fn set_option(key: &str, value: &str) -> ResultType<String> {
         Ok(_) => bail!("Invalid option write response"),
         Err(err) => bail!("Option write requires daemon ACK: {err}"),
     }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) async fn set_user_incoming_recording(enabled: bool) -> crate::incoming_recording_status::RecordingSettingChange {
+    use crate::incoming_recording_status::{RecordingSettingChange, RecordingSettingOutcome};
+    let key = config::keys::OPTION_ALLOW_AUTO_RECORD_INCOMING;
+    let request = match MainStatusOption::from_pair(key, if enabled { "Y" } else { "" }.to_owned()) {
+        Ok(request) => request,
+        Err(err) => {
+            log::error!("Invalid incoming recording option: {err}");
+            return RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Failed);
+        }
+    };
+    let stream = match connect(1000, "").await {
+        Ok(stream) => stream,
+        Err(err) => {
+            log::warn!("Incoming recording owner is unavailable: {err}");
+            return RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Failed);
+        }
+    };
+    let outcome = match main_ipc_request_on_stream(stream, MainIpcRequest::SetOption(request), 2000).await {
+        Ok(MainIpcResponse::OptionSet { result: IpcMutationResult::Applied, effective: Some(effective) })
+            if effective.key.as_str() == key => {
+                return RecordingSettingChange { outcome: RecordingSettingOutcome::Applied,
+                    enabled: Some(config::option2bool(key, &effective.value)) };
+            }
+        Ok(MainIpcResponse::OptionSet { result: IpcMutationResult::Rejected, .. }) => RecordingSettingOutcome::Denied,
+        Ok(MainIpcResponse::OptionSet { result: IpcMutationResult::InternalFailure, .. }) => RecordingSettingOutcome::Failed,
+        result => {
+            log::warn!("Incoming recording change lacks confirmation: {result:?}");
+            RecordingSettingOutcome::Uncertain
+        }
+    };
+    RecordingSettingChange::without_confirmation(outcome)
 }
 
 #[tokio::main(flavor = "current_thread")]

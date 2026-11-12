@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/common/widgets/incoming_recording_status.dart';
+import 'package:flutter_hbb/common/widgets/incoming_recording_setting.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_setting_page.dart';
 import 'package:get/get.dart';
 import 'package:provider/provider.dart';
@@ -48,7 +49,6 @@ class SettingsPage extends StatefulWidget implements PageShape {
 class _SettingsState extends State<SettingsPage> {
   var _showTerminalExtraKeys = false;
   var _enableAbr = false;
-  var _autoRecordIncomingSession = false;
   var _autoRecordOutgoingSession = false;
   var _allowAutoDisconnect = false;
   var _buildDate = "";
@@ -61,8 +61,6 @@ class _SettingsState extends State<SettingsPage> {
   _SettingsState() {
     _enableAbr = option2bool(
         kOptionEnableAbr, bind.mainGetOptionSync(key: kOptionEnableAbr));
-    _autoRecordIncomingSession = option2bool(kOptionAllowAutoRecordIncoming,
-        bind.mainGetOptionSync(key: kOptionAllowAutoRecordIncoming));
     _autoRecordOutgoingSession = option2bool(kOptionAllowAutoRecordOutgoing,
         bind.mainGetLocalOption(key: kOptionAllowAutoRecordOutgoing));
     _allowAutoDisconnect = option2bool(kOptionAllowAutoDisconnect,
@@ -313,25 +311,12 @@ class _SettingsState extends State<SettingsPage> {
                   ),
                 ),
               if (!outgoingOnly)
-                SettingsTile.switchTile(
-                  title:
-                      Text(translate('Automatically record incoming sessions')),
-                  initialValue: _autoRecordIncomingSession,
-                  onToggle: isOptionFixed(kOptionAllowAutoRecordIncoming)
-                      ? null
-                      : (v) async {
-                          await mainSetOption(
-                              kOptionAllowAutoRecordIncoming,
-                              bool2option(kOptionAllowAutoRecordIncoming, v));
-                          final newValue = option2bool(
-                              kOptionAllowAutoRecordIncoming,
-                              await bind.mainGetOption(
-                                  key: kOptionAllowAutoRecordIncoming));
-                          if (!mounted) return;
-                          setState(() {
-                            _autoRecordIncomingSession = newValue;
-                          });
-                        },
+                SettingsTile(
+                  title: IncomingRecordingSettingView(
+                    model: gFFI.serverModel.incomingRecordingSetting,
+                    translate: translate,
+                    fixed: isOptionFixed(kOptionAllowAutoRecordIncoming),
+                  ),
                 ),
               if (!incomingOnly)
                 SettingsTile.switchTile(

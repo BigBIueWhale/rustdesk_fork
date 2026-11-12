@@ -38,7 +38,13 @@ mod recording_policy {
     pub(super) async fn read_service_policy() -> ServiceIpcResponse {
         panic!("recording policy is outside the listener fixture")
     }
-    pub(super) async fn set_service_policy(_: &Connection, _: bool) -> ServiceIpcResponse {
+    pub(super) async fn read_service_setting() -> ServiceIpcResponse {
+        panic!("recording policy is outside the listener fixture")
+    }
+    pub(super) async fn set_service_policy(_: &Connection, _: String, _: bool) -> ServiceIpcResponse {
+        panic!("recording policy is outside the listener fixture")
+    }
+    pub(super) async fn service_change_status(_: &Connection, _: String) -> ServiceIpcResponse {
         panic!("recording policy is outside the listener fixture")
     }
 }

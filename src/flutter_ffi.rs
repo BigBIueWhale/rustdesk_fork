@@ -32,6 +32,7 @@ use std::{
 // dart-sys's canonical opaque handle instead of declaring a second, incompatible C pointer type.
 pub use dart_sys::Dart_Handle;
 pub use crate::password_mutation::PasswordMutationOutcome;
+pub use crate::incoming_recording_status::{RecordingSettingChange, RecordingSettingOutcome};
 
 pub type SessionID = uuid::Uuid;
 
@@ -1232,6 +1233,14 @@ pub fn main_get_options_sync() -> SyncReturn<String> {
 
 pub fn main_get_incoming_recording_status() -> Result<SyncReturn<String>> {
     Ok(SyncReturn(serde_json::to_string(&incoming_recording_status())?))
+}
+
+pub fn main_get_incoming_recording_setting() -> Result<SyncReturn<String>> {
+    Ok(SyncReturn(serde_json::to_string(&recording_setting::get())?))
+}
+
+pub fn main_set_incoming_recording(enabled: bool) -> RecordingSettingChange {
+    recording_setting::set(enabled)
 }
 
 pub fn main_get_app_name() -> String {

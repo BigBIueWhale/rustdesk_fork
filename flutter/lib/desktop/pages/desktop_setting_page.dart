@@ -11,6 +11,7 @@ import 'package:flutter_hbb/common/widgets/auto_disconnect_timeout_field.dart';
 import 'package:flutter_hbb/common/widgets/setting_checkbox.dart';
 import 'package:flutter_hbb/common/widgets/setting_widgets.dart';
 import 'package:flutter_hbb/common/widgets/incoming_recording_status.dart';
+import 'package:flutter_hbb/common/widgets/incoming_recording_setting.dart';
 import 'package:flutter_hbb/consts.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_home_page.dart';
 import 'package:flutter_hbb/desktop/pages/desktop_tab_page.dart';
@@ -643,8 +644,11 @@ class _RecordingState extends State<_Recording>
       bool user_dir_exists = map['user_dir_exists']!;
       return _Card(title: 'Recording', children: [
         if (!bind.isOutgoingOnly())
-          _OptionCheckBox(context, 'Automatically record incoming sessions',
-              kOptionAllowAutoRecordIncoming),
+          IncomingRecordingSettingView(
+            model: gFFI.serverModel.incomingRecordingSetting,
+            translate: translate,
+            fixed: isOptionFixed(kOptionAllowAutoRecordIncoming),
+          ).marginOnly(left: _kCheckBoxLeftMargin),
         if (!bind.isOutgoingOnly())
           AnimatedBuilder(
             animation: gFFI.serverModel,

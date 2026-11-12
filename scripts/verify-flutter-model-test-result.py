@@ -1940,6 +1940,10 @@ MODEL_TESTS = {
 
 
 INCOMING_RECORDING_TESTS = {
+    "incoming recording setting waits for receiver and excludes duplicate changes",
+    "incoming recording setting distinguishes denied failed and uncertain outcomes",
+    "incoming recording setting preserves native pending and refuses false success",
+    "incoming recording setting validates availability and pending snapshots",
     "incoming recording unavailable is distinct from stopped",
     "incoming recording finishing is not reported as complete",
     "incoming recording historical failure survives healthy retry",

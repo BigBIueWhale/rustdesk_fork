@@ -2,16 +2,19 @@ use super::{
     ipc_auth, Config, Connection, LinuxServiceAction, MainIpcRequest, MainIpcResponse,
     ServiceIpcRequest, ServiceIpcResponse, SERVICE_IPC_REQUEST_TIMEOUT_MS,
 };
-use hbb_common::{anyhow::anyhow, bail, config, log, tokio, ResultType};
+use crate::incoming_recording_status::{IncomingRecordingSetting, RecordingSettingChange, RecordingSettingOutcome};
+use hbb_common::{anyhow::anyhow, bail, config, log, tokio, uuid::Uuid, ResultType};
 use std::{
+    collections::VecDeque,
     os::fd::{AsRawFd, BorrowedFd, OwnedFd},
-    sync::{atomic::{AtomicU8, Ordering}, Arc, OnceLock},
+    sync::{atomic::{AtomicU8, Ordering}, Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::Semaphore;
 
 static WRITER: OnceLock<Arc<Semaphore>> = OnceLock::new();
+static OPERATIONS: Mutex<VecDeque<Operation>> = Mutex::new(VecDeque::new());
 static REFRESH: Semaphore = Semaphore::const_new(1);
 // A service child must obtain the policy from its exact root parent before capture.
 // Zero is unavailable, one is disabled, and two is enabled.
@@ -24,6 +27,108 @@ pub(crate) enum RecordingPolicyOutcome {
     Denied,
     Failed,
     Uncertain,
+}
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(tag = "state", content = "result", deny_unknown_fields)]
+pub(crate) enum RecordingOperationStatus {
+    Pending,
+    Complete(RecordingPolicyOutcome),
+    Unknown,
+}
+
+struct Operation {
+    id: Uuid,
+    requester: super::PeerProcessIdentity,
+    enabled: bool,
+    status: RecordingOperationStatus,
+}
+
+fn operation_id(value: &str) -> ResultType<Uuid> {
+    if value.len() != 36 {
+        bail!("Recording operation identity has the wrong length");
+    }
+    let id = Uuid::parse_str(value)?;
+    if id.is_nil() || id.to_string() != value {
+        bail!("Recording operation identity is not canonical");
+    }
+    Ok(id)
+}
+
+fn change_response(status: RecordingOperationStatus) -> ServiceIpcResponse {
+    ServiceIpcResponse::IncomingRecordingPolicyChange { status }
+}
+
+fn complete_response(outcome: RecordingPolicyOutcome) -> ServiceIpcResponse {
+    change_response(RecordingOperationStatus::Complete(outcome))
+}
+
+fn retain_peer(stream: &Connection) -> ResultType<OwnedFd> {
+    // The accepted socket keeps its kernel peer identity through authorization.
+    Ok(unsafe { BorrowedFd::borrow_raw(stream.inner.get_ref().as_raw_fd()) }
+        .try_clone_to_owned()?)
+}
+
+fn authenticate_requester(peer: &OwnedFd) -> ResultType<super::PeerProcessIdentity> {
+    require_supervisor()?;
+    let shutdown = crate::server::shutdown_token();
+    let cancelled = || shutdown.is_cancelled();
+    let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(
+        Instant::now() + Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS), &cancelled,
+    );
+    lookup.check_pending()?;
+    ipc_auth::authenticate_linux_recording_policy_requester(peer, &mut lookup)
+}
+
+fn status_for_requester(id: Uuid, requester: &super::PeerProcessIdentity) -> RecordingOperationStatus {
+    OPERATIONS.lock().unwrap().iter()
+        .find(|operation| operation.id == id && operation.requester == *requester)
+        .map(|operation| operation.status.clone())
+        .unwrap_or(RecordingOperationStatus::Unknown)
+}
+
+pub(super) async fn service_change_status(stream: &Connection, value: String) -> ServiceIpcResponse {
+    let (id, peer) = match operation_id(&value).and_then(|id| Ok((id, retain_peer(stream)?))) {
+        Ok(value) => value,
+        Err(err) => {
+            log::warn!("Rejected recording status request: {err}");
+            return change_response(RecordingOperationStatus::Unknown);
+        }
+    };
+    match tokio::task::spawn_blocking(move || authenticate_requester(&peer)).await {
+        Ok(Ok(requester)) => change_response(status_for_requester(id, &requester)),
+        result => {
+            log::warn!("Recording status requester could not be proved: {result:?}");
+            change_response(RecordingOperationStatus::Unknown)
+        }
+    }
+}
+
+pub(super) async fn read_service_setting() -> ServiceIpcResponse {
+    if let Err(err) = require_supervisor() {
+        log::warn!("Incoming recording setting requires its service owner: {err}");
+        return ServiceIpcResponse::IncomingRecordingSetting(IncomingRecordingSetting::default());
+    }
+    let writer = WRITER.get_or_init(|| Arc::new(Semaphore::new(1))).clone();
+    let Ok(permit) = writer.try_acquire_owned() else {
+        return ServiceIpcResponse::IncomingRecordingSetting(IncomingRecordingSetting {
+            enabled: None,
+            pending: OPERATIONS.lock().unwrap().iter()
+                .any(|operation| operation.status == RecordingOperationStatus::Pending),
+        });
+    };
+    let enabled = match tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        require_supervisor()?;
+        Config::read_incoming_recording_enabled()
+    }).await {
+        Ok(Ok(enabled)) => Some(enabled),
+        result => {
+            log::warn!("Incoming recording setting is unavailable: {result:?}");
+            None
+        }
+    };
+    ServiceIpcResponse::IncomingRecordingSetting(IncomingRecordingSetting { enabled, pending: false })
 }
 
 fn require_supervisor() -> ResultType<()> {
@@ -56,19 +161,15 @@ pub(super) async fn read_service_policy() -> ServiceIpcResponse {
 
 fn commit_policy(
     peer: OwnedFd,
+    identity: super::PeerProcessIdentity,
     enabled: bool,
 ) -> ResultType<RecordingPolicyOutcome> {
     require_supervisor()?;
     let shutdown = crate::server::shutdown_token();
     let cancelled = || shutdown.is_cancelled();
-    let identity = {
-        let mut lookup = hbb_common::platform::linux::LoginctlLookup::new(
-            Instant::now() + Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS),
-            &cancelled,
-        );
-        lookup.check_pending()?;
-        ipc_auth::authenticate_linux_recording_policy_requester(&peer, &mut lookup)?
-    };
+    if authenticate_requester(&peer)? != identity {
+        return Ok(RecordingPolicyOutcome::Denied);
+    }
     if !super::linux_pkcheck_authorizes_service_action(
         &identity, LinuxServiceAction::SetIncomingRecording, &cancelled,
     ) {
@@ -100,28 +201,58 @@ fn commit_policy(
 
 pub(super) async fn set_service_policy(
     stream: &Connection,
+    value: String,
     enabled: bool,
 ) -> ServiceIpcResponse {
-    let response = |outcome| ServiceIpcResponse::IncomingRecordingPolicySet { outcome };
-    let Ok(permit) = WRITER.get_or_init(|| Arc::new(Semaphore::new(1)))
-        .clone().try_acquire_owned()
-    else {
-        return response(RecordingPolicyOutcome::Denied);
-    };
-    // Keep the accepted socket object while authorization runs off the async executor.
-    let peer = match unsafe { BorrowedFd::borrow_raw(stream.inner.get_ref().as_raw_fd()) }
-        .try_clone_to_owned()
-    {
-        Ok(peer) => peer,
+    let (id, peer) = match operation_id(&value).and_then(|id| Ok((id, retain_peer(stream)?))) {
+        Ok(value) => value,
         Err(err) => {
-            log::error!("Failed to retain incoming recording requester socket: {err}");
-            return response(RecordingPolicyOutcome::Failed);
+            log::warn!("Rejected recording change request: {err}");
+            return complete_response(RecordingPolicyOutcome::Denied);
         }
     };
+    let (peer, requester) = match tokio::task::spawn_blocking(move || {
+        authenticate_requester(&peer).map(|requester| (peer, requester))
+    }).await {
+        Ok(Ok(value)) => value,
+        result => {
+            log::warn!("Recording change requester could not be proved: {result:?}");
+            return complete_response(RecordingPolicyOutcome::Denied);
+        }
+    };
+    {
+        let operations = OPERATIONS.lock().unwrap();
+        if let Some(operation) = operations.iter().find(|operation| operation.id == id) {
+            return if operation.requester == requester && operation.enabled == enabled {
+                change_response(operation.status.clone())
+            } else { complete_response(RecordingPolicyOutcome::Denied) };
+        }
+        if operations.iter().any(|operation| operation.status == RecordingOperationStatus::Pending) {
+            return complete_response(RecordingPolicyOutcome::Denied);
+        }
+    }
+    // A short read may own the slot. Waiting here precedes authorization and admission.
+    let permit = match tokio::time::timeout(Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS),
+        WRITER.get_or_init(|| Arc::new(Semaphore::new(1))).clone().acquire_owned(),
+    ).await {
+        Ok(Ok(permit)) => permit,
+        _ => return complete_response(RecordingPolicyOutcome::Failed),
+    };
+    {
+        let mut operations = OPERATIONS.lock().unwrap();
+        if let Some(operation) = operations.iter().find(|operation| operation.id == id) {
+            return if operation.requester == requester && operation.enabled == enabled {
+                change_response(operation.status.clone())
+            } else { complete_response(RecordingPolicyOutcome::Denied) };
+        }
+        if operations.len() == 16 { operations.pop_front(); }
+        operations.push_back(Operation { id, requester: requester.clone(), enabled,
+            status: RecordingOperationStatus::Pending });
+    }
     // The transaction owns both persistence and child convergence. Other writers
     // remain excluded until both finish, including after the requester disconnects.
     let _permit = permit;
-    let outcome = match tokio::task::spawn_blocking(move || commit_policy(peer, enabled)).await {
+    let outcome = match tokio::task::spawn_blocking(move || commit_policy(peer, requester, enabled)).await {
         Ok(Ok(RecordingPolicyOutcome::Applied { enabled })) => {
             match converge_service_policy(enabled).await {
                 Ok(()) => RecordingPolicyOutcome::Applied { enabled },
@@ -141,7 +272,14 @@ pub(super) async fn set_service_policy(
             RecordingPolicyOutcome::Uncertain
         }
     };
-    response(outcome)
+    let status = RecordingOperationStatus::Complete(outcome);
+    if let Some(operation) = OPERATIONS.lock().unwrap().iter_mut().find(|operation| operation.id == id) {
+        operation.status = status.clone();
+    } else {
+        log::error!("Recording change lost its retained operation record");
+        return complete_response(RecordingPolicyOutcome::Uncertain);
+    }
+    change_response(status)
 }
 
 pub(crate) async fn refresh_for_server() -> ResultType<()> {
@@ -217,6 +355,72 @@ pub(crate) fn enabled_for_server() -> ResultType<bool> {
     }
 }
 
+pub(crate) async fn client_setting() -> ResultType<IncomingRecordingSetting> {
+    let mut stream = super::connect_service(SERVICE_IPC_REQUEST_TIMEOUT_MS).await?;
+    stream.send_service_request_timeout(&ServiceIpcRequest::IncomingRecordingSetting {}, SERVICE_IPC_REQUEST_TIMEOUT_MS).await?;
+    match stream.next_service_response_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await? {
+        Some(ServiceIpcResponse::IncomingRecordingSetting(setting)) => Ok(setting),
+        _ => bail!("The service did not return the incoming recording setting"),
+    }
+}
+
+pub(crate) async fn client_change(enabled: bool) -> RecordingSettingChange {
+    client_change_with_connector(enabled, Duration::from_secs(150), ||
+        super::connect_service(SERVICE_IPC_REQUEST_TIMEOUT_MS)).await
+}
+
+async fn client_change_with_connector<F, C>(enabled: bool, budget: Duration, mut connect: F) -> RecordingSettingChange
+where
+    F: FnMut() -> C,
+    C: std::future::Future<Output = ResultType<super::ConnectionTmpl<super::ConnClient>>>,
+{
+    let deadline = tokio::time::Instant::now() + budget;
+    let operation_id = Uuid::new_v4().to_string();
+    let mut stream = match connect().await {
+        Ok(stream) => stream,
+        Err(err) => {
+            log::warn!("Incoming recording service unavailable before submission: {err}");
+            return RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Failed);
+        }
+    };
+    let request = ServiceIpcRequest::SetIncomingRecordingPolicy { operation_id: operation_id.clone(), enabled };
+    // Submit exactly once. A broken write or missing reply can mean it was accepted.
+    let mut response = match stream.send_service_request_timeout(&request, SERVICE_IPC_REQUEST_TIMEOUT_MS).await {
+        Ok(()) => stream.next_service_response_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await,
+        Err(err) => Err(err),
+    };
+    drop(stream);
+    loop {
+        if let Ok(Some(ServiceIpcResponse::IncomingRecordingPolicyChange {
+            status: RecordingOperationStatus::Complete(outcome),
+        })) = response {
+            return match outcome {
+                RecordingPolicyOutcome::Applied { enabled } => RecordingSettingChange {
+                    outcome: RecordingSettingOutcome::Applied, enabled: Some(enabled),
+                },
+                RecordingPolicyOutcome::Denied => RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Denied),
+                RecordingPolicyOutcome::Failed => RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Failed),
+                RecordingPolicyOutcome::Uncertain => RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Uncertain),
+            };
+        }
+        let query = async {
+            tokio::time::sleep(Duration::from_millis(250)).await;
+            let mut stream = connect().await?;
+            stream.send_service_request_timeout(&ServiceIpcRequest::IncomingRecordingPolicyChange {
+                operation_id: operation_id.clone(),
+            }, SERVICE_IPC_REQUEST_TIMEOUT_MS).await?;
+            stream.next_service_response_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await
+        };
+        response = match tokio::time::timeout_at(deadline, query).await {
+            Ok(response) => response,
+            Err(_) => {
+                log::warn!("Incoming recording operation {operation_id} remains unconfirmed");
+                return RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Uncertain);
+            }
+        };
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,11 +432,13 @@ mod tests {
         let mut sender = ConnectionTmpl::new_protected_service(sender);
         let mut receiver = ConnectionTmpl::new_protected_service(receiver);
         for enabled in [false, true] {
+            let operation_id = Uuid::new_v4().to_string();
             sender.send_service_request_timeout(
-                &ServiceIpcRequest::SetIncomingRecordingPolicy { enabled }, 1000,
+                &ServiceIpcRequest::SetIncomingRecordingPolicy { operation_id: operation_id.clone(), enabled }, 1000,
             ).await.unwrap();
             assert!(matches!(receiver.next_service_request_timeout(1000).await.unwrap(),
-                Some(ServiceIpcRequest::SetIncomingRecordingPolicy { enabled: actual }) if actual == enabled));
+                Some(ServiceIpcRequest::SetIncomingRecordingPolicy { operation_id: actual_id, enabled: actual })
+                    if actual == enabled && actual_id == operation_id));
         }
         for invalid in [
             serde_json::json!({"t": "SetIncomingRecordingPolicy", "enabled": "Y"}),
@@ -251,11 +457,93 @@ mod tests {
             RecordingPolicyOutcome::Uncertain,
         ] {
             receiver.send_service_response_timeout(
-                &ServiceIpcResponse::IncomingRecordingPolicySet { outcome: outcome.clone() }, 1000,
+                &complete_response(outcome.clone()), 1000,
             ).await.unwrap();
             assert!(matches!(sender.next_service_response_timeout(1000).await.unwrap(),
-                Some(ServiceIpcResponse::IncomingRecordingPolicySet { outcome: actual }) if actual == outcome));
+                Some(ServiceIpcResponse::IncomingRecordingPolicyChange {
+                    status: RecordingOperationStatus::Complete(actual) }) if actual == outcome));
         }
+        for status in [RecordingOperationStatus::Pending, RecordingOperationStatus::Unknown] {
+            receiver.send_service_response_timeout(&change_response(status.clone()), 1000).await.unwrap();
+            assert!(matches!(sender.next_service_response_timeout(1000).await.unwrap(),
+                Some(ServiceIpcResponse::IncomingRecordingPolicyChange { status: actual }) if actual == status));
+        }
+        for invalid in ["", "00000000-0000-0000-0000-000000000000", "A0B00000-0000-0000-0000-000000000001"] {
+            assert!(operation_id(invalid).is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn lost_change_reply_queries_same_operation_without_resubmitting() {
+        for outcome in [RecordingPolicyOutcome::Applied { enabled: false },
+            RecordingPolicyOutcome::Applied { enabled: true }, RecordingPolicyOutcome::Denied,
+            RecordingPolicyOutcome::Failed, RecordingPolicyOutcome::Uncertain] {
+            let id = Arc::new(Mutex::new(None));
+            let mut jobs = Vec::new();
+            let mut connections = 0;
+            let result = client_change_with_connector(true, Duration::from_secs(5), || {
+                let (client, peer) = tokio::net::UnixStream::pair().unwrap();
+                let mut peer = ConnectionTmpl::new_protected_service(peer);
+                let phase = connections;
+                connections += 1;
+                let id = id.clone();
+                let outcome = outcome.clone();
+                jobs.push(tokio::spawn(async move {
+                    let request = peer.next_service_request_timeout(1000).await.unwrap().unwrap();
+                    if phase == 0 {
+                        let ServiceIpcRequest::SetIncomingRecordingPolicy { operation_id: value, enabled: true } = request else {
+                            panic!("first connection must submit exactly one change");
+                        };
+                        assert!(operation_id(&value).is_ok());
+                        *id.lock().unwrap() = Some(value);
+                        // Model a lost acknowledgement after the receiver accepted the change.
+                    } else {
+                        let ServiceIpcRequest::IncomingRecordingPolicyChange { operation_id: value } = request else {
+                            panic!("reply recovery must never resubmit the change");
+                        };
+                        assert_eq!(Some(value), *id.lock().unwrap());
+                        let response = if phase == 1 { change_response(RecordingOperationStatus::Pending) }
+                            else { complete_response(outcome) };
+                        peer.send_service_response_timeout(&response, 1000).await.unwrap();
+                    }
+                }));
+                std::future::ready(Ok(ConnectionTmpl::new_protected_service(client)))
+            }).await;
+            for job in jobs { job.await.unwrap(); }
+            assert_eq!(connections, 3);
+            let expected = match outcome {
+                RecordingPolicyOutcome::Applied { enabled } => RecordingSettingChange { outcome: RecordingSettingOutcome::Applied, enabled: Some(enabled) },
+                RecordingPolicyOutcome::Denied => RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Denied),
+                RecordingPolicyOutcome::Failed => RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Failed),
+                RecordingPolicyOutcome::Uncertain => RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Uncertain),
+            };
+            assert_eq!(result, expected);
+        }
+    }
+
+    #[tokio::test]
+    async fn missing_change_history_remains_uncertain_and_unavailable_owner_fails_before_submit() {
+        let mut jobs = Vec::new();
+        let mut connections = 0;
+        let result = client_change_with_connector(true, Duration::from_millis(600), || {
+            let (client, peer) = tokio::net::UnixStream::pair().unwrap();
+            let mut peer = ConnectionTmpl::new_protected_service(peer);
+            let first = connections == 0;
+            connections += 1;
+            jobs.push(tokio::spawn(async move {
+                let request = peer.next_service_request_timeout(1000).await.unwrap().unwrap();
+                assert_eq!(matches!(request, ServiceIpcRequest::SetIncomingRecordingPolicy { .. }), first);
+                if !first { assert!(matches!(request, ServiceIpcRequest::IncomingRecordingPolicyChange { .. })); }
+                peer.send_service_response_timeout(&change_response(RecordingOperationStatus::Unknown), 1000).await.unwrap();
+            }));
+            std::future::ready(Ok(ConnectionTmpl::new_protected_service(client)))
+        }).await;
+        for job in jobs { job.await.unwrap(); }
+        assert!(connections >= 2 && connections <= 3);
+        assert_eq!(result, RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Uncertain));
+        let result = client_change_with_connector(true, Duration::from_secs(1), ||
+            std::future::ready(Err(anyhow!("owner is unavailable")))).await;
+        assert_eq!(result, RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Failed));
     }
 
     #[tokio::test]
@@ -265,7 +553,10 @@ mod tests {
         assert!(matches!(read_service_policy().await,
             ServiceIpcResponse::IncomingRecordingPolicy { enabled: None }));
         let (peer, _other) = std::os::unix::net::UnixStream::pair().unwrap();
-        assert!(commit_policy(peer.into(), true).is_err());
+        let peer = OwnedFd::from(peer);
+        assert!(authenticate_requester(&peer).is_err());
+        assert!(matches!(read_service_setting().await,
+            ServiceIpcResponse::IncomingRecordingSetting(IncomingRecordingSetting { enabled: None, pending: false })));
         assert!(refresh_for_server().await.is_err());
     }
 

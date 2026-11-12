@@ -151,12 +151,13 @@ def build():
     connection += 'impl DesktopUrlIpcRequest {\n' + function(ipc, 'validate', parent=url_methods.start - 1) + '}\n'
     (work / 'connection.rs').write_text(connection)
     recording = parsed(repo / 'src/ipc/recording_policy.rs')
-    outcome = recording.item('enum', 'RecordingPolicyOutcome')
-    start = recording.all().require(('enum', 'RecordingPolicyOutcome'),
-                                    'recording outcome', unique=True)
-    offset = recording.text.rindex('#[derive(', 0, recording.tokens[start].offset)
-    (work / 'recording_outcome.rs').write_text(
-        recording.text[offset:recording.tokens[outcome.end].offset + 1] + '\n')
+    outcomes = ''
+    for name in ('RecordingPolicyOutcome', 'RecordingOperationStatus'):
+        outcome = recording.item('enum', name)
+        start = recording.all().require(('enum', name), 'recording outcome', unique=True)
+        offset = recording.text.rindex('#[derive(', 0, recording.tokens[start].offset)
+        outcomes += recording.text[offset:recording.tokens[outcome.end].offset + 1] + '\n'
+    (work / 'recording_outcome.rs').write_text(outcomes)
     server = parsed(repo / 'src/server.rs')
     (work / 'url_server.rs').write_text(function(server, 'start_ipc_url_server'))
     responses = ''

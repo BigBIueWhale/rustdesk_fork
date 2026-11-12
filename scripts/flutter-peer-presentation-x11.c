@@ -7857,30 +7857,38 @@ static const char incoming_overflow_error[] =
 static const char incoming_finish_error[] = "Failed to finalize incoming recording: Failed to finalize WebM recording";
 
 static int incoming_log_count(int fd, const char *failure) {
-    char data[262145];
+    char data[8192 + 128];
     struct stat metadata = {0};
     const char *phase = "metadata";
-    size_t size = 0U, offset = 0U;
+    size_t size = 0U, offset = 0U, carry = 0U, length = strlen(failure);
     unsigned int count = 0U;
-    if (fstat(fd, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
+    /* Four sessions can exceed the former 256-KiB snapshot ceiling even at
+     * info level. Bound total input to 1 MiB without a growing stack buffer. */
+    if (length == 0U || length > 128U || fstat(fd, &metadata) != 0 || !S_ISREG(metadata.st_mode) ||
         metadata.st_uid != geteuid() || metadata.st_gid != getegid() ||
         metadata.st_nlink != 1 || (metadata.st_mode & 07777) != 0600 ||
-        metadata.st_size <= 0 || metadata.st_size > 262144) goto fail;
+        metadata.st_size <= 0 || metadata.st_size > 1024 * 1024) goto fail;
     size = (size_t)metadata.st_size;
-    phase = "read";
     while (offset < size) {
-        ssize_t bytes = pread(fd, data + offset, size - offset, (off_t)offset);
+        phase = "read";
+        size_t wanted = size - offset < 8192U ? size - offset : 8192U;
+        ssize_t bytes = pread(fd, data + carry, wanted, (off_t)offset);
         if (bytes < 0 && errno == EINTR) continue;
         if (bytes <= 0) goto fail;
         offset += (size_t)bytes;
-    }
-    phase = "text";
-    if (memchr(data, '\0', size) != NULL) goto fail;
-    data[size] = '\0';
-    phase = "count";
-    for (char *found = strstr(data, failure); found != NULL;
-         found = strstr(found + strlen(failure), failure)) {
-        if (++count > 1U) goto fail;
+        phase = "text";
+        if (memchr(data + carry, '\0', (size_t)bytes) != NULL) goto fail;
+        size_t available = carry + (size_t)bytes;
+        data[available] = '\0';
+        phase = "count";
+        for (char *found = strstr(data, failure); found != NULL;
+             found = strstr(found + length, failure)) {
+            if (++count > 1U) goto fail;
+        }
+        /* A complete match cannot fit in this carry, so crossing a chunk
+         * boundary is covered without counting the same occurrence twice. */
+        carry = available < length - 1U ? available : length - 1U;
+        memmove(data, data + available - carry, carry);
     }
     return (int)count;
 fail:

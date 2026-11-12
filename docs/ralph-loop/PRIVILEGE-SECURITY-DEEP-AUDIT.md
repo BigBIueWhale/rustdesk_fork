@@ -149723,3 +149723,14 @@ authorized disable in the same surviving GUI/agent. Existing a36e5581 app bytes
 cannot validate this product correction. No application artifact was rebuilt or
 retired in this component checkpoint. The prior 16,073,197-byte audit prefix is
 preserved, SHA-256 9a327a830c91bc5b5c397e07a1a172f64e187eded0e1d5cb1622878b62e56aae.
+
+Fresh ledger count at 78de4b65, p4Fa0k8hxg/tool98023, exits zero: 413,970 tokens /
+1,889,288 bytes, SHA-256
+5826c46bde6ac9955e6dafd486448e1d524c67e0b507f58c146eb7674882d19a.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+recording-stop-ledger-78de4b65.json binds eight files/115,450 bytes copied and
+verified on CTE/TUF. QEMU 2038682 joins zero; three zero listener deltas and exact
+private/process/socket/RAM retirement pass. The approximate 400,000-token target
+remains OPEN. This audit-only append preserves the counted ledger and prior
+16,074,691-byte audit prefix, SHA-256
+874555beea5db5cfda1d9523fcb9801a391306dac5fef1eaba9f65cd30b5fcde.

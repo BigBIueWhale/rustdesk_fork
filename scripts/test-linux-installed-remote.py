@@ -9,7 +9,9 @@ from pathlib import Path
 import resource
 import select
 import signal
+import socket
 import stat
+import struct
 import subprocess
 import sys
 import time
@@ -17,6 +19,8 @@ import time
 
 SCRIPT = Path('/mnt/rustdesk-verifier-inputs/repo/scripts/test-linux-installed-remote.py')
 COORD = Path('/coord')
+NETWORK_ENDPOINT = '/netem.sock'
+NETWORK_HOLDS = [6000, 2000, 6000, 1750, 5750, 2250, 6250, 2500, 6500]
 
 
 def require(condition, message):
@@ -30,7 +34,103 @@ def guard(settings, uid):
             'installed Remote guest identity differs')
 
 
-def session():
+def network_request(request, refused=False):
+    with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as channel:
+        channel.settimeout(5)
+        channel.connect(NETWORK_ENDPOINT)
+        _, uid, gid = struct.unpack('3i', channel.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+        require((uid, gid) == (0, 0), 'network controller is not guest root')
+        channel.sendall(request)
+        require(channel.recv(128) == (b'REFUSED' if refused else b'ATTACHED'),
+                'installed network attachment result differs')
+
+
+def observe_network(settings, actor):
+    spec = importlib.util.spec_from_file_location('peer_netem', SCRIPT.with_name('flutter-peer-netem.py'))
+    netem = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(netem)
+    owner = netem.Impairment(None)
+    driver_pid = driver_fd = None
+    expected = ['delay', 'healthy'] + ['loss', 'healthy'] * 8
+    profiles, refusals = [], 0
+    require(not os.path.lexists(NETWORK_ENDPOINT), 'installed network endpoint occupied')
+    subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=settings.ENV, check=True, timeout=3)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
+        listener.bind(NETWORK_ENDPOINT)
+        identity = Path(NETWORK_ENDPOINT).lstat()
+        os.chown(NETWORK_ENDPOINT, 4001, 4001)
+        os.chmod(NETWORK_ENDPOINT, 0o600)
+        listener.listen(1)
+        listener.settimeout(0.2)
+        deadline = time.monotonic() + 240
+        try:
+            while actor.poll() is None:
+                require(time.monotonic() < deadline, 'installed network actor deadline exceeded')
+                owner.observe_transport()
+                try:
+                    channel, _ = listener.accept()
+                except socket.timeout:
+                    continue
+                with channel:
+                    channel.settimeout(3)
+                    pid, uid, gid = struct.unpack('3i', channel.getsockopt(
+                        socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+                    require((uid, gid) == (4001, 4001), 'foreign network controller requester')
+                    data, _, flags, _ = channel.recvmsg(128)
+                    require(not flags and 0 < len(data) < 128, 'network request frame differs')
+                    if pid == actor.pid:
+                        require(actor.poll() is None, 'network actor exited')
+                        if data == b'attach':
+                            owner.attach_installed(pid)
+                            channel.sendall(b'ATTACHED')
+                        else:
+                            require(data == b'healthy' and refusals == 0 and owner.namespace is None,
+                                    'unexpected actor operation')
+                            refusals += 1
+                            channel.sendall(b'REFUSED')
+                        continue
+                    require(owner.namespace is not None and len(profiles) < len(expected),
+                            'network observer request outside its lifetime')
+                    if driver_fd is None:
+                        driver_fd = os.pidfd_open(pid)
+                        driver_pid = pid
+                        fields = Path(f'/proc/{pid}/stat').read_text().rsplit(') ', 1)[1].split()
+                        require(int(fields[1]) == actor.pid and os.path.samefile(
+                            f'/proc/{pid}/exe', settings.WORK / 'presentation-driver'),
+                            'requester is not the actor-owned pixel observer')
+                    require(pid == driver_pid and netem.alive(driver_fd)
+                            and os.stat(f'/proc/{pid}/ns/net').st_ino == os.fstat(owner.namespace).st_ino,
+                            'network observer generation changed')
+                    request = data.decode('ascii')
+                    require(request == expected[len(profiles)], 'network profile order differs')
+                    owner.profile(request)
+                    reply = owner.snapshot(request)
+                    profiles.append(request)
+                    channel.sendall(reply)
+            require(actor.wait() == 0 and profiles == expected and refusals == 1,
+                    'installed network scenario did not finish')
+            owner.validate_observations()
+        finally:
+            try:
+                if actor.poll() is None:
+                    actor.terminate()
+                actor.wait(timeout=20)
+            finally:
+                try:
+                    owner.close()
+                finally:
+                    if driver_fd is not None:
+                        os.close(driver_fd)
+                    current = Path(NETWORK_ENDPOINT).lstat()
+                    require(stat.S_ISSOCK(current.st_mode)
+                            and (current.st_dev, current.st_ino) == (identity.st_dev, identity.st_ino),
+                            'installed network endpoint changed')
+                    os.unlink(NETWORK_ENDPOINT)
+    print('LINUX_INSTALLED_NETWORK_RETIRED=pass profiles=18 actor_wrong_role=refused '
+          'observer=exact-child loopback=restored ingress=removed interface=removed socket=removed', flush=True)
+
+
+def session(network=False):
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(settings)
@@ -78,13 +178,21 @@ def session():
                 require(source.poll() is None and time.monotonic() < deadline,
                         'installed Remote source did not publish')
                 time.sleep(0.05)
+            if network:
+                deadline = time.monotonic() + 5
+                while not Path(NETWORK_ENDPOINT).exists():
+                    require(time.monotonic() < deadline, 'network controller did not start')
+                    time.sleep(0.05)
+                network_request(b'healthy', refused=True)
+                network_request(b'attach')
             viewer = subprocess.Popen(['/usr/share/rustdesk/rustdesk', '--connect', '127.0.0.1'],
                                       env=environment, stdin=subprocess.DEVNULL,
                                       stdout=log('viewer.log'), stderr=subprocess.STDOUT)
             processes.append(viewer)
             start = Path(f'/proc/{viewer.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
             driver = subprocess.Popen([str(settings.WORK / 'presentation-driver'), ':77', ':79',
-                                       str(viewer.pid), start, '--viewer-suspend'],
+                                       str(viewer.pid), start,
+                                       '--network-impairment' if network else '--viewer-suspend'],
                                       env={**environment, 'XAUTHORITY': str(authority)},
                                       stdout=log('driver.log'), stderr=subprocess.STDOUT)
             processes.append(driver)
@@ -93,7 +201,7 @@ def session():
                 current = Path(f'/proc/{process.pid}/ns/time').stat()
                 require((current.st_dev, current.st_ino) == (clock.st_dev, clock.st_ino),
                         'Remote observer and source clocks differ')
-            require(driver.wait(timeout=120) == 0, 'installed Remote pixel observer failed')
+            require(driver.wait(timeout=180 if network else 120) == 0, 'installed Remote pixel observer failed')
             require(viewer.wait(timeout=10) == 0, 'Remote viewer did not close normally')
             require(source.poll() is None, 'Remote source retired before the viewer')
             source.terminate()
@@ -120,7 +228,7 @@ def session():
                     print(path.read_text(), end='', file=sys.stderr, flush=True)
 
 
-def scenario(settings, receiver, record):
+def scenario(settings, receiver, record, network=False):
     guard(settings, 0)
     COORD.mkdir(mode=0o700)
     os.chown(COORD, 4001, 4001)
@@ -132,8 +240,10 @@ def scenario(settings, receiver, record):
     try:
         with log.open('xb') as output:
             actor = subprocess.Popen([*settings.ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
-                                      str(SCRIPT), '--session'], env=settings.ENV,
+                                      str(SCRIPT), '--session-network' if network else '--session'], env=settings.ENV,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=output)
+            if network:
+                observe_network(settings, actor)
             raw, _ = actor.communicate(timeout=180)
             require(actor.returncode == 0 and len(raw) <= 4096, 'installed Remote session failed')
             result = json.loads(raw)
@@ -145,7 +255,9 @@ def scenario(settings, receiver, record):
                 'installed Remote changed its child, credentials or listener')
         print('LINUX_INSTALLED_REMOTE_PRESENTATION=' + json.dumps({
             **record, **result, 'listener_inode': listener, 'credential': 'unchanged',
-            'profile': 'unchanged', 'session_exit': 0, 'holds_ms': [2000, 6000, 12000],
+            'profile': 'unchanged', 'session_exit': 0,
+            'scenario': 'network' if network else 'suspend',
+            'holds_ms': NETWORK_HOLDS if network else [2000, 6000, 12000],
             'recovery_limit_ms': 2500, 'freshness_limit_ms': 1000,
         }, sort_keys=True), flush=True)
     finally:
@@ -160,5 +272,6 @@ def scenario(settings, receiver, record):
 
 
 if __name__ == '__main__':
-    require(sys.argv[1:] == ['--session'], 'closed installed Remote session request required')
-    session()
+    require(sys.argv[1:] in (['--session'], ['--session-network']),
+            'closed installed Remote session request required')
+    session(network=sys.argv[1] == '--session-network')

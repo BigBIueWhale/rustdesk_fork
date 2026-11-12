@@ -342,6 +342,7 @@ case "$#:${8:-}" in
                 --installed-camera) FLUTTER_INSTALLED_SETTINGS=10 ;;
                 --installed-camera-busy) FLUTTER_INSTALLED_SETTINGS=11 ;;
                 --installed-remote) FLUTTER_INSTALLED_SETTINGS=12 ;;
+                --installed-remote-network) FLUTTER_INSTALLED_SETTINGS=13 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -14859,6 +14860,7 @@ run_flutter_peer_presentation() {
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 10 ] || settings_mode=--run-package-camera
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 11 ] || settings_mode=--run-package-camera-busy
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 12 ] || settings_mode=--run-package-remote
+        [ "$FLUTTER_INSTALLED_SETTINGS" -ne 13 ] || settings_mode=--run-package-remote-network
         settings_extra=()
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             settings_mode=--run-graphical

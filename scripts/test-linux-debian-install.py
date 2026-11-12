@@ -640,7 +640,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                         mapped_core(record, manifest, 'installed-remote' if remote else 'installed-camera')
                         try:
                             presentation_fixture.scenario(settings, receiver, record,
-                                                          **({} if remote else {'busy': camera == 'busy'}))
+                                **({'network': remote == 'network'} if remote else {'busy': camera == 'busy'}))
                         except BaseException:
                             settings.stop_service(receiver, record)
                             raise
@@ -754,7 +754,12 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if remote:
+    if remote == 'network':
+        print(f'LINUX_DEBIAN_REMOTE_NETWORK_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked service=actual viewer=actual pixels=fresh impairment_cycles=9 '
+              'recovery=preserved-connection credential=preserved child=unchanged network=restored desktop=retired '
+              'reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
+    elif remote:
         print(f'LINUX_DEBIAN_REMOTE_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked service=actual viewer=actual pixels=fresh suspension_cycles=3 '
               'recovery=preserved-connection credential=preserved child=unchanged desktop=retired '
@@ -820,7 +825,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 if __name__ == '__main__':
     require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
             or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop',
-                                                     '--run-upgrade', '--run-conffiles', '--run-camera', '--run-camera-busy', '--run-remote')),
+                                                     '--run-upgrade', '--run-conffiles', '--run-camera', '--run-camera-busy', '--run-remote', '--run-remote-network')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
@@ -830,4 +835,4 @@ if __name__ == '__main__':
                         '--run-concurrent-stop': 'concurrent-stop'}.get(sys.argv[1]),
          upgrade=sys.argv[1] == '--run-upgrade', conffiles=sys.argv[1] == '--run-conffiles',
          camera={'--run-camera': 'recovery', '--run-camera-busy': 'busy'}.get(sys.argv[1], False),
-         remote=sys.argv[1] == '--run-remote')
+         remote={'--run-remote': 'suspend', '--run-remote-network': 'network'}.get(sys.argv[1], False))

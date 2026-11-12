@@ -69,6 +69,8 @@ class Impairment:
         self.transport_profiles = {}
         self.packet_size_baseline = None
         self.congestion_start = None
+        self.socket_uid = 1000
+        self.loopback_before = None
 
     def run(self, *args):
         require(self.namespace is not None, 'namespace is not attached')
@@ -123,6 +125,31 @@ class Impairment:
                 'server and transport observer clocks differ')
         require(os.fstat(self.namespace).st_ino != os.stat('/proc/self/ns/net').st_ino,
                 'initial guest namespace is forbidden')
+        self.prepare()
+
+    def attach_installed(self, pid):
+        require(os.geteuid() == os.getegid() == 0
+                and 'rustdesk.verifier_vm=1' in Path('/proc/cmdline').read_text().split()
+                and Path('/proc/1/comm').read_text().strip() == 'systemd',
+                'installed impairment requires the disposable systemd guest')
+        require(not self.finished and self.namespace is None, 'duplicate installed attachment')
+        self.process = os.pidfd_open(pid)
+        self.namespace = os.open(f'/proc/{pid}/ns/net', os.O_RDONLY | os.O_CLOEXEC)
+        require(alive(self.process) and os.stat(f'/proc/{pid}').st_uid == 4001
+                and os.fstat(self.namespace).st_ino == os.stat('/proc/1/ns/net').st_ino
+                == os.stat('/proc/self/ns/net').st_ino
+                and os.stat(f'/proc/{pid}/ns/time').st_ino == os.stat('/proc/self/ns/time').st_ino,
+                'installed actor identity or guest namespace differs')
+        self.socket_uid = 4001
+        self.loopback_before = json.loads(self.run('ip', '-d', '-j', 'link', 'show'))
+        require(len(self.loopback_before) == 1 and self.loopback_before[0]['ifname'] == 'lo',
+                'installed guest has a network interface')
+        require(all(q['kind'] == 'noqueue' for q in json.loads(
+                    self.run('tc', '-j', 'qdisc', 'show', 'dev', 'lo'))),
+                'installed guest loopback already has a traffic queue')
+        self.prepare()
+
+    def prepare(self):
         require([item['ifname'] for item in json.loads(self.run('ip', '-j', 'link', 'show'))]
                 == ['lo'], 'server namespace topology differs')
         self.run('ip', 'link', 'add', 'rd-netem', 'type', 'ifb')
@@ -317,7 +344,8 @@ print(json.dumps(samples))
                     'transport endpoint differs')
             inode = re.findall(r'\bino:([1-9][0-9]*)\b', line)
             cookie = re.findall(r'\bsk:([0-9a-f]+)\b', line)
-            require(len(inode) == len(cookie) == 1 and re.search(r'\buid:1000\b', line),
+            require(len(inode) == len(cookie) == 1
+                    and re.search(r'\buid:' + str(self.socket_uid) + r'\b', line),
                     'transport socket identity differs')
             mss = re.findall(r'\bmss:([0-9]+)\b', line)
             require(re.search(r'\bpmtu:1500\b', line) and len(mss) == 1
@@ -442,6 +470,15 @@ print(json.dumps(samples))
                 self.run('tc', 'qdisc', 'del', 'dev', 'lo', 'ingress')
             if self.interface:
                 self.run('ip', 'link', 'del', 'rd-netem')
+            if self.loopback_before is not None:
+                before = self.loopback_before[0]
+                self.run('ip', 'link', 'set', 'dev', 'lo', 'mtu', str(before['mtu']),
+                         'gso_max_size', str(before['gso_max_size']),
+                         'gso_max_segs', str(before['gso_max_segs']))
+                require(json.loads(self.run('ip', '-d', '-j', 'link', 'show')) == self.loopback_before
+                        and all(q['kind'] != 'ingress' for q in json.loads(
+                            self.run('tc', '-j', 'qdisc', 'show', 'dev', 'lo'))),
+                        'installed guest loopback was not restored')
             if self.android:
                 require([link['ifname'] for link in json.loads(self.run('ip', '-j', 'link', 'show'))]
                         == ['lo'], 'Android impairment interface did not retire')

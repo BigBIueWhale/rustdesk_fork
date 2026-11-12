@@ -6952,7 +6952,18 @@ the same service, credential and user profile; both authorization helpers and th
 second GUI are reaped. `installed-recording-concurrent-bf52b275.json` retains nine
 files/255,854 bytes, the existing cancellation/password/package controls and
 joined VM/RAM cleanup with four zero host listener deltas. This is one two-window
-contention/retry scenario; requester exit and broader failure cases remain OPEN.
+contention/retry scenario.
+
+**Requester exit during authorization — installed Linux passes at `79bb6294`.**
+On the same app, SIGTERM exits the requesting GUI with five unsubmitted password
+characters in the real administrator dialog. The dialog and exact pkcheck/PAM
+helpers retire within 2.10 seconds, below the ten-second bound; recording stays
+disabled and credential/profile state stays unchanged. The surviving GUI and same
+agent then approve fresh enable/disable requests. Seven new lifecycle stages and
+the existing cancellation/concurrency/password/package controls pass.
+`installed-recording-exit-79bb6294.json` retains nine files/381,154 bytes and joined
+VM/RAM cleanup with four zero host listener deltas. Other exit/admission timing
+and broader failures remain OPEN; hiding a window does not establish process exit.
 
 **Still OPEN:** physical-display and broader installed capture cases, wrong/stale
 requester and broader mutation lifecycle/concurrency coverage, native spawn and broader I/O

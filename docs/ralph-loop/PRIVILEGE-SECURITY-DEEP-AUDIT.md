@@ -149588,3 +149588,43 @@ deltas and exact private/socket/RAM retirement pass. The approximate 400,000-tok
 compression target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,064,815-byte audit prefix, SHA-256
 2fc52dc2a2e75fdcd708ee5d941f9ccf91b4d8b17c26612af10ae8e2ea2dc850.
+
+## Installed recording: requester exit and surviving-GUI recovery (2026-11-12)
+
+Selected the remaining R-S0 requester lifetime condition after concurrent-change
+acceptance. The service retains the requester pidfd while polkit is pending,
+terminates/reaps its owned authorization child on requester death and revalidates
+the requester before persistence. Flutter's main-window close hides the window;
+this fixture instead terminates its exact owned second GUI with SIGTERM while
+five administrator-password characters are entered but unsubmitted. The other
+GUI, agent and service remain alive. No fixture action cancels the dialog or
+signals either authorization helper. The root observer retains exact pidfds and
+requires both helpers reaped, the dialog absent, unchanged protected state and
+successful fresh changes from the surviving GUI within the same service generation.
+
+The official agent contract defines cookie-specific CancelAuthentication, and
+PolkitAgentSession performs its PAM conversation through a trusted setuid helper.
+Consequently helper and visible-dialog retirement are observed separately:
+https://github.com/polkit-org/polkit/blob/main/docs/polkit/docbook-interface-org.freedesktop.PolicyKit1.AuthenticationAgent.xml
+https://polkit.pages.freedesktop.org/polkit/PolkitAgentSession.html
+
+79bb6294 run feMvIbet8q/tool61226 exits zero on unchanged a36e5581 app, manifest
+32e0888c5aa7d7780ef05ba30122f1a97da93150f42362c30a4a0e26d357d0b6.
+Requester 8742/start10471 exits by SIGTERM. Exact pkcheck 9059/start11387 and PAM
+9075/start11426 are reaped, and the GTK dialog disappears; the combined observation
+completes in 2.094603 seconds, below ten seconds. Recording remains false, with
+credential/profile unchanged. Surviving GUI 7852/start7620 and agent 7851/start7620
+approve fresh enable/disable through helpers 9131/start11701 and 9205/start11987.
+Service generation e3f7a376-6da1-446a-a906-98e77595d41a persists throughout. All
+seven exit/recovery stages plus the existing recording cancellation/contention,
+password, CPace and normal package lifecycle controls pass.
+
+installed-recording-exit-79bb6294.json binds nine files/381,154 bytes copied and
+verified on CTE/TUF; outer SHA-256
+f048726f816c159584824ac3f54207f97708ff2ac6ed0a3c73501939adb7f3e4.
+QEMU 1803444 joins zero after 203.850 seconds; RAM scratch peaks at 4,286,500,864
+bytes. Four zero host listener deltas and exact private/process/socket/RAM absence
+pass. No product change or application rebuild was needed. Other exit/admission
+timing, wrong/stale principals, broader failures, physical devices and other
+platforms remain OPEN. This append preserves the prior 16,065,509-byte audit
+prefix, SHA-256 2be681835ae6b617447fde4802d66346b8267c0f5c60696481f04cb71f53ed0d.

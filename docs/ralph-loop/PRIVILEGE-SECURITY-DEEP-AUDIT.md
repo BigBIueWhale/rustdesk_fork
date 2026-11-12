@@ -150137,3 +150137,14 @@ physical hotplug, native device loss and Windows remain OPEN. The full build
 and native fixture are not repeated without a relevant change or concern.
 The prior 16,099,623-byte audit prefix is preserved, SHA-256
 86b3a575b8275d1ec11c6019af2ace58e63473aff244b7a90cabd4c405db9f56.
+
+Fresh ledger count at 74960095, piWo7NFJJ1/tool23606, passes: 415,435 tokens /
+1,895,907 bytes, SHA-256
+0aea1969628997c3d43912a2239d7b38b7f8f48e57d00b4997274fd57c56a03d.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-catalog-ledger-74960095.json binds eight files/115,616 bytes verified on
+CTE/TUF. QEMU 2471961 joins zero after 30.234 seconds; three zero listener
+deltas and exact private/process/socket/RAM retirement pass. The approximate
+400,000-token target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,101,924-byte audit prefix, SHA-256
+8c03122dfcf8249a4a5d8976d9e4519e232f89ea18d58e3d2c49910607f12635.

@@ -149989,3 +149989,28 @@ nonblocking EAGAIN, queue ownership and mapping lifetime. The pinned Linux 6.1
 vivid-ctrls.c defines the Percentage of Dropped Buffers control used by the
 fixture. The prior 16,089,854-byte audit prefix remains unchanged, SHA-256
 861717aa07812e369b1f7fd74348dbfa394ea2ae30ccbc41af936aae208851b7.
+
+Native acceptance at f822d5e2, TUF QpR5Du8G5s/tool40030, exits zero. The inherited
+v4l stream first returns TimedOut and then EINVAL while vivid drops all frames.
+Production CameraCapturer instead returns twelve measured 100 ms WouldBlock
+deadlines across initial loss, loss after healthy frames, stalled retirement
+and fresh-owner acquisition. The same capturer recovers advancing pixels twice
+without reopening its stream; stalled drop measures below 1 ms. A fresh owner
+then passes both timeout and recovered capture. Six existing scenarios also
+pass: fifteen samples decode sixty 640x360 RGBA frames. The concrete Linux
+backend's Send bound compiles without unsafe opt-in.
+
+The 5,145,728-byte ELF SHA-256 is
+5cf39024eab340fbe0a7a448dfa5e0cef00fb1a55e614cfe43a388bde67b0500.
+Cargo's normalized 150-package/35,343-byte lock retains approved identities,
+SHA-256 9f802a8d84ca8c6eeeda7e0f9cf47b50e86a7a718b93e8ffd0145e4ea1162431.
+camera-timeout-f822d5e2.json binds eight files/188,853 bytes verified on CTE/TUF;
+outer SHA-256 3ed9aa953d82efa58a5c48781754f8d226412f00443a630ce333f021e4b9dbc5.
+QEMU 2374228 joins zero after a 143.168-second transaction; peak RAM scratch is
+6,798,553,088 bytes. Three zero listener deltas and exact private/process/socket/
+RAM absence pass. All compiler/native-device owners retire. No redundant rerun
+is needed. This closes the bounded-read prerequisite, not ordinal/catalog/
+service generation ownership, physical camera/disconnect/arbitrary driver
+failure, Windows or full-application ViewCamera acceptance. Continue the owned
+catalog/service correction. The prior 16,092,059-byte audit prefix is preserved,
+SHA-256 5673ffecaa780f887e749f8542a828f8df3cc732257616621f45789feee1eb88.

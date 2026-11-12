@@ -9322,6 +9322,21 @@ service concurrency and physical hotplug remain unexecuted. The next correction
 must retain the selected device with its metadata through capture ownership,
 without moving a non-Send Camera across threads or blocking shutdown forever.
 
+**Linux bounded frame reads — native module accepted at `f822d5e2`.** The owned
+backend now uses nonblocking dequeue, bounded poll and explicit queued/dequeued
+buffer ownership. Production CameraCapturer honors its frame deadline and
+returns WouldBlock without reopening capture; Linux uses the concrete Send
+backend without the supplier's unsafe camera-sync feature. TUF `QpR5Du8G5s`
+reproduces the inherited stream's timeout-then-EINVAL retry failure. The corrected
+module returns twelve 100 ms deadlines during complete frame loss, resumes
+advancing pixels twice through the same capturer, retires a stalled capturer
+in under 1 ms and passes fresh-owner timeout/recovery. All six existing camera
+scenarios pass; fifteen samples decode sixty frames. `camera-timeout-f822d5e2.json`
+binds eight files/188,853 bytes verified on both hosts, joined QEMU/owner cleanup,
+retired RAM and three zero listener deltas. This resolves the stalled-read
+prerequisite; ordinal/catalog/service generation ownership and full-application,
+physical-camera, disconnect/error and Windows acceptance remain OPEN.
+
 **Pinned supplier failures reproduced natively; backend corrected below.** The locked nokhwa revision
 `c2f74662b6ce117f7f94301693fdfadc0b1ec91a` uses a process-global weak device cache keyed only by numeric
 index (`nokhwa-bindings-linux/src/lib.rs::new_shared_device`, lines 143–205). An existing live entry is
@@ -9413,10 +9428,10 @@ The handoff follows [systemd 252 kernel loading](https://github.com/systemd/syst
 and its [shutdown path](https://github.com/systemd/systemd/blob/v252/src/shutdown/shutdown.c);
 failure to reach the new kernel or complete capture cannot satisfy the outer receipt.
 
-The kernel-only paths ran the guest kernel/Python probe; the new supplier path additionally executes nokhwa,
-with `rustdesk_product_executed: false`. No camera product API is corrected.
-RustDesk discovery/capture, catalog generation ownership, supplier correction,
-stale-open/hotplug/overlapping logins, physical and Windows cameras, canonical reusable media boot-cache
+The kernel-only paths ran the guest kernel/Python probe; the component path also executes nokhwa
+and production camera.rs, with full-application `rustdesk_product_executed: false`.
+Catalog/service generation ownership, authenticated ViewCamera, physical hotplug/overlapping logins,
+physical and Windows cameras, canonical reusable media boot-cache
 promotion, independent reproduction, cold R-B2/R-B10 and broader native/installed/release acceptance remain OPEN.
 
 **Linux Flutter build/replay separation — CAPSULE/PRODUCER PASS; CURRENT REMOTE CONSUMER ACCEPTED ABOVE.**

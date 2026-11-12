@@ -6941,11 +6941,21 @@ approves fresh enable and disable requests. Thirteen recording stages and the
 existing nineteen password stages, concurrent credential change, five CPace
 exchanges, stale-password refusal and package lifecycle pass.
 `installed-recording-cancel-3db6ee1d.json` retains nine files/221,659 bytes and
-joined cleanup with four zero host listener deltas. Recording mutation concurrency,
-requester exit and broader failure cases remain OPEN.
+joined cleanup with four zero host listener deltas.
+
+**Concurrent recording requests — installed Linux passes at `bf52b275`.**
+Two ordinary GUI windows on the same `a36e5581` app submit together. One retains
+its exact pending authorization; the other reports Denied without changing root
+state. Approval enables recording in both windows. The denied GUI then obtains a
+fresh authorization and disables it successfully. Seven observed stages retain
+the same service, credential and user profile; both authorization helpers and the
+second GUI are reaped. `installed-recording-concurrent-bf52b275.json` retains nine
+files/255,854 bytes, the existing cancellation/password/package controls and
+joined VM/RAM cleanup with four zero host listener deltas. This is one two-window
+contention/retry scenario; requester exit and broader failure cases remain OPEN.
 
 **Still OPEN:** physical-display and broader installed capture cases, wrong/stale
-requester and mutation lifecycle/concurrency coverage, native spawn and broader I/O
+requester and broader mutation lifecycle/concurrency coverage, native spawn and broader I/O
 failures, full-UI multiple writers and other platforms. Android's process-owned typed path
 is implemented without new native evidence; installed Windows/macOS still lack
 their authorized operation and explicitly report unavailable. These results do

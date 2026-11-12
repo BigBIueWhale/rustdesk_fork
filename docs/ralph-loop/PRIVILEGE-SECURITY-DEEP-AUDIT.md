@@ -149534,3 +149534,46 @@ deltas and private/socket/RAM retirement pass. The approximate 400,000-token
 compression target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,061,201-byte audit prefix, SHA-256
 98cf5b718dd09e3ba29ce2df13d4e7ef543f03070d6d012389662bf285213877.
+
+## Installed recording: concurrent GUI requests and fresh retry (2026-11-12)
+
+Selected the remaining R-S0 recording mutation concurrency condition after the
+installed cancellation checkpoint. The receiver's single writer retains the
+pending operation; another request receives Denied, or Failed if it loses writer
+admission before the pending record is visible. Neither result grants authority.
+Two actual installed no-argument GUI processes use separate guest X displays to
+avoid sharing a pointer, the same PAM/logind session and the same real GTK agent.
+Both enabled controls reach a ready barrier before actual clicks are released.
+The root observer requires exact GUI/agent identities, one pending pkcheck bound
+to its original requester, unchanged credential/profile/service and truthful UI.
+Only after the loser reports an explicit refusal does the fixture authenticate
+the winner. The losing GUI must then succeed with a fresh authorization.
+
+The non-unique GtkApplication supports both processes; ordinary auth_admin does
+not request retained authorization. Primary references and design implications:
+https://docs.gtk.org/gio/flags.ApplicationFlags.html and
+https://docs.gtk.org/gio/method.Application.register.html (NON_UNIQUE),
+https://polkit.pages.freedesktop.org/polkit/polkit.8.html (auth_admin versus keep).
+
+bf52b275 run IxndoAptXS/tool13366 exits zero on unchanged app a36e5581, manifest
+32e0888c5aa7d7780ef05ba30122f1a97da93150f42362c30a4a0e26d357d0b6.
+Secondary GUI 8727/start10674 owns helper 8850/start10952; primary GUI
+7850/start7997 reports Denied. Root recording stays false until actual approval,
+then both windows observe true. The primary retries disable through fresh helper
+8954/start11295; both windows observe false. Seven stages preserve service
+generation 85d6a280-6b9d-4a42-9ec2-3dff31c1ff80, credential and user profile.
+Both exact authorization helpers and the secondary GUI exit and reap. Existing
+thirteen recording cancellation and nineteen password stages, two partial-password
+cancellations, concurrent GUI/root-CLI credential changes, five CPace exchanges,
+stale-password refusal and package restart/reinstall/remove/purge also pass.
+
+installed-recording-concurrent-bf52b275.json binds nine files/255,854 bytes copied
+and verified on CTE/TUF; outer SHA-256
+bd5f623ce0e6874492109c3fa070220b519a7acacc2fd90135fac3f04888a250.
+QEMU 1785526 joins zero after 198.181 seconds; RAM scratch peaks at 4,281,585,664
+bytes. Four zero host listener deltas and exact private/process/socket/RAM absence
+pass. No application rebuild or product correction was needed. This single
+installed Xvfb contention/retry scenario does not close requester exit,
+wrong/stale principals, broader failures, physical devices, other platforms or
+complete R-S0 acceptance. This append preserves the prior 16,061,894-byte audit
+prefix, SHA-256 02d64419415314b9bdeb8c27f75d9ac64f67a2447e91c90484910ad3d07dadd6.

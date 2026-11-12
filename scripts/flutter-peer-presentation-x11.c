@@ -7884,6 +7884,7 @@ static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
     int result = -1, file = -1;
     const char *phase = "directory";
     unsigned int files = 0U, frames = 0U, distinct = 0U;
+    char earliest[256] = {0}, startup_only[256] = {0};
     size_t bytes = 0U;
     unsigned char *data = NULL;
     SourceHistory history = {0};
@@ -7897,8 +7898,11 @@ static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
         phase = "name";
         size_t length = strlen(entry->d_name);
-        if (++files > 8U || length < 20U || strncmp(entry->d_name, "incoming_", 9U) != 0 ||
+        if (++files > 8U || length < 20U || length >= sizeof(earliest) ||
+            strncmp(entry->d_name, "incoming_", 9U) != 0 ||
             strcmp(entry->d_name + length - 5U, ".webm") != 0) goto out;
+        if (earliest[0] == '\0' || strcmp(entry->d_name, earliest) < 0)
+            memcpy(earliest, entry->d_name, length + 1U);
         file = openat(directory, entry->d_name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
         phase = "metadata";
         struct stat before, after;
@@ -7922,6 +7926,10 @@ static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
             fprintf(stderr, "FLUTTER_PEER_INCOMING_DECODE_FAIL file=%s bytes=%zu packets=%u images=%u first=%lld last=%lld\n",
                 entry->d_name, size, video.packets, video.images, (long long)video.first_frame, (long long)video.last_frame);
             goto out;
+        }
+        if (video.distinct_frames == 0U) {
+            if (startup_only[0] != '\0') goto out;
+            memcpy(startup_only, entry->d_name, length + 1U);
         }
         phase = "truncated-control";
         if (recording_decode(data, size - 1U, &history, started, stopped, 1000U, &rejected) == 0) goto out;
@@ -7953,7 +7961,8 @@ static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
         errno = 0;
     }
     phase = "aggregate";
-    if (errno != 0 || files == 0U || frames < 12U || distinct < 12U) goto out;
+    if (errno != 0 || files == 0U || frames < 12U || distinct < 12U ||
+        (startup_only[0] != '\0' && strcmp(startup_only, earliest) != 0)) goto out;
     printf("FLUTTER_PEER_INCOMING_OUTPUT_OK files=%u counter_frames=%u distinct_frames=%u bytes=%zu completion=ui\n",
            files, frames, distinct, bytes);
     result = 0;

@@ -218,7 +218,11 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
             video->last_pts_ms = (uint64_t)pts;
         }
     }
-    if (video->first_frame < 0) goto out;
+    /* An initial encoder epoch can end while the connection window still
+     * covers the counter. The incoming caller separately requires this to be
+     * the earliest file and requires changing counters across the attempt. */
+    if (video->first_frame < 0 && (startup_ms == 0U || video->images == 0U ||
+        video->startup_images != video->images || video->last_pts_ms >= startup_ms)) goto out;
     result = 0;
 out:
     if (initialized && vpx_codec_destroy(&decoder) != VPX_CODEC_OK) result = -1;

@@ -1200,6 +1200,9 @@ static int type_password(Display *display, const char *password) {
     for (index = 0U; index < strlen(password); ++index) {
         KeySym symbol;
         unsigned char character = (unsigned char)password[index];
+        int upper = character >= 'A' && character <= 'Z';
+        KeyCode shift = upper ? XKeysymToKeycode(display, XK_Shift_L) : 0U;
+        if (upper) character = character - 'A' + 'a';
         if (character == '-') {
             symbol = XK_minus;
         } else if ((character >= 'a' && character <= 'z') ||
@@ -1208,9 +1211,11 @@ static int type_password(Display *display, const char *password) {
         } else {
             return -1;
         }
-        if (fake_key(display, symbol) != 0) {
-            return -1;
-        }
+        if (upper && (shift == 0U || XTestFakeKeyEvent(display, shift, True, CurrentTime) == 0)) return -1;
+        int typed = fake_key(display, symbol);
+        if (upper && XTestFakeKeyEvent(display, shift, False, CurrentTime) == 0) typed = -1;
+        XSync(display, False);
+        if (typed != 0) return -1;
     }
     return 0;
 }

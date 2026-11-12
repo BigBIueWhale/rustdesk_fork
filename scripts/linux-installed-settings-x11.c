@@ -264,6 +264,7 @@ static int settings_recording_viewer(Display *display, unsigned int pid) {
     ConnectionIdentity before, after;
     uint64_t first = 0U, age = 0U;
     int result = -1;
+    const char *phase = "window";
     char path[64];
     snprintf(path, sizeof(path), "/proc/%u/fd", pid);
     connection_fds = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
@@ -271,18 +272,24 @@ static int settings_recording_viewer(Display *display, unsigned int pid) {
     XRaiseWindow(display, viewer.window);
     XSetInputFocus(display, viewer.window, RevertToParent, CurrentTime);
     XSync(display, False);
-    if (wait_for_password_prompt(pid, &prompt) != 0 ||
-        type_password(display, "InstalledGui2026") != 0 ||
-        wait_for_password_character_count(pid, 16, &prompt) != 0 ||
+    phase = "password-prompt";
+    if (wait_for_password_prompt(pid, &prompt) != 0) goto out;
+    phase = "password-input";
+    if (type_password(display, "InstalledGui2026") != 0 ||
+        wait_for_password_character_count(pid, 16, &prompt) != 0) goto out;
+    phase = "authentication";
+    if (
         fake_key(display, XK_Return) != 0 ||
         wait_for_password_prompt_retirement(pid, &prompt) != 0 ||
-        read_connection_identity(&before) != 0 ||
-        wait_for_current_frames(display, &viewer, &history, AUTH_WAIT_MS, 12U, &first, &age) != 0 ||
+        read_connection_identity(&before) != 0) goto out;
+    phase = "pixels";
+    if (wait_for_current_frames(display, &viewer, &history, AUTH_WAIT_MS, 12U, &first, &age) != 0 ||
         read_connection_identity(&after) != 0 || !same_connection(&before, &after)) goto out;
     printf("LINUX_INSTALLED_RECORDING_VIEWER=pass frames=12 maximum_age_ms=%llu "
            "connection=retained password=actual-ui pixels=presented\n", (unsigned long long)age);
     result = 0;
 out:
+    if (result != 0) fprintf(stderr, "LINUX_INSTALLED_RECORDING_VIEWER_FAIL phase=%s\n", phase);
     if (viewer.window != None && close_viewer(display, viewer.window) != 0) result = -1;
     if (connection_fds >= 0 && close(connection_fds) != 0) result = -1;
     connection_fds = -1;

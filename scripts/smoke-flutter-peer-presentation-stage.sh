@@ -27,7 +27,7 @@ MENU_ACTION=pointer
 readonly MENU_ACTION
 case "$PEER_SCENARIO" in
   monitor-switch|monitor-burst) EXPECTED_RESTARTS=0 ;;
-  camera-unavailable|camera-shared) EXPECTED_RESTARTS=0 ;;
+  camera-unavailable|camera-shared|camera-busy) EXPECTED_RESTARTS=0 ;;
   recent-search|native-components|recording-directory|incoming-recording) EXPECTED_RESTARTS=0 ;;
   wake-lock) EXPECTED_RESTARTS=0 ;;
   keyboard-restart|keyboard-save-failure|keyboard-translate|keyboard-repeat) EXPECTED_RESTARTS=0 ;;
@@ -1236,7 +1236,7 @@ PY
           fi
         done
       fi
-      if [ "$PEER_SCENARIO" = camera-shared ] && [ "$status" -ne 0 ]; then
+      if { [ "$PEER_SCENARIO" = camera-shared ] || [ "$PEER_SCENARIO" = camera-busy ]; } && [ "$status" -ne 0 ]; then
         [ ! -f "$SERVER_LOG" ] || tail -c 131072 -- "$SERVER_LOG" >&2
         emit_runtime_logs SERVER "$HOME/.local/share/logs"
       fi
@@ -1283,7 +1283,7 @@ PY
       local generation=$1
       [ -n "$SERVER_PID" ] && [ -n "$SERVER_START" ] \
         || fail 'controlled-server generation authority is absent'
-      if [ "$PEER_SCENARIO" != camera-shared ]; then
+      if [ "$PEER_SCENARIO" != camera-shared ] && [ "$PEER_SCENARIO" != camera-busy ]; then
       "$READY" --is-running "$SERVER_PID" "$SERVER_START" \
         && wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" \
           /usr/lib/rustdesk-fork/libxdo.so.3 \
@@ -1353,7 +1353,7 @@ PY
       INCOMING_OBSERVER_START=$("$READY" --identity "$INCOMING_OBSERVER_PID")
       wait_incoming_marker incoming.ready
     fi
-    if [ "$PEER_SCENARIO" = camera-shared ]; then
+    if [ "$PEER_SCENARIO" = camera-shared ] || [ "$PEER_SCENARIO" = camera-busy ]; then
       /usr/bin/python3 -I -S /source/scripts/flutter-peer-camera.py prepare "$SERVER_PID" "$SERVER_START"
     fi
     listener_is_exact || fail 'server listener is not exactly 127.0.0.1:21118'
@@ -1367,6 +1367,8 @@ PY
     echo 'FLUTTER_PEER_SERVER_READY network=none interfaces=lo listener=127.0.0.1:21118 udp=0 parked_then_passworded=true'
     if [ "$PEER_SCENARIO" = camera-shared ]; then
       /usr/bin/python3 -I -S /source/scripts/flutter-peer-camera.py observe "$SERVER_PID" "$SERVER_START"
+    elif [ "$PEER_SCENARIO" = camera-busy ]; then
+      /usr/bin/python3 -I -S /source/scripts/flutter-peer-camera.py busy "$SERVER_PID" "$SERVER_START"
     fi
     stop_seen=0
     credential_rotated=0
@@ -1815,6 +1817,10 @@ PY
     viewer_generations=1
     [ "$PEER_SCENARIO" != camera-unavailable ] || viewer_generations=2
     [ "$PEER_SCENARIO:$PEER_ROLE" != camera-shared:main ] || viewer_generations=2
+    if [ "$PEER_SCENARIO" = camera-busy ]; then
+      viewer_generations=2
+      wait_incoming_marker camera.busy.ready
+    fi
     if [ "$PEER_SCENARIO" = recording-directory ]; then
       viewer_generations=2
       mkdir -m 700 -- /tmp/recording-selected-שלום /tmp/recording-cancelled
@@ -1903,7 +1909,8 @@ PY
       viewer_rust_log=info
     fi
     viewer_command=--connect
-    if [ "$PEER_SCENARIO:$viewer_generation" = camera-unavailable:1 ] || [ "$PEER_SCENARIO" = camera-shared ]; then
+    if [ "$PEER_SCENARIO:$viewer_generation" = camera-unavailable:1 ] \
+      || [ "$PEER_SCENARIO" = camera-shared ] || [ "$PEER_SCENARIO" = camera-busy ]; then
       viewer_command=--view-camera
     fi
     (cd /app/bundle
@@ -1919,6 +1926,13 @@ PY
         controller_args+=(--camera-reacquire)
       else
         controller_args+=("--camera-shared-$PEER_ROLE")
+      fi
+    fi
+    if [ "$PEER_SCENARIO" = camera-busy ]; then
+      if [ "$viewer_generation" -eq 1 ]; then
+        controller_args+=(--camera-busy)
+      else
+        controller_args+=(--camera-reacquire)
       fi
     fi
     if [ "$PEER_SCENARIO" = camera-unavailable ]; then
@@ -1956,7 +1970,8 @@ PY
     elif [ "$PEER_SCENARIO" = quality-restart ]; then
       quality_phases=(best low balanced restore)
       controller_args+=("--quality-${quality_phases[viewer_generation - 1]}")
-    elif [ "$viewer_generations" -gt 1 ] && [ "$PEER_SCENARIO" != camera-unavailable ] && [ "$PEER_SCENARIO" != camera-shared ]; then
+    elif [ "$viewer_generations" -gt 1 ] && [ "$PEER_SCENARIO" != camera-unavailable ] \
+      && [ "$PEER_SCENARIO" != camera-shared ] && [ "$PEER_SCENARIO" != camera-busy ]; then
       if [ "$viewer_generation" -eq 1 ]; then
         credential_phase=enroll
         controller_args+=(--credential-enroll)
@@ -2155,6 +2170,13 @@ PY
           <<<"$controller_output" || fail 'Remote control after camera refusal did not present current pixels'
       fi
       viewer_result='viewer=joined xvfb=joined camera_unavailable=visible remote_after=presented server=preserved'
+    elif [ "$PEER_SCENARIO" = camera-busy ]; then
+      grep -Fxq 'FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false' \
+        <<<"$controller_output" || fail 'busy camera generation did not use the real password prompt'
+      camera_receipt='FLUTTER_PEER_CAMERA_BUSY_OK error=visible connected_sockets=0 listener=preserved'
+      [ "$viewer_generation" -ne 2 ] || camera_receipt='FLUTTER_PEER_CAMERA_REACQUIRE_OK authenticated=true colors=2 stable_connection=true'
+      grep -Fxq "$camera_receipt" <<<"$controller_output" || fail 'busy camera lifecycle proof is absent'
+      viewer_result='viewer=joined xvfb=joined camera_busy=visible reacquisition=presented server=preserved'
     elif [ "$PEER_SCENARIO" = camera-shared ]; then
       grep -Fxq 'FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false' \
         <<<"$controller_output" || fail 'camera generation did not use the real password prompt'
@@ -2681,6 +2703,15 @@ PY
       fi
       printf 'FLUTTER_PEER_CAMERA_PROCESS_JOINED role=%s generation=%s exit=0\n' "$PEER_ROLE" "$viewer_generation"
     fi
+    if [ "$PEER_SCENARIO" = camera-busy ]; then
+      camera_closed=camera.busy.closed
+      [ "$viewer_generation" -ne 2 ] || camera_closed=camera.reacquire.closed
+      printf 'ready\n' > "$COORD/$camera_closed.tmp"
+      mv "$COORD/$camera_closed.tmp" "$COORD/$camera_closed"
+      if [ "$viewer_generation" -eq 1 ]; then
+        wait_incoming_marker camera.reacquire.ready
+      fi
+    fi
     if [ "$PEER_SCENARIO" = incoming-recording ]; then
       printf 'ready\n' > "$COORD/incoming.closed.$viewer_generation.tmp"
       mv "$COORD/incoming.closed.$viewer_generation.tmp" "$COORD/incoming.closed.$viewer_generation"
@@ -2714,7 +2745,7 @@ PY
         printf 'FLUTTER_PEER_QUALITY_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
         printf 'FLUTTER_PEER_KEYBOARD_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
-      elif [ "$PEER_SCENARIO" = camera-unavailable ] || [ "$PEER_SCENARIO" = camera-shared ]; then
+      elif [ "$PEER_SCENARIO" = camera-unavailable ] || [ "$PEER_SCENARIO" = camera-shared ] || [ "$PEER_SCENARIO" = camera-busy ]; then
         printf 'FLUTTER_PEER_CAMERA_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
       else
         printf 'FLUTTER_PEER_CREDENTIAL_PROCESS_JOINED generation=%s exit=0\n' "$viewer_generation"
@@ -2918,6 +2949,9 @@ PY
         || fail 'credential rotation readiness is absent or differs'
     fi
     done
+    if [ "$PEER_SCENARIO" = camera-busy ]; then
+      wait_incoming_marker camera.complete
+    fi
     if [ "$PEER_SCENARIO" = camera-shared ]; then
       if [ "$PEER_ROLE" = main ]; then
         wait_incoming_marker camera.complete

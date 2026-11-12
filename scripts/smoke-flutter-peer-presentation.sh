@@ -78,6 +78,7 @@ case "$#:${1:-}" in
         --viewer-isolation) PEER_SCENARIO=viewer-isolation ;;
         --camera-unavailable) PEER_SCENARIO=camera-unavailable ;;
         --camera-shared) PEER_SCENARIO=camera-shared ;;
+        --camera-busy) PEER_SCENARIO=camera-busy ;;
         --viewer-soak) PEER_SCENARIO=viewer-soak ;;
         --congestion-soak) PEER_SCENARIO=congestion-soak ;;
         --input-congestion-soak) PEER_SCENARIO=input-congestion-soak ;;
@@ -281,6 +282,11 @@ elif [ "$PEER_SCENARIO" = camera-unavailable ]; then
   SERVER_GENERATIONS='1'
   SERVER_REPLACEMENTS=0
   VIEWER_RESULT='viewer=joined xvfb=joined camera_unavailable=visible remote_after=presented server=preserved'
+elif [ "$PEER_SCENARIO" = camera-busy ]; then
+  RUNTIME_CYCLES=1
+  SERVER_GENERATIONS='1'
+  SERVER_REPLACEMENTS=0
+  VIEWER_RESULT='viewer=joined xvfb=joined camera_busy=visible reacquisition=presented server=preserved'
 elif [ "$PEER_SCENARIO" = audio-mute ]; then
   RUNTIME_CYCLES=1
   SERVER_GENERATIONS='1'
@@ -891,7 +897,7 @@ inspect_container_contract() {
     || die "$label privilege/read-only-root contract differs"
   [ "$user" = "$HOST_UID:$HOST_GID" ] || die "$label numeric user differs: $user"
   { [ "$ports" = null ] || [ "$ports" = '{}' ]; } || die "$label publishes a port"
-  if [ "$label:$PEER_SCENARIO" = server:camera-shared ]; then
+  if [ "$label:$PEER_SCENARIO" = server:camera-shared ] || [ "$label:$PEER_SCENARIO" = server:camera-busy ]; then
     [ "$devices" = '[{"PathOnHost":"/dev/video2","PathInContainer":"/dev/video2","CgroupPermissions":"rw"}]' ] \
       || die 'server guest camera device contract differs'
   else
@@ -1398,7 +1404,9 @@ CID_FILES+=("$SERVER_CID_FILE")
 server_session=smoke-flutter-peer-presentation-stage.sh
 server_accessibility=()
 server_devices=()
-[ "$PEER_SCENARIO" != camera-shared ] || server_devices=(--device=/dev/video2:/dev/video2:rw)
+if [ "$PEER_SCENARIO" = camera-shared ] || [ "$PEER_SCENARIO" = camera-busy ]; then
+  server_devices=(--device=/dev/video2:/dev/video2:rw)
+fi
 if [ "$PEER_SCENARIO" = incoming-recording ]; then
   server_session=smoke-private-atspi-session.sh
   server_accessibility=(
@@ -1593,6 +1601,9 @@ cat "$SERVER_LOG"
 if [ "$PEER_SCENARIO" = camera-shared ]; then
   grep -Fxq 'FLUTTER_PEER_CAMERA_SHARED_OK viewers=2 generations=3 colors=3 first_close=survived timeout=recovered loss=visible reacquisition=presented last_close=devices-retired server=preserved' \
     "$SERVER_LOG" || die 'shared camera ownership observation is absent'
+elif [ "$PEER_SCENARIO" = camera-busy ]; then
+  grep -Fxq 'FLUTTER_PEER_CAMERA_BUSY_OK competing=EBUSY failure=visible owner=preserved reacquisition=presented last_close=devices-retired server=preserved' \
+    "$SERVER_LOG" || die 'busy camera ownership observation is absent'
 else
 for generation in $SERVER_GENERATIONS; do
   grep -Fxq "FLUTTER_PEER_INPUT_PROVIDER_MAPPED generation=$generation path=/usr/lib/rustdesk-fork/libxdo.so.3 live_mapping=true" \

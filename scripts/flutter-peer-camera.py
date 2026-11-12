@@ -153,9 +153,71 @@ def retained(pid, start, expected, phase):
           + ' samples=10 server_generation=unchanged', flush=True)
 
 
+def buffers(fd, count):
+    # Linux v6.1 x86_64: single-plane capture, MMAP, v4l2_requestbuffers=20.
+    request = bytearray(struct.pack('<IIIII', count, 1, 1, 0, 0))
+    fcntl.ioctl(fd, 0xc0145608, request, True)
+    actual, kind, memory = struct.unpack_from('<III', request)
+    require(kind == 1 and memory == 1 and (actual == 0 if count == 0 else 1 <= actual <= 8),
+            'camera buffer allocation differs')
+    return actual
+
+
+def buffer_identity(fd):
+    # v4l2_buffer=88: memory at 60, offset at 64, length at 72.
+    query = bytearray(88)
+    struct.pack_into('<II', query, 0, 0, 1)
+    fcntl.ioctl(fd, 0xc0585609, query, True)
+    require(struct.unpack_from('<II', query) == (0, 1)
+            and struct.unpack_from('<I', query, 60)[0] == 1, 'camera buffer identity differs')
+    offset, length = struct.unpack_from('<I', query, 64)[0], struct.unpack_from('<I', query, 72)[0]
+    require(0 < length <= 16 * 1024 * 1024, 'camera buffer length differs')
+    return offset, length
+
+
+def busy(pid, start):
+    with native_device() as owner:
+        allocated = buffers(owner, 2)
+        before = buffer_identity(owner)
+        try:
+            with native_device() as competing:
+                try:
+                    buffers(competing, 2)
+                except OSError as error:
+                    require(error.errno == errno.EBUSY, 'competing camera errno differs')
+                else:
+                    raise ValueError('competing camera acquired reserved buffers')
+            print('FLUTTER_PEER_CAMERA_BUSY_HELD buffers=' + str(allocated)
+                  + ' competing=EBUSY owner=retained', flush=True)
+            marker('camera.busy.ready', True)
+            wait_for(pid, start, lambda: marker('camera.busy.observed'),
+                     'visible stream-open failure and session retirement')
+            wait_for(pid, start, lambda: marker('camera.busy.closed'), 'failed viewer joined')
+            retained(pid, start, 0, 'busy-viewer-closed')
+        finally:
+            require(buffer_identity(owner) == before, 'application changed reserved camera buffers')
+            buffers(owner, 0)
+            print('FLUTTER_PEER_CAMERA_BUSY_RELEASED owner=preserved buffers=retired', flush=True)
+    with native_device() as fresh:
+        buffers(fresh, 2)
+        buffer_identity(fresh)
+        buffers(fresh, 0)
+    color(1)
+    marker('camera.reacquire.ready', True)
+    wait_for(pid, start, lambda: marker('camera.reacquire.green'), 'fresh authenticated green viewer')
+    retained(pid, start, 1, 'fresh-viewer')
+    color(2)
+    marker('camera.reacquire.blue', True)
+    wait_for(pid, start, lambda: marker('camera.reacquire.closed'), 'fresh viewer joined')
+    retained(pid, start, 0, 'fresh-viewer-closed')
+    marker('camera.complete', True)
+    print('FLUTTER_PEER_CAMERA_BUSY_OK competing=EBUSY failure=visible owner=preserved '
+          'reacquisition=presented last_close=devices-retired server=preserved', flush=True)
+
+
 def main():
     os.umask(0o077)
-    require(len(sys.argv) == 4 and sys.argv[1] in ('prepare', 'observe')
+    require(len(sys.argv) == 4 and sys.argv[1] in ('prepare', 'observe', 'busy')
             and os.getuid() == 1000 and os.getgid() == 1000
             and os.uname().release == '6.1.0-50-amd64'
             and sorted(p.name for p in Path('/sys/class/net').iterdir()) == ['lo'],
@@ -165,6 +227,9 @@ def main():
     if sys.argv[1] == 'prepare':
         retained(pid, start, 0, 'before-login')
         color(0)
+        return
+    if sys.argv[1] == 'busy':
+        busy(pid, start)
         return
     wait_for(pid, start, lambda: marker('slow.ready') and marker('camera.main.ready'),
              'two authenticated red viewers')

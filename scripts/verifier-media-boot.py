@@ -37,7 +37,7 @@ def application_request(argv, contract, release):
         and argv[7] == release
         and argv[8] == contract['pins']['VERIFIER_VM_ROOT_FILESYSTEM_UUID']
         and argv[9:11] == ['--linux-flutter-app-replay', '/mnt/rustdesk-verifier-inputs/source.tar']
-        and argv[11] == contract['source_commit'] and argv[20] == '--camera-shared',
+        and argv[11] == contract['source_commit'] and argv[20] in ('--camera-shared', '--camera-busy'),
         'closed application replay request differs')
     require(all(re.fullmatch('[0-9a-f]{40}', argv[i]) for i in (11, 12, 14, 15))
             and all(re.fullmatch('[0-9a-f]{64}', argv[i]) for i in (6, 13, 16, 17))
@@ -69,9 +69,10 @@ def application_fixture(guest, contract, previous):
         guest.run(['/usr/bin/udevadm', 'settle', '--timeout=10'])
     require(not list(Path('/dev').glob('video*')) and not Path('/sys/module/vivid').exists(),
             'application camera module retirement incomplete')
+    population = 'viewers=2 generations=3' if argv[20] == '--camera-shared' else 'viewers=1 generations=2'
     print('MEDIA_APPLICATION_FIXTURE=pass source=' + contract['source_commit']
           + ' kernel=' + guest.RELEASE
-          + ' native_node=2 viewers=2 generations=3 module=retired cleanup=joined', flush=True)
+          + ' native_node=2 ' + population + ' module=retired cleanup=joined', flush=True)
     print('VERIFIER_VM_CLOUD_INIT=pass', flush=True)
 
 

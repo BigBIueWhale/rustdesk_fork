@@ -75,6 +75,7 @@ FLUTTER_THEME_SAVE_FAILURE=0
 FLUTTER_VIEWER_ISOLATION=0
 FLUTTER_CAMERA_UNAVAILABLE=0
 FLUTTER_CAMERA_SHARED=0
+FLUTTER_CAMERA_BUSY=0
 FLUTTER_VIEWER_SOAK=0
 FLUTTER_INPUT_LATENCY=0
 FLUTTER_INPUT_SOAK=0
@@ -804,6 +805,7 @@ case "$#:${1:-}" in
                 --viewer-isolation) FLUTTER_VIEWER_ISOLATION=1 ;;
                 --camera-unavailable) FLUTTER_CAMERA_UNAVAILABLE=1 ;;
                 --camera-shared) FLUTTER_CAMERA_SHARED=1 ;;
+                --camera-busy) FLUTTER_CAMERA_BUSY=1 ;;
                 --viewer-soak) FLUTTER_VIEWER_SOAK=1 ;;
                 --input-latency) FLUTTER_INPUT_LATENCY=1 ;;
                 --input-soak) FLUTTER_INPUT_SOAK=1 ;;
@@ -1006,7 +1008,8 @@ readonly FLUTTER_QUALITY_RESTART
 readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
-readonly FLUTTER_CAMERA_UNAVAILABLE FLUTTER_CAMERA_SHARED
+readonly FLUTTER_CAMERA_UNAVAILABLE FLUTTER_CAMERA_SHARED FLUTTER_CAMERA_BUSY
+readonly FLUTTER_CAMERA_NATIVE=$((FLUTTER_CAMERA_SHARED + FLUTTER_CAMERA_BUSY))
 readonly FLUTTER_VIEWER_SOAK
 readonly FLUTTER_INPUT_LATENCY
 readonly FLUTTER_INPUT_SOAK
@@ -3080,7 +3083,7 @@ if [ "$MODE" = debian-maintainer-tests ]; then
     debian_maintainer_sources_before="$(/usr/bin/sha256sum "${debian_maintainer_sources[@]}")"
 fi
 ledger_token_inputs_before=
-if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_NATIVE" -eq 1 ]; then
     media_sources=("$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" "$PIN_SOURCE" "$VM_STORAGE_SOURCE" "$SCRIPT_DIR/vm-transient-storage.sh")
     media_product_sources=()
     if [ "$MEDIA_NOKHWA" -eq 1 ]; then
@@ -5321,15 +5324,15 @@ elif [ "$MODE" = rust-audit ]; then
         "rust-audit.docker.tar.gz=$RUST_AUDIT_IMAGE_ARCHIVE"
     )
 fi
-if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_NATIVE" -eq 1 ]; then
     media_commit=$FOCUSED_TEST_COMMIT
-    [ "$FLUTTER_CAMERA_SHARED" -eq 0 ] || media_commit=$FLUTTER_PEER_SOURCE_COMMIT
+    [ "$FLUTTER_CAMERA_NATIVE" -eq 0 ] || media_commit=$FLUTTER_PEER_SOURCE_COMMIT
     media_contract="$VM_TRANSIENT/media-contract.json"
     /usr/bin/python3 -I -S - "$media_contract" "$media_commit" "$MEDIA_BOOT_SOURCE" "$MEDIA_GUEST_SOURCE" \
         "$VERIFIER_VM_KERNEL_RELEASE" "$VERIFIER_VM_ROOT_FILESYSTEM_UUID" \
         "$SIZE_VERIFIER_MEDIA_KERNEL_PACKAGE" "$SHA256_VERIFIER_MEDIA_KERNEL_PACKAGE" \
         "$SIZE_VERIFIER_MEDIA_KERNEL" "$SHA256_VERIFIER_MEDIA_KERNEL" \
-        "$SHA256_VERIFIER_MEDIA_KERNEL_CONFIG" "$SOURCE_DATE_EPOCH_PIN" "$MEDIA_NOKHWA" "$FLUTTER_CAMERA_SHARED" "$PIN_SOURCE" "${media_product_sources[@]}" <<'PY'
+        "$SHA256_VERIFIER_MEDIA_KERNEL_CONFIG" "$SOURCE_DATE_EPOCH_PIN" "$MEDIA_NOKHWA" "$FLUTTER_CAMERA_NATIVE" "$PIN_SOURCE" "${media_product_sources[@]}" <<'PY'
 import hashlib,json,os,re,sys
 from pathlib import Path
 sources={}
@@ -5749,6 +5752,7 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         [ "$FLUTTER_VIEWER_ISOLATION" -eq 0 ] || guest_invocation+=' --viewer-isolation'
         [ "$FLUTTER_CAMERA_UNAVAILABLE" -eq 0 ] || guest_invocation+=' --camera-unavailable'
         [ "$FLUTTER_CAMERA_SHARED" -eq 0 ] || guest_invocation+=' --camera-shared'
+        [ "$FLUTTER_CAMERA_BUSY" -eq 0 ] || guest_invocation+=' --camera-busy'
         [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || guest_invocation+=' --viewer-soak'
         [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || guest_invocation+=' --input-latency'
         [ "$FLUTTER_INPUT_SOAK" -eq 0 ] || guest_invocation+=' --input-soak'
@@ -5795,13 +5799,13 @@ elif [ "$MODE" = rust-audit ]; then
 fi
 guest_report=VERIFIER_VM_CLOUD_INIT
 guest_output=') 2>&1 | /usr/bin/python3 -I -S /mnt/rustdesk-verifier-inputs/repo/scripts/bounded-unix-stream-capture.py --guest-output'
-if [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+if [ "$FLUTTER_CAMERA_NATIVE" -eq 1 ]; then
     guest_invocation="python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --prepare -- $guest_invocation"
     guest_report=MEDIA_APPLICATION_PREPARE
     guest_output=') 2>&1'
 fi
 guest_finish='systemctl poweroff --no-block || poweroff -f'
-if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_NATIVE" -eq 1 ]; then
     guest_finish='if [ "$status" -eq 0 ]; then systemctl kexec --no-block || poweroff -f; else systemctl poweroff --no-block || poweroff -f; fi'
 fi
 printf '%s\n' \
@@ -9628,6 +9632,12 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
             "MEDIA_APPLICATION_FIXTURE=pass source=$FLUTTER_PEER_SOURCE_COMMIT kernel=6.1.0-50-amd64 native_node=2 viewers=2 generations=3 module=retired cleanup=joined" \
             'native camera application lifecycle'
     fi
+    if [ "$FLUTTER_CAMERA_BUSY" -eq 1 ]; then
+        peer_scenario=camera-busy
+        require_exact_fixed_receipt \
+            "MEDIA_APPLICATION_FIXTURE=pass source=$FLUTTER_PEER_SOURCE_COMMIT kernel=6.1.0-50-amd64 native_node=2 viewers=1 generations=2 module=retired cleanup=joined" \
+            'busy camera application lifecycle'
+    fi
     [ "$FLUTTER_VIEWER_SOAK" -eq 0 ] || peer_scenario=viewer-soak
     [ "$FLUTTER_INPUT_LATENCY" -eq 0 ] || peer_scenario=input-latency
     [ "$FLUTTER_INPUT_SOAK" -eq 0 ] || peer_scenario=input-soak
@@ -10256,7 +10266,7 @@ if [ "$MODE" = dependency-inventory ]; then
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'dependency inventory source or index changed'
 fi
-if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_SHARED" -eq 1 ]; then
+if [ "$MODE" = media-kernel-tests ] || [ "$FLUTTER_CAMERA_NATIVE" -eq 1 ]; then
     [ "$(/usr/bin/sha256sum "${media_sources[@]}")" = "$media_inputs_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$media_commit" ] \
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \

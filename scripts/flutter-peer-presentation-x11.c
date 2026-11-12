@@ -4108,6 +4108,39 @@ static int camera_pixels(Display *display, const ViewerWindow *viewer, unsigned 
     return camera_pixels_before(display, viewer, color, monotonic_millis() + 15000U);
 }
 
+static int camera_failure(const ViewerWindow *viewer, int coord, int busy) {
+    uint64_t deadline = monotonic_millis() + 5000U;
+    unsigned int connected = 0U, listeners = 0U, retired = 0U;
+    int visible = 0;
+    while (monotonic_millis() < deadline) {
+        AtspiAccessible *error = NULL;
+        if (query_accessible((unsigned int)viewer->pid, "Camera capture failed", deadline,
+                             &error, 1, 1, NULL) != 0) return -1;
+        visible = error != NULL;
+        if (error != NULL) g_object_unref(error);
+        if (session_socket_counts(&connected, &listeners) != 0 || listeners != 1U) return -1;
+        retired = visible && connected == 0U ? retired + 1U : 0U;
+        if (retired == 10U) {
+            printf("FLUTTER_PEER_CAMERA_%s_OK error=visible connected_sockets=0 listener=preserved\n",
+                   busy ? "BUSY" : "LOSS");
+            return isolation_marker(coord, busy ? "camera.busy.observed" : "camera.loss.observed", 1);
+        }
+        if (sleep_millis(100U) != 0) return -1;
+    }
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL camera %s error_visible=%d connected=%u "
+            "listeners=%u retired_samples=%u\n", busy ? "busy" : "loss",
+            visible, connected, listeners, retired);
+    return -1;
+}
+
+static int camera_busy(const ViewerWindow *viewer) {
+    int coord = open("/coord", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (coord < 0) return -1;
+    int result = camera_failure(viewer, coord, 1);
+    if (close(coord) != 0) result = -1;
+    return result;
+}
+
 static int camera_interruption(Display *display, const ViewerWindow *viewer, int coord,
                                 const ConnectionIdentity *before) {
     ConnectionIdentity after = {{0}, {0}, 0UL};
@@ -4146,26 +4179,7 @@ static int camera_interruption(Display *display, const ViewerWindow *viewer, int
            (unsigned long long)(monotonic_millis() - restored));
     if (isolation_marker(coord, "camera.recovered", 1) != 0 ||
         wait_isolation_marker(coord, "camera.disconnected", 10000U) != 0) return -1;
-    uint64_t deadline = monotonic_millis() + 5000U;
-    unsigned int connected = 0U, listeners = 0U, retired = 0U;
-    int visible = 0;
-    while (monotonic_millis() < deadline) {
-        AtspiAccessible *error = NULL;
-        if (query_accessible((unsigned int)viewer->pid, "Camera capture failed", deadline,
-                             &error, 1, 1, NULL) != 0) return -1;
-        visible = error != NULL;
-        if (error != NULL) g_object_unref(error);
-        if (session_socket_counts(&connected, &listeners) != 0 || listeners != 1U) return -1;
-        retired = visible && connected == 0U ? retired + 1U : 0U;
-        if (retired == 10U) {
-            puts("FLUTTER_PEER_CAMERA_LOSS_OK error=visible connected_sockets=0 listener=preserved");
-            return isolation_marker(coord, "camera.loss.observed", 1);
-        }
-        if (sleep_millis(100U) != 0) return -1;
-    }
-    fprintf(stderr, "FLUTTER_PEER_X11_FAIL camera loss error_visible=%d connected=%u "
-            "listeners=%u retired_samples=%u\n", visible, connected, listeners, retired);
-    return -1;
+    return camera_failure(viewer, coord, 0);
 }
 
 static int camera_reacquire(Display *display, const ViewerWindow *viewer) {
@@ -8971,6 +8985,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--audio-mute") != 0 &&
                                     strcmp(argv[5], "--session-close") != 0 &&
                                     strcmp(argv[5], "--camera-unavailable") != 0 &&
+                                    strcmp(argv[5], "--camera-busy") != 0 &&
                                     strcmp(argv[5], "--camera-shared-main") != 0 &&
                                     strcmp(argv[5], "--camera-shared-slow") != 0 &&
                                     strcmp(argv[5], "--camera-reacquire") != 0 &&
@@ -9051,6 +9066,7 @@ int main(int argc, char **argv) {
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
     int camera = argc == 6 && (strcmp(argv[5], "--camera-shared-main") == 0 ||
+                               strcmp(argv[5], "--camera-busy") == 0 ||
                                strcmp(argv[5], "--camera-shared-slow") == 0 ||
                                strcmp(argv[5], "--camera-reacquire") == 0);
     if (camera || (argc == 6 && strcmp(argv[5], "--camera-unavailable") == 0))
@@ -9235,6 +9251,7 @@ int main(int argc, char **argv) {
     if (camera) {
         int result = strcmp(argv[5], "--camera-reacquire") == 0
             ? camera_reacquire(display, &viewer)
+            : strcmp(argv[5], "--camera-busy") == 0 ? camera_busy(&viewer)
             : camera_shared(display, &viewer, strcmp(argv[5], "--camera-shared-slow") == 0);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;

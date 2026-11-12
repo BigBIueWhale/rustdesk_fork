@@ -150477,3 +150477,15 @@ Compress the current camera ledger around these results while preserving the
 baseline evidence and limits. This append preserves the prior 16,119,968-byte
 audit prefix, SHA-256
 7107d7fe172222883c8049e78b88c239b3973c149c01589459720dcc77de3b92.
+
+Fresh ledger count at 8e0fcec4, 7W79uDWBQD/tool28998, passes: 416,273 tokens /
+1,899,373 bytes, SHA-256
+ee8d049dc73f3479d9f2dfd2a464e5c57763573941592a7fc22625a8e4b673bd.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass. The current
+ledger decreases by 103 tokens/748 bytes while retaining the new acceptance and
+open limits; the approximate 400,000-token target remains OPEN.
+camera-accepted-ledger-8e0fcec4.json binds eight files/115,923 bytes on CTE/TUF.
+QEMU 3283415 joins zero after 30.274 seconds, with three zero listener deltas
+and exact private/process/socket/RAM retirement. This audit-only append preserves
+the counted ledger and prior 16,124,672-byte audit prefix, SHA-256
+13c2e5e4dd3185f01e0ab580a93adb9a0216ac354571c374eb1756bd96e2e890.

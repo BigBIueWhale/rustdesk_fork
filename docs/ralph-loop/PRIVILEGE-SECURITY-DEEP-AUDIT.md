@@ -150935,3 +150935,60 @@ and exact private/process/socket/RAM retirement. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,154,662-byte audit prefix, SHA-256
 022e9024beffe000d67f02545c902e4a65d03779d68ac154b5b165441ab6a3df.
+
+## 2026-11-13 — Installed Remote partial-loss recovery: reproduced deadline failure
+
+TUF's existing password-authenticated SSH master is available. CTE/TUF start
+clean at 1fe7cd81. Commit 2ace6bf8 connects the existing random3/random8/burst
+and jitter/bandwidth/bandwidth-jitter observers to normal Debian-package
+installation. Closed modes retain exact observer ownership, profile ordering,
+numeric deadlines, actual pixels/TCP/counter checks and joined cleanup. The
+same retained app 2eb7015e/manifest 88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a
+is used; no product change, full build or additional retained app occurs.
+
+UUTuxoUiOi/tool37176 exits 1. Baseline maximum age is 333 ms. Random 3%/8%
+loss each runs for twenty seconds, records 16/36 drops and 457/453 delivered
+packets, and recovers four fresh states in 658/727 ms. Healthy follow-up maxima
+are 326/305 ms. Burst loss then records 23 drops, 45 delivered packets, eight
+distinct displayed states and maximum sampled age 18,050 ms. Its unchanged
+2,500-ms recovery criterion fails: only fresh states 297 and 298 arrive.
+The first is observed at 146806631 us, about 2,260 ms after restoration begins;
+the preceding frozen state reaches 20,175 ms old after restoration.
+
+The queue's healthy readback is at 144552948 us. At 146445109 us the viewer's
+received-byte counter is still 469451; by 146661735 us it is 470798. Server
+and viewer send queues initially retain 1343/24 bytes, both receive queues
+are empty, and TCP reports outstanding retransmissions/backoff. All 332
+samples retain the exact pair; maximum send queue is 2530 bytes. Packet-size
+calibration passes, oversized count stays one, and at-MTU count reaches 219
+at restoration. This supports a transport contribution to the missed deadline;
+it does not establish permanent lag or identify every application-stage delay.
+RFC 6298 section 5 specifies retransmission backoff:
+https://www.rfc-editor.org/rfc/rfc6298.html#section-5.
+TCP_USER_TIMEOUT controls connection failure, not retransmission scheduling:
+https://man7.org/linux/man-pages/man7/tcp.7.html.
+Do not substitute a forced reconnect, weaker deadline or arbitrary timeout
+setting for a correct surviving-connection recovery design. Netem random and
+Gilbert–Elliott semantics remain those of its primary manual; kernel-selected
+loss sequences are uncontrolled: https://man7.org/linux/man-pages/man8/tc-netem.8.html.
+
+The observer subsequently requests healthy again on its failure path. The
+installed controller rejects that seventh request against its six-command
+success budget, producing a secondary fixture error after the pixel failure.
+Its finally path retires its actor/network, and normal service stop succeeds.
+The later reinstall/remove/purge acceptance path is not reached. Source emits
+299 publications. Root supervisor 7614 and child 7737/start7109/generation
+4b765f39-a69a-47f9-99dc-119e2c3808b9 map the exact packaged core.
+
+remote-installed-loss-2ace6bf8.json binds nine files/794,849 bytes copied and
+hash-verified on CTE/TUF before source/input unfreeze. Outer SHA-256:
+1f5d48e477e511c8c2ec09a0c4ef8fe8c65a7c0b203d0536ee50f3463afa630c.
+QEMU 3658494 joins zero after 156.972 seconds, peak RAM scratch 4,216,160,256
+bytes retires, and four listener deltas are zero. The identity-checked failed
+private directory 66306:78035123 is retired after retained-output equality
+and exact process/socket/RAM absence checks. All runtime work stayed inside
+the admitted no-NIC VM. R-F5 remains OPEN. Next prioritize a reproducible
+regression for the observed retransmission state and post-deadline observation
+that preserves failure; installed bandwidth/jitter remains unexecuted.
+This append preserves the prior 16,155,328-byte audit prefix, SHA-256
+493162cc0f7f41735a30b043ea3a43381c846018b80006470a918ea5fd2b65f6.

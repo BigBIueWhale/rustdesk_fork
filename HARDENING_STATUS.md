@@ -4109,6 +4109,29 @@ Random/burst loss, bandwidth/jitter, input response, quantified baseline-tail
 agreement, multi-hour drift, physical/other-platform and complete R-F5/release
 acceptance remain OPEN. No product change or full build was needed.
 
+**Installed Linux burst-loss recovery — FAIL; random-loss subcases pass.**
+TUF `UUTuxoUiOi`, fixture `2ace6bf8`, reuses installed app `2eb7015e`.
+Twenty seconds each of random 3%/8% loss record 16/36 drops and recover four
+fresh frames in 658/727 ms; follow-up maximum ages are 326/305 ms against
+a 333-ms baseline. The subsequent Gilbert–Elliott burst records 23 drops,
+45 delivered packets and an 18,050-ms during-loss maximum displayed age.
+After restoration, the first fresh state appears at about 2,260 ms, but only
+two distinct fresh states arrive before the unchanged 2,500-ms deadline.
+All 332 TCP samples retain the same socket pair. Following restoration,
+received-byte counters remain stalled for at least 1.89 seconds while
+retransmissions are backed off; delivery is observed by 2.11 seconds.
+This establishes a transport contribution and a failed recovery bound,
+not permanent lag or a complete application-stage diagnosis.
+The observer's extra failure-cleanup `healthy` request also exceeds the
+installed controller's six-command success budget; that secondary fixture
+error does not replace the earlier pixel failure. Exact VM/private/RAM
+retirement and four zero host listener deltas are reconciled; nine evidence
+files/794,849 bytes match on CTE/TUF (`remote-installed-loss-2ace6bf8.json`).
+Keep R-F5 OPEN. Next: a reproducible regression for this retransmission state
+and post-deadline observation retaining the failed verdict. Bandwidth/jitter
+plumbing is added but its installed scenario has not run. No product fix or
+full build is claimed.
+
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without
 rebuilding. All 120 unique three-key requests injected into the viewer produce

@@ -9397,11 +9397,11 @@ Desktop closure reaps the child; wrong-password/ordinary-user refusal and packag
 reinstall/remove/purge pass. `camera-installed-f8c5137f.json` binds nine files /
 218,574 bytes on CTE/TUF, 175.566 seconds through joined cleanup, four zero listener
 deltas and retired RAM/private state. Explicit guest-only vivid device ownership
-does not establish physical-seat device permissions. The first attempt exited
-before pixels without a captured viewer exit status (`camera-installed-cce38c8a.json`).
-The fixture now records exits, uses a 256 MiB file ceiling and stops the service
-before failure-path user cleanup; the first exit's cause remains unclassified.
-That diagnosis, installed interruption/recovery, physical devices/seat permissions,
+does not establish physical-seat device permissions. The initial early viewer exit
+is reproduced as SIGXFSZ under the fixture's original 1 MiB file ceiling
+(`camera-installed-limit-663d09f3.json`); the identical app/package passes at
+256 MiB. The restored bound, exit diagnostics and joined failure-path service
+cleanup remain. Installed interruption/recovery, physical devices/seat permissions,
 other start failures, Windows and broader network/long-session acceptance remain OPEN.
 
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the

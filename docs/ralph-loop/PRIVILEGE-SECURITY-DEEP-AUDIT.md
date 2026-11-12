@@ -150640,3 +150640,41 @@ exact private/process/socket/RAM retirement. The approximate 400,000-token targe
 remains OPEN. This audit-only append preserves the counted ledger and prior
 16,135,024-byte audit prefix, SHA-256
 9f126743a6de99fb8f57436998f1d2dd2e28e9e7a42ff7a4305ea6ca0efb7eea.
+
+### 2026-11-13 — Installed viewer startup uncertainty resolves to the fixture file ceiling
+
+Resolve the earlier pre-presentation exit before extending installed camera
+coverage. The Linux contract at
+https://man7.org/linux/man-pages/man2/getrlimit.2.html specifies SIGXFSZ when a
+process attempts to extend a file beyond RLIMIT_FSIZE. Diagnostic source 663d09f3
+restores the original 1 MiB ceiling while retaining f8c5137f's exit diagnostics
+and failure cleanup. TUF tYbItabq8e/tool93873 reproduces the same early retirement:
+the reported soft/hard limits are both 1,048,576 bytes and viewer 7704 exits -25
+(SIGXFSZ) before any pixel or password-entry acceptance. Its bus 7703 and observer
+7705 are still live at observation and are subsequently joined by fixture cleanup.
+This is a deliberately failing application acceptance run, not a presentation pass.
+
+The retained app and generated Debian package are identical to the successful
+256 MiB run kCAd1m7iqo: app 2eb7015e, manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a;
+package 19,843,460 bytes/SHA-256
+30e0d38caf767c2222214a48538272394e9ea098ed14a575b76afe3df4800db8.
+Thus the original limit directly reproduces an OS file-limit termination; no
+product correction is indicated by this failure. The original cce38c8a run did
+not retain an exit status, and no particular file allocation is identified.
+cbb8e550 restores the already-passing 256 MiB ceiling and retains the explicit
+limit report. No product build or broader repeat of passed checks is needed.
+
+The diagnostic also exercises the repaired failure cleanup: exact supervisor
+7482/child7606/start6942 are pidfd-exited, systemd reports inactive/dead/status0,
+and all three protected endpoints refuse connection before desktop-user removal.
+The preceding userdel failure does not recur. camera-installed-limit-663d09f3.json
+binds nine files/234,371 bytes verified on CTE/TUF. QEMU 3360222 joins zero after
+107.607 seconds; four host listener deltas are zero and peak scratch
+4,795,617,280 bytes retires. Private state is reconciled and process/socket/RAM
+absence verified. Source and inputs stayed frozen through evidence copy. No job
+remains live; next camera acceptance is installed interruption/recovery and fresh
+authenticated capture, using the retained app. Broader camera/platform/release
+obligations remain OPEN. This append preserves the prior 16,135,692-byte audit
+prefix, SHA-256
+caa0f7501d8c536aee4b1a681ef422ec5b05a28026f1b6c445e01495b0661da7.

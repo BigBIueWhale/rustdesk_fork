@@ -148156,3 +148156,13 @@ The 7c58ad90 combined-failure baseline and 6429f3cb/fd93151b apps remain cached.
 Next is the corrected full application build and regular-diagnostic recording
 replay. Full-UI correction, other platforms, concurrent retention and broader
 R-S0/release acceptance remain OPEN.
+
+Fresh ledger count at 612db1c6, worHCiW172/tool23758 exits zero: 410,715 tokens /
+1,874,098 bytes, SHA-256
+38859ad41132f770e738c2ae0a5295ac2a1305d0991f0979e94f9df88c75b1d5.
+Pinned tokenizer, seven controls and whole-input round trip pass.
+logger-fixed-ledger-612db1c6.json binds eight files/115,560 bytes verified on
+both hosts. QEMU 2074558 joins zero after 30.311 seconds; peak RAM scratch
+402,976,768 bytes, three zero listener deltas and exact private/socket/RAM
+absence are verified. Approximate 400,000-token compression remains OPEN.
+This audit-only append preserves the counted ledger bytes.

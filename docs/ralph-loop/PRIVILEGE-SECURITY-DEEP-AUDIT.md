@@ -148976,3 +148976,15 @@ Next: installed Linux incoming-recording settings and output through the authori
 workflow. Broader worker/finalization/platform and complete R-S0/R-F5/release
 acceptance remain OPEN. This append preserves the prior 16,016,684-byte audit prefix,
 SHA-256 44a853e2df546e42c566930cbc946e49931924551e60db704c5d6dae11ac04dd.
+
+Fresh ledger count at 591f839e, ZQQKLL4GsR/tool21419 exits zero: 411,980 tokens /
+1,879,891 bytes, SHA-256
+c116af7cd2ea7720f67ec7cebaebb4a792b4678dacfcc8845e65444795ce2c82.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and complete
+round trip pass. incoming-finalization-ledger-591f839e.json binds eight files /
+115,695 bytes verified on CTE/TUF. QEMU 3693014 joins zero after 30.272 seconds;
+RAM scratch peaks at 403,120,128 bytes. Three zero listener deltas and exact
+private/QEMU/socket/RAM absence pass. The approximate 400,000-token compression
+target remains OPEN. This audit-only append preserves the counted ledger and prior
+16,022,859-byte audit prefix, SHA-256
+e04cd17cb5f1accb9e334f5e27885c74900aa5f725b02f3d5ae33a41fb4a90c5.

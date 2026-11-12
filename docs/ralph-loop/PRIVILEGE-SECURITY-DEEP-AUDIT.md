@@ -149523,3 +149523,14 @@ concurrency, requester death, wrong/stale principals, broader failure paths,
 physical-device and other-platform acceptance remain OPEN. This append preserves
 the prior 16,058,559-byte audit prefix, SHA-256
 4618f2c498b2bc63322920268ff699b57ed3b3798c2b921730be3019823ae221.
+
+Fresh ledger count at 2188b8b7, jnRVfLN64W/tool76353 exits zero: 413,414 tokens /
+1,886,552 bytes, SHA-256
+911e21b0980be73e4ac6f5b9b91c4b703fdcdb6222ce72a79d9c5b81d2ca9397.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and the full round trip pass.
+installed-recording-cancel-ledger-2188b8b7.json binds eight files/116,363 bytes
+copied and verified on CTE/TUF. QEMU 1741985 joins zero; three zero host listener
+deltas and private/socket/RAM retirement pass. The approximate 400,000-token
+compression target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,061,201-byte audit prefix, SHA-256
+98cf5b718dd09e3ba29ce2df13d4e7ef543f03070d6d012389662bf285213877.

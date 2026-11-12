@@ -148731,3 +148731,63 @@ private/QEMU/socket/RAM absence are verified. Approximate 400,000-token compress
 remains OPEN. This audit-only append preserves the counted ledger and prior
 16,003,774-byte audit prefix, SHA-256
 8ce27b15c1f8a3a928f3d6b072eaeb3c1c869d334212c92da81f9c4c11c9977e.
+
+## 2026-11-12 — incoming recording workers in the complete Linux application
+
+Prior iteration: progress; the admitted build continued through a verified wait.
+Continue R-S0/R-F5 recording correctness by integrating the already-tested workers
+into the full application before extending the overload scenario. This resolves
+the gap between current native component evidence and the earlier f4a55367 UI app;
+no product or fixture edit is needed for this checkpoint. TUF's existing SSH master
+is active. No host authentication, service or network configuration is changed.
+
+Before building, the superseded dbd57c51 logging-only app was authenticated against
+its retained build capsule and all 74 payloads, then retired under the shared VM
+lock using the existing identity-checked private-tree remover. Its parent identity
+was 66306:87340810; 70,606,848 allocated bytes were freed. Manifest
+6a739b6928d1fde6c33f35635cf312dc3ab5dd173290f16ce857a15ac4302937,
+inventory and receipt remain in incoming-worker-retired-dbd57c51.json: three files /
+36,634 bytes verified on both hosts. Baselines 6429f3cb, 7c58ad90 and f4a55367 remain;
+the new app restores the four-artifact cache limit. Deleted bytes are not retained.
+
+Build source 4d1d1153 / OQufC638iY / tool43781 completes successfully. After the
+tool handle expired, the final outer pass and exact joined-cleanup receipt were
+recovered and reconciled; the build was not repeated. The 74-payload manifest is
+6c827f474e1cc30d35dbe493b314f64770dfe8f3bf772466ef5401716f96ee64.
+All payload bytes and metadata are verified. The native core and readiness helper
+differ from f4a55367; the other 72 payloads match exactly. Four recording widget/model
+tests, thirteen view-mode tests and two native command tests pass. Compiler peak is
+10,737,418,240 bytes, equal to its limit, with zero swap/OOM/OOM-kill events.
+incoming-worker-app-4d1d1153.json binds ten files/323,967 bytes copied and hash-verified
+on CTE/TUF before replay. QEMU 3167051 joins zero after 1,274.454 seconds; RAM scratch
+peaks at 11,908,059,136 bytes. Four listener deltas are zero and exact private tree,
+QEMU, Unix socket and RAM absence are verified.
+
+The existing --incoming-recording replay at the same source/artifact,
+dTDb4FRsHt/tool49812, exits zero. Real GTK directory selection and automatic recording
+produce actual EACCES, zero output and visible Writing history. A new authenticated
+session records successfully with one active writer and preserved history; after
+disconnect, the same settings UI reports zero active/finishing writers. Both viewer
+generations show twelve fresh changing frames on their unchanged connections, with
+maximum observed ages 308/323 ms. Two private finalized WebMs total 48,979 bytes and
+decode eighteen distinct source counters, 72 through 89. One additional initial
+image shows the connection window over the counter desktop (retained PNG inspected);
+the counter appears 66 ms later. The incoming-only bounded-startup allowance is
+unchanged. Every frame's native decode/corruption check, subsequent counter/timing
+checks, truncated-file refusal and strict zero-prefix negative control pass.
+
+incoming-worker-ui-4d1d1153.json binds ten files/126,998 bytes copied and hash-verified
+on CTE/TUF. QEMU 3337164 joins zero after 125.118 seconds; RAM scratch peaks at
+3,026,956,288 bytes. Four listener deltas are zero, all fixture/app processes join,
+and exact private/QEMU/socket/RAM absence is verified. The tested app remains inert
+in the bounded artifact cache for the next scenario; no disposable image remains.
+
+This accepts these current-worker Linux user-mode UI cases, not full-app overload.
+Next: reuse the artifact while holding recording I/O, observe queue exhaustion and
+pending/finished UI states, decode the accepted prefix and measure continuing fresh
+viewer pixels. Native spawn failure, broader finalization/UI concurrency, installed
+root settings/recording, other platforms and complete R-S0/R-F5/release acceptance
+remain OPEN. The live ledger consolidates superseded incoming-recording narration
+into current implementation/evidence and retains those limits. This append preserves
+the prior 16,004,533-byte audit prefix, SHA-256
+d3f527663c5c038875f4f9b8ed170b1617137feb1fb0ed1b847b4186e1bedb47.

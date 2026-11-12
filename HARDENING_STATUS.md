@@ -6797,89 +6797,58 @@ and joined VM/RAM cleanup. The first run is retained in `recording-multi-4cf5264
 This is the production library with callback observation and retained-owner
 fixtures; multi-display Flutter UI and installed/root evidence remain OPEN.
 
-**Incoming recording write failure — selected Linux native capture caller ACCEPTED.**
-`af9df142` removes the error-discarding message wrapper. Each capture loop owns its
-optional recorder directly, checks typed frame writes, logs a failure and retires
-the failed recorder while continuing video publication. Construction errors are
-also handled explicitly. Baseline `eae0f747` fails retirement after actual EACCES;
-its four changing decoded images and fresh-recording controls pass. The corrected
-production library passes all fifteen native tests in five seconds after a
-164-second build. The same subscriber receives changing VP8 images through denial
-and restored storage; new recorder ownership produces a private finalized WebM
-containing both transmitted payloads. `recording-incoming-fixed-af9df142.json`
-binds nine files/90,102 bytes verified on both hosts, four zero listener deltas
-and joined VM/RAM cleanup. Baseline and initial fixture compile failure remain
-in their named evidence capsules and the audit. The final informational outer
-summary's stale fourteen-test label is corrected; named results and checked
-artifact/guest receipts already require fifteen, so passed behavior is not rerun.
+**Incoming recording — bounded workers/status; selected Linux native and full-UI cases ACCEPTED.**
+`src/server/incoming_recording.rs` (`e3facd49`) owns recorder construction, writes,
+epoch changes and finalization in workers. Capture admits eight queued batches per
+writer; the process retains at most 64 workers and 48 MiB of encoded payload,
+including in-flight writes. Overload closes recording admission with Writing failure
+while video continues. The outer video-service owner retains workers across capture
+restarts, closes all admissions at shutdown and joins each before releasing its slot.
+Status remains finishing through accepted-prefix drain and checked finalization;
+healthy new ownership preserves historical failure. Desktop uses authenticated
+read-only status IPC, Android reads in-process, and iOS reports unavailable.
+Desktop/Android settings distinguish live counts, unavailable status and history;
+privileged setting-write authority is unchanged.
 
-**Incoming recording completion/status — Linux components and controlled UI ACCEPTED.**
-`4e8d66a6` adds capture-owned checked finalization, bounded live writer counts
-and one retained historical failure. Completion follows the actual finish result;
-the status mutex is released during file I/O. Healthy new ownership does not erase
-failure history. Desktop reuses the authenticated read-only status snapshot;
-Android reads in-process, and iOS reports unavailable. Desktop/Android settings
-show live counts, unavailable status and historical failure distinctly. This
-changes no privileged setting-write authority.
-At `f4a55367`, seventeen native parent tests pass: real EACCES and late WebM
-finalization failure, retained status after owner retirement, healthy new output,
-continued decoded video, and bounded/malformed main-IPC status frames.
-`incoming-status-f4a55367.json` binds nine files/93,201 bytes on both hosts.
-The initial private-helper fixture compile error and its correction are retained
-separately; no behavioral result is claimed for that failed attempt.
-The full Linux Flutter app also builds at that source: four new status widget/model
-cases, thirteen existing view-mode cases and two native command cases pass.
-`incoming-status-app-f4a55367.json` binds ten files/322,522 bytes, exact 74-payload
-manifest `7f93ab278fefa2c1dd1b19b22ee8748533eddf956853ea638ae73cbeb6c1f949`,
-bounded compiler resources, four zero listener deltas and joined VM/RAM cleanup.
-The Dart payload, native core and readiness helper differ from `dbd57c51`; the
-other 71 payloads match. This is component and build integration evidence.
-
-The retained app passes the actual controlled-side UI scenario at `b301e708`:
-native directory selection and automatic incoming recording, real EACCES with no
-output and visible Writing history, then a new authenticated session with one active
-writer and that same history. After disconnect, the same UI reports no active or
-finishing writer. Both viewers present twelve fresh frames (maximum ages 320/314 ms).
-Two finalized private WebMs decode into eighteen distinct source-counter frames;
-one additional initial image shows the connection window, with the counter visible
-66 ms later. Only automatic incoming recording permits a bounded initial desktop
-prefix; decoding/corruption checks cover every frame, subsequent counters and timing
-are checked, and truncated files and the strict zero-prefix control are refused.
-`incoming-ui-b301e708.json` binds ten files/128,846 bytes on both hosts, four zero
-listener deltas and joined VM/RAM cleanup. Six fixture/observation failures and their
-exact cleanup remain in the audit and named capsules; none is counted as a pass.
-
-**Incoming recording storage isolation — Linux native component ACCEPTED.**
-`e3facd49` moves recorder construction, writes, epoch changes and finalization into
-owned workers. Capture admits at most eight queued batches per writer; the process
-retains at most 64 workers and 48 MiB of encoded payload, including in-flight writes.
-Overload closes recording admission and reports Writing failure while video continues.
-The outer video-service owner retains workers across capture restarts, closes all
-admissions at shutdown and joins every worker before releasing its slot. Status stays
-finishing through accepted-prefix drain and checked finalization; history survives.
 Baseline `d64bc142` produces zero subscriber frames during an actual recording write
-held for 1,001 ms. With the correction, twelve changing images decode while that
-syscall remains held; the full queue retires recording, completion stays pending,
-and release drains/joins with zero retained worker/byte credits. Another native case
-admits 64 idle workers, refuses the next and joins all even with producers still live.
-At `646ba50e`, all twenty-one focused tests pass, including EACCES/healthy retry,
-late finalization, status IPC and existing decoder/mailbox controls. Two independently
-stalled native writers retain exactly 48 MiB across in-flight frames and synthetic
-queued payloads; a third writer is refused. Injected write EIO releases every credit,
-and a fresh native recording succeeds. The synthetic payloads are discarded before
-muxing and establish only admission/accounting. A separate held finalization write
-preserves finishing status, unchanged file bytes and pending owner shutdown for
-100 ms, then joins with either successful finalization or an injected-EIO Finish
-failure. `incoming-worker-edges-646ba50e.json` binds nine files/89,816 bytes verified
-on both hosts, unchanged test-artifact hash, four zero listener deltas and joined
-VM/RAM cleanup. Initial correction and reproduced baseline evidence remain in
-`incoming-worker-e3facd49.json` and `incoming-blocked-baseline-d64bc142.json`.
+held for 1,001 ms. Corrected code delivers twelve changing decoded images while that
+syscall stays held; queue exhaustion retires recording, completion stays pending,
+and release drains/joins with zero retained worker/byte credits. Native tests also
+admit 64 idle workers, refuse the next and join all with producers still live.
+At `646ba50e`, all twenty-one focused cases pass, including EACCES/healthy retry,
+late finalization, status IPC and decoder/mailbox controls. Two stalled writers fill
+the shared 48 MiB budget with native in-flight frames and synthetic queued payloads;
+a third writer is refused. Injected EIO discards the synthetic queues before muxing,
+releases every credit, and permits a fresh native recording. This establishes
+admission/accounting, not synthetic decodability or measured RSS. A held finalization
+write preserves finishing status, file bytes and pending owner shutdown for 100 ms;
+both successful release and injected-EIO Finish failure then join. Evidence:
+`incoming-worker-edges-646ba50e.json`, `incoming-worker-e3facd49.json`, and
+`incoming-blocked-baseline-d64bc142.json`. Earlier EACCES/status implementation,
+baseline failures and fixture corrections remain in their capsules and the audit.
 
-The earlier full-app/UI evidence uses `f4a55367` and does not validate these workers.
-Next: build the updated app and observe actual UI completion and decodable saved
-output after overload. Native spawn failure, full-UI multiple writers/late failures,
-broader finalization failures, installed/root settings/recording and other platforms
-remain OPEN. These component results do not close R-S0/R-F5 or complete release acceptance.
+The full Linux Flutter app at `4d1d1153` includes these workers. Four recording
+widget/model tests, thirteen view-mode tests and two native command tests pass.
+`incoming-worker-app-4d1d1153.json` binds ten files/323,967 bytes and the 74-payload
+manifest `6c827f474e1cc30d35dbe493b314f64770dfe8f3bf772466ef5401716f96ee64`.
+The native core and readiness helper differ from retained `f4a55367`; 72 payloads
+match exactly. Compiler memory stays within 10 GiB with zero swap/OOM events.
+The same app passes native directory selection and automatic incoming recording,
+actual EACCES with no output and visible Writing history, then a new authenticated
+session with one active writer and that history. After disconnect, the same UI
+shows no active or finishing writer. Both viewers present twelve fresh frames
+(maximum observed ages 308/323 ms). Two finalized private WebMs decode eighteen
+distinct source-counter frames; one initial desktop/connection-window image precedes
+the counter by 66 ms. Every frame is decoded and checked for corruption; subsequent
+counters/timing, truncated-file refusal and strict zero-prefix refusal are checked.
+`incoming-worker-ui-4d1d1153.json` binds ten files/126,998 bytes. Both capsules are
+verified on CTE/TUF with four zero listener deltas each and joined VM/RAM cleanup.
+
+Next: reuse this app to force storage slowdown/queue overload through the full UI,
+observe completion and decode the accepted saved prefix while the viewer stays fresh.
+That case, native spawn failure, full-UI multiple writers/late failures, broader
+finalization failures, installed/root settings/recording and other platforms remain
+OPEN. These selected cases do not close R-S0/R-F5 or complete release acceptance.
 
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,

@@ -1218,6 +1218,10 @@ PY
           fi
         done
       fi
+      if [ "$PEER_SCENARIO" = camera-shared ] && [ "$status" -ne 0 ]; then
+        [ ! -f "$SERVER_LOG" ] || tail -c 131072 -- "$SERVER_LOG" >&2
+        emit_runtime_logs SERVER "$HOME/.local/share/logs"
+      fi
       if [ -n "$SERVER_PID" ] && [ -n "$SERVER_START" ] \
         && "$READY" --is-running "$SERVER_PID" "$SERVER_START"; then
         "$READY" --stop "$SERVER_PID" "$SERVER_START" || cleanup_status=$?

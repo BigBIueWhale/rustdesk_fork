@@ -1516,6 +1516,8 @@ if [ "$PEER_SCENARIO" = viewer-isolation ] || [ "$PEER_SCENARIO" = camera-shared
     || [ "$(stat -c '%u:%g:%a:%h:%s' "$COORD/slow.ready")" != "$HOST_UID:$HOST_GID:600:1:6" ] \
     || [ "$(<"$COORD/slow.ready")" != ready ]; then
     cat "$SLOW_LOG" >&2
+    peer_vm_docker logs "$SERVER_CID" > "$SERVER_LOG" 2>&1 || true
+    cat "$SERVER_LOG" >&2
     die 'second viewer did not authenticate and present initial pixels'
   fi
   SLOW_CID=$(<"$SLOW_CID_FILE")

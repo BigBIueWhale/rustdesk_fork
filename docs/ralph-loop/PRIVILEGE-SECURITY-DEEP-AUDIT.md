@@ -151057,3 +151057,14 @@ exact process/socket/RAM absence before removal. No product build or extra
 application artifact occurs. Installed congestion and broader acceptance stay
 OPEN. This append preserves the prior 16,159,821-byte audit prefix, SHA-256
 ad75455cc319b334993dbf7a5dbaa5c79786433dbbbe70f7feae9b657e4e7a45.
+
+Fresh ledger count at 1781547e, oNkH6PRbpE/tool74731, passes: 418,500 tokens /
+1,909,014 bytes, SHA-256
+ced68276b0cb5a7b7fa09857b08d1cc1429f9996bdb1a24a1216192576302076.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+backoff-ledger-1781547e.json binds eight files/115,679 bytes on CTE/TUF.
+QEMU 3741565 joins zero after 30.319 seconds with three zero listener deltas
+and exact private/process/socket/RAM retirement. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,163,495-byte audit prefix, SHA-256
+9ff94907c0d492713e1388e7eb687632ee4c0be734d9cdaf63a7ed04c4923bcb.

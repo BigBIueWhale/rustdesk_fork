@@ -4065,6 +4065,28 @@ retires and all eight listener deltas are zero. The audit's 2026-10-31 missing-
 estimate entry binds A/B artifacts and raw evidence. Complete application,
 target-native R-F5 recovery/soak and open work remain OPEN.
 
+**Installed Linux Remote presentation/recovery prerequisite — PASS.**
+TUF `F2gDV5RWjs`, fixture `fcdc29d8`, reuses app `2eb7015e` in its normal
+dependency-complete Debian package. The actual root supervisor and PAM/logind-
+selected desktop child serve a password-authenticated viewer. A 640×480 counter
+source publishes every 250 ms; source, viewer and pixel observer share one
+monotonic time namespace. After pidfd-owned viewer pauses of 2/6/12 seconds,
+four distinct fresh frames appear within **1,034/1,033/676 ms**, below the fixed
+2,500-ms deadline. Frozen viewer pixels, continuing source advancement and
+kernel stopped state are observed throughout each pause. Three-second healthy
+windows have maximum frame ages **341/338/342/343 ms** (baseline, then each
+recovery), below the unchanged 1,000-ms limit. The same window/TCP connection,
+service child, listener inode and protected/user credential fields persist;
+viewer resource growth stays bounded. All processes, the desktop and normal
+reinstall/remove/purge lifecycle retire.
+`remote-installed-recovery-fcdc29d8.json` binds nine files/168,826 bytes on
+CTE/TUF, 183.388 seconds, four zero host listener deltas and joined private/RAM
+cleanup. The first attempt rejected the new source display/geometry in the
+observer's fixed header list; its failed evidence is retained separately.
+This establishes the installed setup for subsequent impairment acceptance.
+Actual installed network loss/outage, baseline-percentile recovery, input
+latency, multi-hour drift, physical scanout and other platforms remain OPEN.
+
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without
 rebuilding. All 120 unique three-key requests injected into the viewer produce

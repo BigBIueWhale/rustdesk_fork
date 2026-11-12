@@ -150797,3 +150797,59 @@ deltas and exact private/process/socket/RAM retirement. The approximate
 400,000-token target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,145,458-byte audit prefix, SHA-256
 6c87b472b8f0f390b6d35c6868d7585fd1bbdeb09cf07d73f2c9cbdedb6d572c.
+
+### 2026-11-13 — Installed Remote displayed-frame recovery prerequisite passes
+
+R-F5 already has standalone Linux loss/outage and healthy/impaired long-session
+evidence. Select the normal installed package's actual Remote presentation path
+as the missing prerequisite for installed network impairment, rather than repeat
+those standalone cases. cde42dd3 adds the package route and UID-4001 actor,
+reusing the existing pixel source/observer and current app 2eb7015e, manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a.
+No product change or full build. The observer uses retained process identity and
+pidfd signals; Linux documents their stable process-object semantics at
+https://man7.org/linux/man-pages/man2/pidfd_send_signal.2.html.
+Source/viewer/observer time-namespace inode equality establishes a shared
+monotonic clock, whose namespace scope is documented at
+https://man7.org/linux/man-pages/man7/time_namespaces.7.html.
+The existing 250-ms source, 1,000-ms freshness bound, 2,500-ms four-frame
+recovery deadline and 8-thread/16-FD/128-MiB growth bounds remain unchanged.
+
+First run eXC0ATioLU/tool12953 authenticates and decodes frame 8 but rejects
+the source-history header before any freshness measurement. The fixed parser
+accepted :98/640x480 and :77/1024x768, but not the installed :77/640x480 source.
+fcdc29d8 admits that exact header; publication order, timestamps, ownership,
+file identity and pixel checks remain. remote-installed-recovery-cde42dd3.json
+binds nine files/175,357 bytes on both hosts. Failed guest workload, QEMU
+3471715 joined zero, 84.622 seconds, four zero listener deltas and exact
+private/socket/process/RAM retirement are reconciled before editing/replay.
+
+F2gDV5RWjs/tool82867 passes on the corrected fixture. Supervisor 7617 and
+child 7740/start 7088/generation 4f8f76c4-8ccb-4acd-9c9e-0aecb91337d0 map the
+exact packaged Rust core. Viewer 7836 authenticates through its real password
+prompt; source 7835 and observer 7837 share time namespace 4026531834.
+Baseline maximum displayed age is 341 ms. Actual paused durations of
+2,035/6,045/12,044 ms retain frozen pixels and kernel state T while the source
+advances. After resume, first fresh pixels arrive in 334/332/149 ms, and four
+distinct fresh frames in 1,034/1,033/676 ms. Each subsequent three-second
+healthy window has maximum age 338/342/343 ms and maximum observation gap
+52/55/54 ms. The same window and TCP identity survive all cycles. Viewer RSS
+decreases from 378,548 KiB to 374,680 KiB; descriptors peak at 47 from 45 and
+threads decrease from 65 to 54. The actor/source/viewer/observer exit zero;
+source completes 151 publications. Listener inode 25704, service child and
+protected/user credentials stay unchanged.
+PAM desktop closure reaps the child; mutual CPace, wrong-password/ordinary-user
+refusal, reinstall/remove/purge and dependency audits pass. Four inode-zero
+TIME_WAIT entries drain to the original guest network inventory.
+
+remote-installed-recovery-fcdc29d8.json binds nine files/168,826 bytes copied
+and hash-verified on CTE/TUF before source/input unfreeze. QEMU 3572488 joins
+zero after 183.388 seconds; peak RAM scratch 4,285,255,680 bytes retires, all four
+host listener deltas are zero, and exact private/socket/process/RAM absence
+is verified. No live job remains. This is actual installed Linux software-Xvfb
+presentation and paused-viewer recovery, not installed network impairment or
+complete R-F5. Baseline-percentile recovery, input response, multi-hour drift,
+physical scanout and other platform/role combinations remain OPEN. The next
+decisive step is guest-only network impairment of this same installed path.
+This append preserves the prior 16,146,131-byte audit prefix, SHA-256
+51db8e373fa15192b0d1aa61debbf9629ddc5f7e2b64889804cb42901df83689.

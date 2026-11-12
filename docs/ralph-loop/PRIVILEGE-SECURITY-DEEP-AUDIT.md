@@ -148804,3 +148804,90 @@ at 403,120,128 bytes. Three zero listener deltas and exact private/QEMU/socket/R
 absence are verified. This audit-only append preserves the counted ledger and
 prior 16,008,791-byte audit prefix, SHA-256
 efcfd18397a1db54c7af0886128dc1ff63969286acbfda659334638660236bd5.
+
+## 2026-11-12 — full-app recording overload, finishing status and decoded saved prefix
+
+Prior iteration: progress. Continue the selected R-S0/R-F5 recording requirement by
+closing the full-app overload gap with the retained 4d1d1153 artifact, manifest
+6c827f474e1cc30d35dbe493b314f64770dfe8f3bf772466ef5401716f96ee64.
+No product rebuild or product source edit is needed. Native kernel-write blocking,
+queue/byte/worker admission and joined ownership already have component evidence;
+this slice observes the actual UI, unchanged viewer connection and saved pixels.
+
+94c12f2e extends the existing incoming-recording scenario. Only this scenario compiles
+SMOKE_RECORDING_STALL into the manifested loopback shim. Its write interposer selects
+one private recording-file descriptor, checks metadata, publishes bounded private
+markers and holds a payload-sized call for at most 30 seconds. It adds no thread or
+process; release calls the next real write implementation and requires a complete
+write receipt with unchanged file metadata throughout the hold. Runtime receipts
+explicitly name the interposer. Primary loader/write references and implications:
+RTLD_NEXT resolves the next implementation; a write may be partial or fail, so the
+fixture cannot infer completion from admission or marker creation alone.
+https://man7.org/linux/man-pages/man3/dlsym.3.html
+https://man7.org/linux/man-pages/man8/ld.so.8.html
+https://man7.org/linux/man-pages/man2/write.2.html
+
+The controller requires a new actual queue-overflow error from a retained log
+descriptor, rather than reusing the preceding EACCES Writing history. Settings must
+show exactly Finishing: 1 both before and after twelve fresh viewer frames while
+the call is held. After release, settings must show no live writer and the complete
+saved output must decode before the viewer disconnects. Twelve more fresh frames
+and the same connection identity are then required. The earlier directory chooser,
+real EACCES, healthy retry, same-UI history and disconnect/cleanup controls remain.
+
+Initial j3Z2OU9TiI/tool29315 exits 1 after reaching held-write/finishing/fresh pixels.
+Native decoding reports no corruption, but the counter oracle rejects packet 2 at
+66 ms after first counter 72. That image was not retained by the original diagnostic,
+which only captured an unrecognized first image. No complete scenario pass is claimed.
+incoming-overload-ui-94c12f2e.json binds thirteen files/330,362 bytes verified on both
+hosts. QEMU 3428176 joins zero after 141.076 seconds; scratch peaks at 3,028,307,968
+bytes. Four listener deltas are zero and RAM/QEMU/socket absence is verified.
+After durable-copy verification and complete inventory, the failed private tree
+66306:78162062 is retired: 62,091,264 allocated bytes. Its duplicate app/input-provider
+bytes matched the retained manifests. The 283-byte retirement receipt is on both hosts.
+
+6b3d2379 captures the first unrecognized decoded image regardless of its packet
+position, and includes the bounded server log in failure diagnostics. Acceptance is
+unchanged. 4MUd4rzwe9/tool29335 then passes: one 2,409-byte write held for 6,113 ms,
+viewer maximum observed ages 311/307 ms during/after the hold, and 26 distinct saved
+source counters. Two initial desktop images precede the first counter at 133 ms;
+the retained PNG visibly shows the connection-manager window over the source.
+incoming-overload-ui-6b3d2379.json binds ten files/128,045 bytes on both hosts.
+QEMU 3436896 joins zero after 133.961 seconds; RAM scratch peaks at 3,026,407,424 bytes,
+with four zero listener deltas and exact private/QEMU/socket/RAM absence.
+
+Source review finds the initial-image oracle's first-counter assumption unjustified:
+the source raises itself on each 250-ms publication, while another X client can map
+or raise the connection window between publications. Official Xlib stacking semantics:
+https://www.x.org/releases/X11R7.6/doc/libX11/specs/libX11/libX11.pdf
+4b55a23c bounds initial non-counter desktop images by the existing 1,000-ms/32-image
+limits independently of first-counter ordering. All images still pass native decoding
+and corruption checks, all recognized counters retain ordering/source timing checks,
+and any unrecognized image after the startup bound fails. Outgoing recording still
+uses zero allowance; truncated-file and strict zero-startup controls remain. Each
+accepted initial desktop image now reports its timestamp and preceding counter.
+The original packet-2 image is unavailable; the observed connection-window behavior
+explains why the old ordering assumption is invalid, not what that exact lost image
+contained. Its failure is preserved rather than retrospectively promoted to a pass.
+
+Final Txc7XIDmA4/tool13999 exits zero. A 1,319-byte write is held for 6,360 ms; the
+real queue exhausts and settings retain Finishing while twelve fresh frames arrive.
+Release completes that write and finalization. Before disconnect, the private
+64,744-byte WebM decodes 27 images: two initial desktop images at 0/66 ms, followed
+by 25 distinct source counters 73 through 97, first counter at 267 ms. The retained
+PNG shows the connection window during its initial painting. Truncation and strict
+zero-startup controls refuse. Twelve further fresh frames arrive on the same viewer
+connection; maximum observed ages are 304/319 ms during/after the hold. EACCES and
+healthy-retry viewers also pass, with maximum observed ages 318/314 ms.
+
+incoming-overload-ui-4b55a23c.json binds ten files/113,658 bytes copied and hash-verified
+on CTE/TUF. QEMU 3487387 joins zero after 133.808 seconds; RAM scratch peaks at
+3,026,604,032 bytes. Four listener deltas are zero, all app/fixture processes join,
+and exact private/QEMU/socket/RAM absence is verified. No application cache was added.
+This is a bounded libc-write hold in a Linux user-owned full application; it is not
+a physical-filesystem slowdown, installed/root acceptance or cross-platform proof.
+Next: full-app late-finalization failure and truthful settings outcome. Native spawn
+failure, broader finalization/concurrency, installed/root and other platforms, complete
+R-S0/R-F5 and release acceptance remain OPEN. This append preserves the prior
+16,009,616-byte audit prefix, SHA-256
+e749a420efc80b3bd8d90879b5c4f45aaf0ed2ca59a9a6f80ade99ffefca4094.

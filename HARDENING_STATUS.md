@@ -6844,11 +6844,27 @@ counters/timing, truncated-file refusal and strict zero-prefix refusal are check
 `incoming-worker-ui-4d1d1153.json` binds ten files/126,998 bytes. Both capsules are
 verified on CTE/TUF with four zero listener deltas each and joined VM/RAM cleanup.
 
-Next: reuse this app to force storage slowdown/queue overload through the full UI,
-observe completion and decode the accepted saved prefix while the viewer stays fresh.
-That case, native spawn failure, full-UI multiple writers/late failures, broader
-finalization failures, installed/root settings/recording and other platforms remain
-OPEN. These selected cases do not close R-S0/R-F5 or complete release acceptance.
+**Full-app overload — selected Linux scenario passes at `4b55a23c`, same app.**
+A test-only libc write interposer holds one 1,319-byte recording write for 6,360 ms.
+The actual queue-overflow error appears; the same settings UI remains Finishing
+while twelve fresh viewer frames arrive. Release finishes recording and a private
+64,744-byte WebM decodes into 25 distinct source counters before disconnection.
+Twelve further fresh frames arrive on the same connection; maximum observed ages
+are 304 ms while held and 319 ms afterward. Actual EACCES/healthy retry also pass.
+The startup desktop allowance remains bounded to one second/32 images, independently
+of first-counter ordering: the connection window can map after a counter was captured.
+Every image still passes native decoding/corruption checks; later images require
+source counters/timing, with truncated and strict zero-startup controls. This run has
+two initial desktop images and a first counter at 267 ms. The preceding failed image
+check and diagnostic-only pass remain in the audit; the failure is not counted as
+accepted. `incoming-overload-ui-4b55a23c.json` binds ten files/113,658 bytes verified
+on both hosts, four zero listener deltas and joined VM/RAM cleanup. This is interposed
+I/O in the full app; native kernel-write blocking has separate component evidence.
+
+Next: exercise late finalization failure through the full app's settings UI.
+Native spawn failure, full-UI multiple writers/late failures, broader finalization
+failures, installed/root settings/recording and other platforms remain OPEN.
+These selected cases do not close R-S0/R-F5 or complete release acceptance.
 
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,

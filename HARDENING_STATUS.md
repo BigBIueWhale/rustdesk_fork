@@ -554,9 +554,12 @@ passed native failure/retry at `54db1ce2`. Evidence remains
 verified: 73 match retained `fd93151b`; its original manifest, 48,040-byte
 selector library and receipt remain for reconstruction. This releases 70,598,656
 allocated bytes while retaining 62,717 bytes on both hosts
-(`recording-retired-d3bd788d.json`). The accepted `6429f3cb`, original
-`7e6f6459` and `fd93151b` bundles remain; the fourth cache slot holds
-the recording application `8543fa9e`.
+(`recording-retired-d3bd788d.json`). The obsolete `7e6f6459` bundle is also
+retired after exact manifest/74-payload verification, releasing 70,594,560
+allocated bytes. Its manifest, inventory and cleanup receipt remain on both
+hosts (`recording-clock-retired-7e6f6459.json`); its original payload bytes
+are not retained. The four cache generations now hold `6429f3cb`, `fd93151b`,
+the recording baseline `8543fa9e` and corrected application `7c58ad90`.
 Native recording-folder replay at `fc52d6a8`, TUF `WAK2813C72`, also passes on
 the same `fd93151b` bundle without rebuilding. The real GTK chooser selects an
 exact Unicode path; Cancel preserves that path and the settings file's identity
@@ -6656,7 +6659,7 @@ hardware and installed-root recording, creator/wrong-principal and authorized UI
 transactions, native Apple ACLs and Windows/macOS acceptance remain OPEN.
 These named Linux component results establish no overall recording or LPE closure.
 
-**Viewer recording failure status — Linux caller/native recovery checks pass; repeated-start timing acceptance OPEN.**
+**Viewer recording failure status — Linux caller/native recovery and repeated-start timing checks pass.**
 The retained native baseline `fd93151b` demonstrates EACCES with no error,
 a falsely active toolbar and no output, while the display stays fresh
 (`recording-failure-baseline-c99cea4d.json`). The unchanged scenario requires
@@ -6696,7 +6699,7 @@ and joined cleanup pass. Nine-file capsules
 `native-recording-retry-38d88ae3.json` and
 `native-recording-repeat-38d88ae3.json` bind the two runs.
 
-**Recording epochs — native clock correction passes; complete UI regression OPEN.**
+**Recording epochs — native clock correction and five-cycle Linux UI regression pass.**
 The multiple-file failure at `15584bf9` reveals an incorrect one-file
 assumption: clock rollback intentionally finalizes one file and opens another,
 as the existing native recorder coverage requires. The second filename coincides
@@ -6724,9 +6727,21 @@ obsolete expected test name; its registry is corrected and checked against all
 38 retained native passes. This is component acceptance, not a wrapper pass.
 Evidence is `recording-clock-baseline-a16f9d38.json` and
 `recording-clock-accepted-a724ab7a.json`; the audit binds exact artifacts.
-The next decisive step is a corrected full-app build and the unchanged
-five-attempt native UI scenario. Component acceptance does not close that
-integration result or identify the earlier unclassified file-stage failure.
+The corrected full application `7c58ad90` builds successfully with thirteen
+Flutter checks and two Rust command checks. Only `librustdesk.so` differs from
+`8543fa9e`; the other 73 payloads match. `recording-clock-app-7c58ad90.json`
+binds the build and manifest. The five-attempt native UI replay at `4dbb7387`
+passes with unchanged acceptance bounds: all fifteen VP9 files independently
+decode, totaling 109 frames across real focus loss/return. Each attempt finishes
+while the viewer is alive, with bounded source/media timing and inter-file gaps;
+truncated copies refuse, and the final three files remain unchanged after exit.
+EACCES feedback, inactive status, retry and fresh display, native Unicode-folder
+selection, Cancel and viewer-restart persistence also pass. Capsule
+`native-recording-clock-4dbb7387.json` binds nine files/134,295 bytes verified on
+both hosts, zero listener deltas and joined VM/RAM retirement. This closes the
+selected Linux integration gap; the earlier unclassified file-stage failure
+remains unclassified. The next recording acceptance gap is actual full-UI
+finalization failure and truthful completion/retry after it.
 
 Explicit full-UI finalization failures, multiple writers and late failures,
 blocked recording I/O, installed/root and other-platform recording remain OPEN.

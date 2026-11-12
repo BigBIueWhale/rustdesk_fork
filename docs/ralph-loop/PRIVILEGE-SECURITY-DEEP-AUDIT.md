@@ -147803,3 +147803,64 @@ on both hosts. QEMU 1569643 joins zero after 30.245 seconds; peak RAM scratch
 403,169,280 bytes, three zero listener deltas and exact private/socket/RAM
 absence are verified. The approximate 400,000-token compression remains OPEN.
 This audit-only append preserves the counted ledger.
+
+## 2026-11-12 — Corrected recording clock passes the full Linux UI scenario
+
+Selected requirement: finish the pending R-S0/R-F1 recording integration check
+before moving to another surface. The prior component correction now has exact
+full-application evidence. Prior audit prefix: 15,942,298 bytes, SHA-256
+5182696592f018b7889feb7a15485d56e789d7d83a9ca91ed0f98ac5400a81f6.
+
+The four-generation application cache was full. After all 74 payloads and the
+manifest were checked against its accepted build receipt, the obsolete
+7e6f6459391bc767b802914a502b4daa23d813ab generation was retired under the shared
+run lock by exact parent identity. This releases 70,594,560 allocated bytes.
+Three provenance files/42,348 bytes, including the original manifest and complete
+inventory, are verified on both hosts in recording-clock-retired-7e6f6459.json.
+Original payload bytes are intentionally retired, with no reconstruction claim.
+6429f3cb, fd93151b and 8543fa9e remain for accepted package/reference/baseline work.
+
+The new full app is 7c58ad908ec2ee97af84708a8c0d62c2009b56fb, tree
+65bb7f90e05b29e50a4cff20f04013d030f96dae, manifest SHA-256
+73b0d724cd758774f4adda8f6d1d4d21befb52e217aaeacdece0e79b52cddc5b.
+hd2eGakl9F/tool31348 exits zero, producing 74 payloads/70,385,316 bytes.
+Only bundle/lib/librustdesk.so differs from the retained 8543fa9e app; all other
+73 payloads match. Thirteen Flutter tests and two Rust command tests pass,
+including offline inputs/lock checks, bridge generation and post-build integrity.
+Compiler memory is capped at 10 GiB with two jobs, zero swap and zero OOM events.
+The pinned engine remains ddb1541d. QEMU 1595624 joins zero after 1,295.695 seconds;
+peak admitted RAM scratch is 11,906,822,144 bytes with 13,445,165,056 bytes minimum
+host available memory. Four listener deltas are zero and exact private/socket/RAM
+retirement is verified. recording-clock-app-7c58ad90.json binds ten files/318,731
+bytes, copied and digest-verified on CTE and TUF.
+
+4dbb7387 adds precise diagnostics for backward/inter-file gaps and aggregate
+timing refusal; it changes no acceptance bound or product behavior. Its native
+UI run Yk6gJgAn4p uses the new app without rebuilding. Following restored SSH,
+the original tool7624 handle is unavailable; authoritative durable guest/outer
+pass receipts and the supervisor-waited QEMU result establish completion.
+The run is not restarted to replace the lost observation handle.
+
+Five consecutive toolbar recordings each include real focus loss/return. All
+three epochs per attempt decode completely with native libvpx: 21, 23, 22, 21
+and 22 frames, respectively; aggregate durations 4,542/5,040/4,799/4,533/4,787 ms,
+output sizes 40,494/41,834/42,263/40,692/42,271 bytes. Every file is private 0600,
+has a first keyframe, validated source identities/timing and complete finite WebM;
+truncated copies refuse. The unchanged 500 ms per-frame, inter-file gap and
+aggregate drift bounds pass. Stop finalizes all files before viewer exit.
+The last three files retain identical identities and hashes after viewer exit.
+EACCES feedback, stopped status, available retry, no failed output and four fresh
+display frames pass (maximum observed age 300 ms). Both native Unicode-directory
+selection/cancellation and fresh-viewer persistence checks pass; each generation
+and the server/source/display fixtures join cleanly.
+
+native-recording-clock-4dbb7387.json binds nine files/134,295 bytes verified on
+both hosts. QEMU 1714583 joins zero after 160.395 seconds; peak RAM scratch is
+3,030,175,744 bytes, four listener deltas are zero, and exact private/socket/RAM
+absence is verified under the shared lock. This closes the selected five-cycle
+Linux UI integration gap. No timing tolerance is relaxed and no passed run is
+repeated. The historical bd053a09 file-stage result remains unclassified.
+Full-UI finalization failure/retry is the next recording acceptance gap;
+multiple/late writers, blocked I/O, controlled-side write-result propagation,
+installed/root and other-platform recording, R-S0/R-F5 and broader release
+acceptance remain OPEN. No live instruction or normative requirement changes.

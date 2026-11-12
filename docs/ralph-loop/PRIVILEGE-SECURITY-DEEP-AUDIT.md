@@ -150260,3 +150260,14 @@ reacquisition, installed-service camera behavior, Windows and broader release
 acceptance remain OPEN. Next: loss/recovery and reacquisition on the same running
 application. Preserve the prior 16,106,498-byte audit prefix, SHA-256
 f71f093d5d10c2ac552a4a23aa556458b7fb7babaf90dc74ef84fed73244d579.
+
+Fresh ledger count at 67361979, z1nXxPAiBe/tool15292, passes: 415,834 tokens /
+1,897,757 bytes, SHA-256
+6a9d7c8b51a69e99df94d751a1f17da69d7331ebba92925cf23722ba61e1c632.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-shared-ledger-67361979.json binds eight files/116,860 bytes on CTE/TUF.
+QEMU 2930231 joins zero after 30.279 seconds, with three zero listener deltas
+and exact private/process/socket/RAM retirement. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,110,135-byte audit prefix, SHA-256
+ba01075886da386c7b4e0695b66833e25ee7324e2fc318d53e32453bacabdc68.

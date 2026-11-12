@@ -7803,7 +7803,7 @@ static int recording_path_visible(unsigned int pid) {
 #include "flutter-peer-recording.h"
 
 static int exercise_recording_directory(Display *display, const ViewerWindow *viewer,
-                                         SourceHistory *history,
+                                         SourceHistory *history, const char *start,
                                          const ConnectionIdentity *connection,
                                          const ProcessResources *baseline, int restore) {
     Window main = None;
@@ -7852,6 +7852,7 @@ static int exercise_recording_directory(Display *display, const ViewerWindow *vi
         !resources_are_bounded(baseline, &resources)) goto out;
     print_resources("recording-directory", restore ? 2U : 1U, &resources);
     if (restore && (recording_failure(display, viewer, history) != 0 ||
+        recording_finalization_failure(display, viewer, history, start) != 0 ||
         recording_output(display, viewer, history) != 0 ||
         wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0 ||
         read_connection_identity(&final) != 0 || !same_connection(connection, &final) ||
@@ -8760,7 +8761,7 @@ int main(int argc, char **argv) {
     if (argc == 6 && (strcmp(argv[5], "--recording-directory") == 0 ||
                       strcmp(argv[5], "--recording-restore") == 0)) {
         int result = exercise_recording_directory(display, &viewer, &history,
-                         &current_connection, &baseline_resources,
+                         argv[4], &current_connection, &baseline_resources,
                          strcmp(argv[5], "--recording-restore") == 0);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;

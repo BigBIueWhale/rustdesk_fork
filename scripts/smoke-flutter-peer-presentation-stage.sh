@@ -1255,11 +1255,18 @@ PY
     credential_rotated=0
     all_stalled_observed=0
     soak_observed=0
+    recording_frozen=0
     next_generation=2
     for _ in $(seq 1 3000); do
       if [ -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
         stop_seen=1
         break
+      fi
+      if [ "$PEER_SCENARIO" = recording-directory ] && [ "$recording_frozen" -eq 0 ] \
+        && [ -e "$COORD/recording.freeze" ]; then
+        /usr/bin/python3 -I -S /source/scripts/flutter-peer-recording-freeze.py \
+          "$SERVER_PID" "$SERVER_START"
+        recording_frozen=1
       fi
       if [ "$LONG_SOAK" -eq 1 ] && [ "$soak_observed" -eq 0 ] \
         && [ -e "$COORD/soak.begin" ]; then
@@ -1755,7 +1762,10 @@ PY
     if [ "$LONG_SOAK" -eq 1 ] || [ "$INPUT_RESPONSE" -eq 1 ]; then
       viewer_rust_log=info
     fi
-    (cd /app/bundle && exec env "${viewer_environment[@]}" RUST_LOG="$viewer_rust_log" "$APP" --connect 127.0.0.1) \
+    (cd /app/bundle
+      # Let the recording fault return EFBIG instead of terminating the fixture app.
+      [ "$PEER_SCENARIO" != recording-directory ] || trap '' XFSZ
+      exec env "${viewer_environment[@]}" RUST_LOG="$viewer_rust_log" "$APP" --connect 127.0.0.1) \
       >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
@@ -1977,6 +1987,8 @@ PY
       if [ "$viewer_generation" -eq 2 ]; then
         grep -Eq '^FLUTTER_PEER_RECORDING_DENIED kernel=EACCES error_visible=1 active=0 retry_available=1 files=0 fresh_pixels=4 maximum_age_ms=[0-9]+$' \
           <<<"$controller_output" || fail 'recording failure outcome is absent'
+        grep -Eq '^FLUTTER_PEER_RECORDING_FINALIZE_FAILURE_OK fault=RLIMIT_FSIZE error_visible=1 active=0 retry_available=1 files=[1-8] unchanged=true limit=restored fresh_pixels=4 maximum_age_ms=[0-9]+$' \
+          <<<"$controller_output" || fail 'recording finalization failure outcome is absent'
         grep -Eq '^FLUTTER_PEER_RECORDING_OUTPUT_OK files=[2-8] packets=[0-9]+ decoded_frames=[0-9]+ first_frame=[0-9]+ last_frame=[0-9]+ duration_ms=[0-9]+ bytes=[0-9]+ path=selected mode=0600 stopped=ui viewer=alive truncated=refused focus_refresh=true continuity=verified$' \
           <<<"$controller_output" || fail 'native recording decode result is absent'
         grep -Fxq 'FLUTTER_PEER_RECORDING_CYCLES_OK attempts=5 stopped=ui decoded=true' \

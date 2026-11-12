@@ -3,6 +3,7 @@
 
 #include <vpx/vpx_decoder.h>
 #include <vpx/vp8dx.h>
+#include <sys/resource.h>
 
 /* A bounded reader for this fixture's finalized, single-track WebM files.
  * It does not implement a general player. Native libvpx decodes every packet;
@@ -281,6 +282,145 @@ out:
     return result;
 }
 
+
+/* The viewer stays an owned child of the scenario launcher throughout this
+ * check. Limits change only inside its disposable container, with identity and
+ * liveness checked before both application and restoration. */
+static int recording_finalization_failure(Display *display, const ViewerWindow *viewer,
+                                           SourceHistory *history, const char *start) {
+    int coord = -1, process = -1, pidfd = -1, limited = 0, frozen = 0, result = -1;
+    DIR *directory = NULL;
+    FILE *status = NULL;
+    char path[64], state = '\0', line[512], names[8][256];
+    ConfigFileState before[8] = {0}, after = {0};
+    unsigned int count = 0U, pid = (unsigned int)viewer->pid;
+    unsigned long long ignored = 0U;
+    struct rlimit original = {0}, limit = {0}, observed = {0};
+    struct stat metadata;
+    AtspiAccessible *error = NULL, *active = NULL;
+    const char *phase = "identity";
+    uint64_t fresh = 0U, age = 0U;
+    if (viewer->pid > INT_MAX ||
+        snprintf(path, sizeof(path), "/proc/%lu", viewer->pid) <= 0) goto out;
+    coord = open_coord_root();
+    process = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    pidfd = (int)syscall(SYS_pidfd_open, (pid_t)pid, 0U);
+    if (coord < 0 || process < 0 || pidfd < 0 || !viewer_pidfd_alive(pidfd) ||
+        fstat(process, &metadata) != 0 || metadata.st_uid != geteuid() ||
+        viewer_process_state(process, pid, start, &state) != 0) goto out;
+    int fd = openat(process, "status", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) goto out;
+    status = fdopen(fd, "r");
+    if (status == NULL) { close(fd); goto out; }
+    while (fgets(line, sizeof(line), status) != NULL) {
+        if (strncmp(line, "SigIgn:", 7U) == 0 &&
+            sscanf(line + 7, "%llx", &ignored) != 1) goto out;
+    }
+    if (ferror(status) || (ignored & (UINT64_C(1) << (SIGXFSZ - 1))) == 0U ||
+        prlimit((pid_t)pid, RLIMIT_FSIZE, NULL, &original) != 0 ||
+        original.rlim_cur < 1024U * 1024U) goto out;
+    phase = "record";
+    if (quality_toolbar(pid) != 0 ||
+        click_main_control(display, viewer->window, pid, "Start session recording") != 0 ||
+        recording_control_visible(pid, "Stop session recording") != 0 ||
+        activate_named_control(pid, "Hide toolbar") != 0 ||
+        wait_for_current_frames(display, viewer, history, 8000U, 10U, &fresh, &age) != 0 ||
+        quality_toolbar(pid) != 0) goto out;
+    phase = "freeze-peer";
+    if (isolation_marker(coord, "recording.freeze", 1) != 0) goto out;
+    frozen = 1;
+    if (wait_isolation_marker(coord, "recording.frozen", 5000U) != 0 ||
+        sleep_millis(500U) != 0 ||
+        recording_control_visible(pid, "Stop session recording") != 0) goto out;
+    phase = "snapshot";
+    directory = opendir("/tmp/recording-selected-שלום");
+    if (directory == NULL) goto out;
+    struct dirent *entry;
+    errno = 0;
+    while ((entry = readdir(directory)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        size_t length = strlen(entry->d_name);
+        if (count == 8U || length < 20U || length >= sizeof(names[0]) ||
+            strncmp(entry->d_name, "outgoing_", 9U) != 0 ||
+            strcmp(entry->d_name + length - 5U, ".webm") != 0 ||
+            strspn(entry->d_name, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
+                != length) goto out;
+        memcpy(names[count++], entry->d_name, length + 1U);
+    }
+    if (errno != 0 || count == 0U) goto out;
+    for (unsigned int index = 0U; index < count; ++index)
+        if (read_config_file(dirfd(directory), names[index], &before[index]) != 0) goto out;
+    phase = "limit";
+    limit = original;
+    limit.rlim_cur = 0;
+    if (!viewer_pidfd_alive(pidfd) || viewer_process_state(process, pid, start, &state) != 0 ||
+        prlimit((pid_t)pid, RLIMIT_FSIZE, &limit, NULL) != 0) goto out;
+    limited = 1;
+    if (prlimit((pid_t)pid, RLIMIT_FSIZE, NULL, &observed) != 0 ||
+        observed.rlim_cur != 0 || observed.rlim_max != original.rlim_max) goto out;
+    phase = "stop";
+    if (click_main_control(display, viewer->window, pid, "Stop session recording") != 0) goto out;
+    uint64_t deadline = monotonic_millis() + DIALOG_CONTROL_WAIT_MS;
+    while (error == NULL && monotonic_millis() < deadline) {
+        if (query_accessible(pid, "Failed: Failed to finalize WebM recording",
+                             deadline, &error, 1, 1, NULL) != 0) goto out;
+        if (error == NULL && sleep_millis(50U) != 0) goto out;
+    }
+    if (error == NULL) goto out;
+    phase = "restore";
+    if (!viewer_pidfd_alive(pidfd) || viewer_process_state(process, pid, start, &state) != 0 ||
+        prlimit((pid_t)pid, RLIMIT_FSIZE, &original, NULL) != 0) goto out;
+    limited = 0;
+    if (prlimit((pid_t)pid, RLIMIT_FSIZE, NULL, &observed) != 0 ||
+        observed.rlim_cur != original.rlim_cur || observed.rlim_max != original.rlim_max ||
+        isolation_marker(coord, "recording.resume", 1) != 0) goto out;
+    frozen = 0;
+    if (wait_isolation_marker(coord, "recording.resumed", 5000U) != 0 ||
+        click_main_control(display, viewer->window, pid, "OK") != 0 ||
+        recording_control_visible(pid, "Start session recording") != 0 ||
+        query_named_accessible(pid, "Stop session recording",
+            monotonic_millis() + DIALOG_CONTROL_WAIT_MS, &active, 0) != 0 || active != NULL ||
+        activate_named_control(pid, "Hide toolbar") != 0 ||
+        wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh, &age) != 0)
+        goto out;
+    phase = "retained-files";
+    rewinddir(directory);
+    unsigned int remaining = 0U;
+    errno = 0;
+    while ((entry = readdir(directory)) != NULL)
+        if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) ++remaining;
+    if (errno != 0 || remaining != count) goto out;
+    for (unsigned int index = 0U; index < count; ++index) {
+        if (read_config_file(dirfd(directory), names[index], &after) != 0 ||
+            before[index].device != after.device || before[index].inode != after.inode ||
+            before[index].bytes != after.bytes || strcmp(before[index].sha256, after.sha256) != 0)
+            goto out;
+        printf("FLUTTER_PEER_RECORDING_FAILED_FILE name=%s bytes=%lld sha256=%s unchanged=true\n",
+               names[index], (long long)after.bytes, after.sha256);
+        if (unlinkat(dirfd(directory), names[index], 0) != 0) goto out;
+    }
+    printf("FLUTTER_PEER_RECORDING_FINALIZE_FAILURE_OK fault=RLIMIT_FSIZE error_visible=1 "
+           "active=0 retry_available=1 files=%u unchanged=true limit=restored "
+           "fresh_pixels=4 maximum_age_ms=%llu\n", count, (unsigned long long)age);
+    result = 0;
+out:
+    if (limited && (!viewer_pidfd_alive(pidfd) ||
+        viewer_process_state(process, pid, start, &state) != 0 ||
+        prlimit((pid_t)pid, RLIMIT_FSIZE, &original, NULL) != 0)) result = -1;
+    if (frozen && (isolation_marker(coord, "recording.resume", 1) != 0 ||
+        wait_isolation_marker(coord, "recording.resumed", 5000U) != 0)) result = -1;
+    if (status != NULL && fclose(status) != 0) result = -1;
+    if (directory != NULL && closedir(directory) != 0) result = -1;
+    if (pidfd >= 0 && close(pidfd) != 0) result = -1;
+    if (process >= 0 && close(process) != 0) result = -1;
+    if (coord >= 0 && close(coord) != 0) result = -1;
+    g_clear_object(&error);
+    g_clear_object(&active);
+    if (result != 0)
+        fprintf(stderr, "FLUTTER_PEER_RECORDING_FINALIZE_FAILURE_CHECK_FAIL phase=%s errno=%d\n",
+                phase, errno);
+    return result;
+}
 
 typedef struct {
     char name[256], sha256[65];

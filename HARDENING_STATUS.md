@@ -9401,8 +9401,21 @@ does not establish physical-seat device permissions. The initial early viewer ex
 is reproduced as SIGXFSZ under the fixture's original 1 MiB file ceiling
 (`camera-installed-limit-663d09f3.json`); the identical app/package passes at
 256 MiB. The restored bound, exit diagnostics and joined failure-path service
-cleanup remain. Installed interruption/recovery, physical devices/seat permissions,
-other start failures, Windows and broader network/long-session acceptance remain OPEN.
+cleanup remain.
+
+**Installed camera interruption and reacquisition — PASS on the same app.**
+TUF `oL4ISaTCR3`, fixture `51e2842d`, withholds frames for 3,062 ms; current red
+pixels return in 326 ms, within 2,500 ms on unchanged TCP. Native device loss
+produces the visible failure and zero connected sockets within five seconds.
+A fresh password-authenticated viewer then presents green/blue. All five color
+phases pass three observations of 24,000 pixels. Seven ten-sample handle phases
+prove capture preservation and retirement; the exact child/listener inode,
+root/user credentials and empty supervisor camera ownership stay unchanged.
+Both viewers join, desktop closure reaps the child, and package reinstall/remove/
+purge pass. `camera-installed-recovery-51e2842d.json` binds nine files/224,364 bytes
+on CTE/TUF, 183.563 seconds, four zero listener deltas and joined private/RAM
+retirement. Physical devices/seat permissions, other start failures, Windows
+and broader network/long-session acceptance remain OPEN.
 
 **Production module baseline.** At `05969769`, TUF `gzw3yzewMJ` compiles the
 unchanged `camera.rs`, real generated protobuf types and verbatim production

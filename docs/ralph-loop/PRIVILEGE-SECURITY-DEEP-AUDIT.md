@@ -150689,3 +150689,44 @@ exact private/process/socket/RAM retirement. The approximate 400,000-token targe
 remains OPEN. This audit-only append preserves the counted ledger and prior
 16,138,188-byte audit prefix, SHA-256
 ce902ed644cd77426cf927036ce3382a9e254dc2201078775709196a5baa7f85.
+
+### 2026-11-13 — Installed camera stall, device loss and fresh authenticated recovery pass
+
+Continue the installed camera acceptance gap using retained app 2eb7015e and
+manifest 88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a;
+no product edit or full build. Fixture 51e2842d extends the normal-package run
+through capture interruption, native disconnect and a second viewer generation.
+Linux 6.1's documented vivid controls withhold buffers and emulate disconnect
+until all device handles close:
+https://docs.kernel.org/6.1/admin-guide/media/vivid.html.
+The closed installed observer selects the actual guest service listener address;
+root independently proves its exact child ownership and unchanged inode. Existing
+standalone modes retain their loopback listener expectation.
+
+TUF oL4ISaTCR3/tool24889 passes. Root 7490 and PAM/logind-selected child
+7612/start6987/generation9fec8354-2bd3-4503-a596-e6cef431bae3 map the exact packaged
+core. Viewer 7712 presents green/blue, then 31 observations retain blue during
+3,062 ms of withheld frames. Red returns in 326 ms against the 2,500 ms deadline,
+on the same TCP connection. Kernel disconnect reports ENODEV; Camera capture
+failed becomes visible and connected sockets retire within five seconds. After
+that viewer joins zero and child camera handles reach zero, fresh authenticated
+viewer 7974 presents green/blue and joins zero. Each of five color phases matches
+24,000 pixels across three observations. Seven ten-sample child-handle phases
+follow 0/1/1/1/0/1/0; the supervisor holds none. Child generation, listener inode
+28676 and protected/user credential fields remain unchanged. Both C observers
+exit zero. Desktop closure reaps the child; CPace/wrong-password and ordinary-user
+refusal controls, reinstall/remove/purge and dependency checks pass. Five
+inode-zero TIME_WAIT rows drain before exact network-baseline equality.
+
+camera-installed-recovery-51e2842d.json binds nine files/224,364 bytes copied and
+hash-verified on CTE/TUF. QEMU 3363974 joins zero after 183.563 seconds; four host
+listener deltas are zero. Peak scratch 4,815,101,952 bytes retires, with exact
+private/process/socket/RAM absence. Sources/inputs stayed frozen through evidence
+copy; no job remains live. The four retained app artifacts are unchanged. This
+closes installed Linux/vivid interruption/loss/reacquisition acceptance only.
+Physical devices and seat permissions, other start failures, Windows, real network
+impairment, multi-hour latency and broader release acceptance remain OPEN. The
+next camera validation can address installed competing-device ownership using
+the same app; no rebuild is justified by this pass. This append preserves the
+prior 16,138,852-byte audit prefix, SHA-256
+df4bc69cc4d1fd05bd5acdba56ce9279dbdaac95343d67a8ce22ee9e8379d573.

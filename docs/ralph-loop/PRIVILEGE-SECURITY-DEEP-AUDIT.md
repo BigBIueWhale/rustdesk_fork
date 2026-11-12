@@ -150195,3 +150195,14 @@ physical hotplug/device loss and Windows remain OPEN. Continue with the retained
 app and guest-native media fixture; do not repeat this passed absence check without
 a relevant change. The prior 16,102,600-byte audit prefix is preserved, SHA-256
 d939e75ef3d5b82c2f9afd7c086af035d4ac08f3e3b563c3912bd440bb5e47e8.
+
+Fresh ledger count at 172ac64e, eQuhhvFjiK/tool48723, passes: 415,613 tokens /
+1,896,717 bytes, SHA-256
+bdc86a51acfb6d45922ad7071903525b84226fa68605233cc7d84bdedf69302a.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-unavailable-ledger-172ac64e.json binds eight files/115,367 bytes on CTE/TUF.
+QEMU 2730262 joins zero after 30.354 seconds, with three zero listener deltas and
+exact private/process/socket/RAM retirement. The approximate 400,000-token target
+remains OPEN. This audit-only append preserves the counted ledger and prior
+16,105,827-byte audit prefix, SHA-256
+57986e7710a65c8c5e7127424276b3730e8a7b02121e3bf20b322271ad8b9c95.

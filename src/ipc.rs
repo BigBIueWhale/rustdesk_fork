@@ -9704,11 +9704,14 @@ mod test {
             starting: 32, active: 31, finishing: 1,
             last_failure: Some(RecordingFailure { display: 3, camera: true, stage: FailureStage::Finish }),
         };
-        let response = MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
-            options: MainStatusOptions(Vec::new()), file_transfer_enabled: None,
-            incoming_recording: status,
-        });
-        for _ in 0..2 {
+        for (value, expected) in [(None, false), (Some("Y"), true), (Some(""), false)] {
+            let options = value.into_iter().map(|value| MainStatusOption {
+                key: MainStatusOptionKey::AllowAutoRecordIncoming, value: value.to_owned(),
+            }).collect();
+            let response = MainIpcResponse::StatusSnapshot(MainStatusSnapshot {
+                options: MainStatusOptions(options), file_transfer_enabled: None,
+                incoming_recording: status,
+            });
             let (sent, received) = tokio::join!(
                 sender.send_json_timeout(&response, 1000), receiver.next_main_response_timeout(1000),
             );
@@ -9717,6 +9720,9 @@ mod test {
                 panic!("expected recording status response");
             };
             assert_eq!(snapshot.incoming_recording, status);
+            let setting = crate::ui_interface::recording_setting::user_setting(snapshot).unwrap();
+            assert_eq!(setting.enabled, Some(expected));
+            assert!(!setting.pending);
 
             let mut invalid = serde_json::to_value(&response).unwrap();
             invalid["c"]["incoming_recording"]["starting"] = 33.into();

@@ -61,10 +61,21 @@ pub(crate) fn set(enabled: bool) -> RecordingSettingChange {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn user_setting(snapshot: crate::ipc::MainStatusSnapshot) -> hbb_common::ResultType<IncomingRecordingSetting> {
+    use hbb_common::config;
+    let options = snapshot.options.into_map()?;
+    let key = config::keys::OPTION_ALLOW_AUTO_RECORD_INCOMING;
+    // An authenticated owner's absent preference has the same empty-value
+    // semantics as Config::get_option. Only a missing owner is unavailable.
+    let value = options.get(key).map(String::as_str).unwrap_or("");
+    Ok(IncomingRecordingSetting { enabled: Some(config::option2bool(key, value)), pending: false })
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(super) mod desktop {
     use super::*;
     use crate::ipc;
-    use hbb_common::{config, log, tokio, ResultType};
+    use hbb_common::{log, tokio, ResultType};
     use std::{sync::{mpsc, Mutex, OnceLock}, time::Duration};
 
     pub(super) static SETTING: Mutex<IncomingRecordingSetting> = Mutex::new(IncomingRecordingSetting {
@@ -111,10 +122,7 @@ pub(super) mod desktop {
             #[cfg(not(target_os = "linux"))]
             { return Ok(IncomingRecordingSetting::default()); }
         }
-        let snapshot = ipc::get_main_status_snapshot(1000).await?;
-        let options = snapshot.options.into_map()?;
-        let key = config::keys::OPTION_ALLOW_AUTO_RECORD_INCOMING;
-        Ok(IncomingRecordingSetting { enabled: options.get(key).map(|value| config::option2bool(key, value)), pending: false })
+        super::user_setting(ipc::get_main_status_snapshot(1000).await?)
     }
 
     async fn change(enabled: bool) -> RecordingSettingChange {

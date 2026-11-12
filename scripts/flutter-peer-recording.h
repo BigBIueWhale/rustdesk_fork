@@ -300,21 +300,35 @@ static int recording_output(Display *display, const ViewerWindow *viewer, Source
     directory = opendir(selected);
     if (directory == NULL) goto out;
     struct dirent *entry;
+    phase = "file-name";
+    errno = 0;
     while ((entry = readdir(directory)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
         size_t length = strlen(entry->d_name);
-        if (filename[0] != '\0' || length < 20U || length >= sizeof(filename) ||
+        if (length < 20U || length >= sizeof(filename) ||
             strncmp(entry->d_name, "outgoing_", 9U) != 0 ||
             strcmp(entry->d_name + length - 5U, ".webm") != 0 ||
             strspn(entry->d_name, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
                 != length) goto out;
+        if (filename[0] != '\0') {
+            phase = "multiple-files";
+            fprintf(stderr, "FLUTTER_PEER_RECORDING_FILES first=%s second=%s\n",
+                    filename, entry->d_name);
+            goto out;
+        }
         memcpy(filename, entry->d_name, length + 1U);
     }
+    phase = "directory-read";
+    if (errno != 0) goto out;
+    phase = "file-open";
     file = openat(dirfd(directory), filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
-    if (file < 0 || fstat(file, &before) != 0 || !S_ISREG(before.st_mode) ||
+    if (file < 0) goto out;
+    phase = "file-metadata";
+    if (fstat(file, &before) != 0 || !S_ISREG(before.st_mode) ||
         before.st_uid != geteuid() || before.st_gid != getegid() || before.st_nlink != 1U ||
         (before.st_mode & 07777U) != 0600U || before.st_size <= 0 ||
         before.st_size > 1024 * 1024) goto out;
+    phase = "file-read";
     data = malloc((size_t)before.st_size);
     if (data == NULL) goto out;
     size_t offset = 0U;

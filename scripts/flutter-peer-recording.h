@@ -167,8 +167,7 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
             video->last_pts_ms = (uint64_t)pts;
         }
     }
-    if (video->images < 16U || video->last_frame - video->first_frame < 12 ||
-        video->last_pts_ms < 3000U || video->last_pts_ms > 10000U) goto out;
+    if (video->images == 0U) goto out;
     result = 0;
 out:
     if (initialized && vpx_codec_destroy(&decoder) != VPX_CODEC_OK) result = -1;
@@ -270,6 +269,21 @@ out:
 }
 
 
+typedef struct {
+    char name[256], sha256[65];
+    struct stat metadata;
+    RecordingVideo video;
+} RecordingFile;
+
+static int recording_file_order(const void *left, const void *right) {
+    const RecordingFile *a = left, *b = right;
+    if (a->video.first_frame != b->video.first_frame)
+        return a->video.first_frame < b->video.first_frame ? -1 : 1;
+    if (a->video.last_frame != b->video.last_frame)
+        return a->video.last_frame < b->video.last_frame ? -1 : 1;
+    return strcmp(a->name, b->name);
+}
+
 static int recording_output_attempt(Display *display, const ViewerWindow *viewer,
                                     SourceHistory *history, unsigned int attempt) {
     static const char selected[] = "/tmp/recording-selected-שלום";
@@ -278,7 +292,12 @@ static int recording_output_attempt(Display *display, const ViewerWindow *viewer
     unsigned char *data = NULL;
     gchar *digest = NULL;
     const char *phase = "start";
-    char filename[256] = {0};
+    RecordingFile files[8] = {0};
+    unsigned int file_count = 0U, packets = 0U, images = 0U;
+    size_t total_bytes = 0U;
+    uint64_t media_us = 0U, duration_us = 0U;
+    Window sink = None, focused = None;
+    int revert;
     struct stat before = {0}, after = {0};
     unsigned int pid = (unsigned int)viewer->pid;
     uint64_t started_us = x11_frame_monotonic_us(), stopped_us = 0U, fresh = 0U, age = 0U;
@@ -287,7 +306,17 @@ static int recording_output_attempt(Display *display, const ViewerWindow *viewer
         recording_control_visible(pid, "Stop session recording") != 0 ||
         activate_named_control(pid, "Hide toolbar") != 0) goto out;
     phase = "record";
-    if (wait_for_current_frames(display, viewer, history, 8000U, 20U, &fresh, &age) != 0)
+    if (wait_for_current_frames(display, viewer, history, 8000U, 10U, &fresh, &age) != 0)
+        goto out;
+    phase = "focus-refresh";
+    sink = create_focus_sink(display);
+    if (sink == None || XGetInputFocus(display, &focused, &revert) == 0 || focused != sink ||
+        sleep_millis(300U) != 0 || return_focus_with_pointer(display, viewer) != 0 ||
+        XGetInputFocus(display, &focused, &revert) == 0 || focused != viewer->window) goto out;
+    XDestroyWindow(display, sink);
+    sink = None;
+    XSync(display, False);
+    if (wait_for_current_frames(display, viewer, history, 8000U, 10U, &fresh, &age) != 0)
         goto out;
     phase = "stop";
     stopped_us = x11_frame_monotonic_us();
@@ -306,82 +335,124 @@ static int recording_output_attempt(Display *display, const ViewerWindow *viewer
     while ((entry = readdir(directory)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
         size_t length = strlen(entry->d_name);
-        if (length < 20U || length >= sizeof(filename) ||
+        if (file_count == 8U || length < 20U || length >= sizeof(files[0].name) ||
             strncmp(entry->d_name, "outgoing_", 9U) != 0 ||
             strcmp(entry->d_name + length - 5U, ".webm") != 0 ||
             strspn(entry->d_name, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-")
                 != length) goto out;
-        if (filename[0] != '\0') {
-            phase = "multiple-files";
-            fprintf(stderr, "FLUTTER_PEER_RECORDING_FILES first=%s second=%s\n",
-                    filename, entry->d_name);
-            goto out;
-        }
-        memcpy(filename, entry->d_name, length + 1U);
+        memcpy(files[file_count++].name, entry->d_name, length + 1U);
     }
     phase = "directory-read";
-    if (errno != 0) goto out;
-    phase = "file-open";
-    file = openat(dirfd(directory), filename, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
-    if (file < 0) goto out;
-    phase = "file-metadata";
-    if (fstat(file, &before) != 0 || !S_ISREG(before.st_mode) ||
-        before.st_uid != geteuid() || before.st_gid != getegid() || before.st_nlink != 1U ||
-        (before.st_mode & 07777U) != 0600U || before.st_size <= 0 ||
-        before.st_size > 1024 * 1024) goto out;
-    phase = "file-read";
-    data = malloc((size_t)before.st_size);
-    if (data == NULL) goto out;
-    size_t offset = 0U;
-    while (offset < (size_t)before.st_size) {
-        ssize_t count = read(file, data + offset, (size_t)before.st_size - offset);
-        if (count < 0 && errno == EINTR) continue;
-        if (count <= 0) goto out;
-        offset += (size_t)count;
+    if (errno != 0 || file_count < 2U || x11_frame_refresh(history, "/coord") != 0) goto out;
+    for (unsigned int index = 0U; index < file_count; ++index) {
+        RecordingFile *item = &files[index];
+        phase = "file-open";
+        file = openat(dirfd(directory), item->name, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK);
+        if (file < 0) goto out;
+        phase = "file-metadata";
+        if (fstat(file, &before) != 0 || !S_ISREG(before.st_mode) ||
+            before.st_uid != geteuid() || before.st_gid != getegid() || before.st_nlink != 1U ||
+            (before.st_mode & 07777U) != 0600U || before.st_size <= 0 ||
+            before.st_size > 1024 * 1024 - (off_t)total_bytes) goto out;
+        total_bytes += (size_t)before.st_size;
+        phase = "file-read";
+        data = malloc((size_t)before.st_size);
+        if (data == NULL) goto out;
+        size_t offset = 0U;
+        while (offset < (size_t)before.st_size) {
+            ssize_t count = read(file, data + offset, (size_t)before.st_size - offset);
+            if (count < 0 && errno == EINTR) continue;
+            if (count <= 0) goto out;
+            offset += (size_t)count;
+        }
+        phase = "decode";
+        RecordingVideo rejected;
+        if (recording_decode(data, offset, history, started_us, stopped_us, &item->video) != 0) {
+            fprintf(stderr, "FLUTTER_PEER_RECORDING_DECODE_FAIL file=%s packets=%u images=%u "
+                    "first=%lld last=%lld pts_ms=%llu\n", item->name,
+                    item->video.packets, item->video.images, (long long)item->video.first_frame,
+                    (long long)item->video.last_frame, (unsigned long long)item->video.last_pts_ms);
+            goto out;
+        }
+        if (recording_decode(data, offset - 1U, history, started_us, stopped_us, &rejected) == 0)
+            goto out;
+        phase = "unchanged";
+        if (fstat(file, &after) != 0 || before.st_dev != after.st_dev ||
+            before.st_ino != after.st_ino || before.st_size != after.st_size ||
+            before.st_mtim.tv_sec != after.st_mtim.tv_sec ||
+            before.st_mtim.tv_nsec != after.st_mtim.tv_nsec) goto out;
+        item->metadata = before;
+        digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256, data, offset);
+        if (digest == NULL) goto out;
+        memcpy(item->sha256, digest, sizeof(item->sha256));
+        g_clear_pointer(&digest, g_free);
+        free(data);
+        data = NULL;
+        int closed = close(file);
+        file = -1;
+        if (closed != 0) goto out;
     }
-    phase = "decode";
-    RecordingVideo video, rejected;
-    if (x11_frame_refresh(history, "/coord") != 0) goto out;
-    if (recording_decode(data, offset, history, started_us, stopped_us, &video) != 0) {
-        fprintf(stderr, "FLUTTER_PEER_RECORDING_DECODE_FAIL packets=%u images=%u "
-                "first=%lld last=%lld pts_ms=%llu\n", video.packets, video.images,
-                (long long)video.first_frame, (long long)video.last_frame,
-                (unsigned long long)video.last_pts_ms);
-        goto out;
+    phase = "continuity";
+    qsort(files, file_count, sizeof(files[0]), recording_file_order);
+    for (unsigned int index = 0U; index < file_count; ++index) {
+        const RecordingVideo *video = &files[index].video;
+        if (index > 0U) {
+            const RecordingVideo *previous = &files[index - 1U].video;
+            if (video->first_frame < previous->last_frame) goto out;
+            uint64_t gap = history->publication_us[video->first_frame] -
+                           history->publication_us[previous->last_frame];
+            if (gap > 500000U) goto out;
+            media_us += gap;
+        }
+        packets += video->packets;
+        images += video->images;
+        media_us += video->last_pts_ms * 1000U;
     }
-    if (recording_decode(data, offset - 1U, history, started_us, stopped_us, &rejected) == 0)
-        goto out;
-    phase = "unchanged";
-    if (fstat(file, &after) != 0 || before.st_dev != after.st_dev ||
-        before.st_ino != after.st_ino || before.st_size != after.st_size ||
-        before.st_mtim.tv_sec != after.st_mtim.tv_sec ||
-        before.st_mtim.tv_nsec != after.st_mtim.tv_nsec) goto out;
-    digest = g_compute_checksum_for_data(G_CHECKSUM_SHA256, data, offset);
-    if (digest == NULL) goto out;
+    int64_t first_frame = files[0].video.first_frame;
+    int64_t last_frame = files[file_count - 1U].video.last_frame;
+    duration_us = history->publication_us[last_frame] - history->publication_us[first_frame];
+    if (images < 16U || images > 512U || packets > 512U || last_frame - first_frame < 12 ||
+        duration_us < 3000000U || duration_us > 10000000U ||
+        media_us > duration_us + 500000U || duration_us > media_us + 500000U) goto out;
     phase = "retire-or-retain";
-    if (attempt < 5U) {
-        if (fstatat(dirfd(directory), filename, &after, AT_SYMLINK_NOFOLLOW) != 0 ||
-            before.st_dev != after.st_dev || before.st_ino != after.st_ino ||
-            before.st_size != after.st_size || before.st_mtim.tv_sec != after.st_mtim.tv_sec ||
-            before.st_mtim.tv_nsec != after.st_mtim.tv_nsec ||
-            unlinkat(dirfd(directory), filename, 0) != 0) goto out;
-        printf("FLUTTER_PEER_RECORDING_REPEAT_OK attempt=%u ", attempt);
-    } else {
+    if (attempt == 5U) {
         receipt = open("/coord/recording-output.json", O_WRONLY | O_CREAT | O_EXCL |
                        O_NOFOLLOW | O_CLOEXEC, 0600);
-        if (receipt < 0 || dprintf(receipt,
-            "{\"name\":\"%s\",\"bytes\":%zu,\"sha256\":\"%s\",\"device\":%llu,\"inode\":%llu}\n",
-            filename, offset, digest, (unsigned long long)before.st_dev,
-            (unsigned long long)before.st_ino) <= 0) goto out;
-        printf("FLUTTER_PEER_RECORDING_OUTPUT_OK ");
+        if (receipt < 0 || dprintf(receipt, "[") <= 0) goto out;
     }
-    printf("codec=%s packets=%u decoded_frames=%u "
-           "first_frame=%lld last_frame=%lld duration_ms=%llu bytes=%zu sha256=%s "
-           "path=selected mode=0600 stopped=ui viewer=alive truncated=refused\n",
-           video.codec, video.packets, video.images, (long long)video.first_frame,
-           (long long)video.last_frame, (unsigned long long)video.last_pts_ms, offset, digest);
+    for (unsigned int index = 0U; index < file_count; ++index) {
+        const RecordingFile *item = &files[index];
+        if (fstatat(dirfd(directory), item->name, &after, AT_SYMLINK_NOFOLLOW) != 0 ||
+            item->metadata.st_dev != after.st_dev || item->metadata.st_ino != after.st_ino ||
+            item->metadata.st_size != after.st_size ||
+            item->metadata.st_mtim.tv_sec != after.st_mtim.tv_sec ||
+            item->metadata.st_mtim.tv_nsec != after.st_mtim.tv_nsec) goto out;
+        if (attempt < 5U) {
+            if (unlinkat(dirfd(directory), item->name, 0) != 0) goto out;
+        } else if (dprintf(receipt,
+            "%s{\"name\":\"%s\",\"bytes\":%lld,\"sha256\":\"%s\",\"device\":%llu,\"inode\":%llu}",
+            index == 0U ? "" : ",", item->name, (long long)item->metadata.st_size, item->sha256,
+            (unsigned long long)item->metadata.st_dev, (unsigned long long)item->metadata.st_ino) <= 0)
+            goto out;
+        printf("FLUTTER_PEER_RECORDING_EPOCH_OK attempt=%u epoch=%u codec=%s packets=%u "
+               "decoded_frames=%u first_frame=%lld last_frame=%lld duration_ms=%llu "
+               "bytes=%lld sha256=%s complete=true truncated=refused\n", attempt, index + 1U,
+               item->video.codec, item->video.packets, item->video.images,
+               (long long)item->video.first_frame, (long long)item->video.last_frame,
+               (unsigned long long)item->video.last_pts_ms,
+               (long long)item->metadata.st_size, item->sha256);
+    }
+    if (attempt == 5U && dprintf(receipt, "]\n") <= 0) goto out;
+    if (attempt < 5U) printf("FLUTTER_PEER_RECORDING_REPEAT_OK attempt=%u ", attempt);
+    else printf("FLUTTER_PEER_RECORDING_OUTPUT_OK ");
+    printf("files=%u packets=%u decoded_frames=%u first_frame=%lld last_frame=%lld "
+           "duration_ms=%llu bytes=%zu path=selected mode=0600 stopped=ui viewer=alive "
+           "truncated=refused focus_refresh=true continuity=verified\n", file_count,
+           packets, images, (long long)first_frame, (long long)last_frame,
+           (unsigned long long)(duration_us / 1000U), total_bytes);
     result = 0;
 out:
+    if (sink != None) { XDestroyWindow(display, sink); XSync(display, False); }
     if (file >= 0 && close(file) != 0) result = -1;
     if (receipt >= 0 && close(receipt) != 0) result = -1;
     if (directory != NULL && closedir(directory) != 0) result = -1;

@@ -1977,8 +1977,10 @@ PY
       if [ "$viewer_generation" -eq 2 ]; then
         grep -Eq '^FLUTTER_PEER_RECORDING_DENIED kernel=EACCES error_visible=1 active=0 retry_available=1 files=0 fresh_pixels=4 maximum_age_ms=[0-9]+$' \
           <<<"$controller_output" || fail 'recording failure outcome is absent'
-        grep -Eq '^FLUTTER_PEER_RECORDING_OUTPUT_OK codec=vp[89] packets=[0-9]+ decoded_frames=[0-9]+ first_frame=[0-9]+ last_frame=[0-9]+ duration_ms=[0-9]+ bytes=[0-9]+ sha256=[0-9a-f]{64} path=selected mode=0600 stopped=ui viewer=alive truncated=refused$' \
+        grep -Eq '^FLUTTER_PEER_RECORDING_OUTPUT_OK files=[2-8] packets=[0-9]+ decoded_frames=[0-9]+ first_frame=[0-9]+ last_frame=[0-9]+ duration_ms=[0-9]+ bytes=[0-9]+ path=selected mode=0600 stopped=ui viewer=alive truncated=refused focus_refresh=true continuity=verified$' \
           <<<"$controller_output" || fail 'native recording decode result is absent'
+        grep -Fxq 'FLUTTER_PEER_RECORDING_CYCLES_OK attempts=5 stopped=ui decoded=true' \
+          <<<"$controller_output" || fail 'consecutive recording attempts are incomplete'
       fi
       viewer_result='viewer=joined xvfb=joined recording_directory=passed generations=2 cancel=unchanged path=exact storage=verified pixels=fresh recording=decoded'
     elif [ "$PEER_SCENARIO" = keyboard-restart ]; then
@@ -2534,30 +2536,39 @@ with open('/coord/recording-output.json', 'rb') as receipt:
     metadata = os.fstat(receipt.fileno())
     assert stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid()
     assert metadata.st_nlink == 1 and stat.S_IMODE(metadata.st_mode) == 0o600
-    assert 0 < metadata.st_size <= 1024
-    expected = json.loads(receipt.read(1025))
-assert set(expected) == {'name', 'bytes', 'sha256', 'device', 'inode'}
-name = expected['name']
-assert name.startswith('outgoing_') and name.endswith('.webm')
-assert all(c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-' for c in name)
+    assert 0 < metadata.st_size <= 8192
+    expected = json.loads(receipt.read(8193))
+assert isinstance(expected, list) and 2 <= len(expected) <= 8
+names = set()
+total_bytes = 0
+for item in expected:
+    assert set(item) == {'name', 'bytes', 'sha256', 'device', 'inode'}
+    name = item['name']
+    assert name.startswith('outgoing_') and name.endswith('.webm') and 20 <= len(name) <= 255
+    assert all(c in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-' for c in name)
+    assert name not in names
+    names.add(name)
 directory = os.open('/tmp/recording-selected-שלום', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
 try:
-    assert os.listdir(directory) == [name]
-    descriptor = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
-    with os.fdopen(descriptor, 'rb') as video:
-        metadata = os.fstat(video.fileno())
-        assert stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid()
-        assert metadata.st_gid == os.getegid() and metadata.st_nlink == 1
-        assert stat.S_IMODE(metadata.st_mode) == 0o600
-        assert 0 < metadata.st_size == expected['bytes'] <= 1024 * 1024
-        assert (metadata.st_dev, metadata.st_ino) == (expected['device'], expected['inode'])
-        assert hashlib.sha256(video.read(1024 * 1024 + 1)).hexdigest() == expected['sha256']
-    os.unlink(name, dir_fd=directory)
+    assert set(os.listdir(directory)) == names
+    for item in expected:
+        descriptor = os.open(item['name'], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory)
+        with os.fdopen(descriptor, 'rb') as video:
+            metadata = os.fstat(video.fileno())
+            assert stat.S_ISREG(metadata.st_mode) and metadata.st_uid == os.geteuid()
+            assert metadata.st_gid == os.getegid() and metadata.st_nlink == 1
+            assert stat.S_IMODE(metadata.st_mode) == 0o600
+            assert 0 < metadata.st_size == item['bytes'] <= 1024 * 1024 - total_bytes
+            assert (metadata.st_dev, metadata.st_ino) == (item['device'], item['inode'])
+            assert hashlib.sha256(video.read(1024 * 1024 + 1)).hexdigest() == item['sha256']
+            total_bytes += metadata.st_size
+    for name in names:
+        os.unlink(name, dir_fd=directory)
     assert not os.listdir(directory)
 finally:
     os.close(directory)
-print('FLUTTER_PEER_RECORDING_RETAINED_OK process=joined bytes=' + str(expected['bytes'])
-      + ' sha256=' + expected['sha256'] + ' file=unchanged cleanup=exact')
+print('FLUTTER_PEER_RECORDING_RETAINED_OK process=joined files=' + str(len(expected))
+      + ' bytes=' + str(total_bytes) + ' files=unchanged cleanup=exact')
 PY
     fi
     if [ "$PEER_SCENARIO" = audio-mute ]; then

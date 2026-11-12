@@ -147513,3 +147513,156 @@ QEMU 658120 joins zero after 30.065 seconds; peak scratch 403,165,184 bytes,
 three zero listener deltas and exact private/socket/RAM absence are verified.
 The approximate 400,000-token compression remains OPEN. This audit-only append
 preserves the measured ledger bytes.
+
+## 2026-11-12 — Viewer recording attempt ownership and complete status
+
+Continue the native EACCES/status/retry blocker under R-S0, ahead of unrelated
+dependency work. TUF's existing password-authenticated SSH master is used without
+authentication or host configuration changes. The previous native baseline and
+38-case checked-finalization evidence remain valid.
+
+6e8e10a5 moves recorder ownership from VideoHandler into nonclone writer owners
+registered with one RecordingAttempt. A mutex retains the first failure and exact
+writer count; one Tokio Notify wakes the I/O owner without an unbounded outcome
+queue. Write/checked-finish failures stop the attempt and report a nonfatal UI
+error. Stop drains every reservation before a later requested retry is created;
+an old failure during drain cannot cancel that retry. Decoder and connection
+failure remain independent. The writer is admitted before requesting a keyframe.
+Source research: https://docs.rs/tokio/1.44.2/tokio/sync/struct.Notify.html documents
+coalesced permits; the outcome is retained in state rather than in notifications.
+The repository uses Tokio 1.44.2. Checked finish retains the previously documented
+Rust Write::flush failure semantics.
+
+The initial aaT3fQfwIY/tool3851 run compiles the full parent and passes eight
+decoder cases plus pending-stop/retry ownership, then exposes a fixture sequencing
+error: two queued independent keyframes legitimately supersede one another.
+df86c0e6 waits for each retry frame's observed publication before admitting the
+next. Product freshness semantics are unchanged. recording-owner-6e8e10a5.json
+retains nine files/109,652 bytes and the failure; exact failed-private cleanup
+releases 3,395,584 allocated bytes. JoDKvZQ91A/tool38856 then passes all thirteen
+cases; recording-owner-df86c0e6.json binds nine files/87,842 bytes.
+
+c882436e keeps a pre-first-frame recording request in Starting so it remains
+cancellable. lOWmB0NlJX/tool18114 passes all thirteen cases; nine files/88,714 bytes
+are in recording-owner-c882436e.json. Further integration review finds four page
+initializers still using the old Boolean readback. 8543fa9e replaces that API
+with the complete status in Session, FFI and desktop/mobile page initialization;
+the web stub retains its existing stopped behavior. The actual session getter
+is checked during Starting and Stopping as well as successful/failed output.
+
+Final focused run jf9Ii28n39/tool63528 exits zero: eight native decoder cases,
+two recording caller cases and three bounded control mailbox cases pass. Real
+VP8 output, continued decoding after output failure, same-viewer retry, pending
+writer drain, early cancellation and shared status are exercised. Test execution
+takes four seconds. Artifact SHA-256:
+9089f34eb94073cacfc3de4dbff4f75f571fe0fbf010bd1112b7841f3c113b14.
+recording-owner-8543fa9e.json binds nine files/88,121 bytes on both hosts.
+QEMU 807422 joins zero after 229.419 seconds; peak scratch 5,333,078,016 bytes,
+four zero listener deltas, and exact private/socket/RAM absence are verified.
+These are full non-Flutter parent tests with mock UI observation, not rendered
+application acceptance.
+
+To admit the current full app within the four-generation cache bound, retire the
+exact duplicate d3bd788d baseline after verifying all 74 files. Seventy-three
+payloads match retained fd93151b; retain the differing 48,040-byte selector,
+original manifest and receipt (three files/62,717 bytes) on CTE and TUF.
+recording-retired-d3bd788d.json binds the 70,598,656 allocated bytes released and
+unchanged identities of the other three retained generations. The baseline is
+reconstructible; all earlier failed and accepted native evidence remains.
+
+Full Linux Flutter build 2bKIeWvijL/tool3997 exits zero on 8543fa9e. Bridge
+generation, thirteen Dart view-mode checks and two Rust command cases pass.
+The 74-file bundle contains 70,385,316 payload bytes; manifest SHA-256
+b6543af78a1cc3ba822a130e76558940e7630b94afe9409c87b4832453a67d4f
+binds the existing ddb1541d engine and pinned offline inputs. Two compiler jobs
+reach the 10 GiB memory ceiling with zero swap, OOM and OOM-kill events.
+recording-app-8543fa9e.json binds ten files/320,901 bytes on both hosts.
+QEMU 932851 joins zero after 1,283.348 seconds; peak RAM scratch is
+11,905,490,944 bytes, four listener deltas are zero and private/RAM state retires.
+
+Initial native replay tomjqAZ3OG/tool40507 exits 1 before recording: actual
+authentication and four fresh frames (maximum age 339 ms) pass, then XGetProperty
+on a retired candidate produces BadWindow during main-window discovery.
+native-recording-retry-8543fa9e.json retains twelve files/305,268 bytes.
+QEMU 1015102 joins zero after 114.021 seconds; four listener deltas are zero and
+RAM retires. Exact duplicate failure payloads match the retained bundle; private
+cleanup releases 61,927,424 allocated bytes after preserving bounded diagnostics.
+
+2e3b73c3 gives main-window candidate inspection the same narrowly scoped Xlib
+error handling as remote-window discovery. Only BadWindow for that exact
+display/window is treated as a retired candidate; other errors delegate to the
+previous handler. XSync brackets the scope, and the previous handler is restored.
+PID, title, class, visibility, size, uniqueness and deadlines remain unchanged.
+The native self-check now reads a destroyed main candidate through the actual
+property path. The recording header and complete scenario recipe are unchanged.
+Primary references:
+https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XChangeProperty.3.html
+https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XSetErrorHandler.3.html
+https://xorg.freedesktop.org/archive/X11R7.5/doc/man/man3/XSync.3.html
+XGetWindowProperty can raise BadWindow; XSync delivers pending errors before the
+scoped handler is restored. The same app is replayed without recompilation.
+
+The next replay W0e7mNmSop/tool45260 passes both window-retirement self-checks
+and generation-one folder/cancel/storage/exit. Generation two displays the actual
+Recording alert after EACCES, but its selectable message has an empty accessible
+name. The observer's name-only query misses it and never clicks OK; the modal then
+obscures all pixel samples. This is incomplete recording acceptance, not a proved
+freshness defect. native-recording-retry-2e3b73c3.json retains twelve files/
+719,140 bytes. QEMU 1020461 joins zero after 135.343 seconds; four listener deltas
+are zero and exact failed-private cleanup releases 62,685,184 allocated bytes.
+
+bd053a09 uses the existing dialog-scoped AtspiText query to require the exact
+"Failed: Permission denied (os error 13)" content, then requires Recording to
+disappear after the actual OK click. Freshness, status, files and decoded retry
+criteria stay unchanged. Reference:
+https://gnome.pages.gitlab.gnome.org/at-spi2-core/libatspi/method.Text.get_text.html
+The bounded read uses character offsets and releases the returned text.
+
+Jp7R6TcqIA/tool69838 on harness bd053a09 reaches the real denied-write
+acceptance: exact error, stopped status, retry available, no failed files and four
+fresh frames (maximum age 287 ms). The same-viewer retry reaches UI stop but fails
+the file-stage observer before decode; its old phase/zero-size diagnostic cannot
+distinguish multiple entries from failed pathname/open/metadata acceptance.
+native-recording-retry-bd053a09.json binds twelve files/683,957 bytes on both hosts.
+QEMU 1026056 joins zero after 132.011 s, peak scratch 3,029,057,536 bytes,
+four zero listener deltas, and exact RAM/private retirement. The verified duplicate
+failure payload releases 62,631,936 allocated bytes.
+
+38d88ae3 separates bounded filename, multiplicity, directory-read, open, metadata
+and read diagnostics without relaxing output acceptance. Readdir errors now fail
+explicitly. The same app, unchanged recipe and decoder criteria are reused.
+wDi0fw677n/tool47001 exits zero: both native chooser/restart/cancel generations
+pass; actual EACCES produces the exact dialog, inactive status, retry availability,
+zero files and four fresh frames (maximum age 316 ms). A same-viewer retry yields
+one 45,077-byte VP9 WebM containing 21 independently decoded source frames,
+counters 115–134 over 4,669 ms, SHA-256
+582153856afb745b9ef33c471e38767b519841c7c00b21ee7df40921b7cdd200.
+The native observer verifies mode 0600, complete output while the viewer is alive,
+rejection of a one-byte-truncated copy, and unchanged bytes after clean process
+exit. Both viewer generations and exact server/source/Xvfb trees join.
+native-recording-retry-38d88ae3.json binds nine files/112,106 bytes on both hosts.
+QEMU 1083177 joins zero after 149.046 s, peak scratch 3,052,257,280 bytes,
+four zero listener deltas, and exact private/RAM absence.
+
+The targeted unchanged repeat 5YldMTERwE/tool59229 also exits zero.
+EACCES feedback/status/retry and four fresh frames pass (maximum age 296 ms);
+one 43,405-byte VP9 output decodes 21 frames, counters 113–132 over 4,585 ms,
+SHA-256 b281f0b059db800d47d931d46dec87f0acd1fd8da18ba7fa82727f2a3789aa02.
+Complete-before-exit, truncated-copy refusal, unchanged-after-exit and both
+generations' process/storage checks pass. native-recording-repeat-38d88ae3.json
+binds nine files/109,289 bytes on both hosts. QEMU 1094033 joins zero after
+136.878 s, peak scratch 3,025,059,840 bytes, four zero listener deltas and exact
+private/RAM absence. No extra app build or cache generation is created.
+
+The first file-stage failure remains OPEN: both subsequent runs pass without a
+product change, so neither establishes its cause or a correction. Source and failure logs
+show that recording starts with a refresh before active status sends the peer's
+recording/QoS hint; the peer rebuilds its encoder for that hint. The observed
+double start is a concrete sequence to investigate, not proof of the earlier
+file-stage cause. Do not erase the failed run or infer repeatability from the
+accepted run.
+
+Explicit full-UI finalization failures, multi-writer/late-failure and blocked-I/O
+behavior, installed/root recording, other platforms and controlled-side outcome
+propagation remain OPEN. Broader R-S0/R-F5, current release artifacts, independent
+reproduction/review and the other binding release obligations remain OPEN.

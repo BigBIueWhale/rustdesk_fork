@@ -548,9 +548,15 @@ library differs. `native-screenshot-fd93151b.json` retains this A/B comparison;
 `native-screenshot-14062dc0.json` retains the failure. All runs have zero listener
 deltas and joined VM/RAM cleanup. The obsolete pending `0ccb2a7e` bundle is now
 retired after exact manifest/payload verification: its View mode correction already
-passed native failure/retry at `54db1ce2`. Evidence remains, with the accepted
-`6429f3cb`, original `7e6f6459` and screenshot baseline `d3bd788d` bundles preserved
-within the four-generation limit (`selector-retired-0ccb2a7e.json`).
+passed native failure/retry at `54db1ce2`. Evidence remains
+(`selector-retired-0ccb2a7e.json`). The duplicate
+`d3bd788d` baseline bundle is subsequently retired after all 74 payloads are
+verified: 73 match retained `fd93151b`; its original manifest, 48,040-byte
+selector library and receipt remain for reconstruction. This releases 70,598,656
+allocated bytes while retaining 62,717 bytes on both hosts
+(`recording-retired-d3bd788d.json`). The accepted `6429f3cb`, original
+`7e6f6459` and `fd93151b` bundles remain; the fourth cache slot holds
+the recording application `8543fa9e`.
 Native recording-folder replay at `fc52d6a8`, TUF `WAK2813C72`, also passes on
 the same `fd93151b` bundle without rebuilding. The real GTK chooser selects an
 exact Unicode path; Cancel preserves that path and the settings file's identity
@@ -6650,27 +6656,62 @@ hardware and installed-root recording, creator/wrong-principal and authorized UI
 transactions, native Apple ACLs and Windows/macOS acceptance remain OPEN.
 These named Linux component results establish no overall recording or LPE closure.
 
-**Viewer recording failure status — OPEN, native failure reproduced.**
-`VideoHandler::handle_frame` discards the recording write result; the I/O owner
-publishes active status when it queues the start control. A later output failure
-has no path back to the session flag or UI status. The controlled-side message
-wrapper also discards its write result. At `c99cea4d`, native app `fd93151b`
-reproduces the failure after real folder selection and viewer restart: the kernel
-refuses a write to the selected directory with EACCES, but the toolbar remains
-active, no error appears and no file exists. Four fresh display frames still pass
-with maximum age 302 ms. `recording-failure-baseline-c99cea4d.json` retains the
-failed run and joined cleanup; the same scenario requires visible error, inactive
-status and a decoded successful retry after restoring the directory permissions.
+**Viewer recording failure status — Linux caller/native recovery checks pass; file-stage inconsistency OPEN.**
+The retained native baseline `fd93151b` demonstrates EACCES with no error,
+a falsely active toolbar and no output, while the display stays fresh
+(`recording-failure-baseline-c99cea4d.json`). The unchanged scenario requires
+visible failure, stopped recording and a decoded same-viewer retry.
 
-`9828b63e` adds consuming `Recorder::finish`, exposing finalization failure and
-preserving an earlier terminal write failure. All 38 Linux native recording cases
-pass, including complete VP8/VP9 files, empty/nonkey-only stop, real EFBIG during
-finalization, and earlier write failures. The production parent also compiles;
-`recording-finish-9828b63e.json` binds source, artifact and cleanup. This is a
-prerequisite: the application callers do not yet use the new method. The two
-caller regressions in `--viewer-video-tests` remain uncompiled/unexecuted.
-Exact attempt ownership, late failure after stop/restart, finalization feedback
-and the full UI failure/retry correction remain required.
+`6e8e10a5` gives each attempt one owner for its writer reservations, first error
+and stop/completion state. Checked writes and consuming `Recorder::finish`
+report to that owner through a coalesced notification; the retained outcome
+survives notification coalescing. A retry waits for every old writer to finish.
+Recording errors remain separate from decoder/connection failure. Writers are
+admitted before the keyframe request. The UI distinguishes stopped, starting,
+active and stopping; active requires accepted output, and stop remains pending
+until completion. `c882436e` keeps requests before the first frame cancellable.
+`8543fa9e` exposes the same complete status to newly attached desktop/mobile
+pages, replacing their Boolean readback.
+
+At `8543fa9e`, all thirteen Linux native decoder, recording-caller and control
+mailbox cases pass. They cover failed output with continued decoding, successful
+same-viewer retry without an old error, a retry held behind an outstanding writer,
+pre-frame cancellation and shared status during starting/stopping. Real VP8
+payloads reach the output. `recording-owner-8543fa9e.json` binds the full non-Flutter
+parent test artifact, nine evidence files and joined VM/RAM cleanup. The earlier
+38-case native recorder/finalization acceptance remains in
+`recording-finish-9828b63e.json`; the audit retains the initial frame-fixture
+sequencing failure and corrected runs.
+
+The full Linux Flutter application builds at `8543fa9e`, including bridge
+generation, thirteen Dart cases and two Rust command cases
+(`recording-app-8543fa9e.json`). Two native replays on the same bundle pass
+the complete denied-write/retry scenario: the actual permission-denied dialog
+appears, recording stops, retry is available, no failed output is left, and
+fresh display frames remain within 316 ms maximum observed age after failure.
+A same-viewer retry produces a mode-0600 VP9 WebM; all 21 frames in each output
+independently decode to the live source. Completion before viewer exit,
+truncated-copy refusal, unchanged bytes after exit, folder persistence/cancel
+and joined cleanup pass. Nine-file capsules
+`native-recording-retry-38d88ae3.json` and
+`native-recording-repeat-38d88ae3.json` bind the two runs.
+
+**An earlier file-stage failure remains OPEN.** On this same app,
+`native-recording-retry-bd053a09.json` passes error/status/freshness and UI retry
+but fails file acceptance before decode. Its coarse diagnostic cannot identify
+the failing file condition. `38d88ae3` adds precise bounded diagnostics without
+relaxing the one-file, metadata, timing or decode criteria; both later runs pass
+without product changes. The audit retains all failures, including corrected
+X11 retired-window and selectable-dialog-text observer defects. Next, resolve
+the file-stage inconsistency with exact file evidence and controlled start
+ordering; source/logs show refresh followed by a second encoder start when
+active status enables peer recording QoS, but do not prove that caused the
+file-stage failure. Two successful runs do not close that outstanding result.
+
+Explicit full-UI finalization failures, multiple writers and late failures,
+blocked recording I/O, installed/root and other-platform recording remain OPEN.
+The controlled-side message wrapper still discards its write result. These
+results do not close R-S0/R-F5 or the complete recording/release requirements.
 
 **Transport verification classification — source-wording checks removed.**
 The two R-T7/R-A1 blocks in `scripts/verify.sh` checked an old short-frame expression,

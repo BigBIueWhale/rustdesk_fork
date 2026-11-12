@@ -6740,10 +6740,30 @@ selection, Cancel and viewer-restart persistence also pass. Capsule
 `native-recording-clock-4dbb7387.json` binds nine files/134,295 bytes verified on
 both hosts, zero listener deltas and joined VM/RAM retirement. This closes the
 selected Linux integration gap; the earlier unclassified file-stage failure
-remains unclassified. The next recording acceptance gap is actual full-UI
-finalization failure and truthful completion/retry after it.
+remains unclassified.
 
-Explicit full-UI finalization failures, multiple writers and late failures,
+**Recording finalization — Linux full-UI error/retry passes with writable diagnostics.**
+The unchanged `7c58ad90` application passes a kernel file-size-limit failure
+at Stop: the exact finalization error appears, recording becomes inactive,
+existing files retain their identities/bytes, and retry is available. Restoring
+the limit and resuming the same peer recovers fresh display (307 ms maximum
+observed age). Five same-viewer retries produce fifteen complete VP9 files and
+112 decoded frames, retaining the timing, truncated-copy and shutdown checks.
+`native-recording-finalize-diagnostic-280a3df9.json` binds this isolated run,
+source/artifact identities, zero listener deltas and joined VM/RAM cleanup.
+
+**Combined recording/diagnostic write failure remains OPEN.** The first run
+at `d1ae1c63` aborts the viewer after the same process-wide zero file-size limit
+also denies regular-file stdout/stderr writes. Its core is empty and no exact
+finalization feedback is observed (`native-recording-finalize-d1ae1c63.json`).
+The accepted run changes only diagnostic capture to a separately drained pipe;
+it does not explain or fix that abort. The next decisive step is separating
+stdout/stderr failure and identifying the aborting path. One interleaved
+observer receipt is losslessly reassembled during reconciliation, with raw
+bytes and the exact reassembly retained; observer line buffering remains a
+small follow-up for the next native invocation.
+
+Multiple writers and late failures, broader full-UI finalization failures,
 blocked recording I/O, installed/root and other-platform recording remain OPEN.
 The controlled-side message wrapper still discards its write result. These
 results do not close R-S0/R-F5 or the complete recording/release requirements.

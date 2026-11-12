@@ -147874,3 +147874,81 @@ on both hosts. QEMU 1862079 joins zero after 30.510 seconds; peak RAM scratch
 402,972,672 bytes, three zero listener deltas and exact private/socket/RAM
 absence are verified. Approximate 400,000-token ledger compression remains OPEN.
 This audit-only append preserves the counted ledger bytes.
+
+## 2026-11-12 — Native recording finalization failure and same-viewer retry
+
+Previous turn: progress, completing the clock correction's full-UI acceptance.
+Selected requirement: R-S0/R-F1 truthful recording completion and recovery.
+The existing native mux finalization refusal did not prove the real dialog,
+stopped status, display continuity or retry. This validation takes priority over
+another unrelated surface. Prior audit prefix: 15,947,058 bytes, SHA-256
+b2a1607e8a469a74cdb9d467a46f348fcd148e0442bc992e957d9c7e1ec2dcd5.
+
+Source review follows Recorder::finish through RecordingWriter::drop,
+RecordingAttempt's retained failure and Remote::update_record_state to the UI.
+The reviewed native tests already use RLIMIT_FSIZE zero for real finalization
+failure. Linux's documented process-wide file-size limit and inherited ignored
+signal disposition inform the full-UI fixture:
+https://man7.org/linux/man-pages/man2/prlimit.2.html
+https://man7.org/linux/man-pages/man7/signal.7.html
+The fixture verifies ignored SIGXFSZ and the original/changed/restored limit,
+starts recording through the real toolbar, and pauses only the retained guest
+server with a pidfd. Every server thread must stop before the fault; a bounded
+handshake and finally-owned SIGCONT restore that same generation. This keeps
+ordinary frame writes from being mistaken for finalization failure. The exact
+finalization-error text, stopped state, unchanged output and successful retry
+are mandatory. This is a write-failure scenario, not a power-loss durability test.
+
+d1ae1c63687dbca01b32b0a3dc437ab24043d7ae adds the fixture. All runs reuse the
+accepted 7c58ad90 full application, manifest
+73b0d724cd758774f4adda8f6d1d4d21befb52e217aaeacdece0e79b52cddc5b,
+with the same ddb1541d engine. No product, dependency or full-app build changes.
+kQsAULmaGV/tool89710 exits 1: EACCES feedback/status/freshness passes (306 ms),
+but the viewer aborts after the zero file-size limit and Stop. The accessible
+tree disappears before exact finalization feedback. Regular-file stdout/stderr
+are subject to the same limit; the retained core is zero bytes. No specific
+abort cause is established. The peer is resumed after 555 ms and all fixtures
+join. QEMU 1890030 joins zero after 132.281 seconds, peak RAM scratch
+3,027,267,584 bytes; four listener deltas are zero. Exact failed-tree retirement
+releases 62,496,768 allocated bytes after authenticating all duplicate payloads.
+native-recording-finalize-d1ae1c63.json binds twelve files/611,751 bytes verified
+on both hosts, including the empty-core inventory and failure logs.
+
+280a3df951d779c6acb15bb7b6bd12dad369bace routes only this scenario's viewer
+stdout/stderr through a private FIFO and separately owned log reader. The reader
+inherits the original limit, drains and joins at viewer exit, and exact FIFO
+identity is checked before removal. This preserves diagnostics during the app's
+file-size fault. The same unchanged controller and product now pass the entire
+scenario in In6nyP4u0D/tool60083, exit zero. The finalization error is visible,
+Stop becomes inactive, retry is available, and both output files retain exact
+identities and hashes (17,870 and 1,558 bytes). They are then retired by the test.
+Twenty-five peer threads resume after 651 ms without replacing the server;
+four fresh frames follow within the existing age bound (observed maximum 307 ms).
+Five same-viewer retries each undergo focus loss/return and independently decode
+all three epochs: 22/22/23/22/23 frames, 112 total. Aggregate durations are
+4,811/4,799/5,051/4,798/5,042 ms and sizes 41,420/41,394/43,628/40,689/44,530 bytes.
+Private output, unchanged timing bounds, complete/truncated-file distinctions,
+finalization before viewer exit, final files unchanged after exit, native folder
+selection/cancellation, restart persistence and exact joins all pass.
+
+One stdout epoch receipt is split by twelve stderr toolbar diagnostics at the
+stdio buffer boundary. Reconciliation initially refuses its incomplete line.
+Both literal fragments and all intervening diagnostics exist in the retained
+raw log. Exactly that one byte-preserving reordering restores the receipt; its
+raw segment hash, assembled line and operation are retained in the capsule.
+No source/frame/timing bound changes and no passed product check is repeated.
+Line buffering for the observer remains a follow-up for the next native run.
+native-recording-finalize-diagnostic-280a3df9.json binds nine files/136,558 bytes
+verified on both hosts. QEMU 1919732 joins zero after 163.663 seconds; peak RAM
+scratch 3,026,350,080 bytes, four zero listener deltas and exact private/socket/RAM
+absence are verified under the shared run lock.
+
+The full-UI finalization/retry requirement now has this exact Linux acceptance
+with writable diagnostics. The first combined recording/diagnostic write-failure
+abort remains OPEN; this pass does not establish or fix its cause. Next: separate
+stdout and stderr failure with preserved diagnostics and inspect the aborting
+path before choosing a product correction. Multiple/late writers, blocked I/O,
+controlled-side error propagation, installed/root and other-platform recording,
+R-S0/R-F5 and complete release acceptance remain OPEN. Static shell/Python syntax
+and diff hygiene pass; the actual controller compiles twice to identical bytes
+inside each VM. No live instruction or normative requirement changes.

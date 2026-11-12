@@ -47,7 +47,7 @@ fn query_indices() -> Result<Vec<u32>> {
 }
 
 fn video_handles() -> Result<Vec<u64>> {
-    let mut devices = BTreeSet::new();
+    let mut devices = Vec::new();
     for entry in fs::read_dir("/proc/self/fd")? {
         let path = entry?.path();
         let info = match fs::metadata(path) {
@@ -57,13 +57,21 @@ fn video_handles() -> Result<Vec<u64>> {
             Err(error) => return Err(error.into()),
         };
         if info.file_type().is_char_device() && libc::major(info.rdev()) == 81 {
-            devices.insert(info.rdev());
+            devices.push(info.rdev());
         }
     }
-    Ok(devices.into_iter().collect())
+    devices.sort_unstable();
+    Ok(devices)
 }
 
 fn frames(camera: &mut Camera) -> Result<Value> {
+    camera.open_stream()?;
+    let sample = sample_frames(camera)?;
+    camera.stop_stream()?;
+    Ok(sample)
+}
+
+fn sample_frames(camera: &mut Camera) -> Result<Value> {
     let resolution = camera.resolution();
     let (width, height) = (resolution.width(), resolution.height());
     require(width > 0 && width <= 1920 && height > 0 && height <= 1080,
@@ -72,7 +80,6 @@ fn frames(camera: &mut Camera) -> Result<Value> {
         .checked_mul(height as usize)
         .and_then(|pixels| pixels.checked_mul(4))
         .ok_or("native frame length overflow")?;
-    camera.open_stream()?;
     let mut hashes = Vec::new();
     for _ in 0..4 {
         let frame = camera.frame()?;
@@ -81,7 +88,6 @@ fn frames(camera: &mut Camera) -> Result<Value> {
                 && decoded.as_raw().len() == expected, "native metadata/frame shape differs")?;
         hashes.push(format!("{:x}", Sha256::digest(decoded.as_raw())));
     }
-    camera.stop_stream()?;
     require(hashes.iter().collect::<BTreeSet<_>>().len() >= 2,
             "native decoded frame content did not advance")?;
     Ok(json!({"width": width, "height": height, "frame_bytes": expected,
@@ -117,16 +123,49 @@ fn main_result() -> Result<()> {
             emit(json!({"scenario": "capture", "indices": indices, "name": name,
                         "sample": sample, "device_handles_retired": true}))
         }
-        "--two-retained-baseline" => {
+        "--two-retained" => {
             require(query_indices()? == [2, 3], "two-device native discovery differs")?;
             let mut first = camera(2)?;
             let sample = frames(&mut first)?;
-            emit(json!({"scenario": "two-retained-baseline", "first_sample": sample,
-                        "first_handles": video_handles()?, "next_operation": "open-native-three"}))?;
-            let _second = camera(3)?;
-            Err("the pinned second-device assertion unexpectedly returned".into())
+            let mut second = camera(3)?;
+            let second_sample = frames(&mut second)?;
+            let retained = video_handles()?;
+            let mut expected = vec![fs::metadata("/dev/video2")?.rdev(), fs::metadata("/dev/video3")?.rdev()];
+            expected.sort_unstable();
+            require(retained == expected, "retained cameras do not own distinct native handles")?;
+            drop(second);
+            require(video_handles()? == [fs::metadata("/dev/video2")?.rdev()], "second drop changed the first owner")?;
+            let resumed_sample = frames(&mut first)?;
+            drop(first);
+            require(video_handles()?.is_empty(), "retained cameras left a device handle")?;
+            emit(json!({"scenario": "two-retained", "first_sample": sample,
+                        "second_sample": second_sample, "resumed_sample": resumed_sample,
+                        "retained_rdevs": retained, "device_handles_retired": true}))
         }
-        "--reuse-baseline" => {
+        "--stream-ownership" => {
+            require(query_indices()? == [2, 3], "stream ownership discovery differs")?;
+            let native = fs::metadata("/dev/video2")?.rdev();
+            let mut first = camera(2)?;
+            first.open_stream()?;
+            let initial = sample_frames(&mut first)?;
+            let mut competing = camera(2)?;
+            require(video_handles()? == [native, native], "separate opens share a device handle")?;
+            let error = competing.open_stream().err().ok_or("competing stream unexpectedly acquired the device")?;
+            require(!competing.is_stream_open(), "failed competing open retained a stream")?;
+            drop(competing);
+            require(video_handles()? == [native], "competing drop changed the incumbent handle")?;
+            let preserved = sample_frames(&mut first)?;
+            first.stop_stream()?;
+            drop(first);
+            require(video_handles()?.is_empty(), "stream owner did not retire its handle")?;
+            let mut fresh = camera(2)?;
+            let retry = frames(&mut fresh)?;
+            drop(fresh);
+            require(video_handles()?.is_empty(), "fresh stream left a device handle")?;
+            emit(json!({"scenario": "stream-ownership", "initial": initial, "preserved": preserved,
+                        "retry": retry, "competing_error": error.to_string(), "device_handles_retired": true}))
+        }
+        "--reuse" => {
             require(query_indices()? == [2, 3], "reuse native discovery differs")?;
             let original = fs::metadata("/dev/video2")?.rdev();
             let replacement = fs::metadata("/dev/video3")?.rdev();
@@ -140,14 +179,20 @@ fn main_result() -> Result<()> {
             require(request == "reuse\n", "native reuse handoff differs")?;
             require(fs::metadata("/dev/video2")?.rdev() == replacement,
                     "current node did not acquire the replacement identity")?;
-            let second = camera(2)?;
+            let mut second = camera(2)?;
             let retained = video_handles()?;
-            require(retained == [original], "pinned cached handle behavior differs")?;
+            let mut expected = vec![original, replacement];
+            expected.sort_unstable();
+            require(retained == expected, "fresh open did not retain the replacement node")?;
+            let replacement_sample = frames(&mut second)?;
             drop(second);
+            require(video_handles()? == [original], "replacement drop changed the original owner")?;
+            let original_sample = frames(&mut first)?;
             drop(first);
             require(video_handles()?.is_empty(), "reuse left a native device handle after drop")?;
-            emit(json!({"scenario": "reuse-baseline", "current_node_rdev": replacement,
-                        "retained_rdevs": retained, "device_handles_retired": true}))
+            emit(json!({"scenario": "reuse", "current_node_rdev": replacement,
+                        "retained_rdevs": retained, "replacement_sample": replacement_sample,
+                        "original_sample": original_sample, "device_handles_retired": true}))
         }
         _ => Err("unknown native camera scenario".into()),
     }

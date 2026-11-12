@@ -149819,3 +149819,30 @@ deltas and exact private/process/socket/RAM retirement pass. The approximate
 400,000-token target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,080,359-byte audit prefix, SHA-256
 751f803aefac0406a52b26896e3b08e5301887f89258f4c7742a0550fea34697.
+
+## Linux camera device ownership correction (2026-11-12)
+
+Continue the reproduced R-F1/R-S0 camera prerequisite: remove the pinned
+backend's numeric-index global device cache and impossible second-device
+assertion. Each capture object now opens and retains its own Device; the
+kernel owns stream exclusivity. The fork-owned Apache-2.0 source retains the
+supplier notices and license, with its origin/digest in the backend README.
+Both application and native probe patch the same Git package to this source;
+the authenticated vendor closure and other package identities stay unchanged.
+
+The design follows the kernel's V4L2 open/stream-ownership contract:
+https://docs.kernel.org/userspace-api/media/v4l/open.html . Node numbers can
+change, so a fresh open must resolve the current node rather than upgrade an
+old weak handle. Stream sharing belongs to the application capture service.
+Cargo's documented local Git-package override selects the corrected backend:
+https://doc.rust-lang.org/cargo/reference/overriding-dependencies.html .
+
+The same bounded media VM will compile and execute nonzero capture, two
+retained devices, node replacement while an old handle lives, and a competing
+stream refused while the incumbent still captures and a later retry succeeds.
+Actual decoded frames, native handle counts/identities and exact retirement
+decide acceptance. Native validation is pending. RustDesk's separate catalog,
+ordinal and service-generation correction remains OPEN; this component change
+does not establish application login, physical hotplug or release acceptance.
+The prior 16,081,038-byte audit prefix remains unchanged, SHA-256
+86d207ec52a82cf8e1ef4a8c7aad02d2dedf3b7175d5704cf272e96f88f7951b.

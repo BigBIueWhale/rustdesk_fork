@@ -3080,6 +3080,9 @@ if [ "$MODE" = media-kernel-tests ]; then
         media_sources+=("$SCRIPT_DIR/verifier-media-nokhwa.py"
             "$SCRIPT_DIR/camera-native-probe/Cargo.toml" "$SCRIPT_DIR/camera-native-probe/Cargo.lock"
             "$SCRIPT_DIR/camera-native-probe/build.rs" "$SCRIPT_DIR/camera-native-probe/src/main.rs"
+            "$REPO_ROOT/Cargo.toml" "$REPO_ROOT/Cargo.lock"
+            "$REPO_ROOT/libs/nokhwa-bindings-linux/Cargo.toml" "$REPO_ROOT/libs/nokhwa-bindings-linux/src/lib.rs"
+            "$REPO_ROOT/libs/nokhwa-bindings-linux/README.md" "$REPO_ROOT/libs/nokhwa-bindings-linux/LICENSE"
             "$SCRIPT_DIR/online-input-provenance.py")
     fi
     for source in "${media_sources[@]}"; do
@@ -5057,6 +5060,10 @@ nokhwa=sys.argv[13]=='1'
 if nokhwa:
     scripts=Path(sys.argv[3]).parent
     for name,path in [('nokhwa.py',scripts/'verifier-media-nokhwa.py'),
+                      ('product-Cargo.toml',scripts.parent/'Cargo.toml'),
+                      ('product-Cargo.lock',scripts.parent/'Cargo.lock'),
+                      *((f'backend/{name}',scripts.parent/'libs/nokhwa-bindings-linux'/name)
+                        for name in ('Cargo.toml','src/lib.rs','README.md','LICENSE')),
                       *((f'probe/{name}',scripts/'camera-native-probe'/name)
                         for name in ('Cargo.toml','Cargo.lock','build.rs','src/main.rs')),
                       *((f'../repo/scripts/{name}',scripts/name) for name in
@@ -5086,6 +5093,9 @@ PY
         lifecycle_payload_grafts+=(
             "media/nokhwa.py=$SCRIPT_DIR/verifier-media-nokhwa.py"
             "media/probe=$SCRIPT_DIR/camera-native-probe"
+            "media/backend=$REPO_ROOT/libs/nokhwa-bindings-linux"
+            "media/product-Cargo.toml=$REPO_ROOT/Cargo.toml"
+            "media/product-Cargo.lock=$REPO_ROOT/Cargo.lock"
             "repo/scripts/online-input-provenance.py=$SCRIPT_DIR/online-input-provenance.py"
             "media/devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
             "media/cargo-vendor=$CARGO_VENDOR_ROOT"
@@ -6521,14 +6531,23 @@ if sys.argv[7]=='1':
     assert supplier['supplier_executed'] is True and supplier['rustdesk_product_executed'] is False
     for key in ('root_foreign_probe_refused','compiler_container_retired','daemon_joined','compile_network_canary_refused'):
         assert supplier[key] is True
-    capture,retained,reuse=supplier['scenarios']
+    capture,retained,reuse,ownership=supplier['scenarios']
     assert capture['scenario']=='capture' and capture['indices']==[2]
     assert capture['device_handles_retired'] is True and len(set(capture['sample']['frame_sha256']))>=2
-    assert retained['scenario']=='two-retained-baseline' and retained['signal']=='SIGABRT'
-    assert reuse['result']['scenario']=='reuse-baseline' and reuse['result']['device_handles_retired'] is True
-    assert reuse['result']['retained_rdevs']==[reuse['readiness']['original_rdev']]
+    assert retained['scenario']=='two-retained' and retained['device_handles_retired'] is True
+    assert len(set(retained['retained_rdevs']))==2
+    assert reuse['result']['scenario']=='reuse' and reuse['result']['device_handles_retired'] is True
+    assert reuse['result']['retained_rdevs']==sorted([reuse['readiness']['original_rdev'],reuse['readiness']['replacement_rdev']])
     assert reuse['result']['current_node_rdev']==reuse['readiness']['replacement_rdev']
     assert reuse['readiness']['original_rdev']!=reuse['readiness']['replacement_rdev']
+    assert ownership['scenario']=='stream-ownership' and ownership['device_handles_retired'] is True
+    assert ownership['competing_error']
+    samples=[capture['sample'],retained['first_sample'],retained['second_sample'],retained['resumed_sample'],
+             reuse['readiness']['first_sample'],reuse['result']['replacement_sample'],reuse['result']['original_sample'],
+             ownership['initial'],ownership['preserved'],ownership['retry']]
+    for sample in samples:
+        assert sample['decoded_format']=='RGBA' and sample['frame_bytes']==sample['width']*sample['height']*4
+        assert len(sample['frame_sha256'])==4 and len(set(sample['frame_sha256']))>=2
 else:
     assert 'nokhwa' not in result
 for name,path in zip(('boot.py','guest.py'),sys.argv[3:5]):
@@ -6543,7 +6562,7 @@ for capture in result['captures']:
 print('MEDIA_KERNEL_OBSERVATION='+json.dumps({'prepared':prepared,'fixture':result},sort_keys=True))
 PY
     if [ "$MEDIA_NOKHWA" -eq 1 ]; then
-        require_exact_fixed_receipt "MEDIA_NOKHWA_FIXTURE=pass source=$FOCUSED_TEST_COMMIT capture=decoded two-retained=SIGABRT node-reuse=stale-handle supplier=executed product=unexecuted cleanup=joined" 'native camera supplier failure reproduction'
+        require_exact_fixed_receipt "MEDIA_NOKHWA_FIXTURE=pass source=$FOCUSED_TEST_COMMIT capture=decoded two-retained=independent node-reuse=fresh-handle stream=exclusive-retry supplier=executed product=unexecuted cleanup=joined" 'native camera device ownership'
     fi
 elif [ "$MODE" = host-network-tests ]; then
     require_exact_fixed_receipt \

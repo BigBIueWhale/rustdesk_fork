@@ -1,0 +1,16 @@
+[package]
+name = "nokhwa-bindings-linux"
+version = "0.1.1"
+edition = "2021"
+publish = false
+license = "Apache-2.0"
+description = "Fork-owned V4L2 capture backend for nokhwa"
+
+[dependencies]
+nokhwa-core = { git = "https://github.com/rustdesk-org/nokhwa.git", branch = "fix_from_raw_parts" }
+
+[features]
+no-arena-buffer = []
+
+[target.'cfg(target_os = "linux")'.dependencies]
+v4l = { version = "0.14", features = ["v4l2-sys"] }

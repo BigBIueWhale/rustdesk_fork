@@ -13,6 +13,7 @@ import stat
 import subprocess
 import tarfile
 import time
+import tomllib
 
 
 MEDIA = Path('/mnt/rustdesk-verifier-inputs/media')
@@ -202,6 +203,11 @@ def load_image(pins):
 
 
 def compile_probe(pins):
+    source = 'https://github.com/rustdesk-org/nokhwa.git'
+    for path, expected in ((MEDIA / 'product-Cargo.toml', 'libs/nokhwa-bindings-linux'),
+                           (MEDIA / 'probe/Cargo.toml', '../../libs/nokhwa-bindings-linux')):
+        require(tomllib.loads(path.read_text())['patch'][source]['nokhwa-bindings-linux'] == {'path': expected},
+                'native probe and application must select the same owned camera backend')
     validator = ['/usr/bin/python3', '-I', '-S', str(SCRIPTS / 'online-input-provenance.py'),
                  'verify-subtree', '--tree', str(MEDIA / 'cargo-vendor'),
                  '--expected', pins['SHA256_CARGO_VENDOR_CLOSURE_V1']]
@@ -215,9 +221,11 @@ def compile_probe(pins):
               'cp /config.toml /tmp/cargo-home/config.toml\n'
               'test "$(cargo --version)" = "cargo 1.75.0 (1d8b05cdd 2023-11-20)"\n'
               'test "$(rustc --version)" = "rustc 1.75.0 (82e1608df 2023-12-21)"\n'
-              'cp -R /probe /work/probe\n'
-              'chmod -R u+w /work/probe\n'
-              'cd /work/probe\n'
+              'mkdir -p /work/source/scripts /work/source/libs\n'
+              'cp -R /probe /work/source/scripts/camera-native-probe\n'
+              'cp -R /backend /work/source/libs/nokhwa-bindings-linux\n'
+              'chmod -R u+w /work/source\n'
+              'cd /work/source/scripts/camera-native-probe\n'
               # The product lock projection includes edges enabled by other consumers.
               # Let Cargo prune those edges, then reject any changed supplier identity.
               'cargo metadata --offline --format-version=1 > /work/metadata.json\n'
@@ -228,6 +236,11 @@ def compile_probe(pins):
               "approved={key(p) for p in tomllib.loads(Path('/probe/Cargo.lock').read_text())['package']}\n"
               "raw=Path('Cargo.lock').read_bytes(); selected=tomllib.loads(raw.decode())['package']\n"
               "assert all(key(p) in approved for p in selected), 'camera resolution changed a pinned package'\n"
+              "metadata=json.loads(Path('/work/metadata.json').read_text())\n"
+              "backend,=[p for p in metadata['packages'] if p['name']=='nokhwa-bindings-linux']\n"
+              "assert backend['source'] is None and backend['manifest_path']=='/work/source/libs/nokhwa-bindings-linux/Cargo.toml'\n"
+              "for name in ('Cargo.toml','src/lib.rs'):\n"
+              " assert Path('/backend',name).read_bytes()==Path('/work/source/libs/nokhwa-bindings-linux',name).read_bytes()\n"
               "print('CAMERA_NATIVE_LOCK='+json.dumps({'sha256':hashlib.sha256(raw).hexdigest(),"
               "'bytes':len(raw),'packages':len(selected),'identities_unchanged':True},sort_keys=True))\n"
               'PY\n'
@@ -241,7 +254,8 @@ def compile_probe(pins):
             '--env=HOME=/tmp/home', '--env=CARGO_HOME=/tmp/cargo-home', '--env=CARGO_NET_OFFLINE=true',
             '--env=CARGO_INCREMENTAL=0', '--env=SOURCE_DATE_EPOCH=' + pins['SOURCE_DATE_EPOCH_PIN'],
             '--env=PATH=/usr/local/cargo/bin:/usr/bin:/bin']
-    mounts = [(MEDIA / 'probe', '/probe', True), (MEDIA / 'cargo-vendor', '/online/cargo-vendor', True),
+    mounts = [(MEDIA / 'probe', '/probe', True), (MEDIA / 'backend', '/backend', True),
+              (MEDIA / 'cargo-vendor', '/online/cargo-vendor', True),
               (MEDIA / 'cargo-vendor-config.toml', '/config.toml', True), (build, '/work', False)]
     for source, target, readonly in mounts:
         argv += ['--mount', 'type=bind,source=' + str(source) + ',target=' + target
@@ -343,7 +357,7 @@ def native_scenarios(artifact):
                 os.chown(p, 4000, 4000)
                 os.chmod(p, 0o600)
             require(record(NATIVE) == artifact, 'native executable changed')
-            scenario = '--capture' if count == 1 else '--two-retained-baseline'
+            scenario = '--capture' if count == 1 else '--two-retained'
             run = subprocess.run(native_argv(scenario), env=ENV, stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE, timeout=10)
             require(len(run.stdout) <= 16384 and len(run.stderr) <= 16384, 'native result exceeds bound')
@@ -351,14 +365,21 @@ def native_scenarios(artifact):
                 require(run.returncode == 0 and not run.stderr, 'nokhwa native capture failed: ' + run.stderr.decode(errors='replace'))
                 results.append(json.loads(run.stdout))
             else:
-                require(run.returncode == -6 and b'Device list should not contain duplicate indexes' in run.stderr
-                        and b'left: 0' in run.stderr and b'right: 2' in run.stderr,
-                        'pinned two-retained-device failure differs: ' + run.stderr.decode(errors='replace'))
+                require(run.returncode == 0 and not run.stderr,
+                        'two retained devices failed: ' + run.stderr.decode(errors='replace'))
                 result = json.loads(run.stdout)
-                require(result['next_operation'] == 'open-native-three', 'second native open was not reached')
-                result.update({'signal': 'SIGABRT', 'stderr': run.stderr.decode()})
+                require(result['scenario'] == 'two-retained' and result['device_handles_retired'],
+                        'retained device completion differs')
                 results.append(result)
                 results.append(reuse_scenario())
+                owned = subprocess.run(native_argv('--stream-ownership'), env=ENV, stdout=subprocess.PIPE,
+                                       stderr=subprocess.PIPE, timeout=10)
+                require(owned.returncode == 0 and not owned.stderr and len(owned.stdout) <= 16384,
+                        'native stream ownership failed: ' + owned.stderr.decode(errors='replace'))
+                ownership = json.loads(owned.stdout)
+                require(ownership['scenario'] == 'stream-ownership' and ownership['device_handles_retired'],
+                        'stream ownership completion differs')
+                results.append(ownership)
         finally:
             root_command(['/usr/sbin/modprobe', '-r', 'vivid'])
             root_command(['/usr/bin/udevadm', 'settle', '--timeout=10'])
@@ -369,7 +390,7 @@ def native_scenarios(artifact):
 
 
 def reuse_scenario():
-    process = subprocess.Popen(native_argv('--reuse-baseline'), env=ENV,
+    process = subprocess.Popen(native_argv('--reuse'), env=ENV,
                                stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     moved_original = moved_replacement = False
     identities = {name: (Path('/dev', name).lstat().st_ino, Path('/dev', name).lstat().st_rdev)
@@ -396,8 +417,9 @@ def reuse_scenario():
         require(process.returncode == 0 and not error and len(output) <= 16384,
                 'native reuse failed: ' + error.decode(errors='replace'))
         result = json.loads(output)
-        require(result['scenario'] == 'reuse-baseline' and result['retained_rdevs'] == [identities['video2'][1]]
-                and result['current_node_rdev'] == identities['video3'][1], 'native cached-handle observation differs')
+        require(result['scenario'] == 'reuse'
+                and result['retained_rdevs'] == sorted([identities['video2'][1], identities['video3'][1]])
+                and result['current_node_rdev'] == identities['video3'][1], 'native replacement-handle observation differs')
         return {'readiness': first, 'result': result, 'scope': 'guest-native-node-rename; physical-hotplug-unexecuted'}
     finally:
         if process.poll() is None:
@@ -453,7 +475,7 @@ def verify(pins):
                 break
             require(time.monotonic() < deadline, 'owned guest Docker descendants remain: ' + str(owned))
             time.sleep(0.05)
-    print('media nokhwa: native capture, retained-device failure and node reuse', flush=True)
+    print('media nokhwa: native capture, retained devices, node replacement and stream ownership', flush=True)
     results = native_scenarios(artifact)
     return {'artifact': artifact, 'scenarios': results, 'root_foreign_probe_refused': True,
             'compiler_container_retired': True, 'daemon_joined': True,

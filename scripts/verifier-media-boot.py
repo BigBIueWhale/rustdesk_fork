@@ -117,7 +117,7 @@ def main():
               + ' module=retired product=unexecuted', flush=True)
         if contract['nokhwa']:
             print('MEDIA_NOKHWA_FIXTURE=pass source=' + contract['source_commit']
-                  + ' capture=decoded two-retained=SIGABRT node-reuse=stale-handle'
+                  + ' capture=decoded two-retained=independent node-reuse=fresh-handle stream=exclusive-retry'
                   + ' supplier=executed product=unexecuted cleanup=joined', flush=True)
 
 

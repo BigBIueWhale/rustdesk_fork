@@ -369,10 +369,11 @@ pub(crate) async fn client_change(enabled: bool) -> RecordingSettingChange {
         super::connect_service(SERVICE_IPC_REQUEST_TIMEOUT_MS)).await
 }
 
-async fn client_change_with_connector<F, C>(enabled: bool, budget: Duration, mut connect: F) -> RecordingSettingChange
+async fn client_change_with_connector<F, C, T>(enabled: bool, budget: Duration, mut connect: F) -> RecordingSettingChange
 where
     F: FnMut() -> C,
-    C: std::future::Future<Output = ResultType<super::ConnectionTmpl<super::ConnClient>>>,
+    C: std::future::Future<Output = ResultType<super::ConnectionTmpl<T>>>,
+    T: tokio::io::AsyncRead + tokio::io::AsyncWrite + Unpin,
 {
     let deadline = tokio::time::Instant::now() + budget;
     let operation_id = Uuid::new_v4().to_string();
@@ -542,7 +543,7 @@ mod tests {
         assert!(connections >= 2 && connections <= 3);
         assert_eq!(result, RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Uncertain));
         let result = client_change_with_connector(true, Duration::from_secs(1), ||
-            std::future::ready(Err(anyhow!("owner is unavailable")))).await;
+            std::future::ready(Err::<ConnectionTmpl<super::super::ConnClient>, _>(anyhow!("owner is unavailable")))).await;
         assert_eq!(result, RecordingSettingChange::without_confirmation(RecordingSettingOutcome::Failed));
     }
 

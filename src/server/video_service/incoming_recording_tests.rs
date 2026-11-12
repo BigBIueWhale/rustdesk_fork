@@ -4,6 +4,10 @@ use crate::{incoming_recording_status::{FailureStage, RecordingFailure}, server:
 use hbb_common::libc;
 use std::{fs, os::unix::fs::PermissionsExt, path::PathBuf};
 
+#[cfg(target_arch = "x86_64")]
+#[path = "incoming_recording_blocked.rs"]
+mod blocked;
+
 struct RecordingDirectory(PathBuf);
 
 impl RecordingDirectory {

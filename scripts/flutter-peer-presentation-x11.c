@@ -7851,6 +7851,7 @@ static int incoming_status_visible(unsigned int pid, int active, int failed) {
 
 static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
     int result = -1, file = -1;
+    const char *phase = "directory";
     unsigned int files = 0U, frames = 0U;
     size_t bytes = 0U;
     unsigned char *data = NULL;
@@ -7863,16 +7864,19 @@ static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
     errno = 0;
     while ((entry = readdir(entries)) != NULL) {
         if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        phase = "name";
         size_t length = strlen(entry->d_name);
         if (++files > 8U || length < 20U || strncmp(entry->d_name, "incoming_", 9U) != 0 ||
             strcmp(entry->d_name + length - 5U, ".webm") != 0) goto out;
         file = openat(directory, entry->d_name, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+        phase = "metadata";
         struct stat before, after;
         if (file < 0 || fstat(file, &before) != 0 || !S_ISREG(before.st_mode) ||
             before.st_uid != geteuid() || before.st_gid != getegid() || before.st_nlink != 1U ||
             (before.st_mode & 07777U) != 0600U || before.st_size <= 0 ||
             before.st_size > 1024 * 1024 - (off_t)bytes) goto out;
         size_t size = (size_t)before.st_size, offset = 0U;
+        phase = "read";
         data = malloc(size);
         if (data == NULL) goto out;
         while (offset < size) {
@@ -7882,9 +7886,16 @@ static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
             offset += (size_t)count;
         }
         RecordingVideo video, rejected;
-        if (recording_decode(data, size, &history, started, stopped, &video) != 0 ||
-            recording_decode(data, size - 1U, &history, started, stopped, &rejected) == 0 ||
-            fstat(file, &after) != 0 || before.st_dev != after.st_dev ||
+        phase = "decode";
+        if (recording_decode(data, size, &history, started, stopped, &video) != 0) {
+            fprintf(stderr, "FLUTTER_PEER_INCOMING_DECODE_FAIL file=%s bytes=%zu packets=%u images=%u first=%lld last=%lld\n",
+                entry->d_name, size, video.packets, video.images, (long long)video.first_frame, (long long)video.last_frame);
+            goto out;
+        }
+        phase = "truncated-control";
+        if (recording_decode(data, size - 1U, &history, started, stopped, &rejected) == 0) goto out;
+        phase = "unchanged";
+        if (fstat(file, &after) != 0 || before.st_dev != after.st_dev ||
             before.st_ino != after.st_ino || before.st_size != after.st_size ||
             before.st_mtim.tv_sec != after.st_mtim.tv_sec ||
             before.st_mtim.tv_nsec != after.st_mtim.tv_nsec) goto out;
@@ -7904,11 +7915,14 @@ static int incoming_output(int directory, uint64_t started, uint64_t stopped) {
         if (closed != 0) goto out;
         errno = 0;
     }
+    phase = "aggregate";
     if (errno != 0 || files == 0U || frames < 12U) goto out;
     printf("FLUTTER_PEER_INCOMING_OUTPUT_OK files=%u decoded_frames=%u bytes=%zu completion=ui\n",
            files, frames, bytes);
     result = 0;
 out:
+    if (result != 0) fprintf(stderr, "FLUTTER_PEER_INCOMING_OUTPUT_FAIL phase=%s files=%u frames=%u bytes=%zu\n",
+                             phase, files, frames, bytes);
     free(data);
     if (file >= 0 && close(file) != 0) result = -1;
     if (entries != NULL && closedir(entries) != 0) result = -1;

@@ -1200,7 +1200,15 @@ PY
       cleanup_incoming_ui || cleanup_status=1
       if [ "$PEER_SCENARIO" = incoming-recording ] && [ "$status" -ne 0 ]; then
         for log in /tmp/incoming-observer.log /tmp/incoming-ui.log; do
-          [ ! -f "$log" ] || tail -n 100 "$log" >&2
+          if [ -f "$log" ]; then
+            if [ "$(stat -c %s "$log")" -le 131072 ]; then
+              cat "$log" >&2
+            else
+              echo "incoming diagnostic exceeded bound: $log" >&2
+              head -n 60 "$log" >&2
+              tail -n 60 "$log" >&2
+            fi
+          fi
         done
       fi
       if [ -n "$SERVER_PID" ] && [ -n "$SERVER_START" ] \

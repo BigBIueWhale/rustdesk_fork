@@ -147962,3 +147962,91 @@ on both hosts. QEMU 1922258 joins zero after 30.650 seconds; peak RAM scratch
 403,042,304 bytes, three zero listener deltas and exact private/socket/RAM
 absence are verified. Approximate 400,000-token compression remains OPEN.
 This audit-only append preserves the counted ledger bytes.
+
+### 2026-11-12 — Recording diagnostic failure narrowed to the production logger
+
+Previous turn: progress, accepting finalization recovery with writable diagnostics
+while retaining the combined-write abort. This slice selects that demonstrated
+R-S0 recording failure before an unrelated workflow. Prior audit prefix:
+15,953,062 bytes, SHA-256
+04aebbaa2ae5b23b1d2725ccc689e9d957d75eb69da4d5594f0a4fb9034e235a.
+
+1e3aa465df0062a16098659109055094fc7baeb4 keeps the viewer's stdout on a regular
+file and stderr on the exact owned FIFO reader outside the zero-file-size limit.
+The reader joins before stderr is appended to the retained viewer log. Observer
+stdout becomes line buffered to prevent the previously observed receipt splitting.
+The application remains 7c58ad908ec2ee97af84708a8c0d62c2009b56fb, manifest
+73b0d724cd758774f4adda8f6d1d4d21befb52e217aaeacdece0e79b52cddc5b.
+8e1bex5lWI/tool5762 exits zero. Native finalization feedback, inactive status,
+unchanged files (13,870 and 1,581 bytes), restored limit and fresh display pass;
+maximum observed recovery frame age is 888 ms within the unchanged 1,000 ms bound.
+Twenty-five peer threads resume after 609 ms. Five retries produce fifteen
+complete VP9 files and 108 decoded frames; timing, truncation, focus, folder,
+cancellation, restart and exact shutdown checks remain satisfied. All epoch
+receipts parse directly, without reassembly. This does not prove stdout was
+written while the fault was active. native-recording-stdout-1e3aa465.json binds
+nine files/136,611 bytes verified on CTE and TUF. QEMU 1923725 joins zero after
+160.831 seconds; peak RAM scratch 3,027,484,672 bytes, four zero listener deltas
+and exact private/socket/RAM absence are verified.
+
+Review of the authenticated pinned flexi_logger 0.27.4 source establishes that
+StateHandle::write reports its file-write failure through eprint_err, whose
+default StdErr branch calls eprintln! at util.rs:90. Package checksum:
+469e584c031833564840fb0cdbce99bdfe946fd45480a188545e73a76f45461c.
+The inspected util.rs matches .cargo-checksum.json, SHA-256
+7b1312ca0af485bfd9cf5efc7f8b88a02f979ae3431726a8835860828c5ebdef.
+The product's RecordingAttempt::fail logs before retaining the recording error;
+Cargo.toml's release profile uses panic=abort. Rust documents stderr-write panic:
+https://doc.rust-lang.org/std/macro.eprintln.html
+This source path motivates a focused native reproduction, not an assumed fix.
+
+d37acfd4435ef6ff6b0e8a11d779a5b367780597 adds one Linux subprocess regression to
+the existing file-logging profile. It builds the actual production file_logger,
+writes an initial record, ignores SIGXFSZ, lowers only the child's soft
+RLIMIT_FSIZE to zero and first proves its regular-file stderr returns EFBIG.
+The next log record must return, the limit must restore, and a subsequent record
+must persist; the failed record must not appear. A child-only panic hook retains
+the call stack through piped stdout. The parent owns/reaps the child; the profile
+retains its existing 20-second execution timeout. Product code and dependencies
+are unchanged. The six-test inventory and outer receipt count are updated together.
+
+The initial launcher refuses TUF's group-writable 0775 checkout of the edited
+entry script before VM creation. Exact owned entry/guest scripts are normalized
+to 0755 without changing bytes; the refusal log is retained. The admitted
+dnDky95QSl/tool4565 exits 1 as a failing baseline. The child returns 101 with
+'failed printing to stderr: File too large (os error 27)'. Its stack reaches
+std::_eprint, flexi_logger::util::try_to_write at util.rs:90, eprint_err and
+StateHandle::write at state_handle.rs:204. The Linux Rust 1.75 test artifact is
+c04172c290a0b8f3627a0af32a86a25e47da0be2a3161e2c3e178b3a239d25a0.
+Four established logging controls pass; the separate already-recorded overlap
+case still loses the resident's final record after forty other processes.
+Aggregate: four passed/two failed in 0.28 seconds, not a successful profile.
+The failure handler prints the artifact-start receipt separately and again in
+its raw output tail; these are two renderings of one execution. No full-viewer
+stack trace was obtained, so the earlier app abort's attribution remains an
+inference supported by the source, output isolation and component reproduction.
+
+logger-write-baseline-d37acfd4-admitted.json binds ten files/118,460 bytes verified
+on both hosts. QEMU 1925231 joins zero after 129.997 seconds; peak RAM scratch
+3,518,795,776 bytes and four zero listener deltas. Under the shared run lock,
+private output and console equal the durable captures, exact socket/process/RAM
+absence is checked, the bounded private inventory is retained, and exact tree
+66306:78162059 is retired, releasing 3,403,776 allocated bytes.
+
+The upstream changelog identifies the configurable non-panicking error-channel
+API introduced in 0.28.0:
+https://raw.githubusercontent.com/emabee/flexi_logger/main/CHANGELOG.md
+Read-only in-memory inspection authenticates the 221,676-byte published archive
+against crates.io's checksum
+f248c29a6d4bc5d065c9e9068d858761a0dcd796759f7801cc14db35db23abd8.
+Sources: https://crates.io/api/v1/crates/flexi_logger/0.28.0 and
+https://static.crates.io/crates/flexi_logger/flexi_logger-0.28.0.crate.
+Cargo.toml declares Rust 1.70.0 and its enabled dependency ranges fit the current
+lockfile versions. Logger::panic_if_error_channel_is_broken(false) explicitly
+avoids the terminal diagnostic-write panic while still attempting error output.
+This is source review only; no archive is installed or canonical cache changed.
+Next: authenticate the updated offline dependency closure, make that narrow
+configuration change, and execute the unchanged regression plus full-UI failure
+without the writable-stderr exemption. Existing concurrent log loss, blocked I/O,
+multiple/late recording writers, installed/root and other platforms remain OPEN.
+No full-application rebuild, live-instruction edit or release acceptance claim.

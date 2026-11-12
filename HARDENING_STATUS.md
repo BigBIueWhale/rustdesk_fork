@@ -6752,16 +6752,25 @@ observed age). Five same-viewer retries produce fifteen complete VP9 files and
 `native-recording-finalize-diagnostic-280a3df9.json` binds this isolated run,
 source/artifact identities, zero listener deltas and joined VM/RAM cleanup.
 
-**Combined recording/diagnostic write failure remains OPEN.** The first run
+**Combined recording/diagnostic write failure — logger panic reproduced; correction OPEN.** The first run
 at `d1ae1c63` aborts the viewer after the same process-wide zero file-size limit
 also denies regular-file stdout/stderr writes. Its core is empty and no exact
 finalization feedback is observed (`native-recording-finalize-d1ae1c63.json`).
-The accepted run changes only diagnostic capture to a separately drained pipe;
-it does not explain or fix that abort. The next decisive step is separating
-stdout/stderr failure and identifying the aborting path. One interleaved
-observer receipt is losslessly reassembled during reconciliation, with raw
-bytes and the exact reassembly retained; observer line buffering remains a
-small follow-up for the next native invocation.
+At `1e3aa465`, regular-file stdout plus separately drained stderr passes the
+same full-UI finalization and five retry cycles. Observer line buffering also
+preserves every receipt without reassembly (`native-recording-stdout-1e3aa465.json`).
+This does not prove stdout was written during the fault. The focused production
+logger regression at `d37acfd4` proves stderr returns EFBIG, then captures the
+panic from `flexi_logger` 0.27.4's log-write error handler through `util.rs:90`'s
+`eprintln!`. Release applications use panic=abort. Four logging controls pass;
+the existing concurrent resident-log loss reproduces separately. Capsule
+`logger-write-baseline-d37acfd4-admitted.json` binds the Linux Rust 1.75 component
+artifact, stack, source, four zero listener deltas and joined VM/RAM retirement.
+This identifies a concrete applicable failure path; it is not a full-viewer
+stack trace or a fix. Next: authenticate a compatible upstream logger version,
+select non-panicking error-channel handling, and pass both the unchanged
+regression and full-UI failure with regular-file diagnostics. Published 0.28.0
+has the needed API and declares Rust 1.70; pinned-toolchain execution is pending.
 
 Multiple writers and late failures, broader full-UI finalization failures,
 blocked recording I/O, installed/root and other-platform recording remain OPEN.

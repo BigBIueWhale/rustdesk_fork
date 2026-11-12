@@ -150398,3 +150398,14 @@ hosts. Removed original library bytes are not retained. Keep 843003fe as the
 first-image baseline, plus 6429f3cb and a36e5581 for package/recording comparisons.
 This append preserves the prior 16,115,846-byte audit prefix, SHA-256
 6c797c982dc8006072b4791bbc1c0934dff89f0004152838abc1c42708985274.
+
+Fresh ledger count at 2762894f, LMcJgmtYH3/tool39409, passes: 416,376 tokens /
+1,900,121 bytes, SHA-256
+7c5d33316ba155d76028b0bee885aaac8586e1dc46430981060d427ec97b8167.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+camera-initial-ledger-2762894f.json binds eight files/116,079 bytes on CTE/TUF.
+QEMU 3229584 joins zero after 30.347 seconds, with three zero listener deltas
+and exact private/process/socket/RAM retirement. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,119,301-byte audit prefix, SHA-256
+360f9ddf4c5642fb3b8fb8388abcc7d94bba66f9feb1b3db6992dcbb87a71062.

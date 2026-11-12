@@ -6875,10 +6875,26 @@ settings failure, not completed recording acceptance. No installed recording out
 disable or restart persistence is proved. `installed-recording-e5b602e9.json` binds
 sixteen files/572,488 bytes, including the inspected screenshot, copied to CTE/TUF;
 the failed private tree and VM/RAM/process/socket state are retired with four zero
-host listener deltas. Next: implement the authorized recording-specific operation
-without reopening generic service-owned config writes, then exercise settings and
-actual output. Native spawn failure, full-UI multiple writers, broader finalization
+host listener deltas. Native spawn failure, full-UI multiple writers, broader finalization
 failures and other platforms remain OPEN.
+
+**Linux recording-policy receiver implemented; installed workflow remains OPEN.**
+`a7833e28` adds a closed boolean service operation with a separate `auth_admin`
+polkit action, fresh connected-requester proof before/after authorization and one
+owned writer through persistence/child confirmation. The supervisor owns the saved
+setting; the exact child bootstraps and refreshes it from its root parent. Serialized
+refresh prevents older replies from overwriting newer state. Applied requires child
+confirmation or supervisor-accounted absence; lost confirmation is Uncertain.
+Generic service-owned option writes remain rejected. Twenty-four compiled Linux
+component cases pass, including real Unix framing, ordinary-process refusal, fresh
+disk/corruption readback and the existing recording/video regressions
+(`recording-policy-a7833e28.json`). At `962c1217`, the service source guard, native IPC
+parent/listener controls and two-action package checks pass
+(`recording-policy-ipc-962c1217.json`, `recording-policy-package-962c1217.json`).
+These are component results. Next: connect the typed desktop client/checkbox with
+truthful unavailable/denied/uncertain state, then prove installed administrator
+success/refusal, child convergence, actual output and restart on a new full app.
+No modified full application has been built or installed yet.
 
 The installed check also exposed a packaging blocker: the exact required-library
 inventory omitted the directory-picker plugin. `dffc8670` adds it to the producer

@@ -149091,3 +149091,67 @@ absence pass. The approximate 400,000-token compression target remains OPEN.
 This audit-only append preserves the counted ledger and prior 16,030,439-byte
 audit prefix, SHA-256
 1d306cdf02e86bd7f5f8865ea979014598e0ca1805b38e62247abae360e294cc.
+
+## 2026-11-12 — Linux incoming-recording service receiver checkpoint
+
+Prior turn: progress. Existing password-master SSH to TUF is active; no host
+authentication changes. Continue the reproduced R-S0 installed recording toggle
+failure. a7833e28 implements the receiver prerequisite; 962c1217 updates its native
+listener adapter and the scoped source guard. The product workflow remains OPEN.
+
+Installed Linux policy is now a closed bool operation owned durably by the root
+supervisor. It requires the exact live settings process and a separate
+com.carriez.RustDesk.set-incoming-recording action, with auth_admin for every
+session class. The existing fixed/trusted pkcheck, cleared environment, retained
+pidfd, PID/start-time/socket-UID subject, bounded authorization and owned helper
+reap are shared through a closed action enum. Password requests still select only
+their existing action. Fresh socket/process/session proof repeats immediately
+before persistence. Official polkit semantics require the complete process subject
+and authorize only on exit zero:
+https://www.freedesktop.org/software/polkit/docs/latest/pkcheck.1.html
+
+One writer owns persistence and exact-child confirmation through completion. The
+accepted service transaction joins its blocking worker even after requester loss;
+shutdown can stop authorization but cannot cancel an admitted write. A failed
+post-save read or child confirmation reports Uncertain. The exact supervised child
+reads only the root parent's boolean, without importing profile options. Bootstrap,
+authenticated network admission and main status refresh consume that value; capture
+switches its recording epoch when the value changes. A one-slot semaphore serializes
+the entire read/publication with a shared one-second read deadline, preventing a
+late earlier reply from overwriting newer policy. Tokio semaphore ownership and
+deadline behavior were checked against the primary documentation:
+https://docs.rs/tokio/latest/tokio/sync/struct.Semaphore.html
+
+After persistence, the root operation requests status from its exact child and
+requires the effective recording value before returning Applied. If supervisor-owned
+process accounting proves every child absent, later startup must bootstrap the
+committed value. No generic service-owned SetOption write is reopened. These are
+implementation/source conclusions; installed action authorization, race/finality
+coverage and child convergence have not yet run on the changed application.
+
+Native/component evidence, all exit zero with pinned offline inputs:
+
+| Source / run / tool | Result | Capsule / copied files / bytes |
+| --- | --- | --- |
+| a7833e28 / WcMiqY1Qe1 / 33034 | Full Linux parent test library compiles in 159 seconds; 24 cases execute in 6 seconds. Three new cases exercise real Unix framing and closed outcomes, ordinary-process supervisor/replica refusal, and fresh disk changes/corruption/retry. Existing 21 recording/decoder/mailbox cases pass on the same bytes. | recording-policy-a7833e28.json / 9 / 90,716 |
+| 962c1217 / OWl9YuA68c / 77012 | Service source guard, fourteen native IPC-parent cases and 264 existing listener/framing cases pass. Adapter imports the actual outcome enum; recording-action branches panic because that fixture exercises liveness, not recording authority. | recording-policy-ipc-962c1217.json / 9 / 163,111 |
+| 962c1217 / jb9RaMUUfC / 76811 | Production finalizer and independent Debian archive checks pass with the two exact actions. Each action independently rejects an allow_active=yes archive. Two CLI-verified archives, thirteen fixture-library digests, eight maintainer-source negatives and native ELF controls pass. | recording-policy-package-962c1217.json / 8 / 88,035 |
+
+The parent library digest is
+4b627f39145ace4f7c87c2b347eff2c5cc9dde5f5b15008c211fd48d7f9d37ed.
+No new full-app artifact or retained build cache was created. Evidence bytes and
+identities were verified on CTE and TUF. QEMU 4061817/4094081/4185445 each joins
+zero; elapsed times are 226.495/87.989/31.759 seconds and RAM scratch peaks are
+5,335,126,016/3,396,141,056/3,889,086,464 bytes. Their 4/4/3 listener deltas are
+zero. Exact private workspace, QEMU process, Unix endpoint and RAM workspace
+absence pass before each subsequent run. No failed private tree remains.
+
+Next: implement the typed desktop client and checkbox with truthful availability
+and applied/denied/failed/uncertain outcomes; preserve process-owned mobile/user-mode
+paths. Then build one source-bound full application and exercise real installed
+authorization, convergence, recording output, GUI/service restart, and relevant
+denial/disconnect/concurrency cases. Other platforms remain OPEN. This checkpoint
+does not fix the still-generic Flutter checkbox or establish installed acceptance.
+
+This append preserves the prior 16,031,190-byte audit prefix, SHA-256
+76aa86395d7b7cd856e551a1c347c1b70a8745330690130153448397a310cb0c.

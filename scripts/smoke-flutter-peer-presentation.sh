@@ -1366,6 +1366,8 @@ else
 fi
 
 if [ "$BUILD_APP_ONLY" -eq 0 ]; then
+runtime_instrumentation=none
+[ "$PEER_SCENARIO" != incoming-recording ] || runtime_instrumentation=recording-write-interposer
 for cycle in $(seq 1 "$RUNTIME_CYCLES"); do
 COORD="$WORKSPACE/coord.$cycle"
 mkdir "$COORD"
@@ -1373,8 +1375,8 @@ SERVER_CID_FILE="$WORKSPACE/server.$cycle.cid"
 VIEWER_CID_FILE="$WORKSPACE/viewer.$cycle.cid"
 SERVER_LOG="$WORKSPACE/server.$cycle.log"
 VIEWER_LOG="$WORKSPACE/viewer.$cycle.log"
-printf '== peer runtime cycle %s/%s, scenario=%s, instrumentation=none, network=none ==\n' \
-  "$cycle" "$RUNTIME_CYCLES" "$PEER_SCENARIO"
+printf '== peer runtime cycle %s/%s, scenario=%s, instrumentation=%s, network=none ==\n' \
+  "$cycle" "$RUNTIME_CYCLES" "$PEER_SCENARIO" "$runtime_instrumentation"
 CID_FILES+=("$SERVER_CID_FILE")
 server_session=smoke-flutter-peer-presentation-stage.sh
 server_accessibility=()
@@ -1606,10 +1608,10 @@ fi
   || die 'server result receipt differs'
 cleanup_container "$VIEWER_CID_FILE"
 cleanup_container "$SERVER_CID_FILE"
-printf 'FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=%s instrumentation=none viewer=joined server=joined\n' \
-  "$cycle"
+printf 'FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=%s instrumentation=%s viewer=joined server=joined\n' \
+  "$cycle" "$runtime_instrumentation"
 done
-printf 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=%s instrumentation=none\n' "$RUNTIME_CYCLES"
+printf 'FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=%s instrumentation=%s\n' "$RUNTIME_CYCLES" "$runtime_instrumentation"
 fi
 
 if [ "$BUILD_APP_ONLY" -eq 1 ]; then

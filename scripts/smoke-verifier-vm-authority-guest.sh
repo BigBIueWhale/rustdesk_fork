@@ -15121,11 +15121,13 @@ run_flutter_peer_presentation() {
       "FLUTTER_PEER_PRESENTATION_SMOKE_OK commit=$FLUTTER_PEER_SOURCE_COMMIT tree=$FLUTTER_PEER_SOURCE_TREE archive_sha256=$FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 flutter=$FLUTTER_PEER_RUNTIME_VERSION tools=$FLUTTER_PEER_TOOLS_MODE scope=linux-x11-full-peer-$peer_scenario network=owned-none-namespace app_commit=$FLUTTER_APP_COMMIT app_tree=$FLUTTER_APP_TREE manifest_sha256=$FLUTTER_APP_MANIFEST_SHA256 build=absent" \
       "$output")" -eq 1 ] \
         || fail 'Flutter full-peer product verdict is absent or duplicated'
-    [ "$(grep -Fxc "FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=$peer_cycles instrumentation=none" "$output")" -eq 1 ] \
+    local runtime_instrumentation=none
+    [ "$peer_scenario" != incoming-recording ] || runtime_instrumentation=recording-write-interposer
+    [ "$(grep -Fxc "FLUTTER_PEER_RUNTIME_CYCLES_OK cycles=$peer_cycles instrumentation=$runtime_instrumentation" "$output")" -eq 1 ] \
         || fail 'Flutter full-peer repeated lifecycle verdict is absent or duplicated'
     for cycle in $(seq 1 "$peer_cycles"); do
         [ "$(grep -Fxc \
-          "FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=$cycle instrumentation=none viewer=joined server=joined" \
+          "FLUTTER_PEER_RUNTIME_CYCLE_OK cycle=$cycle instrumentation=$runtime_instrumentation viewer=joined server=joined" \
           "$output")" -eq 1 ] \
             || fail "Flutter full-peer lifecycle cycle $cycle is absent or duplicated"
     done

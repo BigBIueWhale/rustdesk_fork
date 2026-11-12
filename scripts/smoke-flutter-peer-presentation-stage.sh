@@ -605,6 +605,8 @@ PY
       -o /tmp/desktop-frame-oracle
     /tmp/desktop-frame-oracle --unit
     echo 'LINUX_FLUTTER_ORACLE_UNITS=pass history_limit=65536 log_bytes_limit=8388608 stale_age=preserved uncertainty=sticky'
+    bind_flags=()
+    [ "$PEER_SCENARIO" != incoming-recording ] || bind_flags+=(-DSMOKE_RECORDING_STALL)
     for pass in 1 2; do
       mkdir -m 0700 "/tmp/drivers.$pass"
       /usr/bin/cc -std=c11 -O2 -Wall -Wextra -Werror \
@@ -614,7 +616,7 @@ PY
         /source/scripts/flutter-peer-presentation-x11.c \
         $(pkg-config --cflags --libs x11 xtst xi atspi-2 gobject-2.0 gtk+-3.0 vpx) \
         -o "/tmp/drivers.$pass/flutter-peer-presentation-x11"
-      /usr/bin/cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
+      /usr/bin/cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror "${bind_flags[@]}" \
         /source/scripts/smoke-bind-loopback.c \
         -Wl,-z,relro,-z,now,-z,noexecstack -ldl \
         -o "/tmp/drivers.$pass/smoke-bind-loopback.so"
@@ -1619,6 +1621,8 @@ PY
       wait "$INCOMING_OBSERVER_PID" || fail 'incoming recording observer failed'
       INCOMING_OBSERVER_PID= INCOMING_OBSERVER_START=
       cat /tmp/incoming-observer.log
+      grep -E '^FLUTTER_PEER_INCOMING_WRITE_RELEASED bytes=[0-9]+ held_ms=[0-9]+ file_unchanged=true result=[0-9]+$' \
+        "$SERVER_LOG" || fail 'incoming recording write was not held and released'
       cleanup_incoming_ui || fail 'controlled UI cleanup failed'
       echo 'FLUTTER_PEER_INCOMING_UI_JOINED ui=true observer=true xvfb=true'
     fi
@@ -2078,6 +2082,10 @@ PY
         <<<"$controller_output" || fail 'incoming recording viewer observation is absent'
       grep -Fxq 'FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true characters=22 count_only=true retired=true typed_via_xtest=true argv_password=false' \
         <<<"$controller_output" || fail 'incoming recording session did not use the real password prompt'
+      if [ "$viewer_generation" -eq 2 ]; then
+        grep -Eq '^FLUTTER_PEER_INCOMING_OVERLOAD_VIEWER_OK held_fresh=12 released_fresh=12 held_maximum_age_ms=[0-9]+ released_maximum_age_ms=[0-9]+ stable_connection=true$' \
+          <<<"$controller_output" || fail 'incoming recording overload viewer observation is absent'
+      fi
       viewer_result='viewer=joined xvfb=joined incoming_recording=passed generations=2 failure=visible retry=recorded completion=visible output=decoded pixels=fresh'
     elif [ "$PEER_SCENARIO" = recording-directory ]; then
       grep -Eq "^FLUTTER_PEER_RECORDING_DIRECTORY_OK generation=$viewer_generation cancel=unchanged path=exact fresh_pixels=4 maximum_age_ms=[0-9]+ stable_connection=true$" \

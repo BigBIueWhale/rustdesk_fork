@@ -37,3 +37,122 @@ int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
 
     return fn(sockfd, addr, addrlen);
 }
+
+#ifdef SMOKE_RECORDING_STALL
+#include <fcntl.h>
+#include <stdatomic.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <time.h>
+#include <unistd.h>
+
+typedef ssize_t (*write_fn)(int, const void *, size_t);
+static atomic_int recording_claimed;
+
+static int recording_marker(int coord, const char *name, int publish, write_fn next) {
+    char temporary[64], data[7];
+    struct stat metadata;
+    int fd, result = -1;
+    if (publish) {
+        int length = snprintf(temporary, sizeof(temporary), "%s.tmp", name);
+        if (length <= 0 || (size_t)length >= sizeof(temporary)) return -1;
+        fd = openat(coord, temporary, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
+        if (fd < 0) return -1;
+        if (next(fd, "ready\n", 6U) == 6) result = 0;
+        if (close(fd) != 0) result = -1;
+        if (result == 0 && syscall(SYS_renameat2, coord, temporary, coord, name, 1U) != 0)
+            result = -1;
+        return result;
+    }
+    fd = openat(coord, name, O_RDONLY | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return errno == ENOENT ? 0 : -1;
+    if (fstat(fd, &metadata) == 0 && S_ISREG(metadata.st_mode) &&
+        metadata.st_uid == geteuid() && metadata.st_gid == getegid() &&
+        metadata.st_nlink == 1 && (metadata.st_mode & 07777) == 0600 && metadata.st_size == 6 &&
+        read(fd, data, sizeof(data)) == 6 && memcmp(data, "ready\n", 6U) == 0) result = 1;
+    if (close(fd) != 0) result = -1;
+    return result;
+}
+
+static uint64_t recording_millis(void) {
+    struct timespec now;
+    if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) return 0;
+    return (uint64_t)now.tv_sec * 1000U + (uint64_t)now.tv_nsec / 1000000U;
+}
+
+/* Only the incoming-recording fixture compiles this interposer. It holds one
+ * payload-sized write to its exact private output directory, without another
+ * thread or process. The real write result is preserved; expiry fails the test. */
+ssize_t write(int fd, const void *data, size_t size) {
+    write_fn next = (write_fn)dlsym(RTLD_NEXT, "write");
+    if (next == NULL) { errno = ENOSYS; return -1; }
+    if (size < 128U || atomic_load(&recording_claimed)) return next(fd, data, size);
+    char descriptor[64], path[512];
+    int length = snprintf(descriptor, sizeof(descriptor), "/proc/self/fd/%d", fd);
+    if (length <= 0 || (size_t)length >= sizeof(descriptor)) return next(fd, data, size);
+    ssize_t count = readlink(descriptor, path, sizeof(path) - 1U);
+    if (count <= 0 || (size_t)count >= sizeof(path) - 1U) return next(fd, data, size);
+    path[count] = '\0';
+    const char prefix[] = "/tmp/recording-selected-שלום/incoming_";
+    if ((size_t)count < sizeof(prefix) + 5U || strncmp(path, prefix, sizeof(prefix) - 1U) != 0 ||
+        strchr(path + sizeof(prefix) - 1U, '/') != NULL || strcmp(path + count - 5, ".webm") != 0)
+        return next(fd, data, size);
+
+    int coord = open("/coord", O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    struct stat before, after, directory;
+    int result = -1, expected = 0;
+    if (coord < 0 || fstat(coord, &directory) != 0 || directory.st_uid != geteuid() ||
+        directory.st_gid != getegid() || (directory.st_mode & 07777) != 0700 ||
+        fstat(fd, &before) != 0 || !S_ISREG(before.st_mode) || before.st_nlink != 1 ||
+        before.st_uid != geteuid() || before.st_gid != getegid() ||
+        (before.st_mode & 07777) != 0600) goto out;
+    result = recording_marker(coord, "incoming.write.arm", 0, next);
+    if (result == 0) { close(coord); return next(fd, data, size); }
+    if (result != 1) goto out;
+    if (!atomic_compare_exchange_strong(&recording_claimed, &expected, 1)) {
+        close(coord);
+        return next(fd, data, size);
+    }
+    result = -1;
+    uint64_t started = recording_millis(), now = started;
+    if (started == 0 || recording_marker(coord, "incoming.write.held", 1, next) != 0) goto out;
+    while (now >= started && now - started < 30000U) {
+        int released = recording_marker(coord, "incoming.write.release", 0, next);
+        if (released < 0) goto out;
+        if (released == 1) { result = 0; break; }
+        struct timespec interval = {.tv_sec = 0, .tv_nsec = 10000000L};
+        if (nanosleep(&interval, NULL) != 0 && errno != EINTR) goto out;
+        now = recording_millis();
+    }
+    if (result != 0 || fstat(fd, &after) != 0 || before.st_dev != after.st_dev ||
+        before.st_ino != after.st_ino || before.st_size != after.st_size ||
+        before.st_mtim.tv_sec != after.st_mtim.tv_sec ||
+        before.st_mtim.tv_nsec != after.st_mtim.tv_nsec) { result = -1; goto out; }
+    ssize_t written = next(fd, data, size);
+    int saved_errno = errno;
+    char observation[256];
+    length = snprintf(observation, sizeof(observation),
+        "FLUTTER_PEER_INCOMING_WRITE_RELEASED bytes=%zu held_ms=%llu file_unchanged=true result=%zd\n",
+        size, (unsigned long long)(now - started), written);
+    if (written == (ssize_t)size)
+        result = recording_marker(coord, "incoming.write.released", 1, next);
+    else result = -1;
+    if (close(coord) != 0) result = -1;
+    /* Both this receipt and the marker are required. A failed observation
+     * cannot fabricate successful I/O or a complete fixture transaction. */
+    if (result == 0 && length > 0 && (size_t)length < sizeof(observation)) {
+        if (next(STDERR_FILENO, observation, (size_t)length) != length) {
+            errno = EIO;
+            return -1;
+        }
+    }
+    errno = saved_errno;
+    return written;
+out:
+    if (coord >= 0) close(coord);
+    errno = EIO;
+    return -1;
+}
+#endif

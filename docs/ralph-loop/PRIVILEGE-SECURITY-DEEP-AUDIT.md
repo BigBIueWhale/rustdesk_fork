@@ -148791,3 +148791,16 @@ remain OPEN. The live ledger consolidates superseded incoming-recording narratio
 into current implementation/evidence and retains those limits. This append preserves
 the prior 16,004,533-byte audit prefix, SHA-256
 d3f527663c5c038875f4f9b8ed170b1617137feb1fb0ed1b847b4186e1bedb47.
+
+Fresh ledger count at 67a16842, 8KAqoUqhDi/tool73150 exits zero: 411,709 tokens /
+1,878,673 bytes, SHA-256
+7b3b2b574998052202b6e2d4f798d4a79f6d567fd1a0d1729da7a14654ca5815.
+Pinned tiktoken 0.12.0/cl100k_base encode_ordinary, seven controls and complete
+round trip pass. Current-state consolidation removes 479 tokens/2,416 bytes;
+the approximate 400,000-token target remains OPEN. The capsule
+incoming-worker-ui-ledger-67a16842.json binds eight files/116,388 bytes verified
+on both hosts. QEMU 3343771 joins zero after 30.561 seconds; RAM scratch peaks
+at 403,120,128 bytes. Three zero listener deltas and exact private/QEMU/socket/RAM
+absence are verified. This audit-only append preserves the counted ledger and
+prior 16,008,791-byte audit prefix, SHA-256
+efcfd18397a1db54c7af0886128dc1ff63969286acbfda659334638660236bd5.

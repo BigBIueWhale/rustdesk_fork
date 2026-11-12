@@ -567,9 +567,9 @@ fn native_webm_negative_clock_origin() {
 #[test]
 fn native_webm_zero_clock_intervals_preserved() { recording_clock_origin(0); }
 
-fn native_interframes() -> Vec<EncodedVideoFrame> {
+fn native_interframes(codec: VpxVideoCodecId) -> Vec<EncodedVideoFrame> {
     let mut encoder = VpxEncoder::new(EncoderCfg::VPX(VpxEncoderConfig {
-        width: 64, height: 48, quality: 1.0, codec: VpxVideoCodecId::VP8, keyframe_interval: None,
+        width: 64, height: 48, quality: 1.0, codec, keyframe_interval: None,
     }), false).unwrap();
     let mut frames = Vec::new();
     for index in 0..3 {
@@ -585,27 +585,43 @@ fn native_interframes() -> Vec<EncodedVideoFrame> {
 }
 
 #[test]
-fn native_webm_clock_rollback_waits_for_key() {
-    let dir = TestDir::new();
-    let mut recorder = timeline_recorder(&dir);
-    let mut frames = native_interframes();
-    frames[0].pts = 10_000;
-    recorder.write_frame(&vp8_batch(frames[0].clone()), 64, 48).unwrap();
-    let first = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
-    frames[1].pts = 9000;
-    frames[2].pts = 10_001;
-    let mut key = frames[0].clone(); key.pts = 10_002;
-    let mut later = key.clone(); later.pts = 12_002;
-    let batch = video_frame::Union::Vp8s(hbb_common::message_proto::EncodedVideoFrames {
-        frames: vec![frames[1].clone(), frames[2].clone(), key, later], ..Default::default()
-    });
-    recorder.write_frame(&batch, 64, 48).unwrap();
-    let second = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
-    drop(recorder);
-    assert_ne!(first, second);
-    assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
-    assert_eq!(webm_timestamps(&first), vec![0]);
-    assert_eq!(webm_timestamps(&second), vec![0, 2_000_000_000]);
+fn native_webm_nonadvancing_clock_starts_new_epoch() {
+    for vp9 in [false, true] {
+        for (origin, restart, nonkey) in [
+            (10_000, 9000, true), (0, 0, false), (0, 0, true),
+            (10_000, 10_000, false), (10_000, 10_000, true),
+        ] {
+            let dir = TestDir::new();
+            let mut recorder = timeline_recorder(&dir);
+            let mut frames = native_interframes(if vp9 { VpxVideoCodecId::VP9 } else { VpxVideoCodecId::VP8 });
+            let batch = |frames| {
+                let frames = hbb_common::message_proto::EncodedVideoFrames { frames, ..Default::default() };
+                if vp9 { video_frame::Union::Vp9s(frames) } else { video_frame::Union::Vp8s(frames) }
+            };
+            frames[0].pts = origin;
+            recorder.write_frame(&batch(vec![frames[0].clone()]), 64, 48).unwrap();
+            let first = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+            let mut key = frames[0].clone();
+            key.pts = restart;
+            if nonkey {
+                frames[1].pts = restart;
+                frames[2].pts = origin + 1;
+                recorder.write_frame(&batch(vec![frames[1].clone(), frames[2].clone()]), 64, 48).unwrap();
+                assert!(recorder.ctx2.is_none(), "restart interframes must wait for a keyframe");
+                assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 1);
+                key.pts = origin + 2;
+            }
+            let mut later = key.clone();
+            later.pts += 2000;
+            recorder.write_frame(&batch(vec![key, later]), 64, 48).unwrap();
+            let second = PathBuf::from(&recorder.ctx2.as_ref().unwrap().filename);
+            recorder.finish().unwrap();
+            assert_ne!(first, second, "nonadvancing clock must not collapse time into the prior epoch");
+            assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 2);
+            assert_eq!(webm_timestamps(&first), vec![0]);
+            assert_eq!(webm_timestamps(&second), vec![0, 2_000_000_000]);
+        }
+    }
 }
 
 #[test]
@@ -649,7 +665,7 @@ fn native_webm_interval_overflow_refused() {
 fn native_webm_initial_nonkey_waits_without_output() {
     let dir = TestDir::new();
     let mut recorder = timeline_recorder(&dir);
-    let mut frames = native_interframes();
+    let mut frames = native_interframes(VpxVideoCodecId::VP8);
     recorder.write_frame(&video_frame::Union::Vp8s(Default::default()), 64, 48).unwrap();
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);
     recorder.write_frame(&vp8_batch(frames.remove(1)), 64, 48).unwrap();
@@ -715,7 +731,7 @@ fn native_recording_finish_without_frames_creates_no_output() {
     let dir = TestDir::new();
     timeline_recorder(&dir).finish().unwrap();
     let mut recorder = timeline_recorder(&dir);
-    let mut frames = native_interframes();
+    let mut frames = native_interframes(VpxVideoCodecId::VP8);
     recorder.write_frame(&vp8_batch(frames.remove(1)), 64, 48).unwrap();
     recorder.finish().unwrap();
     assert_eq!(fs::read_dir(&dir.0).unwrap().count(), 0);

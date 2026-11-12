@@ -148314,3 +148314,14 @@ platforms remain OPEN. The next actionable recording gap is the controlled-side
 write_message wrapper discarding its write result at video_service.rs's caller;
 no correction or new runtime claim for that path is made here. Existing app
 dbd57c51 remains reusable; no full rebuild, cache expansion or instruction edit.
+
+Fresh ledger count at 335a2ba1, TgCofteFM9/tool63465 exits zero: 410,841 tokens /
+1,874,662 bytes, SHA-256
+ea7bcc40867bce64985d1011bff8774a3e3bb712b5674d9b26396cbea6415035.
+Pinned tokenizer, seven controls and whole-input round trip pass.
+recording-multi-ledger-335a2ba1.json binds eight files/115,624 bytes verified
+on both hosts. QEMU 2344325 joins zero after 30.389 seconds; peak RAM scratch
+402,976,768 bytes, three zero listener deltas and exact private/socket/RAM
+absence are verified. Approximate 400,000-token compression remains OPEN.
+This audit-only append preserves the counted ledger and prior 15,976,599-byte
+audit prefix (SHA-256 8b3f72eeacac5bba42d0a3e822523a05eae64225a6c49dbc7bf6bd4e775ae15b).

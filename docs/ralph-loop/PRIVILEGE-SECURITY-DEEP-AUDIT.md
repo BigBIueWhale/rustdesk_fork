@@ -148050,3 +148050,13 @@ configuration change, and execute the unchanged regression plus full-UI failure
 without the writable-stderr exemption. Existing concurrent log loss, blocked I/O,
 multiple/late recording writers, installed/root and other platforms remain OPEN.
 No full-application rebuild, live-instruction edit or release acceptance claim.
+
+Fresh ledger count at cff992be, CVQlB7jGyG/tool53979 exits zero: 410,523 tokens /
+1,873,229 bytes, SHA-256
+784d94fa77a8cc926f2968eeb1aca985963d95adbe900a71d31c6e10b816d52c.
+Pinned tokenizer, seven controls and whole-input round trip pass.
+logger-write-ledger-cff992be.json binds eight files/117,349 bytes verified on
+both hosts. QEMU 1928492 joins zero after 30.572 seconds; peak RAM scratch
+403,042,304 bytes, three zero listener deltas and exact private/socket/RAM
+absence are verified. Approximate 400,000-token compression remains OPEN.
+This audit-only append preserves the counted ledger bytes.

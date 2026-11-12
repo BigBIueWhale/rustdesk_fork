@@ -156,12 +156,25 @@ static int recording_decode(const unsigned char *data, size_t size, SourceHistor
                 if (identity < 0 || (uint64_t)identity >= history->count ||
                     identity < video->last_frame ||
                     history->publication_us[identity] + 1000000U < started_us ||
-                    history->publication_us[identity] > stopped_us + 1000000U) goto out;
+                    history->publication_us[identity] > stopped_us + 1000000U) {
+                    fprintf(stderr, "FLUTTER_PEER_RECORDING_PIXEL_FAIL packet=%u identity=%lld "
+                            "previous=%lld history=%u pts_ms=%lld started_us=%llu stopped_us=%llu\n",
+                            video->packets, (long long)identity, (long long)video->last_frame,
+                            history->count, (long long)pts, (unsigned long long)started_us,
+                            (unsigned long long)stopped_us);
+                    goto out;
+                }
                 if (video->first_frame < 0) video->first_frame = identity;
                 uint64_t interval = history->publication_us[identity] -
                                     history->publication_us[video->first_frame];
                 uint64_t media_us = (uint64_t)pts * 1000U;
-                if (interval > media_us + 500000U || media_us > interval + 500000U) goto out;
+                if (interval > media_us + 500000U || media_us > interval + 500000U) {
+                    fprintf(stderr, "FLUTTER_PEER_RECORDING_TIMING_FAIL packet=%u first=%lld "
+                            "identity=%lld source_us=%llu media_us=%llu tolerance_us=500000\n",
+                            video->packets, (long long)video->first_frame, (long long)identity,
+                            (unsigned long long)interval, (unsigned long long)media_us);
+                    goto out;
+                }
                 video->last_frame = identity;
             }
             video->last_pts_ms = (uint64_t)pts;

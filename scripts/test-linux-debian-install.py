@@ -635,7 +635,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                     if camera:
                         mapped_core(record, manifest, 'installed-camera')
                         try:
-                            camera_fixture.scenario(settings, receiver, record)
+                            camera_fixture.scenario(settings, receiver, record, busy=camera == 'busy')
                         except BaseException:
                             settings.stop_service(receiver, record)
                             raise
@@ -749,7 +749,13 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if camera:
+    if camera == 'busy':
+        print(f'LINUX_DEBIAN_CAMERA_BUSY_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked service=actual camera=vivid viewer=actual colors=2 '
+              'busy=visible owner=preserved reacquisition=presented '
+              'credential=preserved child=unchanged handles=retired desktop=retired '
+              'reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
+    elif camera:
         print(f'LINUX_DEBIAN_CAMERA_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked service=actual camera=vivid viewer=actual colors=5 '
               'interruption=recovered loss=visible reacquisition=presented '
@@ -804,7 +810,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
 if __name__ == '__main__':
     require((len(sys.argv) in (8, 9) and sys.argv[1] == '--run')
             or (len(sys.argv) == 8 and sys.argv[1] in ('--run-settings', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop',
-                                                     '--run-upgrade', '--run-conffiles', '--run-camera')),
+                                                     '--run-upgrade', '--run-conffiles', '--run-camera', '--run-camera-busy')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
@@ -813,4 +819,4 @@ if __name__ == '__main__':
                         '--run-admin-failure': 'admin-failure',
                         '--run-concurrent-stop': 'concurrent-stop'}.get(sys.argv[1]),
          upgrade=sys.argv[1] == '--run-upgrade', conffiles=sys.argv[1] == '--run-conffiles',
-         camera=sys.argv[1] == '--run-camera')
+         camera={'--run-camera': 'recovery', '--run-camera-busy': 'busy'}.get(sys.argv[1], False))

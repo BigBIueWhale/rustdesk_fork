@@ -340,6 +340,7 @@ case "$#:${8:-}" in
                 --debian-candidate-upgrade) FLUTTER_INSTALLED_SETTINGS=8 ;;
                 --debian-candidate-conffiles) FLUTTER_INSTALLED_SETTINGS=9 ;;
                 --installed-camera) FLUTTER_INSTALLED_SETTINGS=10 ;;
+                --installed-camera-busy) FLUTTER_INSTALLED_SETTINGS=11 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -502,7 +503,7 @@ readonly FLUTTER_THEME_APPEARANCE
 readonly FLUTTER_THEME_SAVE_FAILURE
 readonly FLUTTER_VIEWER_ISOLATION
 readonly FLUTTER_CAMERA_UNAVAILABLE FLUTTER_CAMERA_SHARED FLUTTER_CAMERA_BUSY
-readonly FLUTTER_CAMERA_NATIVE=$((FLUTTER_CAMERA_SHARED + FLUTTER_CAMERA_BUSY + (FLUTTER_INSTALLED_SETTINGS == 10)))
+readonly FLUTTER_CAMERA_NATIVE=$((FLUTTER_CAMERA_SHARED + FLUTTER_CAMERA_BUSY + (FLUTTER_INSTALLED_SETTINGS == 10 || FLUTTER_INSTALLED_SETTINGS == 11)))
 readonly FLUTTER_VIEWER_SOAK
 readonly FLUTTER_INPUT_LATENCY
 readonly FLUTTER_INPUT_SOAK
@@ -14855,6 +14856,7 @@ run_flutter_peer_presentation() {
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 8 ] || settings_mode=--run-package-upgrade
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 9 ] || settings_mode=--run-package-conffiles
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 10 ] || settings_mode=--run-package-camera
+        [ "$FLUTTER_INSTALLED_SETTINGS" -ne 11 ] || settings_mode=--run-package-camera-busy
         settings_extra=()
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             settings_mode=--run-graphical

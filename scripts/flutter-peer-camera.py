@@ -175,7 +175,8 @@ def buffer_identity(fd):
     return offset, length
 
 
-def busy(pid, start):
+@contextmanager
+def busy_owner(output=None):
     with native_device() as owner:
         allocated = buffers(owner, 2)
         before = buffer_identity(owner)
@@ -188,16 +189,21 @@ def busy(pid, start):
                 else:
                     raise ValueError('competing camera acquired reserved buffers')
             print('FLUTTER_PEER_CAMERA_BUSY_HELD buffers=' + str(allocated)
-                  + ' competing=EBUSY owner=retained', flush=True)
-            marker('camera.busy.ready', True)
-            wait_for(pid, start, lambda: marker('camera.busy.observed'),
-                     'visible stream-open failure and session retirement')
-            wait_for(pid, start, lambda: marker('camera.busy.closed'), 'failed viewer joined')
-            retained(pid, start, 0, 'busy-viewer-closed')
+                  + ' competing=EBUSY owner=retained', file=output, flush=True)
+            yield
         finally:
             require(buffer_identity(owner) == before, 'application changed reserved camera buffers')
             buffers(owner, 0)
-            print('FLUTTER_PEER_CAMERA_BUSY_RELEASED owner=preserved buffers=retired', flush=True)
+            print('FLUTTER_PEER_CAMERA_BUSY_RELEASED owner=preserved buffers=retired', file=output, flush=True)
+
+
+def busy(pid, start):
+    with busy_owner():
+        marker('camera.busy.ready', True)
+        wait_for(pid, start, lambda: marker('camera.busy.observed'),
+                 'visible stream-open failure and session retirement')
+        wait_for(pid, start, lambda: marker('camera.busy.closed'), 'failed viewer joined')
+        retained(pid, start, 0, 'busy-viewer-closed')
     with native_device() as fresh:
         buffers(fresh, 2)
         buffer_identity(fresh)

@@ -42,7 +42,7 @@ def guard(settings, uid):
             'installed camera device authority differs')
 
 
-def session():
+def session(busy=False):
     settings = module('installed_settings', 'test-linux-installed-settings.py')
     guard(settings, 4001)
     resource.setrlimit(resource.RLIMIT_FSIZE, (268435456, 268435456))
@@ -69,15 +69,20 @@ def session():
             address = bus.stdout.readline(4096).decode().strip()
             require(address.startswith('unix:'), 'camera session bus is not local')
             environment['DBUS_SESSION_BUS_ADDRESS'] = address
-            for generation in ('installed', 'reacquire'):
-                camera.color(1)
+            for generation in ('busy' if busy else 'installed', 'reacquire'):
+                reservation = files.enter_context(ExitStack())
+                if generation == 'busy':
+                    reservation.enter_context(camera.busy_owner(output=sys.stderr))
+                else:
+                    camera.color(1)
                 viewer = subprocess.Popen(['/usr/share/rustdesk/rustdesk', '--view-camera', '127.0.0.1'],
                                           env=environment, stdin=subprocess.DEVNULL,
                                           stdout=sys.stderr, stderr=sys.stderr)
                 processes.append(viewer)
                 start = Path(f'/proc/{viewer.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
                 driver_log = files.enter_context((COORD / (generation + '.log')).open('xb'))
-                mode = '--camera-installed-recovery' if generation == 'installed' else '--camera-reacquire'
+                mode = {'busy': '--camera-installed-busy', 'installed': '--camera-installed-recovery',
+                        'reacquire': '--camera-reacquire'}[generation]
                 driver = subprocess.Popen([str(settings.WORK / 'camera-driver'), ':79', ':79',
                                            str(viewer.pid), start, mode], env=environment,
                                           stdout=driver_log, stderr=subprocess.STDOUT)
@@ -87,11 +92,12 @@ def session():
                     print(json.dumps({'stage': generation + '-' + stage, 'viewer': viewer.pid}), flush=True)
                     require(sys.stdin.readline() == 'continue\n', 'camera owner did not observe ' + stage)
 
-                camera.wait_for(viewer.pid, start, lambda: camera.marker('camera.' + generation + '.green'),
-                                'installed green pixels')
-                observed('green')
-                camera.color(2)
-                camera.marker('camera.' + generation + '.blue', True)
+                if generation != 'busy':
+                    camera.wait_for(viewer.pid, start, lambda: camera.marker('camera.' + generation + '.green'),
+                                    'installed green pixels')
+                    observed('green')
+                    camera.color(2)
+                    camera.marker('camera.' + generation + '.blue', True)
                 if generation == 'installed':
                     camera.wait_for(viewer.pid, start, lambda: camera.marker('camera.main.blue'), 'blue pixels')
                     camera.drop_frames(100)
@@ -113,9 +119,11 @@ def session():
                     with redirect_stdout(sys.stderr):
                         camera.disconnect()
                     camera.marker('camera.disconnected', True)
-                require(driver.wait(timeout=25) == 0, 'installed camera pixel observer failed')
+                require(driver.wait(timeout=60 if generation == 'busy' else 25) == 0,
+                        'installed camera pixel observer failed')
                 require(viewer.wait(timeout=10) == 0, 'camera viewer did not close normally')
                 observed('closed')
+                reservation.close()
         finally:
             print('LINUX_INSTALLED_CAMERA_PROCESSES=' + json.dumps([
                 {'pid': process.pid, 'exit_before_cleanup': process.poll()}
@@ -125,14 +133,14 @@ def session():
                     process.terminate()
                 process.wait(timeout=8)
             settings.retire_children()
-            for generation in ('installed', 'reacquire'):
+            for generation in ('busy' if busy else 'installed', 'reacquire'):
                 path = COORD / (generation + '.log')
                 if path.exists():
                     require(path.stat().st_size <= 131072, 'camera observer output exceeds its bound')
                     print(path.read_text(), end='', file=sys.stderr, flush=True)
 
 
-def scenario(settings, receiver, record):
+def scenario(settings, receiver, record, busy=False):
     guard(settings, 0)
     camera = module('camera_controls', 'flutter-peer-camera.py')
     COORD.mkdir(mode=0o700)
@@ -164,12 +172,13 @@ def scenario(settings, receiver, record):
     try:
         with log.open('xb') as output:
             actor = subprocess.Popen([*settings.ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
-                                      str(SCRIPT), '--session'], env=settings.ENV,
+                                      str(SCRIPT), '--session-busy' if busy else '--session'], env=settings.ENV,
                                      stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=output)
             viewers = []
-            for generation in ('installed', 'reacquire'):
+            for generation in ('busy' if busy else 'installed', 'reacquire'):
                 viewer = None
-                phases = ('green', 'stalled', 'recovered', 'closed') if generation == 'installed' else ('green', 'closed')
+                phases = (('closed',) if generation == 'busy' else
+                          ('green', 'stalled', 'recovered', 'closed') if generation == 'installed' else ('green', 'closed'))
                 for phase in phases:
                     current = reply(generation + '-' + phase)
                     if viewer is None:
@@ -184,10 +193,13 @@ def scenario(settings, receiver, record):
                 viewers.append(viewer)
             require(actor.wait(timeout=15) == 0, 'installed camera session cleanup failed')
         print('LINUX_INSTALLED_CAMERA_PRESENTATION=' + json.dumps({
-            **record, 'viewers': viewers, 'colors': ['green', 'blue', 'red', 'green', 'blue'], 'pixel_samples_per_color': 3,
+            **record, 'viewers': viewers, 'colors': ['green', 'blue'] if busy else ['green', 'blue', 'red', 'green', 'blue'],
+            'pixel_samples_per_color': 3,
             'pixels_per_sample': 24000, 'credential': 'unchanged', 'profile': 'unchanged',
-            'camera_descriptors': [0, 1, 1, 1, 0, 1, 0], 'supervisor_camera_descriptors': 0,
-            'listener_inode': listener, 'interruption': 'recovered-in-place', 'device_loss': 'visible-and-retired',
+            'camera_descriptors': [0, 0, 1, 0] if busy else [0, 1, 1, 1, 0, 1, 0], 'supervisor_camera_descriptors': 0,
+            'listener_inode': listener,
+            **({'busy': 'visible-and-retired', 'competing_owner': 'preserved'} if busy else
+               {'interruption': 'recovered-in-place', 'device_loss': 'visible-and-retired'}),
             'viewer_exit': 0, 'session_exit': 0,
         }, sort_keys=True), flush=True)
     finally:
@@ -203,5 +215,5 @@ def scenario(settings, receiver, record):
 
 
 if __name__ == '__main__':
-    require(sys.argv[1:] == ['--session'], 'closed installed camera session request required')
-    session()
+    require(sys.argv[1:] in (['--session'], ['--session-busy']), 'closed installed camera session request required')
+    session(busy=sys.argv[1] == '--session-busy')

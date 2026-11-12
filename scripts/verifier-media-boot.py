@@ -38,7 +38,7 @@ def application_request(argv, contract, release):
         and argv[8] == contract['pins']['VERIFIER_VM_ROOT_FILESYSTEM_UUID']
         and argv[9:11] == ['--linux-flutter-app-replay', '/mnt/rustdesk-verifier-inputs/source.tar']
         and argv[11] == contract['source_commit']
-        and argv[20] in ('--camera-shared', '--camera-busy', '--installed-camera'),
+        and argv[20] in ('--camera-shared', '--camera-busy', '--installed-camera', '--installed-camera-busy'),
         'closed application replay request differs')
     require(all(re.fullmatch('[0-9a-f]{40}', argv[i]) for i in (11, 12, 14, 15))
             and all(re.fullmatch('[0-9a-f]{64}', argv[i]) for i in (6, 13, 16, 17))
@@ -60,7 +60,7 @@ def application_fixture(guest, contract, previous):
                 and stat.S_ISCHR(node.lstat().st_mode)
                 and Path('/sys/class/video4linux/video2/name').read_text().strip()
                 == 'vivid-000-vid-cap', 'application native camera identity differs')
-        uid = 4001 if argv[20] == '--installed-camera' else 1000
+        uid = 4001 if argv[20] in ('--installed-camera', '--installed-camera-busy') else 1000
         os.chown(node, uid, uid)
         os.chmod(node, 0o600)
         # Common guest orchestration joins the app containers or installed

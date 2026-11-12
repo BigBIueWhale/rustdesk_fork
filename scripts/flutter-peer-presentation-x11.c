@@ -9001,6 +9001,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--camera-shared-slow") != 0 &&
                                     strcmp(argv[5], "--camera-reacquire") != 0 &&
                                     strcmp(argv[5], "--camera-installed-recovery") != 0 &&
+                                    strcmp(argv[5], "--camera-installed-busy") != 0 &&
                                     strcmp(argv[5], "--monitor-switch") != 0 &&
                                     strcmp(argv[5], "--recent-search") != 0 &&
                                     strcmp(argv[5], "--native-components") != 0 &&
@@ -9078,11 +9079,12 @@ int main(int argc, char **argv) {
     }
     int credential_enroll = argc == 6 && strcmp(argv[5], "--credential-enroll") == 0;
     int installed_camera = argc == 6 && strcmp(argv[5], "--camera-installed-recovery") == 0;
-    if (installed_camera) expected_server_listener = "00000000:527E";
+    int installed_camera_busy = argc == 6 && strcmp(argv[5], "--camera-installed-busy") == 0;
+    if (installed_camera || installed_camera_busy) expected_server_listener = "00000000:527E";
     int camera = argc == 6 && (strcmp(argv[5], "--camera-shared-main") == 0 ||
                                strcmp(argv[5], "--camera-busy") == 0 ||
                                strcmp(argv[5], "--camera-shared-slow") == 0 ||
-                               installed_camera ||
+                               installed_camera || installed_camera_busy ||
                                strcmp(argv[5], "--camera-reacquire") == 0);
     if (camera || (argc == 6 && strcmp(argv[5], "--camera-unavailable") == 0))
         expected_remote_title_suffix = " - View camera - RustDesk";
@@ -9266,7 +9268,7 @@ int main(int argc, char **argv) {
     if (camera) {
         int result = installed_camera || strcmp(argv[5], "--camera-reacquire") == 0
             ? camera_reacquire(display, &viewer, installed_camera)
-            : strcmp(argv[5], "--camera-busy") == 0 ? camera_busy(&viewer)
+            : installed_camera_busy || strcmp(argv[5], "--camera-busy") == 0 ? camera_busy(&viewer)
             : camera_shared(display, &viewer, strcmp(argv[5], "--camera-shared-slow") == 0);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;

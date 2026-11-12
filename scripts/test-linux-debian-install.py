@@ -634,7 +634,11 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                                                 new=password, old='Wrong-bootstrap-password-2026!')
                     if camera:
                         mapped_core(record, manifest, 'installed-camera')
-                        camera_fixture.scenario(settings, receiver, record)
+                        try:
+                            camera_fixture.scenario(settings, receiver, record)
+                        except BaseException:
+                            settings.stop_service(receiver, record)
+                            raise
                     if upgrade:
                         old_record = record
                         profile = settings.user_credential()

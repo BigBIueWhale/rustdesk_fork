@@ -44,7 +44,7 @@ def guard(settings, uid):
 def session():
     settings = module('installed_settings', 'test-linux-installed-settings.py')
     guard(settings, 4001)
-    resource.setrlimit(resource.RLIMIT_FSIZE, (1048576, 1048576))
+    resource.setrlimit(resource.RLIMIT_FSIZE, (268435456, 268435456))
     def cancelled(_signal, _frame):
         raise RuntimeError('installed camera session cancelled')
     signal.signal(signal.SIGTERM, cancelled)
@@ -88,6 +88,9 @@ def session():
             print(json.dumps({'stage': 'closed', 'viewer': viewer.pid}), flush=True)
             require(sys.stdin.readline() == 'continue\n', 'camera owner did not observe retirement')
         finally:
+            print('LINUX_INSTALLED_CAMERA_PROCESSES=' + json.dumps([
+                {'pid': process.pid, 'exit_before_cleanup': process.poll()}
+                for process in processes], sort_keys=True), file=sys.stderr, flush=True)
             for process in reversed(processes):
                 if process.poll() is None:
                     process.terminate()
@@ -118,7 +121,9 @@ def scenario(settings, receiver, record):
 
     def reply(stage):
         require(select.select([actor.stdout], [], [], 70)[0], 'installed camera session deadline')
-        response = json.loads(actor.stdout.readline(4096))
+        raw = actor.stdout.readline(4096)
+        require(raw and raw.endswith(b'\n'), 'installed camera session ended before ' + stage)
+        response = json.loads(raw)
         require(set(response) == {'stage', 'viewer'} and response['stage'] == stage
                 and type(response['viewer']) is int and response['viewer'] > 1,
                 'installed camera session response differs')

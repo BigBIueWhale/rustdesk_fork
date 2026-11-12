@@ -225,20 +225,24 @@ List<TTextMenu> toolbarControls(BuildContext context, String id, FFI ffi) {
     v.add(TTextMenu(
         child: Row(
           children: [
-            Text(translate(ffi.recordingModel.start
-                ? 'Stop session recording'
-                : 'Start session recording')),
+            Text(translate(ffi.recordingModel.stopping
+                ? 'Waiting'
+                : ffi.recordingModel.start
+                    ? 'Stop session recording'
+                    : 'Start session recording')),
             Padding(
               padding: EdgeInsets.only(left: 12),
               child: Icon(
-                  ffi.recordingModel.start
+                  ffi.recordingModel.active
                       ? Icons.pause_circle_filled
                       : Icons.videocam_outlined,
                   color: MyTheme.accent),
             )
           ],
         ),
-        onPressed: () => ffi.recordingModel.toggle()));
+        onPressed: ffi.recordingModel.stopping
+            ? null
+            : () => ffi.recordingModel.toggle()));
   }
 
   // to-do:

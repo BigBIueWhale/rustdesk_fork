@@ -65,7 +65,7 @@ fn visible_and_hidden_frames_at(width: usize, height: usize, luma: u8) -> (Video
 }
 
 fn decode(handler: &mut VideoHandler, frame: VideoFrame) -> hbb_common::ResultType<bool> {
-    handler.handle_frame(frame, &mut true, &mut None)
+    handler.handle_frame(&frame, &mut true, &mut None)
 }
 
 fn assert_visible(handler: &mut VideoHandler, frame: VideoFrame) {

@@ -428,7 +428,7 @@ impl InvokeUiSession for ViewerPipelineUi {
             && text.starts_with("inspect download digest failed before peer operation completion: local download digest check failed:")
         {
             self.update(|state| state.file_refusal_errors += 1);
-        } else if msgtype == "error" || msgtype == "connect-password-prompt" {
+        } else if msgtype == "error" || msgtype == "custom-error" || msgtype == "connect-password-prompt" {
             self.update(|state| state.record_error(format!("{msgtype}: {title}: {text}")));
         }
     }
@@ -446,8 +446,10 @@ impl InvokeUiSession for ViewerPipelineUi {
         false
     }
 
-    fn update_record_status(&self, start: bool) {
-        self.update(|state| state.recording_status = Some(start));
+    fn update_record_status(&self, status: crate::client::recording::RecordingStatus) {
+        self.update(|state| state.recording_status = Some(
+            status == crate::client::recording::RecordingStatus::Active,
+        ));
     }
 
     fn handle_screenshot_resp(

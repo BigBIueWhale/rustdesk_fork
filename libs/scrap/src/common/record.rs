@@ -150,6 +150,10 @@ impl Recorder {
         Ok(())
     }
 
+    pub fn has_frames(&self) -> bool {
+        self.pts.is_some()
+    }
+
     pub fn write_message(&mut self, msg: &Message, w: usize, h: usize) {
         if let Some(message::Union::VideoFrame(vf)) = &msg.union {
             if let Some(frame) = &vf.union {

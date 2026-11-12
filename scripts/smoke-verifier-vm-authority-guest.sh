@@ -5784,6 +5784,7 @@ run_focused_rust_tests() {
                 src/ui_session_interface.rs src/viewer_pipeline_smoke_tests.rs
                 scripts/run-viewer-video-tests.sh scripts/linux-parent-test-build.sh
                 src/client/io_loop/recording_status_tests.rs src/ui_interface.rs
+                src/client/recording.rs src/flutter.rs
                 libs/scrap/src/common/record.rs libs/scrap/src/common/record/webm_mux.rs
             )
             required_tests=(
@@ -5797,6 +5798,9 @@ run_focused_rust_tests() {
                 client::video_handler_tests::worker_tests::current_decode_failure_recovers_same_codec_after_refresh
                 client::io_loop::recording_status_tests::recording_output_failure_stops_status_without_stopping_video
                 client::io_loop::recording_status_tests::writable_recording_keeps_status_and_produces_output
+                client::tests::r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier
+                client::tests::r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position
+                client::tests::r_s11fn_mixed_controls_retain_exactly_two_semantic_items
             )
         elif [ "$RUST_TEST_PROFILE" = option-ack ]; then
             container_name=rustdesk-option-ack-tests
@@ -8506,11 +8510,12 @@ PY
             && [ "$(grep -Fc 'RECORDING_OUTPUT_PARENT_CHECK=' "$output")" -eq 1 ] \
             || fail 'recording output artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = viewer-video ]; then
-        [ "${#result_lines[@]}" -eq 2 ] || fail 'viewer video summary count differs'
-        [ "$(grep -Ec '^VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=10 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
+        [ "${#result_lines[@]}" -eq 3 ] || fail 'viewer video summary count differs'
+        [ "$(grep -Ec '^VIEWER_VIDEO_ARTIFACT=pass sha256=[0-9a-f]{64} executable=/cargo-target/debug/deps/librustdesk-[0-9a-f]{16} tests=13 unchanged=before-after execution_seconds=[0-9]+$' "$output")" -eq 1 ] \
             && [ "$(grep -Fc 'VIEWER_VIDEO_ARTIFACT=' "$output")" -eq 1 ] \
             && [ "$(grep -Ec '^test client::video_handler_tests::.* \.\.\. ok$' "$output")" -eq 8 ] \
             && [ "$(grep -Ec '^test client::io_loop::recording_status_tests::.* \.\.\. ok$' "$output")" -eq 2 ] \
+            && [ "$(grep -Ec '^test client::tests::r_s11fn_.* \.\.\. ok$' "$output")" -eq 3 ] \
             || fail 'viewer video artifact or named outcomes differ'
     elif [ "$MODE" = android-rust-lifecycle-tests ] && [ "$RUST_TEST_PROFILE" = option-ack ]; then
         [ "${#result_lines[@]}" -eq 3 ] || fail 'option acknowledgement summary count differs'
@@ -9433,9 +9438,9 @@ PY
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = viewer-video ]; then
-            [ "$tests_passed" -eq 10 ] || fail 'viewer video total differs'
-            grep -E '^test client::(video_handler_tests|io_loop::recording_status_tests)::.* \.\.\. ok$|^VIEWER_VIDEO_BUILD=pass |^VIEWER_VIDEO_ARTIFACT=' "$output"
-            printf 'VIEWER_VIDEO_VM=pass commit=%s tree=%s tests=10 target=linux-x86_64 scope=complete-parent-library-native-decoder-and-recording-outcomes rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
+            [ "$tests_passed" -eq 13 ] || fail 'viewer video total differs'
+            grep -E '^test client::((video_handler_tests|io_loop::recording_status_tests)::.*|tests::r_s11fn_.*) \.\.\. ok$|^VIEWER_VIDEO_BUILD=pass |^VIEWER_VIDEO_ARTIFACT=' "$output"
+            printf 'VIEWER_VIDEO_VM=pass commit=%s tree=%s tests=13 target=linux-x86_64 scope=complete-parent-library-native-decoder-and-recording-outcomes rust=1.75.0 features=linux-pkg-config vendor=%s devcheck_index=%s devcheck_runtime=%s uid=1000 gid=1000 vm_network=none container_network=none source=readonly target_dir=private-ephemeral root=readonly caps=none nnp=on apparmor=docker-default cleanup=joined\n' \
                 "$RUST_TEST_SOURCE_COMMIT" "$RUST_TEST_SOURCE_TREE" \
                 "$SHA256_CARGO_VENDOR_CLOSURE_V1" "$image_index" "$image_config"
         elif [ "$RUST_TEST_PROFILE" = option-ack ]; then

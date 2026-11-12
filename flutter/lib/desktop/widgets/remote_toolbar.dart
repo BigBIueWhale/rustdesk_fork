@@ -2563,14 +2563,16 @@ class _RecordMenu extends StatelessWidget {
     if (!visible) return Offstage();
     return _IconMenuButton(
       assetName: 'assets/rec.svg',
-      tooltip: recordingModel.start
-          ? 'Stop session recording'
-          : 'Start session recording',
-      onPressed: () => recordingModel.toggle(),
-      color: recordingModel.start
+      tooltip: recordingModel.stopping
+          ? 'Waiting'
+          : recordingModel.start
+              ? 'Stop session recording'
+              : 'Start session recording',
+      onPressed: recordingModel.stopping ? null : () => recordingModel.toggle(),
+      color: recordingModel.active
           ? _ToolbarTheme.redColor
           : _ToolbarTheme.blueColor,
-      hoverColor: recordingModel.start
+      hoverColor: recordingModel.active
           ? _ToolbarTheme.hoverRedColor
           : _ToolbarTheme.hoverBlueColor,
     );

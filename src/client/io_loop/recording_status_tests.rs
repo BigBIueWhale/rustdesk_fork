@@ -85,7 +85,30 @@ async fn recording_status_case(fail_output: bool) {
 
     let result = AssertUnwindSafe(async {
         let (mut viewer, _peer) = keyed_pair().await;
-        assert!(remote.new_video_thread(0), "real decoder worker admitted");
+        assert!(remote.new_video_thread(0, &mut viewer).await, "real decoder worker admitted");
+        if !fail_output {
+            assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
+            assert_eq!(remote.recording_status, RecordingStatus::Starting);
+            let first = remote.recording.as_ref().unwrap().clone();
+            let pending = first.writer(0).expect("owned pending recording writer");
+            assert!(remote.handle_msg_from_ui(Data::RecordScreen(false), &mut viewer).await);
+            assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
+            assert_eq!(remote.recording_status, RecordingStatus::Stopping);
+            assert!(Arc::ptr_eq(remote.recording.as_ref().unwrap(), &first),
+                "retry replaced an undrained recording attempt");
+            drop(pending);
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                assert!(remote.update_record_state(&mut viewer).await);
+                if remote.recording.as_ref().map_or(false, |next| !Arc::ptr_eq(next, &first)) {
+                    break;
+                }
+                assert!(Instant::now() < deadline, "pending recording retry failed to drain");
+                let _ = time::timeout(Duration::from_millis(10), remote.recording_changed.notified()).await;
+            }
+            assert_eq!(first.snapshot().writers, 0);
+            assert!(!fixture.root.join("recordings").exists(), "unwritten stop created output");
+        }
         assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
         let (mut frame, _) = client::video_handler_tests::visible_and_hidden_frames();
         let Some(video_frame::Union::Vp8s(encoded)) = &frame.union else {
@@ -108,18 +131,50 @@ async fn recording_status_case(fail_output: bool) {
                 ), VideoFrameAdmission::Queued);
                 second_frame_sent = true;
             }
-            if frames >= 2 && status == Some(!fail_output) { break; }
+            let expected = if fail_output { RecordingStatus::Stopped } else { RecordingStatus::Active };
+            if frames >= 2 && status == Some(!fail_output) && remote.recording_status == expected { break; }
             if Instant::now() >= deadline { break; }
-            if let Ok(command) = time::timeout(Duration::from_millis(10), remote.receiver.recv()).await {
-                let command = command.expect("recording command receiver alive")
-                    .expect("recording command admitted");
-                assert!(remote.handle_msg_from_ui(command, &mut viewer).await,
-                    "recording failure must not close the connection");
+            tokio::select! {
+                _ = remote.recording_changed.notified() => {
+                    assert!(remote.update_record_state(&mut viewer).await,
+                        "recording completion must not close the connection");
+                }
+                command = time::timeout(Duration::from_millis(10), remote.receiver.recv()) => {
+                    if let Ok(command) = command {
+                        let command = command.expect("recording command receiver alive")
+                            .expect("recording command admitted");
+                        assert!(remote.handle_msg_from_ui(command, &mut viewer).await,
+                            "recording failure must not close the connection");
+                    }
+                }
             }
         }
         let observation = ui.recording_observation();
         let recording = remote.handler.is_recording();
         let errors = ui.take_errors();
+        if fail_output {
+            assert_eq!(remote.recording_status, RecordingStatus::Stopped);
+            assert!(!fixture.root.join("recordings").exists());
+            config::OVERWRITE_LOCAL_SETTINGS.write().unwrap().insert(
+                config::keys::OPTION_VIDEO_SAVE_DIRECTORY.to_owned(),
+                fixture.root.join("recordings").to_str().unwrap().to_owned(),
+            );
+            assert!(remote.handle_msg_from_ui(Data::RecordScreen(true), &mut viewer).await);
+            for generation in [3, 4] {
+                frame.generation = generation;
+                assert_eq!(remote.video_threads[&0].media_thread.admit_received_frame(
+                    frame.clone(), true, std::time::Instant::now()
+                ), VideoFrameAdmission::Queued);
+            }
+            let deadline = Instant::now() + Duration::from_secs(3);
+            while remote.recording_status != RecordingStatus::Active || ui.recording_observation().1 < 4 {
+                assert!(Instant::now() < deadline, "same-viewer recording retry failed");
+                let _ = time::timeout(Duration::from_millis(10), remote.recording_changed.notified()).await;
+                assert!(remote.update_record_state(&mut viewer).await);
+            }
+            assert!(remote.handler.is_recording());
+            assert!(ui.take_errors().is_empty(), "retry reported an old failure");
+        }
         assert!(remote.handle_msg_from_ui(Data::RecordScreen(false), &mut viewer).await);
         (observation, recording, errors, encoded)
     }).catch_unwind().await;
@@ -133,19 +188,18 @@ async fn recording_status_case(fail_output: bool) {
         assert_eq!(status, Some(false), "failed recording still advertises active status");
         assert!(!recording, "failed recording remains selected in the session");
         assert!(!errors.is_empty(), "recording failure was not reported to the UI callback");
-        assert!(!fixture.root.join("recordings").exists());
     } else {
         assert_eq!(status, Some(true), "working recording must remain active");
         assert!(recording);
         assert!(errors.is_empty(), "healthy recording errors: {errors:?}");
-        let files: Vec<_> = std::fs::read_dir(fixture.root.join("recordings")).unwrap()
-            .map(|entry| entry.unwrap().path()).collect();
-        assert_eq!(files.len(), 1, "one native recording output");
-        let bytes = std::fs::read(&files[0]).unwrap();
-        assert!(bytes.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]), "native WebM header");
-        assert_eq!(bytes.windows(encoded.len()).filter(|window| *window == encoded.as_slice()).count(),
-            2, "both actual encoded frame payloads must reach the recording output");
     }
+    let files: Vec<_> = std::fs::read_dir(fixture.root.join("recordings")).unwrap()
+        .map(|entry| entry.unwrap().path()).collect();
+    assert_eq!(files.len(), 1, "one native recording output");
+    let bytes = std::fs::read(&files[0]).unwrap();
+    assert!(bytes.starts_with(&[0x1a, 0x45, 0xdf, 0xa3]), "native WebM header");
+    assert_eq!(bytes.windows(encoded.len()).filter(|window| *window == encoded.as_slice()).count(),
+        2, "both actual encoded frame payloads must reach the recording output");
 }
 
 #[tokio::test]

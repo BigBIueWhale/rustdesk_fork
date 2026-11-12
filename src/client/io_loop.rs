@@ -26,6 +26,7 @@ use crate::{clipboard::try_empty_clipboard_files, clipboard_file::unix_file_clip
 ))]
 use clipboard::ContextSend;
 use hbb_common::futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
+use super::recording::{RecordingAttempt, RecordingStatus};
 #[cfg(any(
     target_os = "windows",
     all(target_os = "macos", feature = "unix-file-copy-paste")
@@ -713,7 +714,11 @@ pub struct Remote<T: InvokeUiSession> {
     video_frame_receipts_negotiated: bool,
     video_frame_receipt_tracker: VideoFrameReceiptTracker,
     chroma: Arc<RwLock<Option<Chroma>>>,
-    last_record_state: bool,
+    recording: Option<Arc<RecordingAttempt>>,
+    recording_changed: Arc<tokio::sync::Notify>,
+    recording_requested: bool,
+    recording_stopping: bool,
+    recording_status: RecordingStatus,
     sent_close_reason: bool,
     peer_text_gate: crate::peer_text::PeerTextGate,
     pending_screenshot_requests: PendingScreenshotRequests,
@@ -1107,7 +1112,13 @@ impl<T: InvokeUiSession> Remote<T> {
             video_frame_receipts_negotiated: false,
             video_frame_receipt_tracker: Default::default(),
             chroma: Default::default(),
-            last_record_state: false,
+            recording: None,
+            recording_changed: Arc::new(tokio::sync::Notify::new()),
+            recording_requested: LocalConfig::get_bool_option(
+                config::keys::OPTION_ALLOW_AUTO_RECORD_OUTGOING,
+            ),
+            recording_stopping: false,
+            recording_status: RecordingStatus::Stopped,
             sent_close_reason: false,
             peer_text_gate: Default::default(),
             pending_screenshot_requests: Default::default(),
@@ -1525,6 +1536,11 @@ impl<T: InvokeUiSession> Remote<T> {
                                 break;
                             }
                         }
+                        _ = self.recording_changed.notified() => {
+                            if !self.update_record_state(&mut peer).await {
+                                break;
+                            }
+                        }
                         refresh = self.video_refresh.recv() => {
                             let Some(refresh) = refresh else {
                                 log::error!("viewer video refresh mailbox closed before its network round");
@@ -1808,6 +1824,10 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     async fn shutdown_workers(&mut self) {
+        self.recording_requested = false;
+        if let Some(attempt) = &self.recording {
+            attempt.stop();
+        }
         self.input_os_password_task.stop_and_join().await;
         let mut workers = Vec::with_capacity(self.video_threads.len() + 1);
         if let Some(mut voice_call_audio) = self.voice_call_audio.take() {
@@ -1822,6 +1842,14 @@ impl<T: InvokeUiSession> Remote<T> {
             workers.push(worker);
         }
         Self::join_workers(workers).await;
+        if let Some(attempt) = self.recording.take() {
+            if let Some(error) = attempt.snapshot().failure {
+                self.handler.msgbox("custom-error", "Recording", &format!("Failed: {error}"), "");
+            }
+        }
+        self.recording_status = RecordingStatus::Stopped;
+        self.handler.lc.write().unwrap().record_state = false;
+        self.handler.update_record_status(RecordingStatus::Stopped);
     }
 
     // Start a voice call recorder, records audio and send to remote
@@ -2408,8 +2436,8 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
             }
             Data::RecordScreen(start) => {
-                self.handler.lc.write().unwrap().record_state = start;
-                if !self.update_record_state() {
+                self.recording_requested = start;
+                if !self.update_record_state(peer).await {
                     return false;
                 }
             }
@@ -3035,7 +3063,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.send_toggle_privacy_mode_msg(peer).await;
                     }
                     self.video_format = CodecFormat::from(&vf);
-                    if !self.video_threads.contains_key(&display) && !self.new_video_thread(display)
+                    if !self.video_threads.contains_key(&display) && !self.new_video_thread(display, peer).await
                     {
                         return false;
                     }
@@ -3688,7 +3716,7 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                             Ok(Permission::Recording) => {
                                 self.handler.lc.write().unwrap().record_permission = p.enabled;
-                                if !self.update_record_state() {
+                                if !self.update_record_state(peer).await {
                                     return false;
                                 }
                                 self.handler.set_permission("recording", p.enabled);
@@ -4382,7 +4410,7 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
-    fn new_video_thread(&mut self, display: usize) -> bool {
+    async fn new_video_thread(&mut self, display: usize, peer: &mut Stream) -> bool {
         let (video_sender, video_receiver) = client::video_mailbox();
         let decode_fps = Arc::new(RwLock::new(None));
         let frame_count = Arc::new(RwLock::new(0));
@@ -4411,48 +4439,108 @@ impl<T: InvokeUiSession> Remote<T> {
             fps_control: Default::default(),
         };
         self.video_threads.insert(display, video_thread);
-        if self.video_threads.len() == 1 {
-            let auto_record =
-                LocalConfig::get_bool_option(config::keys::OPTION_ALLOW_AUTO_RECORD_OUTGOING);
-            self.handler.lc.write().unwrap().record_state = auto_record;
-            if !self.update_record_state() {
-                return false;
+        if let Some(attempt) = &self.recording {
+            if let Some(writer) = attempt.writer(display) {
+                if self.video_threads[&display].media_thread
+                    .admit_control(VideoControl::RecordScreen(Some(writer)))
+                    == VideoControlAdmission::Closed
+                {
+                    return false;
+                }
             }
         }
-        true
+        self.update_record_state(peer).await
     }
 
-    fn update_record_state(&mut self) -> bool {
-        // state
-        let permission = self.handler.lc.read().unwrap().record_permission;
-        if !permission {
-            self.handler.lc.write().unwrap().record_state = false;
+    async fn update_record_state(&mut self, peer: &mut Stream) -> bool {
+        if !self.handler.lc.read().unwrap().record_permission {
+            self.recording_requested = false;
         }
-        let state = self.handler.lc.read().unwrap().record_state;
-        let start = state && permission;
-        if self.last_record_state == start {
-            return true;
-        }
-        self.last_record_state = start;
-        log::info!("record screen start: {start}");
-        // update local
-        for (_, v) in self.video_threads.iter_mut() {
-            if v.media_thread
-                .admit_control(VideoControl::RecordScreen(start))
-                == VideoControlAdmission::Closed
-            {
-                log::error!("video decoder mailbox closed while admitting record-state update");
+        loop {
+            if let Some(attempt) = &self.recording {
+                let snapshot = attempt.snapshot();
+                if let Some(error) = snapshot.failure {
+                    // A failure while draining the old attempt must not cancel a
+                    // subsequently requested retry. That retry still waits below.
+                    if !self.recording_stopping {
+                        self.recording_requested = false;
+                    }
+                    self.handler.msgbox("custom-error", "Recording", &format!("Failed: {error}"), "");
+                }
+                if (!self.recording_requested || snapshot.stopping) && !self.recording_stopping {
+                    attempt.stop();
+                    self.recording_stopping = true;
+                    for video in self.video_threads.values() {
+                        if video.media_thread.admit_control(VideoControl::RecordScreen(None))
+                            == VideoControlAdmission::Closed
+                        {
+                            log::error!("video decoder mailbox closed while stopping recording");
+                            return false;
+                        }
+                    }
+                }
+                if self.recording_stopping && snapshot.writers == 0 {
+                    self.recording = None;
+                    self.recording_stopping = false;
+                } else {
+                    let status = if self.recording_stopping {
+                        RecordingStatus::Stopping
+                    } else if snapshot.started {
+                        RecordingStatus::Active
+                    } else {
+                        RecordingStatus::Starting
+                    };
+                    return self.publish_record_status(status, peer).await;
+                }
+            }
+            if !self.recording_requested || self.video_threads.is_empty() {
+                return self.publish_record_status(RecordingStatus::Stopped, peer).await;
+            }
+            let attempt = RecordingAttempt::new(scrap::record::RecorderContext {
+                server: false,
+                id: self.handler.lc.read().unwrap().id.clone(),
+                dir: crate::ui_interface::video_save_directory(false),
+                display_idx: 0,
+                camera: self.handler.is_view_camera(),
+            }, self.recording_changed.clone());
+            for (&display, video) in &self.video_threads {
+                if let Some(writer) = attempt.writer(display) {
+                    if video.media_thread.admit_control(VideoControl::RecordScreen(Some(writer)))
+                        == VideoControlAdmission::Closed
+                    {
+                        attempt.stop();
+                        self.recording = Some(attempt);
+                        return false;
+                    }
+                }
+            }
+            self.recording = Some(attempt);
+            // Admit the writer before requesting its first keyframe. Refreshing
+            // from the UI before Start can let that keyframe pass the writer.
+            if !self.handle_video_refresh(ViewerVideoRefreshRequest::All, peer).await {
                 return false;
             }
         }
-        self.handler.update_record_status(start);
-        // update remote
+    }
+
+    async fn publish_record_status(&mut self, status: RecordingStatus, peer: &mut Stream) -> bool {
+        if self.recording_status == status {
+            return true;
+        }
+        let was_active = self.recording_status == RecordingStatus::Active;
+        let active = status == RecordingStatus::Active;
+        self.recording_status = status;
+        self.handler.lc.write().unwrap().record_state = active;
+        self.handler.update_record_status(status);
+        if was_active == active {
+            return true;
+        }
         let mut misc = Misc::new();
-        misc.set_client_record_status(start);
+        misc.set_client_record_status(active);
         let mut msg = Message::new();
         msg.set_misc(misc);
-        if let Err(err) = self.sender.send(Data::Message(msg)) {
-            log::error!("failed to admit remote recording-state update: {err}");
+        if let Err(err) = peer.send(&msg).await {
+            log::error!("failed to send remote recording-state update: {err}");
             return false;
         }
         true

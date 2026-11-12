@@ -757,7 +757,7 @@ class FfiModel with ChangeNotifier {
       if (desktopType == DesktopType.remote ||
           desktopType == DesktopType.viewCamera ||
           isMobile) {
-        parent.target?.recordingModel.updateStatus(evt['start'] == 'true');
+        parent.target?.recordingModel.updateStatus(evt['state']);
       }
     } else if (name == 'screenshot') {
       _handleScreenshot(evt, sessionId, peerId);
@@ -4567,28 +4567,34 @@ class QualityMonitorModel with ChangeNotifier {
 class RecordingModel with ChangeNotifier {
   WeakReference<FFI> parent;
   RecordingModel(this.parent);
-  bool _start = false;
-  bool get start => _start;
+  String _state = 'stopped';
+  bool _sending = false;
+  bool get start => _state != 'stopped';
+  bool get active => _state == 'active';
+  bool get stopping => _state == 'stopping';
 
   toggle() async {
-    if (isIOS) return;
+    if (isIOS || _sending || stopping) return;
     final ffi = parent.target;
     if (ffi == null) return;
     final sessionId = ffi.sessionId;
-    bool value = !_start;
-    if (value) {
-      await ffi.refreshPresentation(sessionId, ffi.clientOwnerId);
+    final value = !start;
+    _sending = true;
+    try {
+      if (!ffi.isCurrentSession(sessionId)) return;
+      await bind.sessionRecordScreen(sessionId: sessionId, start: value);
+    } finally {
+      _sending = false;
     }
-    await bind.sessionRecordScreen(sessionId: sessionId, start: value);
   }
 
-  updateStatus(bool status) {
-    _start = status;
+  updateStatus(String status) {
+    _state = status;
     notifyListeners();
   }
 
   void reset() {
-    _start = false;
+    _state = 'stopped';
   }
 }
 

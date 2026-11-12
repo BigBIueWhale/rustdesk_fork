@@ -2132,7 +2132,7 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn set_current_display(&self, disp_idx: i32);
     #[cfg(feature = "flutter")]
     fn is_multi_ui_session(&self) -> bool;
-    fn update_record_status(&self, start: bool);
+    fn update_record_status(&self, status: crate::client::recording::RecordingStatus);
     fn update_empty_dirs(&self, _res: ReadEmptyDirsResponse) {}
     fn handle_screenshot_resp(
         &self,

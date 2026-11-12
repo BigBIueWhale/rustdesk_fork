@@ -66,7 +66,6 @@ use hbb_common::{
 pub use helper::*;
 use scrap::{
     codec::Decoder,
-    record::{Recorder, RecorderContext},
     CodecFormat, ImageFormat, ImageRgb, ImageTexture,
 };
 
@@ -83,6 +82,7 @@ pub use super::lang::*;
 pub mod file_trait;
 pub mod helper;
 pub mod io_loop;
+pub mod recording;
 pub mod screenshot;
 #[cfg(test)]
 mod video_handler_tests;
@@ -1281,8 +1281,6 @@ pub struct VideoHandler {
     decoder: Decoder,
     pub rgb: ImageRgb,
     pub texture: ImageTexture,
-    recorder: Arc<Mutex<Option<Recorder>>>,
-    record: bool,
     _display: usize, // useful for debug
 }
 
@@ -1300,8 +1298,6 @@ impl VideoHandler {
             decoder: Decoder::new(format, None),
             rgb: ImageRgb::new(rgba_format, crate::get_dst_align_rgba()),
             texture: Default::default(),
-            recorder: Default::default(),
-            record: false,
             _display,
         }
     }
@@ -1310,34 +1306,23 @@ impl VideoHandler {
     #[inline]
     pub fn handle_frame(
         &mut self,
-        vf: VideoFrame,
+        vf: &VideoFrame,
         pixelbuffer: &mut bool,
         chroma: &mut Option<Chroma>,
     ) -> ResultType<bool> {
-        let format = CodecFormat::from(&vf);
+        let format = CodecFormat::from(vf);
         if format != self.decoder.format() {
             self.reset(Some(format));
         }
         match &vf.union {
             Some(frame) => {
-                let res = self.decoder.handle_video_frame(
+                self.decoder.handle_video_frame(
                     frame,
                     &mut self.rgb,
                     &mut self.texture,
                     pixelbuffer,
                     chroma,
-                );
-                if self.record {
-                    self.recorder.lock().unwrap().as_mut().map(|r| {
-                        let (w, h) = if *pixelbuffer {
-                            (self.rgb.w, self.rgb.h)
-                        } else {
-                            (self.texture.w, self.texture.h)
-                        };
-                        r.write_frame(frame, w, h).ok();
-                    });
-                }
-                res
+                )
             }
             _ => Ok(false),
         }
@@ -1355,24 +1340,6 @@ impl VideoHandler {
         self.decoder = Decoder::new(format, None);
     }
 
-    /// Start or stop screen record.
-    pub fn record_screen(&mut self, start: bool, id: String, display_idx: usize, camera: bool) {
-        self.record = false;
-        if start {
-            self.recorder = Recorder::new(RecorderContext {
-                server: false,
-                id,
-                dir: crate::ui_interface::video_save_directory(false),
-                display_idx,
-                camera,
-            })
-            .map_or(Default::default(), |r| Arc::new(Mutex::new(Some(r))));
-        } else {
-            self.recorder = Default::default();
-        }
-
-        self.record = start;
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -2502,10 +2469,9 @@ impl LoginConfigHandler {
 }
 
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum VideoControl {
     Reset,
-    RecordScreen(bool),
+    RecordScreen(Option<recording::RecordingWriter>),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -2736,7 +2702,7 @@ impl VideoMailboxSender {
             return VideoControlAdmission::Closed;
         }
 
-        let refresh_required = match control {
+        let refresh_required = match &control {
             VideoControl::Reset => {
                 let refresh_required = !state.refresh_requested;
                 if !state.invalidate_frames() {
@@ -2750,7 +2716,7 @@ impl VideoMailboxSender {
         };
         state.work.retain(|work| {
             !matches!(
-                (control, work),
+                (&control, work),
                 (VideoControl::Reset, VideoWork::Control(VideoControl::Reset))
                     | (
                         VideoControl::RecordScreen(_),
@@ -3110,10 +3076,10 @@ where
 {
     let mut video_callback = video_callback;
     let mut last_chroma = None;
-    let is_view_camera = session.is_view_camera();
 
     std::thread::spawn(move || {
         let mut video_handler = None;
+        let mut recording: Option<recording::RecordingWriter> = None;
         let mut count = 0;
         let mut duration = std::time::Duration::ZERO;
         let mut skip_beginning = 0;
@@ -3167,20 +3133,13 @@ where
                             continue;
                         }
                         if video_handler.is_none() {
-                            let mut handler = VideoHandler::new(format, display);
-                            let record_state = session.lc.read().unwrap().record_state;
-                            let record_permission = session.lc.read().unwrap().record_permission;
-                            let id = session.lc.read().unwrap().id.clone();
-                            if record_state && record_permission {
-                                handler.record_screen(true, id, display, is_view_camera);
-                            }
-                            video_handler = Some(handler);
+                            video_handler = Some(VideoHandler::new(format, display));
                         }
                         if let Some(handler) = video_handler.as_mut() {
                             let mut pixelbuffer = true;
                             let mut tmp_chroma = None;
                             let format_changed = handler.decoder.format() != format;
-                            let decoded = handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma);
+                            let decoded = handler.handle_frame(&vf, &mut pixelbuffer, &mut tmp_chroma);
                             if !video_receiver.generation_is_current(generation) {
                                 handler.reset(None);
                                 decoder_generation = None;
@@ -3203,6 +3162,16 @@ where
                                     }
                                     if !video_receiver.generation_is_current(generation) {
                                         continue;
+                                    }
+                                    if let (Some(writer), Some(frame)) = (recording.as_mut(), &vf.union) {
+                                        let (width, height) = if pixelbuffer {
+                                            (handler.rgb.w, handler.rgb.h)
+                                        } else {
+                                            (handler.texture.w, handler.texture.h)
+                                        };
+                                        if width > 0 && height > 0 && !writer.write(frame, width, height) {
+                                            drop(recording.take());
+                                        }
                                     }
                                     if rendered {
                                         if is_keyframe && !independent_stage_reported {
@@ -3291,11 +3260,9 @@ where
                             handler.reset(None);
                         }
                     }
-                    VideoMailboxItem::Control(VideoControl::RecordScreen(start)) => {
-                        let id = session.lc.read().unwrap().id.clone();
-                        if let Some(handler) = video_handler.as_mut() {
-                            handler.record_screen(start, id, display, is_view_camera);
-                        }
+                    VideoMailboxItem::Control(VideoControl::RecordScreen(next)) => {
+                        drop(recording.take());
+                        recording = next;
                     }
                 }
             } else {
@@ -5815,6 +5782,19 @@ mod tests {
         ));
     }
 
+    fn recording_control(start: bool) -> VideoControl {
+        let writer = start.then(|| {
+            let attempt = recording::RecordingAttempt::new(scrap::record::RecorderContext {
+                server: false, id: "mailbox-test".to_owned(), dir: String::new(),
+                display_idx: 0, camera: false,
+            }, Arc::new(hbb_common::tokio::sync::Notify::new()));
+            let writer = attempt.writer(0).expect("recording control reservation");
+            attempt.stop();
+            writer
+        });
+        VideoControl::RecordScreen(writer)
+    }
+
     #[test]
     fn r_s11ev_explicit_refresh_clears_frames_but_preserves_controls() {
         let (sender, receiver) = video_mailbox();
@@ -5823,7 +5803,7 @@ mod tests {
             VideoFrameAdmission::Queued
         );
         assert_eq!(
-            sender.admit_control(VideoControl::RecordScreen(true)),
+            sender.admit_control(recording_control(true)),
             VideoControlAdmission::Accepted
         );
         assert_eq!(
@@ -5843,7 +5823,7 @@ mod tests {
         );
         assert!(matches!(
             receiver.recv(),
-            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(true)))
+            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(Some(_))))
         ));
         assert!(matches!(
             receiver.recv(),
@@ -5933,7 +5913,7 @@ mod tests {
             VideoFrameAdmission::Queued
         );
         assert_eq!(
-            sender.admit_control(VideoControl::RecordScreen(true)),
+            sender.admit_control(recording_control(true)),
             VideoControlAdmission::Accepted
         );
         assert_eq!(
@@ -5942,7 +5922,7 @@ mod tests {
         );
         for index in 0..64 {
             assert_eq!(
-                sender.admit_control(VideoControl::RecordScreen(index % 2 == 0)),
+                sender.admit_control(recording_control(index % 2 == 0)),
                 VideoControlAdmission::Accepted
             );
         }
@@ -5966,7 +5946,7 @@ mod tests {
         );
         assert!(matches!(
             receiver.recv(),
-            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(false)))
+            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(None)))
         ));
     }
 
@@ -5981,7 +5961,7 @@ mod tests {
             };
             assert_eq!(sender.admit_control(VideoControl::Reset), reset_admission);
             assert_eq!(
-                sender.admit_control(VideoControl::RecordScreen(index % 2 == 0)),
+                sender.admit_control(recording_control(index % 2 == 0)),
                 VideoControlAdmission::Accepted
             );
             let state = sender.shared.state.lock().unwrap();
@@ -5999,7 +5979,7 @@ mod tests {
         ));
         assert!(matches!(
             receiver.recv(),
-            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(false)))
+            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(None)))
         ));
         let recovered = queued_video_frame(
             receiver

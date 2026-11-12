@@ -2477,8 +2477,8 @@ impl InvokeUiSession for FlutterHandler {
         self.push_event::<&str>("on_voice_call_incoming", &[], &[]);
     }
 
-    fn update_record_status(&self, start: bool) {
-        self.push_event("record_status", &[("start", &start.to_string())], &[]);
+    fn update_record_status(&self, status: crate::client::recording::RecordingStatus) {
+        self.push_event("record_status", &[("state", status.as_str())], &[]);
     }
 
     fn handle_screenshot_resp(

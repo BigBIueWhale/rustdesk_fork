@@ -102,6 +102,8 @@ class AudioFixture:
         self.counts = {'silent': 0, 'tone': 0, 'other': 0}
         self.samples = 0
         self.owner = None
+        self.snapshot = None
+        self.maximum_rms = self.maximum_coherence = 0
         self.tone_rms = []
         self.coefficients = [(math.cos(2 * math.pi * 440 * n / 48000),
                               math.sin(2 * math.pi * 440 * n / 48000)) for n in range(4800)]
@@ -148,22 +150,41 @@ class AudioFixture:
             self.query(role, 'info')
         self.viewer_environment = {**environment, 'PULSE_SERVER': self.environments['viewer']['PULSE_SERVER']}
         self.query('controlled', 'load-module', 'module-sine', 'sink=controlled', 'frequency=440')
+        self.monitor = self.record('controlled')
+        deadline = time.monotonic() + 5
+        while self.counts['tone'] < 3 and time.monotonic() < deadline:
+            self.sample()
+        print('LINUX_INSTALLED_AUDIO_SOURCE=' + json.dumps({
+            'windows': self.counts, 'maximum_rms': self.maximum_rms,
+            'maximum_coherence': self.maximum_coherence,
+        }), file=sys.stderr, flush=True)
+        require(self.counts['tone'] >= 3, 'controlled audio monitor did not produce the expected tone')
+        self.monitor.terminate()
+        require(self.monitor.wait(timeout=5) in (0, -15), 'controlled audio probe did not retire')
+        self.pending.clear()
+        self.counts = {'silent': 0, 'tone': 0, 'other': 0}
+        self.maximum_rms = self.maximum_coherence = 0
+        self.tone_rms.clear()
         require(self.query('viewer', '--format=json', 'list', 'sink-inputs') == [],
                 'viewer output is occupied before connection')
-        log = files.enter_context((COORD / 'audio-monitor.log').open('xb'))
-        self.monitor = subprocess.Popen([str(ROOT / 'usr/bin/pacat'), '--record', '--raw',
-            '--device=viewer.monitor', '--format=float32le', '--rate=48000', '--channels=2',
-            '--latency-msec=50'], env=self.environments['viewer'], stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE, stderr=log)
-        processes.append(self.monitor)
-        os.set_blocking(self.monitor.stdout.fileno(), False)
-        files.callback(self.monitor.stdout.close)
+        self.monitor = self.record('viewer')
         deadline = time.monotonic() + 5
         while self.counts['silent'] < 3:
             require(time.monotonic() < deadline and not self.counts['tone'] and not self.counts['other'],
                     'viewer output was not silent before the Remote connection')
             self.sample()
         print('LINUX_INSTALLED_AUDIO_BASELINE=' + json.dumps(self.counts), file=sys.stderr, flush=True)
+
+    def record(self, role):
+        log = self.files.enter_context((COORD / ('audio-' + role + '-monitor.log')).open('xb'))
+        process = subprocess.Popen([str(ROOT / 'usr/bin/pacat'), '--record', '--raw',
+            '--device=' + role + '.monitor', '--format=float32le', '--rate=48000', '--channels=2',
+            '--latency-msec=50'], env=self.environments[role], stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE, stderr=log)
+        self.processes.append(process)
+        os.set_blocking(process.stdout.fileno(), False)
+        self.files.callback(process.stdout.close)
+        return process
 
     def query(self, role, *arguments):
         value = self.settings.run([str(ROOT / 'usr/bin/pactl'), *arguments],
@@ -189,6 +210,8 @@ class AudioFixture:
             real = sum(x * c for x, (c, _) in zip(left, self.coefficients))
             imaginary = sum(x * s for x, (_, s) in zip(left, self.coefficients))
             coherence = 2 * (real * real + imaginary * imaginary) / (len(left) * energy) if energy else 0
+            self.maximum_rms = max(self.maximum_rms, rms)
+            self.maximum_coherence = max(self.maximum_coherence, coherence)
             kind = 'silent' if rms <= 0.000001 else 'tone' if 0.02 <= rms <= 0.8 and coherence >= 0.8 else 'other'
             self.counts[kind] += 1
             if kind == 'tone':
@@ -197,6 +220,10 @@ class AudioFixture:
             require(self.samples <= 48000 * 150, 'installed audio observation exceeds its duration bound')
 
     def observe_owner(self, viewer):
+        if self.snapshot is None and self.samples >= 48000 * 5:
+            self.snapshot = {role: self.query(role, '--format=json', 'list', kind)
+                             for role, kind in (('viewer', 'sink-inputs'), ('controlled', 'source-outputs'))}
+            print('LINUX_INSTALLED_AUDIO_STREAMS=' + json.dumps(self.snapshot), file=sys.stderr, flush=True)
         if self.owner is not None or self.counts['tone'] < 3:
             return
         playback = self.query('viewer', '--format=json', 'list', 'sink-inputs')
@@ -217,6 +244,10 @@ class AudioFixture:
                       'playback': playback[0]['index'], 'sink': sink['index']}
 
     def complete(self):
+        print('LINUX_INSTALLED_AUDIO_SAMPLES=' + json.dumps({
+            'windows': self.counts, 'maximum_rms': self.maximum_rms,
+            'maximum_coherence': self.maximum_coherence, 'owner': self.owner,
+        }), file=sys.stderr, flush=True)
         require(self.owner is not None and self.counts['tone'] >= 8, 'installed Remote did not play the expected tone')
         deadline = time.monotonic() + 5
         initial_silence = self.counts['silent']

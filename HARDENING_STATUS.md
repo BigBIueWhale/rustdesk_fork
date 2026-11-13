@@ -7566,7 +7566,7 @@ and installed/platform acceptance remain OPEN. Command/task ownership is covered
 Credential provisioning and Android CM work
 remain open under the user's pivot.
 
-**Automatic reconnect — single expiry passes; repeated recovery exceeds the resource bound.**
+**Automatic reconnect — texture reuse reduces observed RSS; repeated recovery remains OPEN.**
 `8fe1fe12` caps the shared model's exponential retry delay at 30 seconds, preserving
 the initial 1/2/4/8/16-second waits. Timer and displayed countdown consume the same
 value; manual action, retry classification, credential suppression and owner/reset
@@ -7606,8 +7606,8 @@ Both first reconnects and before/after latency windows pass. In the diagnostic
 run, four complete viewer `smaps` snapshots show **170,200 KiB** resident growth,
 including **137,452 KiB** in `[heap]`, with zero observed swap. This localizes
 growth without establishing the allocation site, retention lifetime or a leak.
-The unchanged app remains `2eb7015e`; no product correction or threshold change
-is claimed. `remote-installed-expired-repeated-b1ae68e6.json` and
+Those baseline runs use unchanged app `2eb7015e`; the engine candidate below
+retains their thresholds. `remote-installed-expired-repeated-b1ae68e6.json` and
 `remote-installed-expired-memory-c59acdad.json` bind eighteen files/766,520 bytes
 on CTE/TUF, eight zero host listener deltas and exact joined cleanup.
 Allocation profiling now completes (`gWsjH52feU`, fixture `70498b1a`), with
@@ -7672,11 +7672,32 @@ existing native settings/accessibility checks. All 341 packaged payloads verify;
 only `libflutter_linux_gtk.so` differs from engine `ddb1541d`. Capsule
 `compositor-engine-381500e6.json` binds source, patch, archive and joined cleanup.
 The three earlier engine archives are restored unchanged, alongside this new
-85-MiB toolkit. Application artifacts remain unchanged. Next: retire superseded
-app `e4c7550e` within the four-app cap, build with this engine, and run ordinary
-`--installed-remote-expired` against the unchanged three-outage RSS/presentation
-bounds. No allocator tuning, relaxed bound or full memory-failure correction
-is claimed.
+85-MiB toolkit. Superseded app `e4c7550e` is now retired after all 74 payloads
+verify against its manifest; corrected baseline `2eb7015e` remains. The full
+app builds at `77cc3441` (`h6MCToaokV`) within the four-app cap. All 74 new
+payloads verify, and only `libflutter_linux_gtk.so` differs from `2eb7015e`.
+Thirteen view-mode and eight recording widget cases, two native command cases
+and four native pixel-publication cases pass. `compositor-app-77cc3441.json`
+binds ten files/329,159 bytes on CTE/TUF, four zero endpoint deltas and joined cleanup.
+Ordinary installed replay `d6QYaA9eWZ` now passes both 65-second outages' resource
+checks: 139 samples rise from **358,896 to at most 401,032 KiB**, growth
+**42,136 KiB**, with descriptors/threads bounded. Adjacent `smaps` snapshots
+show heap RSS 41,700→46,628 KiB, without the prior large heap increase.
+The two automatic reconnects take **126/692 ms**; four fresh frames arrive within
+**986/1,075 ms** of each new connection. All 240 baseline/first-recovery responses
+reconcile; response p95/p99 are 352/357 and 344/360 ms, with maximum healthy age
+433 ms. The second recovered window nevertheless fails its pre-input animation
+check: the last image is state 1,375, age 760 ms, while source states 1,376/1,377
+have published. Request 240 has not been sent. No one-second latency violation
+or cause is established by that record; the unchanged quiet-window checks also
+require animation progress and released keys. The third outage and complete
+package lifecycle are unexecuted. This is a failed replay, not full acceptance
+of the memory correction. `compositor-expired-77cc3441.json` binds nine files /
+514,009 bytes on both hosts, four zero endpoint deltas and joined cleanup.
+Next: retain exact quiet-window progress/key-state diagnostics and observe the
+same session briefly after refusal, preserving the failed verdict, to distinguish
+the presentation stall from observer assumptions. Reuse this built app; no
+allocator tuning, relaxed bound or additional application build is justified.
 The separate surviving-transport delay failure, other outage schedules,
 physical scanout, endurance, desktop/mobile coverage, final artifacts,
 independent review and complete R-S0/R-F5 remain OPEN.

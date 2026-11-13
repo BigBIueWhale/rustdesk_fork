@@ -152600,3 +152600,78 @@ capsule compositor-engine-ledger-1def96ea.json, outer SHA-256
 This audit-only append preserves the counted ledger and prior 16,266,918-byte
 prefix, SHA-256
 1f125be9006d34e9b29e0285c6a7c09341165a5ace77afefff2fc8fea281c9eb.
+
+## 2026-11-13 — installed compositor candidate: lower RSS, incomplete recovery acceptance
+
+Continue R-F5's reproduced repeated-expiry resource failure through the decisive
+installed-app comparison. This takes priority over unrelated work because the
+engine component and complete toolkit already pass, while ordinary application
+behavior remains unproved. Keep the original three 65-second outages, fixed
+128-MiB RSS-growth baseline, 45-second reconnect and 2.5-second freshness deadlines,
+four 120-response windows, one-second healthy ceiling and 250-ms drift bound.
+
+Under the shared run and app-cache locks, all 74 payloads in superseded e4c7550e
+and retained 2eb7015e verify against their manifests. Their only differing payload
+is librustdesk.so. Whole stage recipes differ because of unrelated fixture work;
+each matches its own source, while their build-app bodies are identical, SHA-256
+f666460474606dfe3f9764da5f70371fcd6d581ef58dcfa50b4095e7c0b1c5ac.
+Exact generation 66306:87996403 retires, releasing 70,791,168 allocated file bytes.
+Source, baseline and bounded evidence remain; the removed library bytes do not.
+compositor-retired-e4c7550e.json and its manifest/inventory retain three files /
+32,443 bytes, verified on both hosts. Four app generations remain after replacement.
+
+TUF h6MCToaokV builds the complete app at 77cc3441 with engine 381500e6.
+Manifest d36f837abca4f74d1879858a9ef7c79b69acc4db400d44cc607ef34b298a8533
+binds all 74 verified payloads. Only libflutter_linux_gtk.so differs from retained
+2eb7015e; product source and the other payload bytes remain equal. Thirteen
+view-mode widget, eight recording widget, two native command and four native
+pixel-publication cases pass. Compiler memory is bounded at 10 GiB, two jobs,
+swap zero and no OOM. QEMU 3031592 joins zero; private 66306:82229865 and RAM
+29:13507 retire, with four zero endpoint deltas. Supervisor 1,277.213 seconds,
+peak RAM scratch 11,918,467,072 bytes; tmpfs_swap_disabled=false.
+compositor-app-77cc3441.json binds ten files/329,159 bytes on both hosts; outer
+SHA-256 7c724f863c9b6ee2d5c4395177739cce20312cd65ff6aafd8761a2f7decf04b7.
+
+Ordinary --installed-remote-expired replay d6QYaA9eWZ uses that exact app/engine
+without allocation instrumentation. Both complete-loss periods deliver zero
+packets and drop 28/26. Old sockets retire after 41.239/43.698 seconds, followed
+by different viewer-owned sockets after restoration in 126/692 ms. Four fresh
+frames arrive within 986/1,075 ms of the new connections, without manual recovery.
+Across 139 resource samples, RSS baseline/maximum are 358,896/401,032 KiB:
+42,136-KiB growth, versus the earlier ordinary 150,276/171,320-KiB failures.
+Peak descriptors are 47 versus 45 initially; peak threads remain 58. Separate
+smaps totals are 364,212→405,624 KiB, heap 41,700→46,628 KiB, zero observed swap.
+This gets beyond the prior second-outage memory rejection without tuning malloc
+or relaxing a limit; it does not establish the full three-cycle bound.
+
+All 240 completed responses independently reconcile against source publications
+and capture timestamps. Response p95/p99 are 352/357 and 344/360 ms; live observer
+frame-age p95/p99 are 299/317 and 298/315 ms, worst healthy age 433 ms.
+The second recovered window fails before request 240 is sent, in its 650-ms
+animation-without-response phase. The final decoded image is state 1,375,
+response 240, age 760 ms; source states 1,376/1,377 have already published.
+Those values do not violate the one-second age/response ceiling. The same branch
+also checks distinct-frame progress and released keys; its existing receipt does
+not preserve every counter or a subsequent observation. Do not claim a permanent
+freeze, a particular pipeline cause, or a passing recovery. The third outage,
+remaining 240 requests and complete reinstall/remove/purge sequence do not run.
+Next: expose the exact quiet-window counters/key state and bounded post-refusal
+observations while retaining the failed verdict, reusing this artifact. No new
+app build or unchanged-baseline repeat is needed for that diagnostic.
+
+Replay guest exits 1; QEMU 3065842 joins zero. Under the shared run lock, final
+storage/endpoint records, exact RAM identity 29:13548, absent QEMU/Unix sockets
+and byte-equal retained serial output reconcile before private 66306:82229865
+is removed. That inode was reused at a different run path after the app build.
+Four endpoint deltas are zero. Supervisor 434.118 seconds, peak RAM scratch
+4,217,458,688 bytes, minimum host available 39,394,390,016 bytes;
+tmpfs_swap_disabled=false. compositor-expired-77cc3441.json binds nine files /
+514,009 bytes, copied and SHA-verified on CTE/TUF; outer SHA-256
+a1f1243de1146d2e7444d67ce37234bdcc60f023d87414a05ad81ba825f7656e.
+The former tool session was unavailable after compaction; final retained records,
+exact owner absence and acquired run lock establish completion without relaunch.
+Source freeze ends after reconciliation and verified copies. TUF's existing
+SSH master works; no key/configuration change is made. HARDENING_STATUS.md records
+the partial result and remaining work; its fresh isolated count follows.
+This append preserves the prior 16,267,772-byte audit prefix, SHA-256
+1da514947b281b21621169dd840f9d61f4a112510ba01bc1f0cace0219869316.

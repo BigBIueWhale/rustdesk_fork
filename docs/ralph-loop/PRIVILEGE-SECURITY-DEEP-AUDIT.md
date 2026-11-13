@@ -153202,3 +153202,21 @@ binds nine files/239,546 bytes copied and SHA-verified on CTE/TUF, outer SHA-256
 No owned jobs or source freezes remain. Ledger counting follows this edit.
 This append preserves the prior16,306,324-byte audit prefix, SHA-256
 96fa2c50a81d6c765abe1f538e5702ecf1467b8ec927c29f1b090db757d8bc00.
+
+### Fresh ledger count after installed CM crash observation
+
+At 0ded63f6, TUF l7iPpslXzm passes the fixed tiktoken0.12.0/cl100k_base/
+encode_ordinary count, seven controls and byte round trip: 425,816 tokens,
+1,939,763 bytes, input SHA-256
+5be87e730c2050b169836893556810d6a7b6a0ca530edc32cd2f615b2b782655.
+The approximate400,000-token target remains OPEN. QEMU3348148 joins zero;
+private/RAM retire under the shared lock with three zero endpoint deltas.
+Supervisor30.352 seconds; scratch peak403,099,648 bytes;
+tmpfs_swap_disabled=false. Eight files/115,858 bytes are SHA-verified on CTE/TUF;
+capsule installed-cm-ledger-0ded63f6.json, outer SHA-256
+d57abbbbe3ef7c95c81dc495582dc58670cf01107c041966409f5633a3ee8b1a.
+No owned jobs or source freezes remain. Next identify the confirmed CM startup
+fault's code/mapping; ordinary installed session and audio acceptance remain OPEN.
+This audit-only append preserves the counted ledger and prior16,308,480-byte
+audit prefix, SHA-256
+7029b6334f884bf2ed957a5c46b0e55b9230e7be649b5ef1eb0a1aa7e1a72052.

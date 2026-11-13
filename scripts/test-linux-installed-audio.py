@@ -119,6 +119,17 @@ class AudioFixture:
             self.sockets.append(endpoint)
             env = {**environment, 'LD_LIBRARY_PATH': libraries, 'PULSE_RUNTIME_PATH': str(runtime),
                    'PULSE_SERVER': 'unix:' + str(endpoint), 'PULSE_DLPATH': str(MODULES)}
+            if role == 'viewer':
+                bus_log = files.enter_context((COORD / 'audio-viewer-bus.log').open('xb'))
+                bus = subprocess.Popen(['/usr/bin/dbus-daemon', '--session', '--nofork', '--print-address=1'],
+                                       env=environment, stdin=subprocess.DEVNULL,
+                                       stdout=subprocess.PIPE, stderr=bus_log)
+                processes.append(bus)
+                files.callback(bus.stdout.close)
+                require(select.select([bus.stdout], [], [], 5)[0], 'viewer audio bus did not start')
+                address = bus.stdout.readline(4096).decode().strip()
+                require(address.startswith('unix:'), 'viewer audio bus is not local')
+                env['DBUS_SESSION_BUS_ADDRESS'] = address
             self.environments[role] = env
             log = files.enter_context((COORD / ('audio-' + role + '.log')).open('xb'))
             process = subprocess.Popen([str(ROOT / 'usr/bin/pulseaudio'), '-n', '--daemonize=no',

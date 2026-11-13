@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """Observe Remote pixels and viewer/network recovery through the installed service."""
 from contextlib import ExitStack, closing, contextmanager
+import base64
 import ctypes
+import gzip
 import hashlib
 import importlib.util
 import json
@@ -335,23 +337,15 @@ class AllocationTrace:
             timeline = self.root / 'timeline.massif'
             with report.open('xb') as output:
                 analyze = subprocess.Popen([
-                    '/usr/bin/prlimit', '--fsize=1048576', '--', '/usr/bin/heaptrack_print', str(interpreted),
+                    '/usr/bin/prlimit', '--fsize=16777216', '--', '/usr/bin/heaptrack_print', str(interpreted),
                     '--merge-backtraces=false', '--print-peaks=true', '--print-leaks=true',
                     '--print-allocators=false', '--print-temporary=false', '--peak-limit=30',
                     '--disable-builtin-suppressions', '--disable-embedded-suppressions',
                     '--print-massif=' + str(timeline), '--massif-detailed-freq=0'],
                     stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, env=env)
                 self.jobs.append(analyze)
-                require(analyze.wait(timeout=120) == 0, 'allocation report failed')
-            for name in ('compressor.log', 'interpret.log', 'report.txt', 'timeline.massif'):
-                path = self.root / name
-                limit = 1048576 if name == 'timeline.massif' else 262144 if name == 'report.txt' else 65536
-                require(path.stat().st_size <= limit, 'allocation report exceeds its evidence bound')
-                print('LINUX_INSTALLED_HEAPTRACK_REPORT_BEGIN name=' + name,
-                      file=sys.stderr, flush=True)
-                print(path.read_text(), end='', file=sys.stderr, flush=True)
-                print('LINUX_INSTALLED_HEAPTRACK_REPORT_END name=' + name,
-                      file=sys.stderr, flush=True)
+                code = analyze.wait(timeout=120)
+                require(code == 0, f'allocation report failed: exit={code}')
             def identity(path):
                 with path.open('rb') as stream:
                     return {'bytes': path.stat().st_size, 'sha256': hashlib.file_digest(stream, 'sha256').hexdigest()}
@@ -363,6 +357,32 @@ class AllocationTrace:
                 'end_state': 'viewer-retired-by-fixture'}), file=sys.stderr, flush=True)
         finally:
             self.stop_jobs()
+            print('LINUX_INSTALLED_HEAPTRACK_PROCESSES=' + json.dumps([
+                {'pid': p.pid, 'exit': p.returncode} for p in self.jobs]), file=sys.stderr, flush=True)
+            # Preserve tool errors even if collection, interpretation or analysis fails.
+            for name in ('compressor.log', 'interpret.log', 'report.txt'):
+                path = self.root / name
+                if not path.exists():
+                    continue
+                limit = 262144 if name == 'report.txt' else 65536
+                with path.open('rb') as stream:
+                    data = stream.read(limit)
+                print(f'LINUX_INSTALLED_HEAPTRACK_REPORT_BEGIN name={name} '
+                      f'bytes={path.stat().st_size} retained={len(data)}', file=sys.stderr, flush=True)
+                print(data.decode('utf-8', errors='replace'), end='', file=sys.stderr, flush=True)
+                print('\nLINUX_INSTALLED_HEAPTRACK_REPORT_END name=' + name, file=sys.stderr, flush=True)
+            timeline = self.root / 'timeline.massif'
+            if timeline.exists():
+                # Heaptrack emits a snapshot every 10 ms, even with detailed stacks disabled.
+                # Keep every sample within a separate bounded compressed evidence record.
+                require(timeline.stat().st_size <= 16777216, 'allocation timeline exceeds its guest bound')
+                data = timeline.read_bytes()
+                packed = gzip.compress(data, mtime=0)
+                require(len(packed) <= 786432, 'allocation timeline exceeds its evidence bound')
+                print('LINUX_INSTALLED_HEAPTRACK_TIMELINE=' + json.dumps({
+                    'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
+                    'encoding': 'gzip+base64', 'data': base64.b64encode(packed).decode('ascii')}),
+                    file=sys.stderr, flush=True)
 
 
 def session(network=False, heaptrack=False):

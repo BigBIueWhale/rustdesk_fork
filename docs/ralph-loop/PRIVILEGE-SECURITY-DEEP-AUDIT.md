@@ -152157,3 +152157,42 @@ acceptance deadline or resource bound changes. This is ready for a justified
 retry, not yet runtime acceptance. HARDENING_STATUS.md remains unchanged.
 This append preserves the prior 16,235,699-byte audit prefix, SHA-256
 aef65b7668019ef21736a0395e03d95cc2114ed7641b3c032ec6f46473417ec3.
+
+## 2026-11-13 — Collector attaches; report failure needs bounded diagnostics
+
+The loader repair works in TUF vOYbuN53iD at a9acc2d9. Exact viewer 7960
+opens the collector FIFO and maps the copied 47,360-byte library, SHA-256
+1fc7372723ece8cba7e70bff5fbf1e42a7f0bce2672adedc1ec652445e4e5f44.
+All three 65-second outages naturally retire their transports and reconnect;
+reconnect times are 949/941/2,557 ms and four fresh frames follow within
+944/762/679 ms. Three completed input/animation windows precede a third-cycle
+recovered-envelope observer refusal at request 360. Its decoded state is 730 ms
+old, with request_us=0; no uninstrumented product regression is inferred.
+Instrumented initial RSS is 476,160 KiB; third-recovery RSS is 549,720 KiB.
+The previous ordinary RSS-bound failure is not reproduced under tracing.
+
+Collection and interpretation advance to heaptrack_print, which exits nonzero.
+The fixture then raises before printing its error/report files. Those files
+retired with the guest, so neither the exit code nor allocation stacks survive;
+do not claim a successful allocation report or attribute the original growth.
+The failure-path output omission is corrected: joined process exits and bounded,
+explicitly sized log/report prefixes are always emitted, including on failure.
+Primary v1.4.0 libheaptrack.cpp uses 10-ms timestamps, and heaptrack_print.cpp
+writes a Massif snapshot for every timestamp even with detailed stacks disabled.
+The old 1-MiB limit cannot hold the planned multi-minute timeline. This is a
+source-established fixture limit, not a proved explanation of the lost error.
+The analysis file ceiling is now 16 MiB; the full timeline is retained as a
+size/hash-bound gzip+base64 record with a 768-KiB compressed limit. Raw and
+interpreted traces retain their 128-MiB ceilings; all files remain guest-only.
+Ordinary application resources/deadlines and the source-bound artifact are unchanged.
+
+Independent reconciliation verifies four empty host endpoint deltas, QEMU
+2689097 joined zero, and exact private 66306:77904674 / RAM 29:13114 retirement.
+The run takes 613.479 s with 4,338,311,168-byte peak RAM scratch;
+tmpfs_swap_disabled remains false. Nine files/641,314 bytes are copied and
+SHA-verified on CTE/TUF. Capsule: remote-expired-heaptrack-a9acc2d9.json.
+Outer SHA-256: 47cf648ca2c6923d572cf1e910e0d8477683c6bc2053ec4925eb7f344347bb76.
+The capsule's preliminary description is superseded by this report-failure finding.
+HARDENING_STATUS.md remains unchanged; R-F5 and allocation attribution remain OPEN.
+This append preserves the prior 16,238,107-byte audit prefix, SHA-256
+4c17fe298f926d22fa65e6489123342c25677cbfcb982e0d12c7304a36c71ea9.

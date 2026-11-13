@@ -152715,3 +152715,55 @@ reusing app 77cc3441 and engine 381500e6. No allocation profiler is introduced.
 The source diff and whitespace check pass; runtime evidence follows this commit.
 This append preserves the prior 16,273,923-byte audit prefix, SHA-256
 bc405ff8a926e69efdfcb293cfea934f9ae866dfd2dde914ecfc5bcca013ea69.
+
+### Quiet refusal reproduced and distinguished from held input
+
+TUF rQBgRaynEt at 6e4cbde4 reuses the same app and reaches all three outages.
+The baseline and first two recovered windows pass 360 responses, independently
+reconciled against the source clock; response p95/p99 are 355/363, 351/356 and
+351/359 ms. Maximum healthy age is 752 ms. All three new connections appear in
+977/831/127 ms; four fresh frames arrive in another 794/815/691 ms. Zero packets
+are delivered during loss, with 27/26/25 drops. Across 209 resource samples,
+RSS rises from 356,340 to at most 405,236 KiB: 48,896-KiB growth. Descriptors
+grow by one and threads remain bounded. This extends the reduced-RSS observation
+through three outages but still does not complete the final recovered window.
+
+The third window fails animation-progress before request 360. All 27 quiet
+observations retain state 2,042; both keymaps are released. The initial image age
+is 730 ms. The 28 bounded post-refusal samples retain that image through age
+1,061 ms, then observe state 2,046 at age 158 ms. Subsequent observed ages are
+79–301 ms through state 2,056. Source publication continues at roughly 250-ms
+intervals. Window/connection and resource bounds persist; no input, refocus or
+network mutation occurs during diagnosis. This proves a brief presentation stall
+and an actual one-second age violation, followed by spontaneous recovery. It
+does not identify capture, transport, decode or renderer as the cause. The
+earlier second-window failure remains evidence, rather than being erased by
+this run's passing second window. The new diagnostic path executes and the
+original failed verdict remains unchanged; the final 120 responses do not run.
+
+QEMU 3088293 joins zero; exact private 66306:82229887 and RAM 29:13623 retire.
+Four endpoint deltas are zero. Supervisor 607.398 seconds; peak RAM scratch
+4,216,958,976 bytes; tmpfs_swap_disabled=false. Nine files/653,611 bytes are
+copied and SHA-verified on CTE/TUF in compositor-expired-observe-6e4cbde4.json;
+outer e1b142c0c0e6d8b6952f3e6aaca5c45f10e472190a38cc61dde33ef5fd3f6329.
+Source freeze ends after exact reconciliation and evidence copies.
+
+Next discriminate forward delivery from the rest of the frame path. Reuse the
+guest-only namespace-owned ss command already used by the surviving-transport
+observer. Retain raw inode/cookie, queues, acknowledged/received bytes and timer
+statistics every 200 ms for eight seconds after each restoration, at most 120
+records/256 KiB. The native observer remains the socket-owner authority. The
+ss manual defines these observation fields, including milliseconds for timers:
+https://man7.org/linux/man-pages/man8/ss.8.html . No socket or network parameter
+is changed. GTK 3.24.38's reviewed gdk_cairo_draw_from_gl switches contexts with
+a fence and either draws the supplied texture or reads it into a new Cairo image;
+that source review alone establishes no cause for this failure:
+https://raw.githubusercontent.com/GNOME/gtk/3.24.38/gdk/gdkgl.c .
+The current product's broad presentation trace also creates a shadow decoder;
+avoid that workload change while a narrower kernel observation can distinguish
+the stalled layer. The same retained app runs the next diagnostic, with all
+failure/resource/latency bounds unchanged. Source review and whitespace pass;
+native execution follows. HARDENING_STATUS.md will consolidate these observations
+after this diagnostic checkpoint, followed by its required fresh count.
+This append preserves the prior 16,275,565-byte audit prefix, SHA-256
+664bcc11e0539534c72435dfca29448342cfd10ad2451823319cb53ec1ed4d52.

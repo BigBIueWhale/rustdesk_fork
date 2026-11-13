@@ -76,6 +76,7 @@ def observe_network(settings, actor, network, supervise=None):
     driver_pid = driver_fd = None
     expected = [request for profile in NETWORK_PROFILES[network] for request in (profile, 'healthy')]
     profiles, refusals = [], 0
+    expiry_until = expiry_next = expiry_samples = expiry_bytes = 0
     require(not os.path.lexists(NETWORK_ENDPOINT), 'installed network endpoint occupied')
     subprocess.run(['modprobe', 'ifb', 'numifbs=0'], env=netem.ENV, check=True, timeout=3)
     with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as listener:
@@ -97,6 +98,26 @@ def observe_network(settings, actor, network, supervise=None):
                 # and new socket inodes to the retained viewer's actual descriptors.
                 if network != 'expired':
                     owner.observe_transport()
+                elif expiry_next <= time.monotonic_ns() < expiry_until:
+                    # Retain a bounded diagnostic around restoration. Replacement
+                    # socket ownership still belongs to the native pixel observer.
+                    started = time.monotonic_ns()
+                    raw = owner.run('ss', '-H', '-O', '-n', '-t', '-i', '-e', '-o',
+                                    'state', 'established', '(', 'sport', '=', ':21118',
+                                    'or', 'dport', '=', ':21118', ')')
+                    completed = time.monotonic_ns()
+                    require(len(raw.encode()) <= 8192 and expiry_samples < 120,
+                            'expiry transport diagnostic exceeds its bound')
+                    expiry_next = started + 200_000_000
+                    expiry_samples += 1
+                    observation = 'LINUX_INSTALLED_EXPIRED_TCP=' + json.dumps({
+                        'sequence': expiry_samples, 'cycle': len(profiles) // 2,
+                        'started_us': started // 1000, 'completed_us': completed // 1000,
+                        'namespace': os.fstat(owner.namespace).st_ino, 'raw': raw,
+                    }, sort_keys=True)
+                    expiry_bytes += len(observation.encode()) + 1
+                    require(expiry_bytes <= 262144, 'expiry transport evidence exceeds its byte bound')
+                    print(observation, flush=True)
                 try:
                     channel, _ = listener.accept()
                 except socket.timeout:
@@ -137,6 +158,9 @@ def observe_network(settings, actor, network, supervise=None):
                     reply = owner.snapshot(request)
                     profiles.append(request)
                     channel.sendall(reply)
+                    if network == 'expired' and request == 'healthy':
+                        expiry_next = time.monotonic_ns()
+                        expiry_until = expiry_next + 8_000_000_000
             require(actor.wait() == 0 and profiles == expected and refusals == 1,
                     'installed network scenario did not finish')
             if network == 'expired':

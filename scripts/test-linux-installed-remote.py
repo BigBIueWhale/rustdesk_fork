@@ -27,7 +27,10 @@ NETWORK_PROFILES = {
     'congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
     'backoff': ['loss'],
     'input-recovery': ['loss'] * 3,
+    'input-loss': ['random3', 'random8', 'burst'],
+    'input-congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
 }
+INPUT_SCENARIOS = ('input-recovery', 'input-loss', 'input-congestion')
 
 
 def require(condition, message):
@@ -56,7 +59,7 @@ def observe_network(settings, actor, network):
     spec = importlib.util.spec_from_file_location('peer_netem', SCRIPT.with_name('flutter-peer-netem.py'))
     netem = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(netem)
-    owner = netem.Impairment(None, congestion=network == 'congestion')
+    owner = netem.Impairment(None, congestion=network in ('congestion', 'input-congestion'))
     driver_pid = driver_fd = None
     expected = [request for profile in NETWORK_PROFILES[network] for request in (profile, 'healthy')]
     profiles, refusals = [], 0
@@ -69,7 +72,7 @@ def observe_network(settings, actor, network):
         os.chmod(NETWORK_ENDPOINT, 0o600)
         listener.listen(1)
         listener.settimeout(0.2)
-        deadline = time.monotonic() + (300 if network == 'input-recovery' else 240)
+        deadline = time.monotonic() + (300 if network == 'input-recovery' else 360 if network in INPUT_SCENARIOS else 240)
         try:
             while actor.poll() is None:
                 require(time.monotonic() < deadline, 'installed network actor deadline exceeded')
@@ -177,7 +180,7 @@ def session(network=False):
                             and 0 < info.st_size <= 4096, 'Remote display authority differs')
                     combined.write(path.read_bytes())
             source = subprocess.Popen([str(settings.WORK / 'presentation-source'),
-                                       *(['--input-response', str(COORD)] if network == 'input-recovery' else [])],
+                                       *(['--input-response', str(COORD)] if network in INPUT_SCENARIOS else [])],
                 env={**environment, 'DISPLAY': ':77', 'XAUTHORITY': '/run/user/4001/gdm/Xauthority',
                      'RUSTDESK_PRESENTATION_TRACE': '1'},
                 stdout=log('frame-source.log'), stderr=log('source-error.log'))
@@ -204,7 +207,8 @@ def session(network=False):
                                        {'network': '--network-impairment', 'loss': '--network-loss',
                                         'congestion': '--network-congestion',
                                         'backoff': '--network-backoff',
-                                        'input-recovery': '--input-recovery'}.get(network, '--viewer-suspend')],
+                                        'input-recovery': '--input-recovery', 'input-loss': '--input-loss',
+                                        'input-congestion': '--input-congestion'}.get(network, '--viewer-suspend')],
                                       env={**environment, 'XAUTHORITY': str(authority)},
                                       stdout=log('driver.log'), stderr=subprocess.STDOUT)
             processes.append(driver)
@@ -213,7 +217,8 @@ def session(network=False):
                 current = Path(f'/proc/{process.pid}/ns/time').stat()
                 require((current.st_dev, current.st_ino) == (clock.st_dev, clock.st_ino),
                         'Remote observer and source clocks differ')
-            require(driver.wait(timeout=240 if network == 'input-recovery' else 180 if network else 120) == 0,
+            require(driver.wait(timeout=240 if network == 'input-recovery' else 300 if network in INPUT_SCENARIOS
+                                else 180 if network else 120) == 0,
                     'installed Remote pixel observer failed')
             require(viewer.wait(timeout=10) == 0, 'Remote viewer did not close normally')
             require(source.poll() is None, 'Remote source retired before the viewer')
@@ -283,15 +288,18 @@ def scenario(settings, receiver, record, network=False):
             actor.wait(timeout=20)
             actor.stdout.close()
         if log.exists():
-            require(log.stat().st_size <= (2097152 if network == 'input-recovery' else 1048576),
+            require(log.stat().st_size <= (2097152 if network == 'input-recovery' else 4194304 if network in INPUT_SCENARIOS
+                                          else 1048576),
                     'installed Remote output exceeds its bound')
             print(log.read_text(), end='', flush=True)
 
 
 if __name__ == '__main__':
     require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion'],
-                            ['--session-backoff'], ['--session-input-recovery']),
+                            ['--session-backoff'], ['--session-input-recovery'], ['--session-input-loss'],
+                            ['--session-input-congestion']),
             'closed installed Remote session request required')
     session(network={'--session-network': 'network', '--session-loss': 'loss',
                      '--session-congestion': 'congestion', '--session-backoff': 'backoff',
-                     '--session-input-recovery': 'input-recovery'}.get(sys.argv[1], False))
+                     '--session-input-recovery': 'input-recovery', '--session-input-loss': 'input-loss',
+                     '--session-input-congestion': 'input-congestion'}.get(sys.argv[1], False))

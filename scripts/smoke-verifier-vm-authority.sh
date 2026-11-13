@@ -767,6 +767,8 @@ case "$#:${1:-}" in
                 --installed-remote-congestion) FLUTTER_INSTALLED_SETTINGS=15 ;;
                 --installed-remote-backoff) FLUTTER_INSTALLED_SETTINGS=16 ;;
                 --installed-remote-input-recovery) FLUTTER_INSTALLED_SETTINGS=17 ;;
+                --installed-remote-input-loss) FLUTTER_INSTALLED_SETTINGS=18 ;;
+                --installed-remote-input-congestion) FLUTTER_INSTALLED_SETTINGS=19 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -1837,7 +1839,8 @@ installed_settings_input_inventory() {
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 11 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 12 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 13 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] \
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ]; then
         local runtime=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz
         [ -d "${runtime%/*}" ] && [ ! -L "${runtime%/*}" ] \
             && [ "$(/usr/bin/readlink -f -- "${runtime%/*}")" = "${runtime%/*}" ] \
@@ -1873,7 +1876,8 @@ installed_settings_input_inventory() {
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 11 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 12 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 13 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] \
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ]; then
         # These four scripts are consumed by the current package constructor,
         # not compiled into the retained app. The archive validator exact-matches them.
         for file in preinst postinst prerm postrm; do
@@ -1921,7 +1925,8 @@ installed_settings_input_inventory() {
         done
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 12 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 13 ] \
          || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] \
-         || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ]; then
+         || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] \
+         || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ]; then
         for file in test-linux-installed-remote.py flutter-peer-netem.py flutter-peer-source-x11.c flutter-peer-presentation-x11.c; do
             verify_committed_test_source "$SCRIPT_DIR/$file"
             /usr/bin/sha256sum -- "$SCRIPT_DIR/$file"
@@ -5325,7 +5330,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 11 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 12 ] \
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 13 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] \
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] \
-           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ]; then
+           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] \
+           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ]; then
             lifecycle_payload_grafts+=(
                 "debian-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz"
                 "repo/scripts/test-linux-debian-install.py=$SCRIPT_DIR/test-linux-debian-install.py"
@@ -5341,7 +5347,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
             )
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 12 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 13 ] \
              || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] \
-             || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ]; then
+             || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] \
+             || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ]; then
             lifecycle_payload_grafts+=(
                 "repo/scripts/test-linux-installed-remote.py=$SCRIPT_DIR/test-linux-installed-remote.py"
                 "repo/scripts/flutter-peer-netem.py=$SCRIPT_DIR/flutter-peer-netem.py"
@@ -5754,7 +5761,11 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ]; then
+            guest_invocation+=' --installed-remote-input-congestion'
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ]; then
+            guest_invocation+=' --installed-remote-input-loss'
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ]; then
             guest_invocation+=' --installed-remote-input-recovery'
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ]; then
             guest_invocation+=' --installed-remote-backoff'
@@ -9601,7 +9612,23 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ]; then
+        remote_profile=INPUT_LOSS
+        input_profiles=random3,random8,burst
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ]; then
+            remote_profile=INPUT_CONGESTION
+            input_profiles=jitter,bandwidth,bandwidth-jitter
+        fi
+        require_exact_fixed_receipt \
+            "LINUX_DEBIAN_REMOTE_${remote_profile}_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root samples=480 impairment_cycles=3 recovery=preserved-connection credential=preserved child=unchanged network=restored desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined" \
+            'installed Remote input-to-visible partial-degradation recovery'
+        require_exact_fixed_receipt \
+            "FLUTTER_PEER_INPUT_DEGRADATION_OK profiles=$input_profiles cycles=3 hold_ms=20000 samples=480 recovery_limit_ms=2500 deadline_ms=1000 p95_drift_ms=250 p99_drift_ms=250 stable_connection=true resources=bounded input=viewer-xtest pixels=viewer-root" \
+            'installed Remote timed input and actual pixel recovery'
+        require_exact_fixed_receipt \
+            'LINUX_INSTALLED_NETWORK_RETIRED=pass profiles=6 actor_wrong_role=refused observer=exact-child loopback=restored ingress=removed interface=removed socket=removed' \
+            'installed Remote network controller retirement'
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ]; then
         require_exact_fixed_receipt \
             "LINUX_DEBIAN_REMOTE_INPUT_RECOVERY_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root samples=480 pending_inputs=3 recovery=preserved-connection credential=preserved child=unchanged network=restored desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined" \
             'installed Remote input-to-visible outage recovery'

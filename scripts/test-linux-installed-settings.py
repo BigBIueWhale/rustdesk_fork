@@ -2651,7 +2651,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-remote-' + remote if remote in ('network', 'loss', 'congestion', 'backoff', 'input-recovery') else '--run-remote' if remote
+                        '--run-remote-' + remote if remote in ('network', 'loss', 'congestion', 'backoff', 'input-recovery', 'input-loss', 'input-congestion') else '--run-remote' if remote
                         else '--run-camera-busy' if camera == 'busy' else '--run-camera' if camera
                         else '--run-admin-failure' if admin_failure else '--run-concurrent-stop' if concurrent_stop
                         else '--run-conffiles' if conffiles
@@ -2697,7 +2697,7 @@ if __name__ == '__main__':
         session(admin_failure=True, graphical=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles', '--run-package-camera', '--run-package-camera-busy', '--run-package-remote', '--run-package-remote-network', '--run-package-remote-loss', '--run-package-remote-congestion', '--run-package-remote-backoff', '--run-package-remote-input-recovery'):
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles', '--run-package-camera', '--run-package-camera-busy', '--run-package-remote', '--run-package-remote-network', '--run-package-remote-loss', '--run-package-remote-congestion', '--run-package-remote-backoff', '--run-package-remote-input-recovery', '--run-package-remote-input-loss', '--run-package-remote-input-congestion'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
              package=sys.argv[1] == '--run-package',
@@ -2707,6 +2707,7 @@ if __name__ == '__main__':
              remote={'--run-package-remote': 'suspend', '--run-package-remote-network': 'network',
                      '--run-package-remote-loss': 'loss', '--run-package-remote-congestion': 'congestion',
                      '--run-package-remote-backoff': 'backoff',
-                     '--run-package-remote-input-recovery': 'input-recovery'}.get(sys.argv[1], False))
+                     '--run-package-remote-input-recovery': 'input-recovery', '--run-package-remote-input-loss': 'input-loss',
+                     '--run-package-remote-input-congestion': 'input-congestion'}.get(sys.argv[1], False))
     else:
         raise SystemExit('closed installed-settings arguments required')

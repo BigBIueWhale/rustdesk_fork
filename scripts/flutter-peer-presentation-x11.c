@@ -4458,6 +4458,7 @@ static int exercise_input_degradation(Display *source, Display *display, ViewerW
     unsigned long long after_drops = 0ULL, after_packets = 0ULL;
     uint64_t began = 0U, restored = 0U, previous = 0U;
     unsigned int samples = 0U;
+    int restore_needed = 1;
     const char *phase = "apply";
     if (network_profile(profile, &before_drops, &before_packets) != 0) goto fail;
     began = previous = x11_frame_monotonic_us();
@@ -4492,8 +4493,9 @@ static int exercise_input_degradation(Display *source, Display *display, ViewerW
                 phase = "restore";
                 restored = now;
                 if (restored - began > 20500000U ||
-                    network_profile("healthy", &after_drops, &after_packets) != 0 ||
-                    after_packets <= before_packets || after_drops < before_drops ||
+                    network_profile("healthy", &after_drops, &after_packets) != 0) goto fail;
+                restore_needed = 0;
+                if (after_packets <= before_packets || after_drops < before_drops ||
                     (!congestion && after_drops == before_drops)) goto fail;
             }
             phase = "response";
@@ -4549,7 +4551,7 @@ static int exercise_input_degradation(Display *source, Display *display, ViewerW
 fail:
     fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-degraded phase=%s cycle=%u profile=%s "
             "samples=%u request=%u\n", phase, cycle + 1U, profile, samples, *request);
-    if (network_profile("healthy", &after_drops, &after_packets) != 0)
+    if (restore_needed && network_profile("healthy", &after_drops, &after_packets) != 0)
         fputs("FLUTTER_PEER_X11_FAIL input degradation restoration; supervisor retains cleanup\n", stderr);
     return -1;
 }

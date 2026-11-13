@@ -81,7 +81,6 @@ mod well_known_types_util;
 
 // used by test
 #[cfg(test)]
-#[path = "../../test-crates/protobuf-test-common/src/hex.rs"]
 mod hex;
 
 mod cached_size;

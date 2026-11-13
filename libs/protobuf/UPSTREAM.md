@@ -24,6 +24,12 @@ The original file SHA-256 is
 The original `coded_input_stream/mod.rs` SHA-256 is
 `9c9eef558aec08a5071303896703aae82a1fa1358d50784e836319e9dcdd2789`.
 
+The registry archive omits the unit tests' shared hex helper. `src/hex.rs` is
+copied unchanged from `test-crates/protobuf-test-common/src/hex.rs` at upstream
+v3.7.2 commit `4cb84f305c05f0376ff51b555a2740c5251c1280`, SHA-256
+`ed54b5fb2a1b7b02b8454ebdcb7fb8ad9d37dbef9daac1f0f4a363c9ada15873`.
+`src/lib.rs` uses this local test-only module instead of the upstream sibling path.
+
 The generated production-schema regressions live in `libs/protobuf_it`.
 Run them through `scripts/smoke-verifier-vm-authority.sh --protobuf-parser-tests`.
 Upstream source: <https://github.com/stepancheg/rust-protobuf/tree/v3.7.2/protobuf>.

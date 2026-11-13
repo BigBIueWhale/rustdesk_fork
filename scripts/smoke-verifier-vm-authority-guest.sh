@@ -4438,6 +4438,8 @@ run_focused_rust_tests() {
                 libs/protobuf_it/src/protobuf_tests.rs
                 libs/protobuf/Cargo.toml
                 libs/protobuf/build.rs
+                libs/protobuf/src/lib.rs
+                libs/protobuf/src/hex.rs
                 libs/protobuf/src/coded_input_stream/buf_read_iter.rs
                 libs/protobuf/src/coded_input_stream/mod.rs
                 libs/hbb_common/protos/message.proto

@@ -152691,3 +152691,27 @@ capsule compositor-app-ledger-a8685577.json, outer SHA-256
 This audit-only append preserves the counted ledger and prior 16,273,065-byte
 prefix, SHA-256
 712f355b71af75daf02bdf026fe714f74d8c64fc0ac4f6ef37ef86b590cfae01.
+
+## 2026-11-13 — diagnose the recovered animation refusal
+
+The previous turn made progress: the installed engine candidate stays below the
+RSS bound through two outages, but d6QYaA9eWZ stops at an ambiguous quiet-window
+check. Continue that R-F5 blocker rather than rerunning a build or selecting an
+unrelated task. Current CTE/TUF trees are clean at ac830c8a; existing SSH works.
+TUF reports 48.3 GB available memory and empty admitted RAM scratch before launch.
+
+Read the exact input-animation window, current-frame observer, focus/key helpers,
+installed network supervisor and failed receipts. The window combines animation
+progress with key-release checks and discards its quiet counters on failure.
+Retain those counters and distinguish the two refusal phases without changing
+their predicates or successful execution order. Reset diagnostic request_us for
+each new quiet period. After a quiet refusal, observe at most 30 captures over
+three seconds without input, focus, network or product changes; report source
+publication count, response, frame age and final connection/resource continuity.
+Return failure unconditionally. Existing bounds and output-size ceilings remain.
+This diagnoses the concrete missing evidence, not a product correction. Native
+compilation and the failed installed scenario will run in the bounded zero-NIC VM,
+reusing app 77cc3441 and engine 381500e6. No allocation profiler is introduced.
+The source diff and whitespace check pass; runtime evidence follows this commit.
+This append preserves the prior 16,273,923-byte audit prefix, SHA-256
+bc405ff8a926e69efdfcb293cfea934f9ae866dfd2dde914ecfc5bcca013ea69.

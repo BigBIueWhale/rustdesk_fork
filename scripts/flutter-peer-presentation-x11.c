@@ -4721,6 +4721,9 @@ static int exercise_input_animation_window(Display *source, Display *display, Vi
     uint64_t captured = 0U, age = 0U, request_us = 0U;
     int64_t frame = -1;
     int response = -1;
+    uint64_t quiet = 0U;
+    unsigned int distinct = 0U, samples = 0U;
+    int64_t quiet_first = -1, quiet_last = -1;
     const char *phase = "setup";
     Window focus;
     int revert;
@@ -4730,9 +4733,10 @@ static int exercise_input_animation_window(Display *source, Display *display, Vi
     if (focus != DefaultRootWindow(source) || return_focus_with_pointer(display, viewer) != 0)
         goto fail;
     for (trial = 0U; trial < SAMPLES; ++trial) {
-        uint64_t quiet = x11_frame_monotonic_us();
-        unsigned int distinct = 0U, samples = 0U;
-        int64_t quiet_first = -1, quiet_last = -1;
+        quiet = x11_frame_monotonic_us();
+        distinct = samples = 0U;
+        quiet_first = quiet_last = -1;
+        request_us = 0U;
         if (quiet == 0U) goto fail;
         phase = "animation-without-response";
         for (;;) {
@@ -4753,8 +4757,14 @@ static int exercise_input_animation_window(Display *source, Display *display, Vi
             if (now - quiet >= QUIET_MS * 1000ULL) break;
             if (sleep_millis(20U) != 0) goto fail;
         }
-        if (distinct < 2U || quiet_last - quiet_first < 2 || samples < 4U ||
-            !keyboard_is_released(source) || !keyboard_is_released(display)) goto fail;
+        if (distinct < 2U || quiet_last - quiet_first < 2 || samples < 4U) {
+            phase = "animation-progress";
+            goto fail;
+        }
+        if (!keyboard_is_released(source) || !keyboard_is_released(display)) {
+            phase = "animation-key-release";
+            goto fail;
+        }
         phase = "request";
         request_us = x11_frame_monotonic_us();
         if (request_us == 0U || send_response_request(display, *request) != 0) goto fail;
@@ -4825,10 +4835,50 @@ fail:
             (long long)frame, response, (unsigned long long)request_us,
             (unsigned long long)captured, (unsigned long long)x11_frame_monotonic_us(),
             (unsigned long long)age, history->count, history->failed);
+    fprintf(stderr, "FLUTTER_PEER_INPUT_ANIMATION_QUIET_REFUSED window=%u trial=%u "
+            "started_us=%llu first=%lld last=%lld distinct=%u samples=%u "
+            "source_keys_released=%d viewer_keys_released=%d\n", window, trial,
+            (unsigned long long)quiet, (long long)quiet_first, (long long)quiet_last,
+            distinct, samples, keyboard_is_released(source), keyboard_is_released(display));
     gchar *encoded = g_base64_encode(pixels, sizeof(pixels));
     if (encoded != NULL) {
         fprintf(stderr, "FLUTTER_PEER_INPUT_ANIMATION_PIXELS width=200 height=120 rgb_base64=%s\n", encoded);
         g_free(encoded);
+    }
+    if ((strcmp(phase, "animation-without-response") == 0 ||
+         strcmp(phase, "animation-progress") == 0 || strcmp(phase, "animation-key-release") == 0) &&
+        quiet != 0U && !history->failed) {
+        /* Observe the failed session without input, refocusing or network changes.
+         * Later progress cannot change the refusal above into a passing trial. */
+        uint64_t started = x11_frame_monotonic_us(), previous = started;
+        unsigned int observations = 0U;
+        for (; started != 0U && observations < 30U; ++observations) {
+            uint64_t now = x11_frame_monotonic_us();
+            if (now < previous || now - started >= 3000000U) break;
+            captured = age = 0U;
+            frame = x11_frame_capture(display, viewer->window, pixels, &captured);
+            response = frame < 0 ? -1 : x11_response_decode(pixels);
+            int age_valid = x11_frame_age(history, "/coord", frame, captured, &age) == 0;
+            previous = x11_frame_monotonic_us();
+            fprintf(stderr, "FLUTTER_PEER_INPUT_ANIMATION_AFTER_FAILURE window=%u trial=%u "
+                    "observation=%u started_us=%llu now_us=%llu captured_us=%llu frame=%lld "
+                    "response=%d publications=%u age_valid=%d age_ms=%llu\n", window, trial,
+                    observations, (unsigned long long)started, (unsigned long long)previous,
+                    (unsigned long long)captured, (long long)frame, response, history->count,
+                    age_valid, (unsigned long long)age);
+            if (previous < now || history->failed || sleep_millis(100U) != 0) break;
+        }
+        ConnectionIdentity current = {{0}, {0}, 0UL};
+        ViewerWindow same_viewer = {0};
+        ProcessResources resources = {0};
+        int stable = inspect_viewer_candidate(display, viewer->window, viewer->pid, &same_viewer) == 1 &&
+            same_viewer.window == viewer->window && read_connection_identity(&current) == 0 &&
+            same_connection(connection, &current);
+        int sampled = read_process_resources(viewer->pid, &resources) == 0;
+        if (sampled) print_resources("input-animation-after-failure", window, &resources);
+        fprintf(stderr, "FLUTTER_PEER_INPUT_ANIMATION_AFTER_FAILURE_END verdict=fail "
+                "limit_ms=3000 same_window_and_connection=%d resources_bounded=%d\n",
+                stable, sampled && resources_are_bounded(baseline, &resources));
     }
     return -1;
 }

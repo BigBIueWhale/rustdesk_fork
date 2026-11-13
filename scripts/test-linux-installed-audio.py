@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import re
 import select
+import shutil
 import stat
 import subprocess
 import sys
@@ -57,6 +58,11 @@ def prepare(settings):
     require(len(archives) == 40, 'installed audio package closure differs')
     for archive in archives:
         settings.run([*settings.ordinary(1000), '/usr/bin/dpkg-deb', '--extract', str(archive), str(ROOT)])
+    # These tools run with explicit modules, without package configuration or units.
+    for relative in ('etc', 'lib/systemd'):
+        path = ROOT / relative
+        require(path.is_dir() and not path.is_symlink(), 'audio package configuration directory differs')
+        shutil.rmtree(path)
     paths = [ROOT, *ROOT.rglob('*')]
     require(len(paths) <= 12000, 'installed audio runtime file count exceeds its bound')
     total = 0

@@ -152050,3 +152050,38 @@ until executed. Shell/Python parsing and diff whitespace checks pass; these are
 preflight checks only. The ledger is unchanged. This append preserves the prior
 16,229,078-byte audit prefix, SHA-256
 a7a6bac463c08c4c968f37024a9e36e6aabd59a1b9b52c48a72e446f3d6744c2.
+
+TUF acquisition sBp8motCW9/tool51934 at a7f7638d exits zero. Signed APT
+metadata admits fourteen packages totaling 5,163,760 bytes, acquired in download-
+only mode with an unchanged empty dpkg database. The normalized eighteen-member
+archive is 5,166,793 bytes, SHA-256
+d9854b2d039b3696d0724b9e7002fe68e2eb2983187b939ddac58d8ebe757ad3.
+Independent reconciliation checks every member's type/mode/owner/time/size/hash,
+exact metadata/package inventory, plan URLs/digests against the retained APT
+stdout, source recipe digest, control contract and publisher-pinned CLI identity.
+libheaptrack's 81,536 bytes and SHA-256
+52a4de1d0aa325908e534cccb78c5fa9dd4f817b7347e5e15095ce734aa01d20
+also match https://packages.debian.org/bookworm/amd64/libheaptrack/download.
+The candidate and four metadata digests are now pinned for offline consumption.
+
+Receipt stdout bytes/hash reconcile exactly from the outer log. The guest and
+cloud-init completion receipts match the retained serial archive. QEMU 2471697
+joins zero; the resource supervisor records 98.903 seconds and 4,105,003,008-byte
+peak RAM scratch (the outer execution timer reports 57 seconds). Exact private
+66306:78035663, RAM 29:13031 and owned process/socket absence reconcile. Recorded
+before/during endpoints and the post-run reconciliation inventory are identical;
+the success receipt also records no added listeners. tmpfs_swap_disabled remains
+false. Six files/5,259,079 bytes, including the intentional 5,166,793-byte profiler
+cache, are copied and hash-verified on CTE/TUF before source/input freeze ends.
+Capsule: heaptrack-acquire-a7f7638d.json. Outer SHA-256:
+10279670ddc4cacc2b109a8bfa798636190d40b84b5ab26ea5420da23f65136b.
+
+This completes authenticated profiler acquisition, not runtime tracing or a
+product correction. Next, consume the pinned CLI bundle in the zero-NIC installed
+expiry fixture, retain exact viewer identity and bounded trace ownership, and
+obtain allocation/lifetime evidence. Instrumented runs cannot close ordinary
+latency/resource acceptance. Reuse app 2eb7015e; do not add a fifth application
+cache or relax the original test. HARDENING_STATUS.md is unchanged, so its last
+422,430-token count still binds. This append preserves the prior 16,231,058-byte
+audit prefix, SHA-256
+0f0a79078fdb32ed24c2d17b69a692474bfa67f99a10a477cfad73f2ab22b28e.

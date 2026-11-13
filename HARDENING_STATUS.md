@@ -4232,7 +4232,7 @@ and `remote-installed-input-congestion-23bf2503.json` bind eighteen files /
 4,033,665 bytes on CTE/TUF, eight zero listener deltas and joined private/RAM
 cleanup. No application rebuild. This event-driven XTEST/Xvfb evidence leaves
 concurrent animation/input, physical scanout, reproducible random sequences/tails,
-installed impaired multi-hour drift, other platforms and the long-outage failures OPEN.
+multi-hour loss/outage, other platforms and the long-outage failures OPEN.
 
 **Installed Linux healthy input endurance — four-hour control PASS.**
 TUF `INoHIUGyzd`, fixture `a661bc1e`, reuses installed app `2eb7015e` without
@@ -4254,8 +4254,35 @@ higher, with fewer threads. All bounds pass. Desktop retirement and normal
 package reinstall/remove/purge pass. `remote-installed-input-soak-a661bc1e.json`
 binds nine files/2,120,994 bytes on CTE/TUF, four zero listener deltas and joined
 VM/private/RAM retirement. This accepts the installed healthy XTEST/Xvfb control;
-impaired installed endurance, concurrent animation/input, physical scanout,
-long-outage recovery, other platforms and complete R-F5 acceptance remain OPEN.
+installed continuous-display endurance, multi-hour loss/outage, concurrent
+animation/input, physical scanout, long-outage recovery, other platforms and
+complete R-F5 acceptance remain OPEN.
+
+**Installed Linux input endurance under congestion — four-hour scenario PASS.**
+TUF `2TbObu9bm8`, fixture `91612453`, reuses installed app `2eb7015e`.
+Four rounds of twenty-second jitter, 32-kbit/s bandwidth and combined impairment
+add 243.233 seconds to the 61 four-minute healthy windows. All **7,611 ordered
+responses** reconcile: 7,320 healthy and 291 during impairment/recovery, with
+7,632 source publications. The original baseline p95/p99 stays **116/124 ms**;
+largest window values are **158/209 ms**, final values **117/123 ms**, and worst
+healthy response **365 ms**. Upward drift is 42/85 ms against the unchanged
+250-ms allowance. All twelve restoration responses meet 2,500 ms; the longest
+is **671.009 ms**. The connection, viewer, child/listener and credential persist.
+
+All 1,727 transport observations retain the socket pair until normal closure;
+observed congestion queues peak at 16 packets/5,360 bytes. Eight limited intervals
+deliver 76,311–80,517 bytes each with verified throttling. The separate guest-root
+service observer joins successfully after 14,878 samples and 248 CPU windows:
+maximum CPU use is 2,330 ms per window, RSS growth 3,325,952 bytes, descriptor
+growth six and no thread growth. Viewer RSS grows at most 31,868 KiB and
+descriptors by three. All bounds and normal package reinstall/remove/purge pass.
+`remote-installed-input-congestion-soak-91612453.json` binds nine files /
+6,159,691 bytes on CTE/TUF, four zero host listener deltas and exact joined
+VM/private/RAM cleanup. This accepts the stated installed XTEST/Xvfb input workload.
+Installed continuous-display endurance, multi-hour loss/outage, concurrent
+animation/input, physical scanout, reproducible random sequences/tails, other
+platforms, exact release artifacts, independent review and the existing long-outage
+failures remain OPEN. No full R-F5 closure.
 
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without

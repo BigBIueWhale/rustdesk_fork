@@ -151441,3 +151441,55 @@ run, independent reconciliation and copied evidence. No product change, new
 artifact cache or host network/service mutation is needed.
 This append preserves the prior 16,186,776-byte audit prefix, SHA-256
 d28ee188e9d5e647db02a69202988932a25d94b6a5b884b7875474f5d1e55162.
+
+## 2026-11-13 — Installed impaired input endurance accepted
+
+TUF 2TbObu9bm8/tool13803, fixture 91612453, exits zero for
+--installed-remote-input-congestion-soak. It reuses app 2eb7015e and manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a.
+Source and input caches stayed frozen through actual terminal completion,
+independent reconciliation and verified evidence copies. No rebuild or new cache.
+
+All 7,320 healthy and 291 impaired/recovery responses reconcile in request order,
+with 7,632 source publications, 61 four-minute windows and 244 progress records.
+The four additional impairment rounds total 243.233 seconds; each runs twenty
+seconds of jitter, 32-kbit/s bandwidth and combined impairment. Independent
+nearest-rank recomputation retains the original 116/124-ms p95/p99 baseline;
+largest window values are 158/209 ms and final values 117/123 ms. Worst healthy
+response is 364,992 microseconds, rounded up to 365 ms. Upward drift is 42/85 ms.
+All twelve restoration responses pass the unchanged 2,500-ms deadline, with a
+671.009-ms maximum. The longest complete impaired response is 1,849.113 ms.
+Every input has a quiet-pixel/source control and requires its subsequent source
+publication and exact response in the viewer-root pixels. The native observer
+retains original connection/window/viewer identity and verifies released keys.
+
+All 1,727 transport observations retain the original pair until normal closure.
+Calibration preserves queued datagrams during restoration; eight limited intervals
+deliver 76,311–80,517 bytes each with throttling. Congestion queues peak at
+16 packets/5,360 bytes; sampled TCP send/receive queues peak at 4,394/0 bytes.
+Viewer RSS peaks at 401,532 KiB against 369,664 initially, descriptors at 48
+against 45, and threads never exceed the initial 64. The guest-root service
+observer joins zero after 14,878 samples over 14,883.650 seconds and 248 CPU
+windows. Maximum CPU is 2,330 ms per window; RSS grows 3,325,952 bytes,
+descriptors six and threads zero. All predeclared bounds pass.
+
+The original supervisor 7620, child 7743/start7251 and generation
+74c5bf85-2e3a-48b0-9ddd-8b6c70c6aa51 persist through the scenario. Child/listener,
+credential/profile preservation, ordinary-user refusal, exact source/viewer/driver
+exit, desktop retirement and normal package reinstall/remove/purge all pass.
+remote-installed-input-congestion-soak-91612453.json binds nine files /
+6,159,691 bytes, copied and hash-verified on CTE/TUF. Outer SHA-256 is
+6bce99549ac7a5013aa308eefd262484f5110ae7731ad33c0cc8c60f434625cb.
+QEMU 411088 joins zero; private/process/socket/RAM state retires, with four
+zero host listener deltas. Storage elapsed time is 15,036.041 seconds and peak
+RAM scratch 4,254,547,968 bytes; tmpfs_swap_disabled remains false.
+
+This closes the named installed Linux impaired-input endurance workload, alongside
+the prior healthy control. Installed continuous-display endurance, multi-hour
+loss/outage, concurrent animation/input, physical scanout, reproducible random
+sequences/tails, other platforms, exact release artifacts, independent review and
+complete R-F5 remain OPEN. The existing 18-second-outage failures remain unresolved;
+do not repeat passing scenarios or weaken deadlines to close them. Reassess the
+next release-directed step here.
+This append preserves the prior 16,189,694-byte audit prefix, SHA-256
+eb6f2b288db5757d989e1187ccdc59c49026c466f44bfbf6738ebf8c9effc117.

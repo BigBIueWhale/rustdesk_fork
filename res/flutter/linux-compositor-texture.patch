@@ -1,5 +1,5 @@
 diff --git a/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc b/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc
-index ebcad245..52fda91b 100644
+index ebcad245..86949311 100644
 --- a/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc
 +++ b/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc
 @@ -31,6 +31,13 @@ struct _FlCompositorOpenGL {
@@ -46,7 +46,7 @@ index ebcad245..52fda91b 100644
    if (fl_framebuffer_get_shareable(self->framebuffer)) {
      g_autoptr(FlFramebuffer) sibling =
          fl_framebuffer_create_sibling(self->framebuffer);
-@@ -278,25 +299,30 @@ static gboolean fl_compositor_opengl_render(FlCompositor* compositor,
+@@ -278,25 +299,41 @@ static gboolean fl_compositor_opengl_render(FlCompositor* compositor,
      GLint saved_texture_binding;
      glGetIntegerv(GL_TEXTURE_BINDING_2D, &saved_texture_binding);
  
@@ -62,7 +62,12 @@ index ebcad245..52fda91b 100644
 -          static_cast<GLsizei>(fl_framebuffer_get_height(self->framebuffer));
 +    if (self->render_texture == 0) {
 +      glGenTextures(1, &self->render_texture);
-+    }
+     }
+-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fb_width, fb_height, 0, GL_RGBA,
+-                 GL_UNSIGNED_BYTE, self->pixels);
+-
+-    gdk_cairo_draw_from_gl(cr, window, texture_id, GL_TEXTURE, scale_factor, 0,
+-                           0, width, height);
 +    glBindTexture(GL_TEXTURE_2D, self->render_texture);
 +    GLsizei fb_width =
 +        static_cast<GLsizei>(fl_framebuffer_get_width(self->framebuffer));
@@ -71,17 +76,23 @@ index ebcad245..52fda91b 100644
 +    if (self->render_width != fb_width || self->render_height != fb_height) {
 +      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fb_width, fb_height, 0, GL_RGBA,
 +                  GL_UNSIGNED_BYTE, self->pixels);
-+      self->render_width = fb_width;
-+      self->render_height = fb_height;
 +    } else {
 +      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fb_width, fb_height, GL_RGBA,
 +                     GL_UNSIGNED_BYTE, self->pixels);
-     }
--    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fb_width, fb_height, 0, GL_RGBA,
--                 GL_UNSIGNED_BYTE, self->pixels);
--
--    gdk_cairo_draw_from_gl(cr, window, texture_id, GL_TEXTURE, scale_factor, 0,
--                           0, width, height);
++    }
++    GLenum error = glGetError();
++    if (error != GL_NO_ERROR) {
++      glDeleteTextures(1, &self->render_texture);
++      self->render_texture = 0;
++      self->render_width = 0;
++      self->render_height = 0;
++      glBindTexture(GL_TEXTURE_2D, saved_texture_binding);
++      g_mutex_unlock(&self->frame_mutex);
++      g_warning("OpenGL error while uploading GTK frame: 0x%x", error);
++      return FALSE;
++    }
++    self->render_width = fb_width;
++    self->render_height = fb_height;
  
 -    glDeleteTextures(1, &texture_id);
 +    gdk_cairo_draw_from_gl(cr, window, self->render_texture, GL_TEXTURE,
@@ -93,7 +104,7 @@ index ebcad245..52fda91b 100644
      glBindTexture(GL_TEXTURE_2D, saved_texture_binding);
    }
  
-@@ -348,3 +374,16 @@ FlCompositorOpenGL* fl_compositor_opengl_new(FlTaskRunner* task_runner,
+@@ -348,3 +385,16 @@ FlCompositorOpenGL* fl_compositor_opengl_new(FlTaskRunner* task_runner,
  
    return self;
  }

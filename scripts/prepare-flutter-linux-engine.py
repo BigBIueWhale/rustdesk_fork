@@ -501,7 +501,7 @@ def compositor_test():
             output = command([binary], engine, display_env, min(deadline, time.monotonic() + 30))
             expected = (b"ENGINE_COMPOSITOR_NATIVE=baseline frames=120 allocations=120 updates=0 pixels=pass"
                         if baseline else b"ENGINE_COMPOSITOR_NATIVE=pass frames=120 allocations=1 updates=119 "
-                        b"pixels=pass resize=pass unrealize=retired rerealize=fresh reentrant=aborted dispose=idempotent")
+                        b"pixels=pass resize=pass unrealize=retired rerealize=fresh reentrant=aborted dispose=idempotent upload_refusal=2 retry=pass")
             require(output.strip() == expected, "native compositor result differs")
             print(output.decode(), end="", flush=True)
 

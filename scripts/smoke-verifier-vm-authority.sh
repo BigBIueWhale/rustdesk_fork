@@ -6481,7 +6481,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
     require_exact_fixed_receipt 'ENGINE_PREPARE_PRINCIPALS=pass root=refused foreign=refused work=absent' 'engine preparation principal refusals'
     if [ "$ENGINE_COMPOSITOR_ONLY" -eq 1 ]; then
         require_exact_fixed_receipt 'ENGINE_COMPOSITOR_NATIVE=baseline frames=120 allocations=120 updates=0 pixels=pass' 'original native compositor uploads'
-        require_exact_fixed_receipt 'ENGINE_COMPOSITOR_NATIVE=pass frames=120 allocations=1 updates=119 pixels=pass resize=pass unrealize=retired rerealize=fresh reentrant=aborted dispose=idempotent' 'native compositor pixel and context lifetime'
+        require_exact_fixed_receipt 'ENGINE_COMPOSITOR_NATIVE=pass frames=120 allocations=1 updates=119 pixels=pass resize=pass unrealize=retired rerealize=fresh reentrant=aborted dispose=idempotent upload_refusal=2 retry=pass' 'native compositor pixel and context lifetime'
         require_exact_fixed_receipt 'ENGINE_XVFB_OWNER=joined network=unix-only' 'native display-server ownership'
         require_exact_fixed_receipt "$engine_prepare_vm_receipt" 'compositor source and finality'
         require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'compositor cloud-init completion'

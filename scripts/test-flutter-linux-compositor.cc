@@ -38,12 +38,20 @@ void fl_engine_execute_task(FlEngine*, FlutterTask*) {
 static GdkGLContext* observed_context;
 static unsigned allocations, updates, binding_failures;
 static GLuint uploaded_texture;
+static bool reject_upload;
+static unsigned upload_warnings;
 static decltype(epoxy_glTexImage2D) real_image;
 static decltype(epoxy_glTexSubImage2D) real_subimage;
 
 static void image(GLenum target, GLint level, GLint internal, GLsizei width,
                   GLsizei height, GLint border, GLenum format, GLenum type,
                   const void* pixels) {
+  if (reject_upload && observed_context &&
+      gdk_gl_context_get_current() == observed_context) {
+    // Exercise an actual driver refusal without exhausting guest/GPU memory.
+    width = -1;
+    reject_upload = false;
+  }
   real_image(target, level, internal, width, height, border, format, type, pixels);
   if (observed_context && gdk_gl_context_get_current() == observed_context) {
     allocations++;
@@ -55,6 +63,11 @@ static void image(GLenum target, GLint level, GLint internal, GLsizei width,
 static void subimage(GLenum target, GLint level, GLint x, GLint y, GLsizei width,
                      GLsizei height, GLenum format, GLenum type,
                      const void* pixels) {
+  if (reject_upload && observed_context &&
+      gdk_gl_context_get_current() == observed_context) {
+    width = -1;
+    reject_upload = false;
+  }
   real_subimage(target, level, x, y, width, height, format, type, pixels);
   if (observed_context && gdk_gl_context_get_current() == observed_context) {
     updates++;
@@ -120,6 +133,45 @@ static void draw(FlViewRenderer* renderer, int width, int height, bool red) {
       g_assert_cmphex(row[x], ==, red ? 0xffff0000u : 0xff0000ffu);
     }
   }
+  cairo_destroy(cr);
+  cairo_surface_destroy(surface);
+  gdk_gl_context_clear_current();
+  observed_context = nullptr;
+}
+
+static void upload_warning(const gchar*, GLogLevelFlags, const gchar* message,
+                           gpointer) {
+  g_assert_cmpstr(message, ==, "OpenGL error while uploading GTK frame: 0x501");
+  upload_warnings++;
+}
+
+static void rejected_frame(FlViewRenderer* renderer) {
+  observed_context = renderer->render_context;
+  gdk_gl_context_make_current(observed_context);
+  GLuint sentinel;
+  glGenTextures(1, &sentinel);
+  glBindTexture(GL_TEXTURE_2D, sentinel);
+  auto* surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32, 96, 64);
+  auto* cr = cairo_create(surface);
+  auto handler = g_log_set_handler(nullptr, G_LOG_LEVEL_WARNING, upload_warning, nullptr);
+  auto fatal = g_log_set_always_fatal(static_cast<GLogLevelFlags>(
+      G_LOG_LEVEL_ERROR | G_LOG_LEVEL_CRITICAL));
+  reject_upload = true;
+  g_assert_false(fl_compositor_render(renderer->compositor, cr,
+      gtk_widget_get_window(GTK_WIDGET(renderer)), FALSE));
+  g_assert_false(reject_upload);
+  g_log_set_always_fatal(fatal);
+  g_log_remove_handler(nullptr, handler);
+  GLint binding;
+  glGetIntegerv(GL_TEXTURE_BINDING_2D, &binding);
+  g_assert_cmpuint(binding, ==, sentinel);
+  g_assert_cmpint(glGetError(), ==, GL_NO_ERROR);
+  cairo_surface_flush(surface);
+  auto* bytes = cairo_image_surface_get_data(surface);
+  for (int i = 0; i < cairo_image_surface_get_stride(surface) * 64; ++i) {
+    g_assert_cmpuint(bytes[i], ==, 0);
+  }
+  glDeleteTextures(1, &sentinel);
   cairo_destroy(cr);
   cairo_surface_destroy(surface);
   gdk_gl_context_clear_current();
@@ -199,6 +251,18 @@ int main(int argc, char** argv) {
   draw(renderer, 96, 64, false);
   g_assert_cmpuint(allocations, ==, 4);
 
+  // A rejected in-place update must not draw stale pixels. Its next ordinary
+  // frame redefines storage and succeeds without window/context replacement.
+  rejected_frame(renderer);
+  draw(renderer, 96, 64, false);
+  g_assert_cmpuint(allocations, ==, 5);
+  // Repeat for a rejected resize allocation, then retry that same new size.
+  publish(renderer, 128, 80, true);
+  rejected_frame(renderer);
+  draw(renderer, 96, 64, true);
+  g_assert_cmpuint(allocations, ==, 7);
+  g_assert_cmpuint(upload_warnings, ==, 2);
+
   // Execute a genuine pending platform task during the frame-size wait. Its
   // widget retirement must abort the old draw before it can recreate a texture.
   publish(renderer, 32, 24, true);
@@ -215,7 +279,7 @@ int main(int argc, char** argv) {
       gtk_widget_get_window(GTK_WIDGET(renderer)), TRUE));
   g_assert_false(static_cast<bool>(platform_task));
   g_assert_null(renderer->render_context);
-  g_assert_cmpuint(allocations, ==, 4);
+  g_assert_cmpuint(allocations, ==, 7);
   gdk_gl_context_make_current(final_context);
   g_assert_false(glIsTexture(final_texture));
   g_assert_cmpint(glGetError(), ==, GL_NO_ERROR);
@@ -223,7 +287,7 @@ int main(int argc, char** argv) {
   cairo_destroy(cr);
   cairo_surface_destroy(surface);
   g_object_run_dispose(G_OBJECT(renderer));
-  std::puts("ENGINE_COMPOSITOR_NATIVE=pass frames=120 allocations=1 updates=119 pixels=pass resize=pass unrealize=retired rerealize=fresh reentrant=aborted dispose=idempotent");
+  std::puts("ENGINE_COMPOSITOR_NATIVE=pass frames=120 allocations=1 updates=119 pixels=pass resize=pass unrealize=retired rerealize=fresh reentrant=aborted dispose=idempotent upload_refusal=2 retry=pass");
 #endif
   gtk_widget_destroy(window);
   g_object_unref(renderer);

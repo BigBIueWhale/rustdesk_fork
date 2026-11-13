@@ -153787,3 +153787,14 @@ Supervisor 246.306 seconds, scratch peak 4,465,963,008 bytes, four zero endpoint
 deltas; tmpfs swap not disabled. No owned job/source freeze remains; goal active.
 This append preserves the prior 16,345,183-byte prefix, SHA-256
 2e9d4fa3782b5431fdabc128ee381108f0941796f19a21a5167df30da138218c.
+
+Ledger receipt UqdL4z2gNn at 63e0e34a: 426,924 tokens /1,944,452 bytes,
+SHA-256 0635297842d1c0eda00751805d122eee6df713b1cf1d7224dfd7448c458d4358.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and round trip
+pass; the approximate 400,000-token budget stays OPEN. QEMU 3555367 joins 0;
+private run.UqdL4z2gNn and RAM 29:14977 run.34vu8mj1 retire in 30.100 seconds,
+scratch peak 403,234,816 bytes, three zero endpoint deltas, tmpfs swap not disabled.
+pa-recovery-ledger-63e0e34a.json binds eight files/116,250 bytes on both hosts.
+Outer SHA-256 aa54c4ed062384e21e2a5b625d50a2477a334b480e2713e697d1e4b9e3da3e55.
+This audit-only append preserves the prior 16,347,480-byte prefix, SHA-256
+c6588fa8696f1d411035f1dd32ecc2ee42c3c7b2708d87f3136344c5a071e9de.

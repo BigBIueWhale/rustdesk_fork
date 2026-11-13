@@ -153499,3 +153499,70 @@ https://manpages.debian.org/bookworm/pulseaudio-utils/pacat.1.en.html
 Syntax/scoped review precedes native execution; no pass is claimed yet.
 This append preserves the prior16,326,153-byte audit prefix, SHA-256
 48719c6575cda8c47535e6cebafd58b9a6734b620e4b1551e1a245b2a4f0b53e.
+
+### Installed audio fixture — native output failure localized, 2026-11-13
+
+Progress checkpoint: the provider prerequisite is resolved; complete installed
+audio acceptance fails and remains OPEN. Commits 0a4b84c9 through 663b8b02 add the
+private provider/output observer and correct its preparation. All runs reuse app
+3c289cff and package SHA-256
+c33359b39fbbfedb58de7d5ed59f55f88edb2b8e46336f7c25a4d675e6056913.
+Product code, installed libraries and helper authorization are unchanged.
+
+Preparation failures were confined to the fixture: absolute package configuration
+links (omit unused etc/systemd trees), missing libgomp (copy the authenticated
+base-image library into private tools), and two daemons sharing a D-Bus name
+(give the viewer daemon its own owned session bus). The daemon binary/library
+closure remains guest-only; no host installation, new download or app build ran.
+The libgomp copy is 290,392 bytes, SHA-256
+f9a9ad78a8dc39c0e90a265ffa551fae6c92a40f360889b44a7e141f9a2adfb1.
+Dependency and D-Bus decisions follow the primary sources:
+https://packages.debian.org/bookworm/libsoxr0
+https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/daemon/main.c
+
+Bounded failure capsules (all nine files each, SHA-verified on CTE and TUF):
+
+| Capsule suffix after installed-audio-playback- | Run | Retained bytes | Observation |
+| --- | --- | ---: | --- |
+| 0a4b84c9.json | VZyp9eNqpy | 167,044 | Configuration-link refusal before audio |
+| 4ec12933.json | egqzzTJEbO | 182,526 | Missing base library; daemon exit 127 |
+| 90a4dbc4.json | CBCNGR7LWe | 183,711 | Second daemon's D-Bus name occupied |
+| cee18a8c.json | woCnefoGQi | 251,809 | CM selects monitor; viewer tone check fails |
+| 663b8b02.json | sGHDsMBO8u | 258,556 | Source control passes; viewer output fails |
+
+At 663b8b02 the source produces three qualifying 100-ms windows, RMS0.353553 and
+440-Hz coherence0.9999999993. Viewer baseline has three silent windows. The same
+installed libpulse diagnostic now returns0, errno0, Ready4. CM8921 stays live under
+server7719/supervisor7596 with UID4001, CapEff0, NNP1 and Seccomp2. PulseAudio
+metadata identifies one uncorked/unmuted float32le stereo48k recording from that
+CM and one playback from retained viewer8812. Recording buffer latency is
+1,832,000 microseconds; playback buffer latency70,000 microseconds. This metadata
+is fixture attribution, not a replacement for kernel IPC authority.
+
+Viewer observation has 391 silent and ten other windows, zero qualifying tone
+windows, maximum RMS0.360403 and maximum coherence0.555237. The aggregate includes
+intentional 2/6/12-second viewer suspensions; it is not an unimpaired silence or
+audio-recovery metric. Display recovery passes at2,106/1,120/900 ms, with healthy
+maximum ages339/345/358 ms. The failed audio assertion prevents the full package
+lifecycle pass. Daemons and monitor join0 and both audio sockets disappear.
+
+Next run a steady control with continuous source observation and inspect actual
+capture buffer/fragment timing before changing the product. The capture currently
+combines a bounded record buffer with DONT_MOVE and an eight-frame local queue;
+the observed latency suggests investigating scheduling/delivery, not weakening
+the output criterion. PA_STREAM_ADJUST_LATENCY changes how fragsize controls total
+source latency; this is a research lead, not an accepted correction:
+https://www.freedesktop.org/software/pulseaudio/doxygen/structpa__buffer__attr.html
+The independent context-error-reporting correction remains open.
+
+All five QEMU generations joined0, shared locks were reacquired and private/RAM
+workspaces retired, with four zero endpoint deltas per run. Final run elapsed
+131.211 seconds, scratch peak4,415,909,888 bytes, minimum available RAM38,175,567,872
+bytes; QEMU3495155 and RAM29:14597 run.lr8_ylku are absent. tmpfs_swap_disabled=false.
+Final outer SHA-256 ccdfc666db56a2c1f8c8525f6c7bc0983945b9ef9c243d2e42934de5dd19691e.
+The final reconciliation first expected the previous run's owner-EOF message;
+this run instead reports authority revocation after disconnect. Its observation
+receipt was corrected after cleanup, preserving that actual message. No full
+audio, physical-device, sustained-latency or release acceptance is claimed.
+This append preserves the prior16,328,056-byte audit prefix, SHA-256
+9f8865f30f1fd4422e128950f6f94e7ed4a4d558d289bb1d9b679aaa3746efac.

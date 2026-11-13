@@ -7796,16 +7796,23 @@ Package reinstall/remove/purge and joined cleanup pass. Capsule
 CTE/TUF and four zero endpoint deltas. This is Linux Xvfb presentation/lifecycle
 acceptance for this scenario, not physical scanout, all settings or a full release.
 
-Audio acceptance remains **OPEN**. `c13eb56c` observes the same installed library
-as an ordinary native client: both default PulseAudio sockets are absent,
-`pa_context_connect` returns -1 and context errno6 reports **Connection refused**.
-The pinned Rust binding formats the generic -1 as `Access denied`; that log does
-not establish authentication rejection. The diagnostic's selected environment
-matches the exact live CM. Startup/suspension and package lifecycle still pass;
-`installed-audio-diagnostic-c13eb56c.json` binds the evidence and joined cleanup.
-Next provide the fixture's missing audio daemon/monitor from the authenticated
-candidate and prove installed capture/playback. Product error reporting also
-needs the actual context error; helper authority remains mandatory. Superseded app
+Audio output acceptance remains **OPEN; native output check fails**. The private
+fixture now supplies the authenticated PulseAudio runtime without changing the
+application package or its libraries. At `663b8b02`, the source control passes
+three 100-ms 440-Hz windows; the viewer starts silent. The ordinary native client
+connects successfully, CM selects `controlled.monitor`, and daemon metadata
+attributes one active recording/playback stream to the observed CM/viewer.
+Across 401 viewer windows, including the deliberate suspensions, 391 are silent
+and ten fail the tone criterion; none qualifies. Display recovery still passes
+at 2,106/1,120/900 ms. `installed-audio-playback-663b8b02.json` retains exact
+observations and joined cleanup; the failed audio assertion prevents complete
+package-lifecycle acceptance. This is neither physical audibility nor a proved
+root cause. Next distinguish continuous-source/capture scheduling from playback
+with a steady control and native buffer measurements. The recording snapshot's
+1.832-second buffer latency is a lead, not proof. Earlier `c13eb56c` established
+that absent sockets produced errno6/Connection refused despite the binding's
+misleading `Access denied` text; product error reporting still needs the actual
+context error. Helper authority remains mandatory. Superseded app
 `2eb7015e` is retired after all 74 payloads verify,
 freeing 70,791,168 allocated bytes;
 its manifest/evidence and matching engine remain, with `77cc3441` retained as
@@ -20787,15 +20794,14 @@ text from selecting an authority field. No blanket assertion for every possible
 CM side effect is made.
 
 **Linux `_pa` authority and capture lifetime — authorized ordinary-user
-production pair passed; installed-service and churn evidence OPEN.**
-The corrected installed replay creates `_cm`/`_pa` and passes ordinary desktop
-suspension recovery. Its apparent `Access denied` capture result is misleading:
-the native diagnostic finds absent default sockets and context errno6,
-**Connection refused**, while the generic -1 return formats as `Access denied`
-(`installed-audio-diagnostic-c13eb56c.json`, reconnect section above). Installed
-audio output remains unproved. Next supply the fixture's missing daemon/monitor
-and validate capture/playback; correct context-error reporting without changing
-helper authority. Earlier prelogin display passes did not exercise CM/audio.
+production pair passed; installed audio output check fails; full acceptance OPEN.**
+The installed fixture now provides its missing audio daemon and monitor. The
+source tone control and native connection/stream setup pass, but viewer output
+fails the tone criterion (`installed-audio-playback-663b8b02.json`, reconnect
+section above). Investigate steady capture/playback and native buffer scheduling;
+retain helper authority and correct misleading context-error reporting. Earlier
+prelogin display passes did not exercise CM/audio. This installed UID-4001 desktop
+scenario does not close root/greeter capture, churn or full authority acceptance.
 
 `src/ipc/pulse_audio.rs` derives PID/UID/start identity from the accepted Unix
 socket before reading a `StartCapture` request, then validates the exact current

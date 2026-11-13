@@ -698,7 +698,7 @@ def scenario(settings, receiver, record, network=False, heaptrack=False, allocat
     preload = ALLOCATOR_PRELOAD if allocator else ALLOCATION_PRELOAD
     log = settings.WORK / 'installed-remote.log'
     try:
-        if network == 'expired':
+        if network is False or network == 'expired':
             server_log_snapshot(settings, receiver, record, 'before')
         if heaptrack or allocator:
             # Keep the diagnostic beside the unchanged runner in this guest only.
@@ -772,7 +772,7 @@ def scenario(settings, receiver, record, network=False, heaptrack=False, allocat
                                           else 1048576),
                     'installed Remote output exceeds its bound')
             print(log.read_text(), end='', flush=True)
-        if network == 'expired':
+        if network is False or network == 'expired':
             server_log_snapshot(settings, receiver, record, 'after')
 
 

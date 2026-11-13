@@ -153087,3 +153087,31 @@ dfc83dea176e283f06d5c19a3f5f780515b2a5e2c6bc9aca7a6848f299a22e3a.
 No owned jobs or source freezes remain. This audit-only append preserves the
 counted ledger and prior 16,299,978-byte audit prefix, SHA-256
 c6ce821ed333a5190c798089313972c264a1169e3ffecd0261295bff541dfbe7.
+
+### Installed audio startup — correct the desktop fixture prerequisite
+
+The preceding turn made progress: refresh correction and exact installed recovery
+acceptance are pushed through 31cf28f7, both hosts clean, no live jobs. Select
+the repeated missing-CM-identity audio startup failure before unrelated cleanup:
+required authorized audio must work with exact helper ownership intact.
+
+Source review identifies a concrete fixture mismatch. installed_desktop creates
+the active UID-4001 desktop account with /usr/sbin/nologin. Linux is_prelogin
+classifies that shell as a greeter; start_ipc waits while the active user remains
+prelogin, before it can launch/authenticate/register a CM peer. The selected
+ordinary desktop therefore never supplies that identity. The 96 retained errors
+establish failed audio startup in this topology, not an ordinary-user product
+defect or a reason to weaken peer proof. Correct the shared desktop constructor
+to create UID4001 with /bin/bash, retaining nologin for the unrelated UID4002;
+read back and record the actual account shell. Shadow's primary useradd manual
+confirms --shell sets the login-shell field:
+https://github.com/shadow-maint/shadow/blob/master/man/useradd.8.xml .
+
+The existing bounded, process-bound server-log observation now also covers the
+short installed Remote suspension replay. Reuse exact app 3c289cff and its engine
+to observe whether CM startup proceeds and what audio prerequisite remains, while
+preserving the existing pixel/lifecycle checks. No product edit, rebuild, native
+audio acceptance or speculative authority change is claimed. Whitespace and
+scoped diff review pass; execute the corrected fixture next. This append preserves
+the prior 16,300,915-byte audit prefix, SHA-256
+0da289e0d12c550450f758972c360c2550ba91b21f7c995b55717815dca4da11.

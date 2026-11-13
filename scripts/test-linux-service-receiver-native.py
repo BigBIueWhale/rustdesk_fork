@@ -2454,10 +2454,16 @@ def installed_desktop(scenario, close_session=False, settings=False, session_con
                 pwd.getpwuid(uid)
             except KeyError:
                 run(["/usr/sbin/useradd", "--uid", str(uid), "--user-group", "--create-home",
-                     "--shell", "/usr/sbin/nologin", f"rdreceiver{uid}"])
+                     "--shell", "/bin/bash" if uid == 4001 else "/usr/sbin/nologin", f"rdreceiver{uid}"])
                 users.append(uid)
             else:
                 raise RuntimeError("desktop fixture UID already exists")
+        account = pwd.getpwuid(4001)
+        if account.pw_shell != "/bin/bash":
+            raise RuntimeError("desktop fixture requires a login user, not a greeter account")
+        print("LINUX_SERVICE_DESKTOP_ACCOUNT=" + json.dumps({
+            "uid": account.pw_uid, "name": account.pw_name, "shell": account.pw_shell,
+        }, sort_keys=True), flush=True)
         actor = subprocess.Popen(["/usr/bin/python3", "-B", "-I", "-S", str(Path(__file__)),
                                   "--settings-pam-actor" if settings else "--pam-actor"],
                                  env=ENV, stdin=subprocess.PIPE, stdout=subprocess.PIPE)

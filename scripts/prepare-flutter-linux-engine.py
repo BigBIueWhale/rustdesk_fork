@@ -875,6 +875,8 @@ raise SystemExit(subprocess.call([
                     == source_path
                 and (cwd / arguments[arguments.index("-o") + 1]).resolve() == cwd / name,
                 "upstream object compiler/source/output differs: " + repr(arguments))
+        # Ninja creates output parents before executing the generated recipe.
+        (cwd / name).parent.mkdir(parents=True, exist_ok=True)
         print("ENGINE_UPSTREAM_TEST_COMPILE_START path=" + name
               + " recipe_sha256=" + hashlib.sha256(recipe).hexdigest(), flush=True)
         command(arguments, cwd, env, deadline)

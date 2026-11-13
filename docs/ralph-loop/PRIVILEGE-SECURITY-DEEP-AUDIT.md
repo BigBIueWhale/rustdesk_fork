@@ -152519,3 +152519,23 @@ replacement. Source/input freeze and all RAM/storage/network controls persist.
 HARDENING_STATUS.md records this checkpoint; its fresh count follows integration
 evidence. This append preserves the prior 16,259,253-byte audit prefix, SHA-256
 8fda391d0d28cc749fdc8e75bdb58207bb4926e8d40b8ec1b78324ebd7c470a1.
+
+### Engine integration: direct recipe output directory
+
+TUF VgcwwLJxvp at cee957b2 reaches the sixth upstream translation unit, then
+fails because the direct compiler invocation lacks its nested testing output
+directory. The preceding five objects and native settings/accessibility checks
+pass; full engine linking is unexecuted. Ninja normally creates output parents
+in Builder::StartEdge (https://github.com/ninja-build/ninja/blob/master/src/build.cc).
+Create that validated output parent before executing the unchanged recipe.
+No product or acceptance bound changes. Repeat this failed integration job.
+
+compositor-engine-cee957b2.json retains nine files/155,724 bytes on CTE/TUF.
+Outer SHA-256 ec10c90279a1b1e4204556d78255fda9b0a3409300aa8ea507f1a3c169cae709.
+QEMU 2963531 joins zero; private 66306:78033927 and RAM 29:13418 retire,
+four endpoint deltas are zero. Supervisor 120.151 seconds; peak RAM scratch
+13,009,698,816 bytes, tmpfs_swap_disabled=false. Three preserved engine caches
+are restored with the same inodes and hashes and no copies; the preservation
+and restoration receipts are verified on both hosts. The source freeze ends.
+This append preserves the prior 16,262,679-byte audit prefix, SHA-256
+bbf9e490935c1abde3a650d7a4d78c22e0e04f83d1370585196c54856d847762.

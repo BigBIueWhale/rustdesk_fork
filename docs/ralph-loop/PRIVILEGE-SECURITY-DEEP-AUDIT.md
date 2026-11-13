@@ -153582,3 +153582,32 @@ No owned runtime job or source freeze remains; goal stays active. Next is the
 steady audio/capture-buffer investigation recorded above. This audit-only append
 preserves the prior16,332,448-byte prefix, SHA-256
 bb7ea79e8d88801f2058c3ec17981fc1ae5447191b4cee151189c7f04fb9f486.
+
+### 2026-11-13 — steady installed audio and source delivery
+
+Previous goal turn: progress, with a native output failure and a working source
+control. Continue that R-S0/R-F1 blocker before the smaller context-error-text
+correction. Extend the existing healthy presentation baseline to20 seconds,
+retain the three suspension cycles, and observe source/viewer audio concurrently.
+The native controller records the baseline's monotonic interval; observer clocks
+remain in the same checked time namespace. After a three-second setup allowance,
+require at least15 seconds of observation,100 measured100-ms windows per side,
+and at least95% qualifying tone windows. This tests sustained signal delivery,
+not audio latency or physical audibility. Keep output/stream-retirement gates.
+
+The ongoing source monitor deliberately omits pacat's latency option. Upstream
+pacat sets PA_STREAM_ADJUST_LATENCY when that option is present, and the null sink
+uses requested latency in its scheduling. Keeping a50-ms source probe alive could
+therefore hide the suspected capture-timing defect. The earlier short positive
+control still retires before connection; the continuous observer has independent
+bounded buffers, counters and process ownership. Native stream metadata must
+distinguish this observer from the application's CM recording. One-second
+snapshots bind source/viewer counts to the healthy baseline without assuming
+that a2-second source buffer represents physical latency.
+Primary implementations:
+https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/utils/pacat.c
+https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/modules/module-null-sink.c
+Reuse the existing application and authenticated runtime; run only the affected
+installed replay. No product correction or new pass is claimed before execution.
+This append preserves the prior16,333,473-byte prefix, SHA-256
+2ffe0e25f6fcd3a809e9ac80ca2b48aa4150bf5d2a889e864cc8a850b8f89920.

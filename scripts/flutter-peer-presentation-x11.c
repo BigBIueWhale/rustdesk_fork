@@ -2391,12 +2391,15 @@ static int exercise_viewer_suspension(Display *source, Display *display,
     if (pidfd < 0 || !viewer_pidfd_alive(pidfd) ||
         viewer_process_state(process, pid, start, &state) != 0) goto finished;
     phase = "healthy-baseline";
-    if (observe_current_frames_for_duration(source, display, viewer, history, 3000U,
+    uint64_t baseline_started = monotonic_millis();
+    if (observe_current_frames_for_duration(source, display, viewer, history, 20000U,
                                             &max_gap, &max_age, &distinct) != 0 ||
         max_age > FRESH_LIMIT_MS) goto finished;
-    printf("FLUTTER_PEER_SUSPEND_BASELINE_OK duration_ms=3000 maximum_gap_ms=%llu "
-           "maximum_age_ms=%llu distinct=%u\n", (unsigned long long)max_gap,
-           (unsigned long long)max_age, distinct);
+    printf("FLUTTER_PEER_SUSPEND_BASELINE_OK duration_ms=20000 maximum_gap_ms=%llu "
+           "maximum_age_ms=%llu distinct=%u started_ms=%llu ended_ms=%llu\n",
+           (unsigned long long)max_gap, (unsigned long long)max_age, distinct,
+           (unsigned long long)baseline_started, (unsigned long long)monotonic_millis());
+    fflush(stdout);
     for (unsigned int cycle = 0U; cycle < FOCUS_CYCLE_COUNT; ++cycle) {
         uint64_t deadline, held_from, resumed_at, recovery_ms, first_fresh, recovery_age;
         uint64_t source_progress_at, source_max_gap = 0U;

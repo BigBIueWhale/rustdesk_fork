@@ -92,21 +92,62 @@ def prepare(settings):
     }, sort_keys=True), flush=True)
 
 
+class SignalSamples:
+    def __init__(self):
+        self.pending = bytearray()
+        self.counts = {'silent': 0, 'tone': 0, 'other': 0}
+        self.samples = 0
+        self.maximum_rms = self.maximum_coherence = 0
+        self.tone_rms = []
+        self.coefficients = [(math.cos(2 * math.pi * 440 * n / 48000),
+                              math.sin(2 * math.pi * 440 * n / 48000)) for n in range(4800)]
+
+    def read(self, process, timeout=0):
+        require(process.poll() is None, 'installed audio observer exited')
+        if not select.select([process.stdout], [], [], timeout)[0]:
+            return False
+        data = os.read(process.stdout.fileno(), 65536)
+        require(data, 'installed audio monitor closed')
+        self.pending.extend(data)
+        while len(self.pending) >= 38400:
+            values = array.array('f', self.pending[:38400])
+            del self.pending[:38400]
+            require(sys.byteorder == 'little' and all(math.isfinite(x) and abs(x) <= 1.1 for x in values),
+                    'installed audio samples are invalid')
+            left = values[::2]
+            energy = sum(x * x for x in left)
+            rms = math.sqrt(energy / len(left))
+            real = sum(x * c for x, (c, _) in zip(left, self.coefficients))
+            imaginary = sum(x * s for x, (_, s) in zip(left, self.coefficients))
+            coherence = 2 * (real * real + imaginary * imaginary) / (len(left) * energy) if energy else 0
+            self.maximum_rms = max(self.maximum_rms, rms)
+            self.maximum_coherence = max(self.maximum_coherence, coherence)
+            kind = 'silent' if rms <= 0.000001 else 'tone' if 0.02 <= rms <= 0.8 and coherence >= 0.8 else 'other'
+            self.counts[kind] += 1
+            if kind == 'tone':
+                self.tone_rms.append(rms)
+            self.samples += len(left)
+            require(self.samples <= 48000 * 150, 'installed audio observation exceeds its duration bound')
+        return True
+
+    def summary(self):
+        return {'windows': self.counts.copy(), 'maximum_rms': self.maximum_rms,
+                'maximum_coherence': self.maximum_coherence}
+
+
 class AudioFixture:
     def __init__(self, settings, environment, processes, files):
         guard(settings, 4001)
         self.settings, self.processes, self.files = settings, processes, files
         self.environment = environment
         self.environments, self.daemons, self.sockets = {}, [], []
-        self.pending = bytearray()
-        self.counts = {'silent': 0, 'tone': 0, 'other': 0}
-        self.samples = 0
+        self.signal = SignalSamples()
+        self.source_signal = SignalSamples()
+        self.source_monitor = None
+        self.last_report = 0
+        self.timeline = []
         self.owner = None
         self.snapshot = None
-        self.maximum_rms = self.maximum_coherence = 0
-        self.tone_rms = []
-        self.coefficients = [(math.cos(2 * math.pi * 440 * n / 48000),
-                              math.sin(2 * math.pi * 440 * n / 48000)) for n in range(4800)]
         libraries = ':'.join(str(ROOT / p) for p in ('usr/lib/x86_64-linux-gnu/pulseaudio',
                                                      'usr/lib/x86_64-linux-gnu', 'lib/x86_64-linux-gnu'))
         libraries += ':' + str(MODULES)
@@ -152,34 +193,31 @@ class AudioFixture:
         self.query('controlled', 'load-module', 'module-sine', 'sink=controlled', 'frequency=440')
         self.monitor = self.record('controlled')
         deadline = time.monotonic() + 5
-        while self.counts['tone'] < 3 and time.monotonic() < deadline:
+        while self.signal.counts['tone'] < 3 and time.monotonic() < deadline:
             self.sample()
-        print('LINUX_INSTALLED_AUDIO_SOURCE=' + json.dumps({
-            'windows': self.counts, 'maximum_rms': self.maximum_rms,
-            'maximum_coherence': self.maximum_coherence,
-        }), file=sys.stderr, flush=True)
-        require(self.counts['tone'] >= 3, 'controlled audio monitor did not produce the expected tone')
+        print('LINUX_INSTALLED_AUDIO_SOURCE=' + json.dumps(self.signal.summary()), file=sys.stderr, flush=True)
+        require(self.signal.counts['tone'] >= 3, 'controlled audio monitor did not produce the expected tone')
         self.monitor.terminate()
         require(self.monitor.wait(timeout=5) in (0, -15), 'controlled audio probe did not retire')
-        self.pending.clear()
-        self.counts = {'silent': 0, 'tone': 0, 'other': 0}
-        self.maximum_rms = self.maximum_coherence = 0
-        self.tone_rms.clear()
+        self.signal = SignalSamples()
         require(self.query('viewer', '--format=json', 'list', 'sink-inputs') == [],
                 'viewer output is occupied before connection')
         self.monitor = self.record('viewer')
         deadline = time.monotonic() + 5
-        while self.counts['silent'] < 3:
-            require(time.monotonic() < deadline and not self.counts['tone'] and not self.counts['other'],
+        while self.signal.counts['silent'] < 3:
+            require(time.monotonic() < deadline and not self.signal.counts['tone'] and not self.signal.counts['other'],
                     'viewer output was not silent before the Remote connection')
             self.sample()
-        print('LINUX_INSTALLED_AUDIO_BASELINE=' + json.dumps(self.counts), file=sys.stderr, flush=True)
+        print('LINUX_INSTALLED_AUDIO_BASELINE=' + json.dumps(self.signal.counts), file=sys.stderr, flush=True)
+        self.source_monitor = self.record('controlled', adjust_latency=False)
 
-    def record(self, role):
-        log = self.files.enter_context((COORD / ('audio-' + role + '-monitor.log')).open('xb'))
+    def record(self, role, adjust_latency=True):
+        label = role if adjust_latency else role + '-continuous'
+        log = self.files.enter_context((COORD / ('audio-' + label + '-monitor.log')).open('xb'))
         process = subprocess.Popen([str(ROOT / 'usr/bin/pacat'), '--record', '--raw',
             '--device=' + role + '.monitor', '--format=float32le', '--rate=48000', '--channels=2',
-            '--latency-msec=50'], env=self.environments[role], stdin=subprocess.DEVNULL,
+            *(['--latency-msec=50'] if adjust_latency else [])],
+            env=self.environments[role], stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE, stderr=log)
         self.processes.append(process)
         os.set_blocking(process.stdout.fileno(), False)
@@ -192,42 +230,36 @@ class AudioFixture:
         return json.loads(value) if arguments[0] == '--format=json' else value
 
     def sample(self):
-        require(all(p.poll() is None for p in [*self.daemons, self.monitor]),
+        require(all(p.poll() is None for p in self.daemons),
                 'installed audio provider or observer exited')
-        if not select.select([self.monitor.stdout], [], [], 0.05)[0]:
-            return
-        data = os.read(self.monitor.stdout.fileno(), 65536)
-        require(data, 'installed audio monitor closed')
-        self.pending.extend(data)
-        while len(self.pending) >= 38400:
-            values = array.array('f', self.pending[:38400])
-            del self.pending[:38400]
-            require(sys.byteorder == 'little' and all(math.isfinite(x) and abs(x) <= 1.1 for x in values),
-                    'installed audio samples are invalid')
-            left = values[::2]
-            energy = sum(x * x for x in left)
-            rms = math.sqrt(energy / len(left))
-            real = sum(x * c for x, (c, _) in zip(left, self.coefficients))
-            imaginary = sum(x * s for x, (_, s) in zip(left, self.coefficients))
-            coherence = 2 * (real * real + imaginary * imaginary) / (len(left) * energy) if energy else 0
-            self.maximum_rms = max(self.maximum_rms, rms)
-            self.maximum_coherence = max(self.maximum_coherence, coherence)
-            kind = 'silent' if rms <= 0.000001 else 'tone' if 0.02 <= rms <= 0.8 and coherence >= 0.8 else 'other'
-            self.counts[kind] += 1
-            if kind == 'tone':
-                self.tone_rms.append(rms)
-            self.samples += len(left)
-            require(self.samples <= 48000 * 150, 'installed audio observation exceeds its duration bound')
+        drained = self.source_monitor is not None and self.source_signal.read(self.source_monitor)
+        self.signal.read(self.monitor, 0 if drained else 0.05)
+        now = time.monotonic()
+        if self.source_monitor is not None and now - self.last_report >= 1:
+            report = {
+                'monotonic_ms': int(now * 1000), 'source': self.source_signal.summary(),
+                'viewer': self.signal.summary(), 'source_adjust_latency': False,
+            }
+            require(len(self.timeline) < 150, 'audio timeline exceeds its bound')
+            self.timeline.append(report)
+            print('LINUX_INSTALLED_AUDIO_TIMELINE=' + json.dumps(report), file=sys.stderr, flush=True)
+            self.last_report = now
+
+    def recordings(self):
+        streams = self.query('controlled', '--format=json', 'list', 'source-outputs')
+        observer = [s for s in streams if int(s['properties']['application.process.id']) == self.source_monitor.pid]
+        require(len(observer) == 1, 'continuous source observer is absent or ambiguous')
+        return [s for s in streams if s is not observer[0]]
 
     def observe_owner(self, viewer):
-        if self.snapshot is None and self.samples >= 48000 * 5:
+        if self.snapshot is None and self.signal.samples >= 48000 * 5:
             self.snapshot = {role: self.query(role, '--format=json', 'list', kind)
                              for role, kind in (('viewer', 'sink-inputs'), ('controlled', 'source-outputs'))}
             print('LINUX_INSTALLED_AUDIO_STREAMS=' + json.dumps(self.snapshot), file=sys.stderr, flush=True)
-        if self.owner is not None or self.counts['tone'] < 3:
+        if self.owner is not None or self.signal.counts['tone'] < 3:
             return
         playback = self.query('viewer', '--format=json', 'list', 'sink-inputs')
-        recording = self.query('controlled', '--format=json', 'list', 'source-outputs')
+        recording = self.recordings()
         require(len(playback) == len(recording) == 1, 'installed audio stream ownership is ambiguous')
         require(int(playback[0]['properties']['application.process.id']) == viewer.pid,
                 'audio playback is not attributed to the retained viewer')
@@ -245,29 +277,46 @@ class AudioFixture:
 
     def complete(self):
         print('LINUX_INSTALLED_AUDIO_SAMPLES=' + json.dumps({
-            'windows': self.counts, 'maximum_rms': self.maximum_rms,
-            'maximum_coherence': self.maximum_coherence, 'owner': self.owner,
+            **self.signal.summary(), 'owner': self.owner, 'source': self.source_signal.summary(),
         }), file=sys.stderr, flush=True)
-        require(self.owner is not None and self.counts['tone'] >= 8, 'installed Remote did not play the expected tone')
+        baseline, = re.findall(r'^FLUTTER_PEER_SUSPEND_BASELINE_OK (.*)$',
+                               (COORD / 'driver.log').read_text(), re.M)
+        fields = dict(item.split('=', 1) for item in baseline.split())
+        steady = [row for row in self.timeline if int(fields['started_ms']) + 3000
+                  <= row['monotonic_ms'] <= int(fields['ended_ms'])]
+        require(len(steady) >= 2 and steady[-1]['monotonic_ms'] - steady[0]['monotonic_ms'] >= 15000,
+                'audio steady observation interval is insufficient')
+        counts = {role: {kind: steady[-1][role]['windows'][kind] - steady[0][role]['windows'][kind]
+                         for kind in ('silent', 'tone', 'other')} for role in ('source', 'viewer')}
+        print('LINUX_INSTALLED_AUDIO_STEADY=' + json.dumps({
+            'start_ms': steady[0]['monotonic_ms'], 'end_ms': steady[-1]['monotonic_ms'],
+            'windows': counts, 'minimum_tone_percent': 95, 'window_ms': 100,
+        }), file=sys.stderr, flush=True)
+        for role, windows in counts.items():
+            require(sum(windows.values()) >= 100 and windows['tone'] * 100 >= sum(windows.values()) * 95,
+                    role + ' steady audio did not retain the expected tone')
+        require(self.owner is not None, 'installed Remote audio stream ownership was not observed')
         deadline = time.monotonic() + 5
-        initial_silence = self.counts['silent']
+        initial_silence = self.signal.counts['silent']
         while True:
             self.sample()
-            if (self.counts['silent'] >= initial_silence + 3
+            if (self.signal.counts['silent'] >= initial_silence + 3
                     and self.query('viewer', '--format=json', 'list', 'sink-inputs') == []
-                    and self.query('controlled', '--format=json', 'list', 'source-outputs') == []):
+                    and self.recordings() == []):
                 break
             require(time.monotonic() < deadline, 'installed audio did not retire after viewer close')
         print('LINUX_INSTALLED_AUDIO_PLAYBACK=' + json.dumps({
-            **self.owner, 'windows': self.counts, 'window_frames': 4800, 'rate': 48000,
-            'tone_hz': 440, 'tone_rms_min': min(self.tone_rms), 'tone_rms_max': max(self.tone_rms),
+            **self.owner, 'windows': self.signal.counts, 'window_frames': 4800, 'rate': 48000,
+            'tone_hz': 440, 'tone_rms_min': min(self.signal.tone_rms), 'tone_rms_max': max(self.signal.tone_rms),
             'retired': True, 'scope': 'native null-sink output; physical audibility unproved',
         }, sort_keys=True), file=sys.stderr, flush=True)
 
     def retired(self):
         require(all(p.poll() == 0 for p in self.daemons) and self.monitor.poll() in (0, -15)
+                and self.source_monitor.poll() in (0, -15)
                 and all(not os.path.lexists(p) for p in self.sockets), 'audio fixture did not retire')
         print('LINUX_INSTALLED_AUDIO_RETIRED=' + json.dumps({
             'daemons': [{'pid': p.pid, 'exit': p.returncode} for p in self.daemons],
             'monitor': self.monitor.pid, 'monitor_exit': self.monitor.returncode, 'sockets': 'absent',
+            'source_monitor': self.source_monitor.pid, 'source_monitor_exit': self.source_monitor.returncode,
         }), file=sys.stderr, flush=True)

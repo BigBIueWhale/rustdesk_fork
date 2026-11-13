@@ -153648,3 +153648,28 @@ https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/time/tim
 Corrected native execution and a rebuilt installed-app replay are still pending.
 This append preserves the prior16,335,432-byte prefix, SHA-256
 afd5eb1eee69fcfe7e0e1446f3ca4bd5570cfa106f80a9b39c752fc12fea12df.
+
+### Continuous capture correction — native acceptance checkpoint
+
+TUF cZI5zsYIbt at80e0431d passes all16 required cases, including the unchanged
+continuous-delivery scenario that failed at34280080. Its assertions establish
+at least950 frames/ten seconds, maximum gap200 ms, at least95% coherent tone
+windows and owner-EOF retirement. The guest summary retains the exact named
+success, not the new case's numeric diagnostic; no exact corrected frame count
+or maximum gap is claimed. Existing revocation/replacement now observes50 nonzero
+successor frames in500 ms (baseline4); source and kernel-peer controls remain green.
+Build163 seconds, native groups33 seconds, artifact SHA-256
+2b6a5d1162f806191112df84c22d0d3ef56b8fe8b3e855d2dd21ae2dd1c685fa.
+
+pa-continuous-fixed-80e0431d.json binds nine files/84,528 bytes, SHA-verified on
+CTE/TUF. Outer SHA-2560712fb2a1be9b54d03717e3e3e98fd455af92b4d79a196ebdd5c7cca036a7ad3.
+QEMU3524727 joins0, private66306:86948425 and RAM29:14755 run.blkpkz18 retire;
+four endpoint deltas are zero. Supervisor265.140 seconds, scratch peak
+5,402,222,592 bytes, minimum available RAM36,724,101,120 bytes; swap not disabled.
+No owned job or source freeze remains. R-S0 installed playback stays OPEN until
+a newly built full app passes the same installed source/viewer and lifecycle test.
+This is the next selected step; no new authorization is needed. No audio latency,
+physical-device, endurance, other-platform or complete release acceptance is claimed.
+HARDENING_STATUS records this checkpoint; its fresh isolated count follows.
+This append preserves the prior16,338,011-byte prefix, SHA-256
+29af1c0bcde7c8df8e3d7bb96c751764147d78bdc7ca8856e3ae52843a75f7c8.

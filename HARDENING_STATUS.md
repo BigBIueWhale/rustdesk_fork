@@ -7796,20 +7796,30 @@ Package reinstall/remove/purge and joined cleanup pass. Capsule
 CTE/TUF and four zero endpoint deltas. This is Linux Xvfb presentation/lifecycle
 acceptance for this scenario, not physical scanout, all settings or a full release.
 
-Audio output acceptance remains **OPEN; native output check fails**. The private
-fixture now supplies the authenticated PulseAudio runtime without changing the
-application package or its libraries. At `663b8b02`, the source control passes
-three 100-ms 440-Hz windows; the viewer starts silent. The ordinary native client
-connects successfully, CM selects `controlled.monitor`, and daemon metadata
-attributes one active recording/playback stream to the observed CM/viewer.
-Across 401 viewer windows, including the deliberate suspensions, 391 are silent
-and ten fail the tone criterion; none qualifies. Display recovery still passes
-at 2,106/1,120/900 ms. `installed-audio-playback-663b8b02.json` retains exact
-observations and joined cleanup; the failed audio assertion prevents complete
-package-lifecycle acceptance. This is neither physical audibility nor a proved
-root cause. Next distinguish continuous-source/capture scheduling from playback
-with a steady control and native buffer measurements. The recording snapshot's
-1.832-second buffer latency is a lead, not proof. Earlier `c13eb56c` established
+Audio output acceptance remains **OPEN; capture delivery corrected and natively
+verified, installed playback pending**. With authenticated private audio tools
+and unchanged app/package libraries, `f966e3b3` measures a healthy steady interval:
+160 source tone windows, versus 160 silent and four other viewer windows, with
+no qualifying viewer tone. The continuous source observer requests no latency
+adjustment. CM/viewer streams are active; recording buffering is about 1.83 seconds.
+Display suspension recovery passes at 1,979/1,106/901 ms. The audio failure prevents
+full package acceptance (`installed-audio-steady-f966e3b3.json`).
+
+Native reproduction at `34280080` isolates production capture: only 44 ten-ms
+frames arrive in ten seconds, with a 1,919-ms gap and zero coherent tone windows.
+All 15 prior authority/source/lifecycle checks pass. `80e0431d` requests source
+latency adjustment and drains queued frames without an additional frame interval,
+while retaining source ownership, queue limits, EOF/protocol polling and authority
+revalidation. The same native scenario now passes: at least 950 frames in ten
+seconds, gaps at most 200 ms, and at least 95% coherent tone windows. All 16 cases
+pass, including revocation, copied-token refusal, source changes and owner EOF.
+Capsules `pa-continuous-before-34280080.json` and
+`pa-continuous-fixed-80e0431d.json` bind the source/artifacts, observations and
+joined cleanup on both hosts. Exact corrected continuous measurements were not
+exported by the guest summary; its named success binds the stated assertions.
+Next rebuild the full app and replay installed audio/presentation/lifecycle.
+Physical audibility, audio latency and sustained recovery remain unproved.
+Earlier `c13eb56c` established
 that absent sockets produced errno6/Connection refused despite the binding's
 misleading `Access denied` text; product error reporting still needs the actual
 context error. Helper authority remains mandatory. Superseded app
@@ -20793,13 +20803,14 @@ its fixed `id`, `registry_generation`, `action`, and `log` fields prevent action
 text from selecting an authority field. No blanket assertion for every possible
 CM side effect is made.
 
-**Linux `_pa` authority and capture lifetime — authorized ordinary-user
-production pair passed; installed audio output check fails; full acceptance OPEN.**
-The installed fixture now provides its missing audio daemon and monitor. The
-source tone control and native connection/stream setup pass, but viewer output
-fails the tone criterion (`installed-audio-playback-663b8b02.json`, reconnect
-section above). Investigate steady capture/playback and native buffer scheduling;
-retain helper authority and correct misleading context-error reporting. Earlier
+**Linux `_pa` authority and capture lifetime — native continuous capture corrected;
+rebuilt installed playback and full acceptance OPEN.**
+`80e0431d` corrects source-latency negotiation and pending-frame draining; all 16
+native capture/authority cases pass after the old code reproduces severe starvation.
+The installed steady source control passes while the prior app's viewer output
+fails (`installed-audio-steady-f966e3b3.json`, reconnect section above).
+Rebuild/replay installed audio and retain helper authority; misleading context-error
+reporting remains open. Earlier
 prelogin display passes did not exercise CM/audio. This installed UID-4001 desktop
 scenario does not close root/greeter capture, churn or full authority acceptance.
 

@@ -4320,6 +4320,30 @@ This is short healthy XTEST/Xvfb evidence. Impaired or sustained concurrent inpu
 physical scanout, other platforms, the known long-outage failures and full R-F5
 acceptance remain OPEN.
 
+**Installed Linux concurrent animation/input under congestion — scenario PASS.**
+TUF `jko8mVuY86`, fixture `c4648688`, reuses installed app `2eb7015e`.
+Four 120-response windows surround twenty-second jitter, 32-kbit/s bandwidth and
+combined profiles on the same connection. All **521 responses** (480 healthy,
+41 impaired/recovering) reconcile against 1,950 source publications and actual
+viewer-root pixels. The independent response counter crosses 255 without wrap;
+source animation continues at nominal four Hz. Original response p95/p99 are
+**352/360 ms**, final values **351/371 ms**, worst healthy response **378 ms**.
+Observed frame-age p95/p99 are initially **299/317 ms**, finally **302/323 ms**;
+maximum healthy age is **554 ms**. Both metrics retain the 1,000-ms ceiling and
+250-ms baseline drift allowance. Recovery takes **492.830/183.808/187.339 ms**,
+including a completed response and a fresh post-restoration frame within 2,500 ms.
+Maximum observed impaired age is 2,296 ms. All 369 transport observations retain
+the socket pair until normal closure; queues peak at 15 packets/4,414 bytes.
+Actual throttled delivery and queue-preserving restoration are verified. Viewer
+RSS grows at most 24,828 KiB, descriptors by one; threads decline. Child/listener,
+credentials and profile persist; normal reinstall/remove/purge and cleanup pass.
+`remote-installed-animation-congestion-c4648688.json` binds nine files/1,530,782
+bytes on CTE/TUF, four zero host listener deltas and joined VM/private/RAM retirement.
+This accepts the stated short installed XTEST/Xvfb congestion workload. Sustained
+concurrent animation/input, loss/outage coverage, physical scanout, other platforms,
+final release artifacts, independent review and the known long-outage failure
+remain OPEN. No product patch or full R-F5 closure is claimed.
+
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without
 rebuilding. All 120 unique three-key requests injected into the viewer produce

@@ -151751,3 +151751,42 @@ bounded RAM scratch, monitoring, exact joins and evidence retention. No product
 patch or acceptance claim precedes the native result. This append preserves the
 prior 16,208,388-byte audit prefix, SHA-256
 734d7e1eaddbb6373c0aa982aadc3fdd379afd950acf7b987365a6906a5fac52.
+
+## 2026-11-13 — Installed concurrent animation/input congestion accepted
+
+TUF jko8mVuY86/tool64870 at c4648688 exits zero. The repeated -Werror builds
+match and the two-row response decoder passes 515 values plus refusal controls.
+Installed app 2eb7015e, manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a,
+completes all 480 healthy and 41 impaired/recovering responses while animation
+continues at nominal four Hz. Independent reconciliation binds every ordered
+request, source response/publication and viewer-root observation across 1,950
+publications. Four response p95/p99 pairs are 352/360, 347/351, 352/361, 351/371 ms;
+worst healthy response is 378 ms. Native frame-age p95/p99 pairs are 299/317,
+299/318, 301/323, 302/323 ms across 19,088 observations, maximum 554 ms.
+The fixed 1,000-ms ceilings and 250-ms original-baseline drift checks pass.
+Recovery after jitter, bandwidth and combined impairment is respectively
+492.830, 183.808 and 187.339 ms, including both a completed response and fresh
+post-restoration pixels. Maximum impaired observed age is 2,296 ms.
+
+All 369 transport snapshots preserve the pair until normal closure. Two limited
+intervals deliver 79,684 and 78,851 bytes in 20.022 and 20.013 seconds; queue peaks
+are 15 packets/4,414 bytes, maximum socket send queue 2,958 bytes. Original viewer,
+service child/listener, credentials and profile persist. Sampled RSS grows at most
+24,828 KiB and descriptors by one, with fewer threads; all resource bounds pass.
+Exact source/viewer/driver exits are zero; normal installed package reinstall,
+remove and purge pass. QEMU 1674465 joins zero after 639.851 seconds. Peak RAM
+scratch is 4,286,464,000 bytes; exact private 66306:78035164 and RAM 29:12779,
+process/socket absence and four zero listener deltas reconcile. tmpfs_swap_disabled
+remains false. Source/input freeze ends only after nine files/1,530,782 bytes are
+copied and hash-verified on CTE/TUF. Capsule:
+remote-installed-animation-congestion-c4648688.json. Outer SHA-256:
+6b6a7dc21b4573dbbaba42b68e3182e38a313d1681db753f720df4852a19dd80.
+
+This closes the stated short installed congestion scenario. It changes test
+infrastructure and evidence, not product behavior. Sustained animation/input,
+loss/outage coverage, physical scanout, other platforms, final artifacts and full
+R-F5 remain OPEN; the separate long-outage failure is unchanged. The ledger has
+been updated and its fresh isolated count is pending. This append preserves the
+prior 16,210,726-byte audit prefix, SHA-256
+10ae3ff2cb26fdf949e401cb4a3979c4d532815044890a3576b483ea406b4fc0.

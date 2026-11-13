@@ -151387,3 +151387,14 @@ complete R-F5 acceptance remain OPEN. Reassess the next release-directed step
 at this checkpoint; an unchanged repeat of this passing run is unnecessary.
 This append preserves the prior 16,183,028-byte audit prefix, SHA-256
 13cebc2091622e4f86c348a676c1eb99dcc0cd71ed3a7954ffb359fa12d95035.
+
+Fresh ledger count at 9752a3bd, Dj5qbpOLwn/tool59318: 420,316 tokens /
+1,916,651 bytes, SHA-256
+23145514cb2441d8f746154ba0bcc5baaff4dbfb32078f1f413d0bd2ac7e389c.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+installed-input-soak-ledger-9752a3bd.json binds eight files/117,279 bytes on
+CTE/TUF. QEMU 408987 joins zero after 30.587 seconds, with three zero listener
+deltas and exact private/process/socket/RAM retirement. The approximate
+400,000-token target remains OPEN. This audit-only append preserves the counted
+ledger and the prior 16,186,108-byte audit prefix, SHA-256
+1d92598edf79efd04085967c0d703c0dc81d1371f742d225a736d6886e81f2c4.

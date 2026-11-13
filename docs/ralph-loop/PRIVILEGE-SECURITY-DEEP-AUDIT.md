@@ -153673,3 +153673,18 @@ physical-device, endurance, other-platform or complete release acceptance is cla
 HARDENING_STATUS records this checkpoint; its fresh isolated count follows.
 This append preserves the prior16,338,011-byte prefix, SHA-256
 29af1c0bcde7c8df8e3d7bb96c751764147d78bdc7ca8856e3ae52843a75f7c8.
+
+### Continuous capture checkpoint — ledger receipt
+
+OlxbJoUfgG at17ba603a counts426,469 tokens /1,942,684 bytes with the pinned
+tiktoken0.12.0/cl100k_base/encode_ordinary method, seven controls and byte round
+trip. Ledger SHA-256024bfbbbfa65dae1c269b06d5d7edfe5f82e1bf231f8f42614a681a7ad287f22;
+the approximate400,000-token budget remains OPEN. QEMU3527224 joins0; private
+run.OlxbJoUfgG and RAM29:14796 run._7fmcuv3 retire. Supervisor30.490 seconds,
+scratch peak403,169,280 bytes, three zero endpoint deltas, swap not disabled.
+pa-continuous-ledger-17ba603a.json binds eight files/115,921 bytes on CTE/TUF.
+Outer SHA-256f8556c3c545c5b288aa3f7dcdd03f086ccb9be4ba5a0e483f9d332014efdeb3e.
+No owned job/source freeze remains. Goal stays active; next rebuild and replay
+the installed app with the capture correction. This audit-only append preserves
+the prior16,339,701-byte prefix, SHA-256
+7d034d5ed483dab61ee627ad88bee8b2ec676d7910d6648773a3ec25277f737c.

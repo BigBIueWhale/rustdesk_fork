@@ -100,11 +100,12 @@ async fn wait_for_pa<T>(
     peer: &LinuxProcessIdentity,
     token: &str,
     last_authority_check: &mut Instant,
+    maximum_wait: Duration,
 ) -> ResultType<()>
 where
     T: AsyncRead + AsyncWrite + Unpin,
 {
-    match tokio::time::timeout(PA_POLL_INTERVAL, stream.inner.next()).await {
+    match tokio::time::timeout(maximum_wait, stream.inner.next()).await {
         Err(_) => {}
         Ok(None) => bail!("PulseAudio capture owner closed the IPC stream"),
         Ok(Some(Ok(_))) => bail!("unexpected _pa client frame after StartCapture"),
@@ -145,7 +146,7 @@ where
         if Instant::now() >= deadline {
             bail!("PulseAudio context connection timed out");
         }
-        wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+        wait_for_pa(stream, peer, token, &mut last_authority_check, PA_POLL_INTERVAL).await?;
     }
 
     let default_output = Rc::new(RefCell::new(PaDefaultOutput::default()));
@@ -193,7 +194,7 @@ where
             if Instant::now() >= deadline {
                 bail!("PulseAudio default-output lookup timed out");
             }
-            wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+            wait_for_pa(stream, peer, token, &mut last_authority_check, PA_POLL_INTERVAL).await?;
         }
         drop(operation);
         drop(subscription);
@@ -251,7 +252,7 @@ where
         if Instant::now() >= deadline {
             bail!("PulseAudio source lookup timed out");
         }
-        wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+        wait_for_pa(stream, peer, token, &mut last_authority_check, PA_POLL_INTERVAL).await?;
     }
     drop(operation);
     drop(introspector);
@@ -281,10 +282,12 @@ where
         minreq: u32::MAX,
         fragsize: PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES as u32,
     };
+    // Fragment size must also request source latency, so a slow source schedule
+    // cannot feed multi-second bursts into the bounded recording queue.
     recorder.connect_record(
         Some(&source.name),
         Some(&attr),
-        pulse::stream::FlagSet::DONT_MOVE,
+        pulse::stream::FlagSet::DONT_MOVE | pulse::stream::FlagSet::ADJUST_LATENCY,
     )?;
     let deadline = Instant::now() + PA_SETUP_TIMEOUT;
     loop {
@@ -307,7 +310,7 @@ where
         if Instant::now() >= deadline {
             bail!("PulseAudio record stream connection timed out");
         }
-        wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+        wait_for_pa(stream, peer, token, &mut last_authority_check, PA_POLL_INTERVAL).await?;
     }
     log::info!("pa source: {:?}", source.name);
 
@@ -336,7 +339,14 @@ where
                 .send_pulse_audio_frame_timeout(frame, PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
                 .await?;
         }
-        wait_for_pa(stream, peer, token, &mut last_authority_check).await?;
+        // Queued frames already represent elapsed audio time. Drain them without
+        // another frame interval, while still polling owner EOF and authority.
+        let maximum_wait = if frames.ready.is_empty() {
+            PA_POLL_INTERVAL
+        } else {
+            Duration::ZERO
+        };
+        wait_for_pa(stream, peer, token, &mut last_authority_check, maximum_wait).await?;
     }
 }
 
@@ -705,18 +715,20 @@ mod tests {
 
     #[tokio::test(flavor = "current_thread")]
     async fn accepted_owner_close_interrupts_silent_capture_wait() {
-        let (socket, owner) = tokio::net::UnixStream::pair().unwrap();
-        let mut stream = ConnectionTmpl::new_pulse_audio(socket);
-        let peer = current_linux_process_identity().unwrap();
-        let mut last_authority_check = Instant::now();
-        drop(owner);
-        assert!(tokio::time::timeout(
-            Duration::from_millis(100),
-            wait_for_pa(&mut stream, &peer, "unused", &mut last_authority_check)
-        )
-        .await
-        .unwrap()
-        .is_err());
+        for maximum_wait in [Duration::ZERO, PA_POLL_INTERVAL] {
+            let (socket, owner) = tokio::net::UnixStream::pair().unwrap();
+            let mut stream = ConnectionTmpl::new_pulse_audio(socket);
+            let peer = current_linux_process_identity().unwrap();
+            let mut last_authority_check = Instant::now();
+            drop(owner);
+            assert!(tokio::time::timeout(
+                Duration::from_millis(100),
+                wait_for_pa(&mut stream, &peer, "unused", &mut last_authority_check, maximum_wait)
+            )
+            .await
+            .unwrap()
+            .is_err());
+        }
     }
 
     #[tokio::test(flavor = "current_thread")]

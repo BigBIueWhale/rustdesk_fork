@@ -153611,3 +153611,40 @@ Reuse the existing application and authenticated runtime; run only the affected
 installed replay. No product correction or new pass is claimed before execution.
 This append preserves the prior16,333,473-byte prefix, SHA-256
 2ffe0e25f6fcd3a809e9ac80ca2b48aa4150bf5d2a889e864cc8a850b8f89920.
+
+### 2026-11-13 — continuous capture failure and bounded scheduling correction
+
+Installed run dKhRSDSB31 atf966e3b3 confirms the failure before impairment:
+the measured steady interval has160 source tone windows, versus160 silent and
+four other viewer windows, with no qualifying viewer tone. Continuous source
+observation requests no latency adjustment. The source and CM recording both
+report1,831,312 microseconds of buffering. Display suspension recovery remains
+1,979/1,106/901 ms. Capsule installed-audio-steady-f966e3b3.json binds nine
+files/334,465 bytes on CTE/TUF. QEMU3519573 joined0; exact private/RAM state is
+retired, four endpoint deltas are zero, elapsed148.853 seconds and scratch peak
+4,416,659,456 bytes. Physical audio and full package acceptance remain OPEN.
+
+The new native test at34280080 isolates production capture from codec/playback:
+a private null sink and440-Hz sine, no second latency-requesting recorder,
+three-second warmup and ten-second measurement. Require at least950 ten-ms
+frames, maximum delivery gap200 ms, and95% coherent100-ms tone windows. On
+unchanged production capture, hNSSvh3tTS delivers44 frames, four windows,
+zero tone windows and a1,919-ms gap; owner EOF still retires capture. All15
+previous authority/protocol/source/lifetime controls pass. Native build162s,
+artifact SHA-256482f2a8bad55a3193af40bfa3fb4c0ab75a12b2007ffa617283d704d3414c50f.
+pa-continuous-before-34280080.json binds nine files/118,642 bytes on both hosts;
+QEMU3523259 joins0, private/RAM retire, four endpoint deltas are zero. Elapsed
+280.203s, scratch peak5,458,780,160 bytes. Both tmpfs receipts report swap not disabled.
+
+Correction requests ADJUST_LATENCY alongside DONT_MOVE, retaining the80-ms native
+and local queue bounds. Pending frames skip the extra10-ms interval, but every
+iteration still polls owner EOF/protocol and the existing100-ms authority check;
+an empty queue retains the bounded wait. The existing EOF test covers both wait
+durations. The new continuous test is a required native case. No playback,
+privilege, subscriber, device-selection or reconnect fallback is introduced.
+Primary PulseAudio buffer semantics and pinned Tokio timeout polling order:
+https://www.freedesktop.org/software/pulseaudio/doxygen/structpa__buffer__attr.html
+https://raw.githubusercontent.com/tokio-rs/tokio/tokio-1.44.2/tokio/src/time/timeout.rs
+Corrected native execution and a rebuilt installed-app replay are still pending.
+This append preserves the prior16,335,432-byte prefix, SHA-256
+afd5eb1eee69fcfe7e0e1446f3ca4bd5570cfa106f80a9b39c752fc12fea12df.

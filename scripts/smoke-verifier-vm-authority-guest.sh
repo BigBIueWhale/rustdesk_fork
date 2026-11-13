@@ -4673,6 +4673,7 @@ run_focused_rust_tests() {
             server::service::pa_dispatch_tests::r_s11iu_pa_audio_dispatch_excludes_later_subscribers
             ipc::pulse_audio::tests::record_fragments_preserve_frame_shape_and_bound_stale_audio
             ipc::pulse_audio::tests::accepted_owner_close_interrupts_silent_capture_wait
+            ipc::pulse_audio::tests::real_capture_delivers_continuous_audio_without_another_latency_request
             ipc::pulse_audio::tests::real_monitor_capture_revokes_after_audio_stops
             ipc::pulse_audio::tests::real_kernel_pa_admission_refuses_same_uid_child_with_token
             ipc::pulse_audio::tests::real_source_names_select_devices_with_duplicate_descriptions

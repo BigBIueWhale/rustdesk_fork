@@ -152675,3 +152675,19 @@ SSH master works; no key/configuration change is made. HARDENING_STATUS.md recor
 the partial result and remaining work; its fresh isolated count follows.
 This append preserves the prior 16,267,772-byte audit prefix, SHA-256
 1da514947b281b21621169dd840f9d61f4a112510ba01bc1f0cace0219869316.
+
+### Installed-compositor ledger count
+
+TUF fMtFoAQstJ at a8685577 passes the fresh count: 424,055 tokens /
+1,932,377 bytes, input SHA-256
+a1771af8e454ff11e85ffd7b78c4ecd8663ea5b2c13b5797a4dafdd43be4e013.
+The fixed method, seven controls and whole-input round trip pass; the approximate
+400,000-token target remains OPEN. QEMU 3083288 joins zero; private
+66306:82229869 and RAM 29:13590 retire, with three zero endpoint deltas.
+Supervisor 30.398 seconds, peak RAM scratch 403,353,600 bytes,
+tmpfs_swap_disabled=false. Eight files/115,839 bytes are SHA-verified on CTE/TUF;
+capsule compositor-app-ledger-a8685577.json, outer SHA-256
+42a65aa35bc2efef6f2618d7d1674422aabd0cf9189022398aba31c6851f281b.
+This audit-only append preserves the counted ledger and prior 16,273,065-byte
+prefix, SHA-256
+712f355b71af75daf02bdf026fe714f74d8c64fc0ac4f6ef37ef86b590cfae01.

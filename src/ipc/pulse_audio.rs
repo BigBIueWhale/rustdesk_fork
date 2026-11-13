@@ -720,6 +720,92 @@ mod tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires the private native PulseAudio source fixture"]
+    async fn real_capture_delivers_continuous_audio_without_another_latency_request() {
+        assert_native_record_streams(0).await;
+        let source = native_source("rd_continuous", "rd_continuous").await;
+        let sine = native_pactl(&[
+            "load-module", "module-sine", "sink=rd_continuous", "frequency=440",
+        ]).await;
+        let authority = crate::audio_service::PaCaptureNativeFixture::new().unwrap();
+        let peer = current_linux_process_identity().unwrap();
+        let (helper_socket, client_socket) = tokio::net::UnixStream::pair().unwrap();
+        let mut helper = ConnectionTmpl::new_pulse_audio(helper_socket);
+        let mut client = ConnectionTmpl::new_pulse_audio(client_socket);
+        let mut capture = Box::pin(super::capture(
+            &mut helper, &peer, authority.token(), "rd_continuous.monitor",
+        ));
+        let start = tokio::time::Instant::now() + Duration::from_secs(3);
+        let end = start + Duration::from_secs(10);
+        let mut previous = start;
+        let mut maximum_gap = Duration::ZERO;
+        let mut frames = 0;
+        let mut windows = 0;
+        let mut tone_windows = 0;
+        let mut samples = Vec::with_capacity(4800);
+        loop {
+            let frame = tokio::select! {
+                result = &mut capture => panic!("continuous capture ended: {result:?}"),
+                frame = client.next_pulse_audio_frame_timeout(100) => frame.unwrap(),
+                _ = tokio::time::sleep_until(end) => break,
+            };
+            let now = tokio::time::Instant::now();
+            if now < start { continue; }
+            let Some(frame) = frame else { continue; };
+            maximum_gap = maximum_gap.max(now.duration_since(previous));
+            previous = now;
+            frames += 1;
+            if frame.is_empty() {
+                samples.extend_from_slice(&[0.0; 480]);
+            } else {
+                assert_eq!(frame.len(), PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES);
+                for stereo in frame.chunks_exact(8) {
+                    let left = f32::from_le_bytes(stereo[..4].try_into().unwrap());
+                    let right = f32::from_le_bytes(stereo[4..].try_into().unwrap());
+                    assert!(left.is_finite() && right.is_finite());
+                    assert!(left.abs() <= 1.1 && right.abs() <= 1.1);
+                    samples.push(f64::from(left));
+                }
+            }
+            if samples.len() == 4800 {
+                let mut energy = 0.0;
+                let mut real = 0.0;
+                let mut imaginary = 0.0;
+                for (i, sample) in samples.iter().enumerate() {
+                    let phase = std::f64::consts::TAU * 440.0 * i as f64 / 48000.0;
+                    energy += sample * sample;
+                    real += sample * phase.cos();
+                    imaginary += sample * phase.sin();
+                }
+                let rms = (energy / 4800.0).sqrt();
+                let coherence = if energy > 0.0 {
+                    2.0 * (real * real + imaginary * imaginary) / (4800.0 * energy)
+                } else { 0.0 };
+                windows += 1;
+                if (0.02..=0.8).contains(&rms) && coherence >= 0.8 {
+                    tone_windows += 1;
+                }
+                samples.clear();
+            }
+        }
+        maximum_gap = maximum_gap.max(end.saturating_duration_since(previous));
+        drop(client);
+        let stopped = tokio::time::timeout(Duration::from_millis(750), &mut capture)
+            .await.unwrap().unwrap_err();
+        assert!(stopped.to_string().contains("owner closed"), "{stopped}");
+        drop(capture);
+        drop(helper);
+        assert_native_record_streams(0).await;
+        native_pactl(&["unload-module", &sine]).await;
+        native_pactl(&["unload-module", &source.0.to_string()]).await;
+        println!("PA_CAPTURE_CONTINUOUS measured_ms=10000 frames={frames} windows={windows} tone_windows={tone_windows} maximum_gap_ms={} owner_eof=retired", maximum_gap.as_millis());
+        assert!(frames >= 950, "capture must deliver at least 95% of ten seconds of audio");
+        assert!(maximum_gap <= Duration::from_millis(200), "capture must not starve between bursts");
+        assert!(windows >= 95 && tone_windows * 100 >= windows * 95,
+            "capture must preserve the continuous source tone");
+    }
+
+    #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires the private PulseAudio daemon and monitor fixture"]
     async fn real_monitor_capture_revokes_after_audio_stops() {
         assert_eq!(std::env::var("RUSTDESK_PA_NATIVE_TEST").unwrap(), "1");

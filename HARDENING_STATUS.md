@@ -7566,7 +7566,7 @@ and installed/platform acceptance remain OPEN. Command/task ownership is covered
 Credential provisioning and Android CM work
 remain open under the user's pivot.
 
-**Automatic reconnect delay — Linux Flutter model/widget accepted; peer recovery OPEN.**
+**Automatic reconnect — Linux model/widget and installed expiry scenario accepted.**
 `8fe1fe12` caps the shared model's exponential retry delay at 30 seconds, preserving
 the initial 1/2/4/8/16-second waits. Timer and displayed countdown consume the same
 value; manual action, retry classification, credential suppression and owner/reset
@@ -7580,8 +7580,27 @@ session/event inputs; the bounded zero-NIC VM takes 271 seconds and retires QEMU
 with unchanged endpoint inventories. `reconnect-backoff-5bd1d577.json` binds A/B
 sources, full per-case results, fresh generated bridge and cleanup. This bounds the
 requested retry wait, not connection-attempt duration or actual presentation age.
-Full native peer, desktop/mobile, impairment/soak, R-S0/R-F5 and installed/release
-acceptance remain OPEN;
+TUF `5G7rFLbDJN`, fixture `15dd0c3e`, now reuses installed app `2eb7015e`
+through 65 seconds of complete forward loss, with continuous four-Hz animation.
+The viewer releases its original socket after **43.618 seconds** without fixture
+intervention. After restoration, a different viewer-owned connection appears in
+**615 ms**, first fresh pixels in another **147 ms**, and four fresh frames within
+**831 ms** of the new connection. Both the 45-second automatic-reconnect bound
+and 2,500-ms new-connection freshness bound pass. No manual reconnect, password
+re-entry or application/service restart occurs. Counters prove 25 drops and zero
+forward delivery during loss. All **240 responses** reconcile against 1,120 source
+publications. Before/after response p95/p99 are **353/359 and 351/363 ms**;
+frame-age p95/p99 are **298/315 and 298/317 ms** across 9,515 observations.
+Worst response/healthy age are 363/486 ms; original-baseline drift remains below
+250 ms with 1,000-ms ceilings. Viewer RSS grows at most 86,248 KiB and descriptors
+by one; threads decline. Viewer/window, service child/listener, credentials and
+profile persist; normal package reinstall/remove/purge and cleanup pass.
+`remote-installed-expired-15dd0c3e.json` binds nine files/435,395 bytes on CTE/TUF,
+four zero host listener deltas and joined VM/private/RAM retirement.
+This accepts one installed XTEST/Xvfb expiry scenario. It leaves the separate
+surviving-transport delay failure unchanged. Other outage schedules, repeated
+reconnect resource behavior, physical scanout, endurance, desktop/mobile coverage,
+final artifacts, independent review and complete R-S0/R-F5 remain OPEN.
 
 **Dialog close authority — LINUX FLUTTER WIDGET PASS; DEVICE/FFI/INSTALLED ACCEPTANCE OPEN.**
 The overlay receiver binds each `DialogClose` to one exact entry. Replacement or dismissal

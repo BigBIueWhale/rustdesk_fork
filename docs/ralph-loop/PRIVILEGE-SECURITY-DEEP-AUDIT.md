@@ -151845,3 +151845,36 @@ TUF is reachable over the existing SSH master, with approximately 46 GiB availab
 RAM and empty admitted scratch before launch. No native result is claimed yet.
 This append preserves the prior 16,213,998-byte audit prefix, SHA-256
 9d70ef821f601474cd60730f369e9739d74b12161c2a44109505a9f580f23403.
+
+## 2026-11-13 — Installed natural expiry and automatic recovery accepted
+
+TUF 5G7rFLbDJN/tool77340 at 15dd0c3e exits zero. Repeated -Werror observer
+builds match; the response decoder passes 515 values and refusal controls.
+Installed app 2eb7015e, manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a,
+releases viewer socket 25539 after 43,618 ms of the 65-second forward outage.
+All 647 observations retain the same viewer. Restoration follows 25 drops and
+zero forward delivery; new viewer-owned socket 50383 appears after 615 ms.
+First fresh pixels take another 147 ms, four fresh frames 831 ms. No fixture
+socket closure, manual retry, password replacement or app/service restart occurs.
+Both 120-response windows reconcile independently against the corresponding source
+responses and 1,120 ordered publications. Response p95/p99 before/after are
+353/359 and 351/363 ms; age p95/p99 are 298/315 and 298/317 ms over 9,515
+observations. Worst response/healthy age are 363/486 ms. Original-baseline drift
+and the predeclared ceilings pass. Sampled viewer RSS grows at most 86,248 KiB,
+descriptors by one and threads decline; one recovery does not establish endurance.
+
+Installed child/listener, credential and profile persist. Source/viewer/driver
+exit zero; package reinstall/remove/purge and network/desktop retirement pass.
+QEMU 2129877 joins zero after 429.449 seconds; peak RAM scratch is 4,259,110,912
+bytes. Exact private 66306:78035657 and RAM 29:12849 disappear, as do the owned
+process/socket; four host listener deltas are zero. tmpfs_swap_disabled remains
+false. Nine files/435,395 bytes are copied and hash-verified on CTE/TUF before
+source/input freeze ends. Capsule: remote-installed-expired-15dd0c3e.json.
+Outer SHA-256: 09d544b31b747aa5e158b7995f6e4c253af92ca66e745cdcbc79a3ddf95eb8d9.
+This closes the stated installed expiry scenario, without changing product code
+or the separate surviving-transport failure. Repeated automatic recovery/resource
+bounds, other outage schedules, physical scanout, endurance, other platforms and
+final release acceptance remain OPEN. The ledger is updated; its fresh isolated
+count is pending. This append preserves the prior 16,217,060-byte audit prefix,
+SHA-256 0b6b2676f425bf35bfa74b22fff37e880dc0ffa705d59950db3b4e76d2148256.

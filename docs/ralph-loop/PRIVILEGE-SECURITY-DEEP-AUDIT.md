@@ -152247,3 +152247,18 @@ f88218d7f854fa6d0f99d2e227df0bed21d8e21bd0d93dde876bfbdfe7899ff7.
 HARDENING_STATUS.md records this checkpoint without closing R-F5; its mandatory
 fresh isolated count is next. This append preserves the prior 16,240,794-byte
 audit prefix, SHA-256 b5cb7197d45a9287b3f57546ea283486f173124cfac75eeba301e631bf6a5b21.
+
+### Allocation-diagnostic ledger count
+
+TUF UVClLUUihm at 97391a3e passes the required isolated count: 422,634 tokens,
+1,926,449 bytes, HARDENING_STATUS.md SHA-256
+8b407224df204af2b66ee6e6b2d7763a5988dafbddd27dba5225b11d1db4b790.
+The fixed tiktoken-0.12.0/cl100k_base/encode_ordinary method, seven controls and
+whole-input round trip pass; the approximate 400,000-token target remains OPEN.
+QEMU 2823921 joins zero; private/RAM/process/socket retirement and three empty
+endpoint deltas independently reconcile. Supervisor duration is 31.207 seconds,
+peak RAM scratch 403,083,264 bytes, tmpfs_swap_disabled=false. Eight files /
+115,397 bytes are verified on CTE/TUF, capsule expired-heaptrack-ledger-97391a3e.json;
+outer SHA-256 8e6af4018c874ed0242581f4c20e139983f37df344d7b7f4fda74a5a7003effd.
+This audit-only append preserves the prior 16,244,276-byte prefix, SHA-256
+5f0f8292004f3f5e386a3f1a0e9e396e447eedffd8b79e6957e92ab855138e5d.

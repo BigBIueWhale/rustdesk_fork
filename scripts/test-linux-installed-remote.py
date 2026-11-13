@@ -505,6 +505,63 @@ class AllocatorSnapshots:
               'interposition=none acceptance=diagnostic-only', file=sys.stderr, flush=True)
 
 
+def audio_connection_diagnostic(settings):
+    """Observe the installed client library, not the product's capture authority."""
+    guard(settings, 4001)
+    library = Path('/usr/lib/x86_64-linux-gnu/libpulse.so.0').resolve(strict=True)
+    info = library.stat()
+    require(stat.S_ISREG(info.st_mode) and info.st_uid == 0 and not info.st_mode & 0o022,
+            'PulseAudio diagnostic library authority differs')
+    pulse = ctypes.CDLL(str(library))
+    pointer, integer = ctypes.c_void_p, ctypes.c_int
+    for name, arguments, result in (
+            ('pa_mainloop_new', [], pointer), ('pa_mainloop_get_api', [pointer], pointer),
+            ('pa_mainloop_free', [pointer], None),
+            ('pa_mainloop_iterate', [pointer, integer, ctypes.POINTER(integer)], integer),
+            ('pa_context_new', [pointer, ctypes.c_char_p], pointer),
+            ('pa_context_connect', [pointer, ctypes.c_char_p, integer, pointer], integer),
+            ('pa_context_get_state', [pointer], integer), ('pa_context_errno', [pointer], integer),
+            ('pa_context_disconnect', [pointer], None), ('pa_context_unref', [pointer], None),
+            ('pa_strerror', [integer], ctypes.c_char_p)):
+        function = getattr(pulse, name)
+        function.argtypes, function.restype = arguments, result
+    loop = pulse.pa_mainloop_new()
+    require(loop, 'PulseAudio diagnostic mainloop unavailable')
+    context = None
+    try:
+        context = pulse.pa_context_new(pulse.pa_mainloop_get_api(loop), b'Installed audio diagnostic')
+        require(context, 'PulseAudio diagnostic context unavailable')
+        result = pulse.pa_context_connect(context, None, 1, None)  # PA_CONTEXT_NOAUTOSPAWN
+        deadline = time.monotonic() + 2
+        while result == 0 and pulse.pa_context_get_state(context) not in (4, 5, 6):
+            require(time.monotonic() < deadline, 'PulseAudio diagnostic connection timed out')
+            require(pulse.pa_mainloop_iterate(loop, 0, None) >= 0, 'PulseAudio diagnostic iteration failed')
+            time.sleep(0.01)
+        error = pulse.pa_context_errno(context)
+        paths = {}
+        for path in ('/run/user/4001/pulse/native', '/run/pulse/native'):
+            try:
+                info = Path(path).lstat()
+                paths[path] = {'mode': stat.S_IMODE(info.st_mode), 'uid': info.st_uid,
+                               'socket': stat.S_ISSOCK(info.st_mode), 'inode': info.st_ino}
+            except FileNotFoundError:
+                paths[path] = None
+        print('LINUX_INSTALLED_AUDIO_CONNECTION=' + json.dumps({
+            'uid': os.getuid(), 'library': str(library), 'library_sha256': settings.digest(library),
+            'connect_return': result, 'return_text': pulse.pa_strerror(result).decode(),
+            'context_error': error, 'context_error_text': pulse.pa_strerror(error).decode(),
+            'context_state': pulse.pa_context_get_state(context), 'endpoints': paths,
+            'environment': {key: os.environ.get(key) for key in
+                            ('HOME', 'USER', 'XDG_RUNTIME_DIR', 'PULSE_SERVER', 'PULSE_RUNTIME_PATH')},
+            'scope': 'separate ordinary-user native client; no capture acceptance',
+        }, sort_keys=True), flush=True)
+    finally:
+        if context:
+            pulse.pa_context_disconnect(context)
+            pulse.pa_context_unref(context)
+        pulse.pa_mainloop_free(loop)
+
+
 def session(network=False, heaptrack=False, allocator=False):
     require(network is False or network in NETWORK_PROFILES or network in ('input-soak', 'input-animation'),
             'unknown Remote scenario')
@@ -540,6 +597,11 @@ def session(network=False, heaptrack=False, allocator=False):
             address = bus.stdout.readline(4096).decode().strip()
             require(address.startswith('unix:'), 'Remote session bus is not local')
             environment['DBUS_SESSION_BUS_ADDRESS'] = address
+            if network is False:
+                print(settings.run(['/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT), '--audio-diagnostic'],
+                                   env={**environment, 'DISPLAY': ':77',
+                                        'XAUTHORITY': '/run/user/4001/gdm/Xauthority'}, timeout=5),
+                      end='', file=sys.stderr, flush=True)
             authority = COORD / 'observer-Xauthority'
             with authority.open('xb') as combined:
                 for path in (Path('/run/user/4001/gdm/Xauthority'), Path(environment['XAUTHORITY'])):
@@ -792,6 +854,11 @@ def observe_cm_startup(receiver, record, actor):
                                            'status': {key: status[key].strip() for key in
                                                       ('Uid', 'Gid', 'NoNewPrivs', 'Seccomp', 'CapEff')},
                                            'exit_observed': False, 'reaped': False}
+                            entries = dict(entry.split(b'=', 1) for entry in
+                                           read_at(directory, 'environ').split(b'\0') if b'=' in entry)
+                            observation['audio_environment'] = {
+                                key: entries[key.encode()].decode() if key.encode() in entries else None
+                                for key in ('HOME', 'USER', 'XDG_RUNTIME_DIR', 'PULSE_SERVER', 'PULSE_RUNTIME_PATH')}
                             resources.enter_context(candidate.pop_all())
                             break
                 elif not observation['reaped']:
@@ -917,6 +984,12 @@ def scenario(settings, receiver, record, network=False, heaptrack=False, allocat
 
 
 if __name__ == '__main__':
+    if sys.argv[1:] == ['--audio-diagnostic']:
+        spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
+        settings = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(settings)
+        audio_connection_diagnostic(settings)
+        sys.exit(0)
     heaptrack = sys.argv[1:] == ['--session-expired', '--heaptrack']
     allocator = sys.argv[1:] == ['--session-expired', '--allocator']
     if heaptrack or allocator:

@@ -153394,3 +153394,27 @@ No owned job or source freeze remains. The goal stays active; next decisive work
 is the ordinary installed session's PulseAudio capture Access denied result.
 This append preserves the prior16,319,742-byte audit prefix, SHA-256
 b21193fda3f0b9718ec96461566e09d24545ad2514f86650977ad3952d36e605.
+
+### 2026-11-13 — installed audio connection diagnosis
+
+Previous turn: progress; actual package CM startup and suspension acceptance
+closed the reproduced failure. Continue R-S0/R-F1 audio: GaM5vPbanc's capture
+reports Access denied, but the fixture starts no explicit audio daemon and its
+runtime inventory contains libpulse0/pipewire without pulseaudio/pipewire-pulse.
+The exact pinned libpulse-binding2.28.1 Context::connect wraps the C return value
+directly in PAErr. PulseAudio16.1 returns -1 for generic synchronous failure;
+pa_context_errno carries the actual reason. Formatting -1 as Access denied does
+not establish an authentication rejection. Primary sources:
+https://raw.githubusercontent.com/jnqnfe/pulse-binding-rust/v2.28.1/pulse-binding/src/context/mod.rs
+https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/pulse/context.c
+https://raw.githubusercontent.com/pulseaudio/pulseaudio/v16.1/src/pulse/context.h
+
+Add a bounded guest-only ordinary-user native-library diagnostic to the existing
+installed replay. Record connect return, context errno/state, fixed socket metadata,
+library hash and selected nonsecret environment; compare those environment values
+with the exact observed CM. No autospawn, product instrumentation, authority change
+or audio success claim. Reuse the same application/unit to decide whether the
+fixture lacks the required daemon before choosing a product correction. This is
+more decisive than changing permissions based on a misleading error string.
+This append preserves the prior16,320,972-byte audit prefix, SHA-256
+9b5b8aaaa81ceef8247a9770494780e738fcb0198e3696958feac391894f5237.

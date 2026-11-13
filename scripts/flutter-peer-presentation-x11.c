@@ -4663,6 +4663,10 @@ static int exercise_input_animation(Display *source, Display *display, ViewerWin
     unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0}, maximum = 0U, trial = 0U;
     uint64_t maximum_age = 0U;
     int64_t previous_frame = -1;
+    uint8_t pixels[X11_FRAME_BYTES] = {0};
+    uint64_t captured = 0U, age = 0U, request_us = 0U;
+    int64_t frame = -1;
+    int response = -1;
     const char *phase = "setup";
     Window focus;
     int revert;
@@ -4672,16 +4676,14 @@ static int exercise_input_animation(Display *source, Display *display, ViewerWin
     if (focus != DefaultRootWindow(source) || return_focus_with_pointer(display, viewer) != 0)
         goto fail;
     for (trial = 0U; trial < SAMPLES; ++trial) {
-        uint64_t quiet = x11_frame_monotonic_us(), request_us = 0U;
+        uint64_t quiet = x11_frame_monotonic_us();
         unsigned int distinct = 0U, samples = 0U;
         int64_t quiet_first = -1, quiet_last = -1;
         if (quiet == 0U) goto fail;
         phase = "animation-without-response";
         for (;;) {
-            uint8_t pixels[X11_FRAME_BYTES];
-            uint64_t captured = 0U, age = 0U;
-            int64_t frame = x11_frame_capture(display, viewer->window, pixels, &captured);
-            int response = frame < 0 ? -1 : x11_response_decode(pixels);
+            frame = x11_frame_capture(display, viewer->window, pixels, &captured);
+            response = frame < 0 ? -1 : x11_response_decode(pixels);
             if (frame < 0 || frame < previous_frame || response != (int)trial ||
                 x11_frame_age(history, "/coord", frame, captured, &age) != 0 || age > FRESH_LIMIT_MS)
                 goto fail;
@@ -4702,10 +4704,8 @@ static int exercise_input_animation(Display *source, Display *display, ViewerWin
         if (request_us == 0U || send_response_request(display, trial) != 0) goto fail;
         phase = "response-and-freshness";
         for (;;) {
-            uint8_t pixels[X11_FRAME_BYTES];
-            uint64_t captured = 0U, age = 0U;
-            int64_t frame = x11_frame_capture(display, viewer->window, pixels, &captured);
-            int response = frame < 0 ? -1 : x11_response_decode(pixels);
+            frame = x11_frame_capture(display, viewer->window, pixels, &captured);
+            response = frame < 0 ? -1 : x11_response_decode(pixels);
             uint64_t now = x11_frame_monotonic_us();
             if (now < request_us || now - request_us > FRESH_LIMIT_MS * 1000ULL ||
                 frame < previous_frame || response < (int)trial || response > (int)trial + 1 ||
@@ -4751,6 +4751,16 @@ static int exercise_input_animation(Display *source, Display *display, ViewerWin
 fail:
     fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-animation phase=%s request=%u frame=%lld\n",
             phase, trial, (long long)previous_frame);
+    fprintf(stderr, "FLUTTER_PEER_INPUT_ANIMATION_REFUSED observed_frame=%lld response=%d "
+            "request_us=%llu captured_us=%llu now_us=%llu age_ms=%llu publications=%u history_failed=%d\n",
+            (long long)frame, response, (unsigned long long)request_us,
+            (unsigned long long)captured, (unsigned long long)x11_frame_monotonic_us(),
+            (unsigned long long)age, history->count, history->failed);
+    gchar *encoded = g_base64_encode(pixels, sizeof(pixels));
+    if (encoded != NULL) {
+        fprintf(stderr, "FLUTTER_PEER_INPUT_ANIMATION_PIXELS width=200 height=120 rgb_base64=%s\n", encoded);
+        g_free(encoded);
+    }
     return -1;
 }
 

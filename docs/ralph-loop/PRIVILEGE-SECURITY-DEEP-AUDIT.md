@@ -151635,3 +151635,20 @@ app 2eb7015e in the admitted zero-NIC VM; no new application cache is needed.
 Runtime acceptance remains pending. This append preserves the prior
 16,200,565-byte audit prefix, SHA-256
 642112fb99838414e1c9930708bd51e473051c9515e12972af21eab55f07d295.
+
+The first installed run, N4lMuEg1co/tool69459 at 8c660092, exits one on request
+zero before accepting any response sample. Decoder controls, repeated compilation,
+authentication and initial fresh frames pass. The source receives the request and
+publishes response one at frame 13, but the observer refuses while its last accepted
+frame is 12. The initial diagnostic lacks the rejected image/decoded values, so
+this is not yet classified as a product defect. The next replay retains the exact
+72,000-byte sampled RGB image and timing/decoder/history values on refusal only;
+acceptance conditions remain unchanged. No application rebuild or policy change.
+
+Actual terminal, retained/private output equality, four zero listener deltas,
+QEMU 1649906 join zero and exact private/RAM/process/socket retirement reconcile.
+remote-installed-input-animation-8c660092.json binds nine files/163,759 bytes,
+copied and hash-verified on CTE/TUF before unfreezing. The 89.234-second run peaks
+at 4,215,767,040 RAM scratch bytes; normal package lifecycle after the scenario
+is not reached. This append preserves the prior 16,202,779-byte audit prefix,
+SHA-256 d1a1f18fff84bdfd6f752a9554d221909be1478f1191f940dc4adbd99b0758cb.

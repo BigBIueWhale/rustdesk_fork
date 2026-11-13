@@ -151591,3 +151591,14 @@ the remaining installed continuous-display and concurrent input/visible-response
 acceptance also remains actionable at this checkpoint.
 This append preserves the prior 16,196,462-byte audit prefix, SHA-256
 50e8ec7e273606babef6e7fba8eb2395437c23a9ab21a268e37966be2f2bcf12.
+
+Fresh ledger count at d2b3a43d, TDTmVw3gT6/tool12001: 421,056 tokens /
+1,919,712 bytes, SHA-256
+9458f54abc860f86ed48b8e9fd8d979f314da4ad6d58540ec18b26e8f19c00bf.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+backoff-input-ledger-d2b3a43d.json binds eight files/117,121 bytes on CTE/TUF.
+QEMU 1647675 joins zero after 30.179 seconds; three zero listener deltas and
+exact private/process/socket/RAM retirement pass. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+the prior 16,199,903-byte audit prefix, SHA-256
+dcda906d8f502cf61fee7ac2ac04827a6293623801563a3064f5a25ca4ed2e01.

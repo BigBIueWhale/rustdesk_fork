@@ -695,6 +695,9 @@ def cm_log_snapshot():
                 and not info.st_mode & 0o022, 'CM diagnostic directory authority differs')
     paths = sorted(directory.glob('*.log'))
     require(len(paths) <= 8, 'CM diagnostic log count exceeds its bound')
+    print('LINUX_INSTALLED_CM_LOGS=' + json.dumps({
+        'directory': str(directory), 'present': True, 'files': len(paths),
+    }), flush=True)
     total = 0
     for path in paths:
         with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
@@ -714,6 +717,105 @@ def cm_log_snapshot():
             'data_base64': base64.b64encode(data).decode('ascii'),
             'authority': 'fixture-user-file', 'live_process': 'unproved',
         }, sort_keys=True), flush=True)
+
+
+def observe_cm_startup(receiver, record, actor):
+    """Read the first exact CM child's startup/exit without tracing or stopping it."""
+    def read_at(directory, name):
+        with os.fdopen(os.open(name, os.O_RDONLY | os.O_CLOEXEC, dir_fd=directory), 'rb') as stream:
+            data = stream.read(8193)
+        require(len(data) <= 8192, 'CM process diagnostic exceeds its bound')
+        return data
+
+    def process_state(directory):
+        fields = read_at(directory, 'stat').decode().rsplit(') ', 1)[1].split()
+        require(len(fields) >= 50, 'CM process stat is incomplete')
+        return {'state': fields[0], 'parent': int(fields[1]), 'start': int(fields[19]),
+                'threads': int(fields[17]), 'cpu_ticks': int(fields[11]) + int(fields[12]),
+                'wait_status': int(fields[49]) if fields[0] == 'Z' else None}
+
+    began = previous = time.monotonic_ns()
+    maximum_gap = samples = vanished = 0
+    observation = None
+    with ExitStack() as resources:
+        server_fd = os.pidfd_open(record['pid'])
+        resources.callback(os.close, server_fd)
+        require(receiver.child_record() == record and not select.select([server_fd], [], [], 0)[0],
+                'CM observation server identity differs')
+        image = os.stat(f"/proc/{record['pid']}/exe")
+        try:
+            while True:
+                now = time.monotonic_ns()
+                maximum_gap = max(maximum_gap, now - previous)
+                previous = now
+                samples += 1
+                require(now - began < 180_000_000_000, 'CM observation deadline exceeded')
+                require(not select.select([server_fd], [], [], 0)[0], 'CM observation server exited')
+                if observation is None:
+                    tasks = list(Path(f"/proc/{record['pid']}/task").iterdir())
+                    require(len(tasks) <= 256, 'CM observation server thread bound exceeded')
+                    candidates = set()
+                    for task in tasks:
+                        try:
+                            candidates.update(map(int, (task / 'children').read_text().split()))
+                        except FileNotFoundError:
+                            vanished += 1
+                    require(len(candidates) <= 64, 'CM observation child bound exceeded')
+                    for pid in sorted(candidates):
+                        with ExitStack() as candidate:
+                            try:
+                                descriptor = os.pidfd_open(pid)
+                                candidate.callback(os.close, descriptor)
+                                directory = os.open(f'/proc/{pid}', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+                                candidate.callback(os.close, directory)
+                                first = process_state(directory)
+                                argv = read_at(directory, 'cmdline').split(b'\0')
+                                if len(argv) != 3 or argv[1:] != [b'--cm', b'']:
+                                    continue
+                                executable = os.stat('exe', dir_fd=directory)
+                                status = dict(line.split(':', 1) for line in
+                                              read_at(directory, 'status').decode().splitlines())
+                                current = process_state(directory)
+                                require(first['start'] == current['start']
+                                        and first['parent'] == current['parent'] == record['pid']
+                                        and (executable.st_dev, executable.st_ino) == (image.st_dev, image.st_ino)
+                                        and list(map(int, status['Uid'].split())) == [4001] * 4,
+                                        'CM observation child identity differs')
+                                if select.select([descriptor], [], [], 0)[0]:
+                                    vanished += 1
+                                    continue
+                            except (FileNotFoundError, ProcessLookupError):
+                                vanished += 1
+                                continue
+                            observation = {'pid': pid, 'first': current, 'last': current,
+                                           'image': f'{image.st_dev}:{image.st_ino}',
+                                           'status': {key: status[key].strip() for key in
+                                                      ('Uid', 'Gid', 'NoNewPrivs', 'Seccomp', 'CapEff')},
+                                           'exit_observed': False, 'reaped': False}
+                            resources.enter_context(candidate.pop_all())
+                            break
+                elif not observation['reaped']:
+                    try:
+                        current = process_state(directory)
+                    except (FileNotFoundError, ProcessLookupError):
+                        observation['reaped'] = True
+                    else:
+                        require(current['start'] == observation['first']['start']
+                                and current['parent'] == record['pid'], 'CM observation identity changed')
+                        observation['last'] = current
+                        if current['state'] == 'Z':
+                            observation['exit_observed'] = True
+                            observation['exit_code'] = os.waitstatus_to_exitcode(current['wait_status'])
+                if actor.poll() is not None:
+                    break
+                time.sleep(0.005)
+        finally:
+            print('LINUX_INSTALLED_CM_PROCESS=' + json.dumps({
+                'server': record, 'child': observation, 'samples': samples,
+                'maximum_sample_gap_ns': maximum_gap, 'vanished_candidates': vanished,
+                'duration_ns': time.monotonic_ns() - began, 'method': 'read-only-procfs',
+                'coverage': 'first-observed-exact-cm; short-lived children may be missed',
+            }, sort_keys=True), flush=True)
 
 
 def scenario(settings, receiver, record, network=False, heaptrack=False, allocator=False):
@@ -761,7 +863,9 @@ def scenario(settings, receiver, record, network=False, heaptrack=False, allocat
                                       str(SCRIPT), '--session-' + network if network else '--session',
                                       *(['--heaptrack'] if heaptrack else ['--allocator'] if allocator else [])], env=settings.ENV,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=output)
-            if network == 'input-soak':
+            if network is False:
+                observe_cm_startup(receiver, record, actor)
+            elif network == 'input-soak':
                 observe_soak(record, actor, log)
             elif network == 'input-congestion-soak':
                 observe_impaired_soak(settings, record, actor, log)

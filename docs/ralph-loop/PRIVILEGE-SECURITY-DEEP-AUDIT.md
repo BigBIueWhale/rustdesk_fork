@@ -153140,3 +153140,32 @@ and SHA-verified on CTE/TUF; outer SHA-256
 Source freeze ends only after those copies. This append preserves the prior
 16,302,732-byte audit prefix, SHA-256
 502e912765778f7cf51d13be15f31173add505698d3f5720ba57af09fbdc2e14.
+
+### Installed CM startup — observe the exact helper process
+
+TUF is reachable again through the existing password-authenticated SSH master;
+both clean checkouts were dabcaab7. Run NoixjXvvHW reproduced the missing endpoint,
+20 connection attempts and nine missing-identity audio errors with the same app.
+Its baseline passed 13 states at maximum age 325 ms before connection closure.
+The new file snapshot found no matching CM log or snapshot error. This does not
+establish a crash or its cause. Capsule installed-cm-log-dabcaab7.json binds nine
+files/235,886 bytes verified on both hosts, outer SHA-256
+13c0dd84f5cf6cf15c81e1d922b5faee6b8551fb4cbca12ccdff36aff42179f0.
+QEMU3339255 joined zero; private66306:84062417 and RAM29:14092 retired under
+the shared lock. Supervisor90.948 seconds; scratch peak4,216,922,112 bytes;
+four zero endpoint deltas, tmpfs_swap_disabled=false. No live job remains.
+
+The next replay adds bounded read-only guest procfs observation of the first CM
+child: retained server/child pidfds, an anchored proc directory, exact executable
+object, parent/start identity, --cm role and UID4001. It records startup, last
+state and an observed zombie exit status without stopping/attaching to the helper
+or changing service confinement. Sampling can miss a short-lived child; absence
+of an observation is explicitly not a successful startup or an inferred crash.
+Linux documents stat field52 as waitpid-format exit status, with ptrace access
+checks: https://man7.org/linux/man-pages/man5/proc_pid_stat.5.html . The observer
+runs as guest root outside the service; only an observed zombie status is decoded.
+The file snapshot now explicitly reports an existing directory's log count.
+Reuse app3c289cff and its engine; no product change or rebuild. Diff review and
+whitespace check pass; native execution follows. This append preserves the prior
+16,304,355-byte audit prefix, SHA-256
+bcc31b3c8541f62cfe1c0d32cd9b1f437d61cae9fa06f3ebfe4d0f83bd656e59.

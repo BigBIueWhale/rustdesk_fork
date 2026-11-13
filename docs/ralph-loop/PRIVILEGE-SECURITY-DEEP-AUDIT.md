@@ -153798,3 +153798,61 @@ pa-recovery-ledger-63e0e34a.json binds eight files/116,250 bytes on both hosts.
 Outer SHA-256 aa54c4ed062384e21e2a5b625d50a2477a334b480e2713e697d1e4b9e3da3e55.
 This audit-only append preserves the prior 16,347,480-byte prefix, SHA-256
 c6588fa8696f1d411035f1dd32ecc2ee42c3c7b2708d87f3136344c5a071e9de.
+
+### Trackpad speed — preserve the complete integer range
+
+Previous turn established installed audio continuity after all three viewer
+suspensions. The remaining long-outage TCP question has no justified portable
+in-place correction from the reviewed options. Select the reproduced R-S0 trackpad
+settings mismatch over another unchanged media run: the native receiver/model
+admit every integer 10–1000, but the slider's 99 intervals rounded 235 to 240 and
+adjusted 100 to 110. Historical a04fa78b/GeYBMST6e7 executes sixteen cases with
+five failures and eleven passing controls; retain it without an unchanged repeat.
+
+Product e5a097ae changes only divisions to max-minus-min (990). The slider,
+numeric entry, storage domain and one-point keyboard/accessibility adjustments
+now share the same integer range. Bounds, confirmed readback, debounce, dialog
+ownership and persistence authority are unchanged. Primary Flutter divisions
+and semanticFormatterCallback API documentation plus pinned framework
+6a19cca56475dbfba1478ee68d7bd0c2ef891da1 material/slider.dart confirm conversion
+quantizes before reporting and semantic actions use 1/divisions. Dense tick
+painting already skips marks when insufficient room exists.
+
+The first current-framework run ESFNQkUABH at e5a097ae has twelve passes/four
+failures: the old test selector resolves an outer semantics node with no value
+or adjustment action. It is not acceptance. QEMU 3556398 joins 0; private
+66306:82228898 and RAM 29:15005 run.qkkki_es retire after bounded diagnostics
+reconciliation. Supervisor 269.046 seconds, scratch peak 4,902,019,072 bytes,
+four zero endpoint deltas; tmpfs swap not disabled.
+trackpad-integer-fixed-e5a097ae.json binds nine files/134,316 bytes on both hosts.
+
+Fixture 1cb870a5 selects the unique SemanticsFlag.isSlider node using Flutter's
+semantics finder. The current framework describes slider values/actions at its
+own semantic boundary; element-level getSemantics did not select that node.
+Only nine selectors and their shared finder change; all behavioral expectations,
+case inventory and action dispatch remain intact. This also makes the disabled
+negative check target the actual slider. Primary framework reference:
+https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/packages/flutter/lib/src/material/slider.dart
+and packages/flutter_test/lib/src/finders.dart at the same revision.
+
+TUF iLtCwtpjBF at 1cb870a5 now passes all sixteen named widget/model cases plus
+three parser controls: values, predictions, one-point actions, keyboard, typed
+submission/rebuild/reload, both bounds, disabled refusal, deferred/retried writes
+and dialog/model ownership. Machine results take 10.2 seconds; supervisor
+302.812 seconds. Historical Flutter is 3.24.5 versus current 3.47.5, so this is
+not identical-environment A/B evidence. Exact reconciliation proves both test
+files retain every original assertion, with only the documented node selectors
+adapted, and the widget class differs only by its divisions expression.
+
+trackpad-integer-accepted-1cb870a5.json binds ten files/117,258 bytes verified on
+CTE/TUF, including historical baseline SHA-256
+e74abd0c21cc5d1a99a483653fe86336918654fe4ec694450f8c5a96aa232516.
+Outer SHA-256 de472167024530f42c634af07caecd176b74e3c7aec351a9af7df48d8b958308.
+QEMU 3557870 joins 0; private 66306:82228901 and RAM 29:15046 run.9v__diqd
+retire. Scratch peak 4,839,890,944 bytes, four zero endpoint deltas; tmpfs swap
+not disabled. These are rendered production widgets/models with controlled
+persistence callbacks. Physical trackpads, native screen readers, installed
+persistence and full cross-platform R-S0 acceptance remain OPEN. No owned job
+or source freeze remains; goal active. This append preserves the prior
+16,348,251-byte prefix, SHA-256
+3261e659db5dc200180f21a1a500fc9d5964fb060c814c3ea8c0cc3110cc7e56.

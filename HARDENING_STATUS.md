@@ -1124,10 +1124,11 @@ retained; no further toolbar patch or runtime check follows.
 OPEN after read-only review. The preceding installed-service hashing fix
 is retained; no full-peer checker patch or execution follows.
 
-**Checkpoint (2026-10-28):** Trackpad integer-range consistency remains
-OPEN. Test preparation `a04fa78b` reproduces five failures with eleven
-passing controls in run `GeYBMST6e7`; no product correction follows. QEMU joined
-and bounded RAM scratch retired.
+**Trackpad integer-range consistency — component correction verified (2026-11-14).**
+`e5a097ae` gives the slider one-point steps across 10–1000, matching numeric
+entry and storage. At `1cb870a5`, all sixteen widget/model cases and three parser
+controls pass on TUF. Native screen readers, physical trackpads and installed
+persistence remain OPEN; see “Trackpad speed” below.
 
 
 **Checkpoint (2026-10-28):** Acquisition VM cleanup/process retirement remains
@@ -6202,18 +6203,22 @@ Expanded event identity/state diagnostics now support focused reproduction.
 Custom scaling, non-unit DPI, exact subpixel geometry, saved-canvas restart,
 physical scanout, other platforms and release acceptance remain OPEN.
 
-**Trackpad speed announcements (`70be9d9a`).** The slider now formats its actual
-speed percentage and accessible adjustment predictions. Baseline `c2e9f564`
-reproduces 10% speed announced as 0% and a saved 110% adjustment announced as
-10%; eleven controls pass and one additional case fails fixture cleanup.
-After moving semantics-handle disposal into test `finally` blocks, with the
-behavioral assertions unchanged, the focused Linux VM run at `a688603a` passes
-all fourteen rendered widget/model cases and three result-parser controls in
-277 outer seconds. The intervening attempt lacked parser registration and is
-not an accepted receipt. Limits, ten-point slider quantization, numeric entry,
-debounce, persistence callbacks and dialog ownership are unchanged.
-`trackpad-accessibility-70be9d9a.json` binds source, outcomes and joined bounded
-RAM cleanup. Physical trackpads, native screen readers, full UI/FFI/persistence,
+**Trackpad speed (`70be9d9a`, `e5a097ae`).** Announcements report actual speed
+percentages. The slider now uses 990 intervals across 10–1000, preserving every
+integer accepted by numeric entry and native storage; keyboard/accessibility
+adjustments move one point. Historical `a04fa78b`/`GeYBMST6e7` has five failures
+and eleven controls: 11 reported as 10, 235 as 240, and ten-point adjustments.
+Current `1cb870a5`/`iLtCwtpjBF` passes all sixteen rendered widget/model cases
+and three result-parser controls. Coverage includes bounds, disabled actions,
+typed/reloaded values, confirmed writes, retries and dialog ownership.
+The historical run used Flutter 3.24.5; current execution uses 3.47.5. It is not
+an identical-environment A/B comparison. The first current run selected an outer
+semantics node and failed four cases; the fixture now selects the unique slider
+role, with all behavioral assertions unchanged. Tests take 10.2 seconds;
+the isolated VM supervisor takes 302.812 seconds. All owned processes exit and
+bounded RAM is retired. `trackpad-integer-accepted-1cb870a5.json` binds
+source, complete named outcomes, baseline and cleanup; the audit retains the
+failed attempt. Physical trackpads, native screen readers, full UI/FFI/persistence,
 other platforms and shared R-S0/R-F5/release acceptance remain OPEN.
 
 **Custom-scale session retargeting (`858ef9bb`).** The shared editor scopes loading

@@ -153985,3 +153985,17 @@ No library pin or product implementation changes in this checkpoint. Goal active
 no owned job or source freeze remains. This append preserves the prior
 16,358,226-byte prefix, SHA-256
 9a91a3e359a9a894a023e35213e100f840bcc9c3ad3309c60471a0def30773a7.
+
+Ledger/storage integration `hQRXNbxIF9` at `bd8c047b` passes 87 admitted
+workload controls across 44 modes and five refusal controls, including the new
+libyuv lane's existing bounded compiled-component profile. Pinned
+tiktoken-0.12.0/cl100k_base counts 427,201 tokens /1,945,609 bytes, SHA-256
+8f9b77552406cd5fc30c608c3820ed0e47748c1b2e077fb1891aff18fab2e060;
+seven controls and round trip pass. The approximate 400,000-token budget remains
+OPEN. QEMU 3591156 joins zero in 30.458 seconds; private 66306:86948579 and RAM
+29:15423 run.qu679w53 retire, three endpoint deltas are zero, scratch peak is
+403,111,936 bytes, and tmpfs swap is not disabled. Capsule
+`libyuv-arithmetic-ledger-bd8c047b.json` binds eight files/117,266 bytes on both
+hosts. No owned job or source freeze remains; goal active. This audit-only append
+preserves the prior 16,360,733-byte prefix, SHA-256
+66a57bd330cb460be4f27f3212e4bc9f2a050e2a937250e806fa7f44a3c69ecd.

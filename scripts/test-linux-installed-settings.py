@@ -2651,7 +2651,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-remote-' + remote if remote in ('network', 'loss', 'congestion', 'backoff', 'input-recovery', 'input-loss', 'input-congestion', 'input-soak') else '--run-remote' if remote
+                        '--run-remote-' + remote if remote in ('network', 'loss', 'congestion', 'backoff', 'input-recovery', 'input-loss', 'input-congestion', 'input-soak', 'input-congestion-soak') else '--run-remote' if remote
                         else '--run-camera-busy' if camera == 'busy' else '--run-camera' if camera
                         else '--run-admin-failure' if admin_failure else '--run-concurrent-stop' if concurrent_stop
                         else '--run-conffiles' if conffiles
@@ -2659,7 +2659,8 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
                         else '--run-settings' if settings else '--run', str(source),
                         str(prepared), str(app_input), manifest_sha, commit, probe_sha,
                         *([agent_archive_sha] if graphical else [])],
-                       env=ENV, check=True, timeout=14940 if remote == 'input-soak' else 840 if uncertain else 600)
+                       env=ENV, check=True, timeout=15300 if remote == 'input-congestion-soak'
+                       else 14940 if remote == 'input-soak' else 840 if uncertain else 600)
         return
     if package:
         print(f'LINUX_DEBIAN_CANDIDATE_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
@@ -2697,7 +2698,7 @@ if __name__ == '__main__':
         session(admin_failure=True, graphical=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles', '--run-package-camera', '--run-package-camera-busy', '--run-package-remote', '--run-package-remote-network', '--run-package-remote-loss', '--run-package-remote-congestion', '--run-package-remote-backoff', '--run-package-remote-input-recovery', '--run-package-remote-input-loss', '--run-package-remote-input-congestion', '--run-package-remote-input-soak'):
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles', '--run-package-camera', '--run-package-camera-busy', '--run-package-remote', '--run-package-remote-network', '--run-package-remote-loss', '--run-package-remote-congestion', '--run-package-remote-backoff', '--run-package-remote-input-recovery', '--run-package-remote-input-loss', '--run-package-remote-input-congestion', '--run-package-remote-input-soak', '--run-package-remote-input-congestion-soak'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
              package=sys.argv[1] == '--run-package',
@@ -2709,6 +2710,7 @@ if __name__ == '__main__':
                      '--run-package-remote-backoff': 'backoff',
                      '--run-package-remote-input-recovery': 'input-recovery', '--run-package-remote-input-loss': 'input-loss',
                      '--run-package-remote-input-congestion': 'input-congestion',
-                     '--run-package-remote-input-soak': 'input-soak'}.get(sys.argv[1], False))
+                     '--run-package-remote-input-soak': 'input-soak',
+                     '--run-package-remote-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False))
     else:
         raise SystemExit('closed installed-settings arguments required')

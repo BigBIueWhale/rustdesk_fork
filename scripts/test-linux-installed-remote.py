@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Observe Remote pixels and viewer/network recovery through the installed service."""
-from contextlib import ExitStack, closing
+from contextlib import ExitStack, closing, contextmanager
 import ctypes
 import importlib.util
 import json
@@ -29,8 +29,10 @@ NETWORK_PROFILES = {
     'input-recovery': ['loss'] * 3,
     'input-loss': ['random3', 'random8', 'burst'],
     'input-congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
+    'input-congestion-soak': ['jitter', 'bandwidth', 'bandwidth-jitter'] * 4,
 }
-INPUT_SCENARIOS = ('input-recovery', 'input-loss', 'input-congestion', 'input-soak')
+SOAK_SCENARIOS = ('input-soak', 'input-congestion-soak')
+INPUT_SCENARIOS = ('input-recovery', 'input-loss', 'input-congestion', *SOAK_SCENARIOS)
 
 
 def require(condition, message):
@@ -55,11 +57,12 @@ def network_request(request, refused=False):
                 'installed network attachment result differs')
 
 
-def observe_network(settings, actor, network):
+def observe_network(settings, actor, network, supervise=None):
     spec = importlib.util.spec_from_file_location('peer_netem', SCRIPT.with_name('flutter-peer-netem.py'))
     netem = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(netem)
-    owner = netem.Impairment(None, congestion=network in ('congestion', 'input-congestion'))
+    owner = netem.Impairment(None, congestion=network in ('congestion', 'input-congestion', 'input-congestion-soak'),
+                            long_soak=network == 'input-congestion-soak')
     driver_pid = driver_fd = None
     expected = [request for profile in NETWORK_PROFILES[network] for request in (profile, 'healthy')]
     profiles, refusals = [], 0
@@ -72,10 +75,13 @@ def observe_network(settings, actor, network):
         os.chmod(NETWORK_ENDPOINT, 0o600)
         listener.listen(1)
         listener.settimeout(0.2)
-        deadline = time.monotonic() + (300 if network == 'input-recovery' else 360 if network in INPUT_SCENARIOS else 240)
+        deadline = time.monotonic() + (15180 if network == 'input-congestion-soak'
+                                       else 300 if network == 'input-recovery' else 360 if network in INPUT_SCENARIOS else 240)
         try:
             while actor.poll() is None:
                 require(time.monotonic() < deadline, 'installed network actor deadline exceeded')
+                if supervise is not None:
+                    supervise()
                 owner.observe_transport()
                 try:
                     channel, _ = listener.accept()
@@ -140,17 +146,16 @@ def observe_network(settings, actor, network):
           'observer=exact-child loopback=restored ingress=removed interface=removed socket=removed', flush=True)
 
 
-def observe_soak(record, actor, log):
-    spec = importlib.util.spec_from_file_location('peer_soak', SCRIPT.with_name('flutter-peer-soak.py'))
-    soak = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(soak)
-    start = Path(f'/proc/{actor.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
+@contextmanager
+def soak_progress(actor, log, timeout):
     began = last_progress = time.monotonic()
     pending = b''
+    started = False
     with log.open('rb') as output:
         def supervise():
-            nonlocal pending, last_progress
-            require(actor.poll() is None and time.monotonic() - began < 14820,
+            nonlocal pending, last_progress, started
+            require((actor.poll() is None or (COORD / 'soak.done').exists())
+                    and time.monotonic() - began < timeout,
                     'installed input soak actor exited or timed out')
             require(os.fstat(output.fileno()).st_size <= 6291456, 'installed soak log exceeds its bound')
             pending += output.read(65536)
@@ -159,22 +164,68 @@ def observe_soak(record, actor, log):
             require(len(pending) <= 8192, 'installed soak progress line exceeds its bound')
             for line in lines:
                 if line.startswith((b'FLUTTER_PEER_INPUT_SOAK_PROGRESS ',
-                                    b'FLUTTER_PEER_INPUT_SOAK_WINDOW_COMPLETE ')):
+                                    b'FLUTTER_PEER_INPUT_SOAK_WINDOW_COMPLETE ',
+                                    b'FLUTTER_PEER_INPUT_CONGESTION_SOAK_BEGIN ',
+                                    b'FLUTTER_PEER_INPUT_CONGESTION_SOAK_RECOVERED ')):
                     print('LINUX_INSTALLED_SOAK_LIVE ' + line.decode('ascii'), flush=True)
                     last_progress = time.monotonic()
+            if not started:
+                require(time.monotonic() - began < 90, 'installed input soak did not begin')
+                if os.path.lexists(COORD / 'soak.begin'):
+                    started = True
+                    last_progress = time.monotonic()
             require(time.monotonic() - last_progress < 120, 'installed input soak progress stopped')
+        yield supervise
 
+
+def observe_soak(record, actor, log):
+    spec = importlib.util.spec_from_file_location('peer_soak', SCRIPT.with_name('flutter-peer-soak.py'))
+    soak = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(soak)
+    start = Path(f'/proc/{actor.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
+    with soak_progress(actor, log, 14820) as supervise:
         while not os.path.lexists(COORD / 'soak.begin'):
             supervise()
-            require(time.monotonic() - began < 90, 'installed input soak did not begin')
             time.sleep(0.05)
-        last_progress = time.monotonic()
         # The retained actor owns and supervises the source, viewer and pixel driver.
         # Observe the non-dumpable service child from guest root, not from that actor.
         with closing(soak.observe(record['pid'], str(record['start']), actor.pid, start,
                                   'input-soak', 4001, 4001)) as observation:
             for _ in observation:
                 supervise()
+
+
+def observe_impaired_soak(settings, record, actor, log):
+    start = Path(f'/proc/{actor.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
+    resource_log = settings.WORK / 'installed-soak-resources.log'
+    observer = None
+    with resource_log.open('xb') as output, soak_progress(actor, log, 15180) as progress:
+        def supervise():
+            nonlocal observer
+            progress()
+            if observer is None and os.path.lexists(COORD / 'soak.begin'):
+                observer = subprocess.Popen([
+                    '/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT.with_name('flutter-peer-soak.py')),
+                    '--installed', str(record['pid']), str(record['start']), str(actor.pid), start,
+                    'input-congestion-soak'], env=settings.ENV, stdin=subprocess.DEVNULL,
+                    stdout=output, stderr=subprocess.STDOUT)
+            require(os.fstat(output.fileno()).st_size <= 131072, 'installed soak resource log exceeds its bound')
+            if observer is not None:
+                require(observer.poll() in (None, 0), 'installed soak resource observer failed')
+        try:
+            # Keep one-second resource sampling independent of 200-ms network observations.
+            observe_network(settings, actor, 'input-congestion-soak', supervise)
+            require(observer is not None and observer.wait(timeout=5) == 0,
+                    'installed soak resource observer did not finish')
+        finally:
+            if observer is not None:
+                if observer.poll() is None:
+                    observer.terminate()
+                observer.wait(timeout=10)
+                print('LINUX_INSTALLED_SOAK_OBSERVER=' + json.dumps(
+                    dict(pid=observer.pid, exit=observer.returncode, cleanup='joined')), flush=True)
+            require(resource_log.stat().st_size <= 131072, 'installed soak resource output exceeds its bound')
+            print(resource_log.read_text(), end='', flush=True)
 
 
 def session(network=False):
@@ -246,23 +297,24 @@ def session(network=False):
                             'congestion': '--network-congestion', 'backoff': '--network-backoff',
                             'input-recovery': '--input-recovery', 'input-loss': '--input-loss',
                             'input-congestion': '--input-congestion',
-                            'input-soak': '--input-soak'}.get(network, '--viewer-suspend')]
-            if network == 'input-soak':
+                            'input-soak': '--input-soak',
+                            'input-congestion-soak': '--input-congestion-soak'}.get(network, '--viewer-suspend')]
+            if network in SOAK_SCENARIOS:
                 # Fixed shell text duplicates the inherited log as the native progress FD.
                 driver_args = ['/bin/bash', '--noprofile', '--norc', '-c', 'exec "$@" 3>&2',
                                'installed-input-soak', *driver_args]
             driver = subprocess.Popen(driver_args,
                                       env={**environment, 'XAUTHORITY': str(authority)},
                                       stdout=log('driver.log'),
-                                      stderr=None if network == 'input-soak' else subprocess.STDOUT)
+                                      stderr=None if network in SOAK_SCENARIOS else subprocess.STDOUT)
             processes.append(driver)
             clock = Path('/proc/self/ns/time').stat()
             for process in (source, viewer, driver):
                 current = Path(f'/proc/{process.pid}/ns/time').stat()
                 require((current.st_dev, current.st_ino) == (clock.st_dev, clock.st_ino),
                         'Remote observer and source clocks differ')
-            if network == 'input-soak':
-                deadline = time.monotonic() + 14760
+            if network in SOAK_SCENARIOS:
+                deadline = time.monotonic() + (15120 if network == 'input-congestion-soak' else 14760)
                 while driver.poll() is None:
                     require(source.poll() is None and bus.poll() is None and time.monotonic() < deadline,
                             'installed input soak source/bus exited or driver timed out')
@@ -297,7 +349,7 @@ def session(network=False):
             for name in ('driver.log', 'source-error.log', 'frame-source.log', 'viewer.log'):
                 path = COORD / name
                 if path.exists():
-                    require(path.stat().st_size <= (2097152 if network == 'input-soak' else 131072),
+                    require(path.stat().st_size <= (2097152 if network in SOAK_SCENARIOS else 131072),
                             'Remote observer output exceeds its bound')
                     print(path.read_text(), end='', file=sys.stderr, flush=True)
 
@@ -320,6 +372,8 @@ def scenario(settings, receiver, record, network=False):
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=output)
             if network == 'input-soak':
                 observe_soak(record, actor, log)
+            elif network == 'input-congestion-soak':
+                observe_impaired_soak(settings, record, actor, log)
             elif network in NETWORK_PROFILES:
                 observe_network(settings, actor, network)
             raw, _ = actor.communicate(timeout=180)
@@ -338,6 +392,7 @@ def scenario(settings, receiver, record, network=False):
             'holds_ms': NETWORK_HOLDS if network == 'network' else [18000] if network == 'backoff'
                         else [2000, 6000, 2000] if network == 'input-recovery'
                         else [] if network == 'input-soak'
+                        else [20000] * 12 if network == 'input-congestion-soak'
                         else [20000] * 3 if network else [2000, 6000, 12000],
             'recovery_limit_ms': 2500, 'freshness_limit_ms': 1000,
         }, sort_keys=True), flush=True)
@@ -348,7 +403,7 @@ def scenario(settings, receiver, record, network=False):
             actor.wait(timeout=20)
             actor.stdout.close()
         if log.exists():
-            require(log.stat().st_size <= (6291456 if network == 'input-soak'
+            require(log.stat().st_size <= (6291456 if network in SOAK_SCENARIOS
                                           else 2097152 if network == 'input-recovery' else 4194304 if network in INPUT_SCENARIOS
                                           else 1048576),
                     'installed Remote output exceeds its bound')
@@ -358,10 +413,12 @@ def scenario(settings, receiver, record, network=False):
 if __name__ == '__main__':
     require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion'],
                             ['--session-backoff'], ['--session-input-recovery'], ['--session-input-loss'],
-                            ['--session-input-congestion'], ['--session-input-soak']),
+                            ['--session-input-congestion'], ['--session-input-soak'],
+                            ['--session-input-congestion-soak']),
             'closed installed Remote session request required')
     session(network={'--session-network': 'network', '--session-loss': 'loss',
                      '--session-congestion': 'congestion', '--session-backoff': 'backoff',
                      '--session-input-recovery': 'input-recovery', '--session-input-loss': 'input-loss',
                      '--session-input-congestion': 'input-congestion',
-                     '--session-input-soak': 'input-soak'}.get(sys.argv[1], False))
+                     '--session-input-soak': 'input-soak',
+                     '--session-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False))

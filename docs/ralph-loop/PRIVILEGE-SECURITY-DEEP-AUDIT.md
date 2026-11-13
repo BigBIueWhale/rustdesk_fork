@@ -151398,3 +151398,46 @@ deltas and exact private/process/socket/RAM retirement. The approximate
 400,000-token target remains OPEN. This audit-only append preserves the counted
 ledger and the prior 16,186,108-byte audit prefix, SHA-256
 1d92598edf79efd04085967c0d703c0dc81d1371f742d225a736d6886e81f2c4.
+
+## 2026-11-13 — Installed impaired input endurance preparation
+
+The preceding turn completed authoritative progress: installed healthy endurance
+and its joined cleanup passed. Selected the complementary installed R-F5
+impaired multi-hour check, reusing app 2eb7015e and the existing native workload.
+This advances missing installed evidence after the accepted short congestion
+cases; another unchanged short replay or application rebuild would not. The
+unresolved long-outage transport design remains OPEN without a speculative
+socket change or weaker recovery deadline.
+
+Mode 21, --installed-remote-input-congestion-soak, runs four rounds of twenty
+seconds each of jitter, 32-kbit/s bandwidth and combined impairment. Its 7,320
+healthy responses retain 61 four-minute windows and the initial baseline; the
+four measured impairment rounds are additional elapsed time. The native driver
+retains its 1,000-ms healthy response, 250-ms p95/p99 drift, 2,500-ms restoration
+and per-round 60–70-second bounds. All twelve cycles must complete in order;
+the retained socket pair, exact source responses and queued packets survive.
+Installed child/listener/credential/profile preservation and normal package
+reinstall/remove/purge remain mandatory.
+
+The guest-root controller retains the ordinary actor and exact native child
+requester. The existing bounded long-soak transport observation uses 30-second
+healthy and 200-ms impaired/early-recovery sampling, with at most 2,304 snapshots
+and 6 MiB of transport records. A separate, retained guest-root resource sampler
+uses the unchanged one-second sampling loop against the non-dumpable service
+child and actor lifetime. Its explicit installed CLI is limited to this scenario
+and the existing disposable-guest/root guard. The controller polls its exit and
+joins it on success or failure; a failed observer fails the run. Its file-backed
+output is capped at 128 KiB and retained after joining. This avoids coupling
+one-second sampling sleeps to network control, and avoids an undrained output
+pipe, following [Python's process poll/wait semantics](https://docs.python.org/3.11/library/subprocess.html#subprocess.Popen.wait).
+
+Shared progress forwarding includes impairment begin/recovery records; all
+native-progress, line and log bounds remain. Driver/controller/package/VM budgets
+are 15,120/15,180/15,300/15,480 seconds, allowing the measured impairment rounds
+and joined cleanup. The unchanged outer 8-MiB output ceiling remains; retained
+component impaired-soak output was 5,389,207 bytes. Bash syntax, Python parsing
+and diff checks pass. Native installed acceptance remains OPEN pending the full
+run, independent reconciliation and copied evidence. No product change, new
+artifact cache or host network/service mutation is needed.
+This append preserves the prior 16,186,776-byte audit prefix, SHA-256
+d28ee188e9d5e647db02a69202988932a25d94b6a5b884b7875474f5d1e55162.

@@ -770,6 +770,7 @@ case "$#:${1:-}" in
                 --installed-remote-input-loss) FLUTTER_INSTALLED_SETTINGS=18 ;;
                 --installed-remote-input-congestion) FLUTTER_INSTALLED_SETTINGS=19 ;;
                 --installed-remote-input-soak) FLUTTER_INSTALLED_SETTINGS=20 ;;
+                --installed-remote-input-congestion-soak) FLUTTER_INSTALLED_SETTINGS=21 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -1473,7 +1474,10 @@ elif [ "$MODE" = apple-conform ]; then
     fi
 elif [ "$MODE" = flutter-peer-presentation ]; then
     if [ "$FLUTTER_APP_REPLAY" -eq 1 ]; then
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
+            # The healthy cadence plus twelve impairment cycles, setup and joined cleanup.
+            readonly VM_TIMEOUT_SECONDS=15480
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
             # Four-minute baseline plus four-hour measurement, setup and joined cleanup.
             readonly VM_TIMEOUT_SECONDS=15120
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 2 ]; then
@@ -1844,7 +1848,8 @@ installed_settings_input_inventory() {
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 13 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ] \
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
         local runtime=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz
         [ -d "${runtime%/*}" ] && [ ! -L "${runtime%/*}" ] \
             && [ "$(/usr/bin/readlink -f -- "${runtime%/*}")" = "${runtime%/*}" ] \
@@ -1881,7 +1886,8 @@ installed_settings_input_inventory() {
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 13 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] \
-       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ] \
+       || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
         # These four scripts are consumed by the current package constructor,
         # not compiled into the retained app. The archive validator exact-matches them.
         for file in preinst postinst prerm postrm; do
@@ -1931,12 +1937,12 @@ installed_settings_input_inventory() {
          || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] \
          || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] \
          || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ] \
-         || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+         || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
         for file in test-linux-installed-remote.py flutter-peer-netem.py flutter-peer-source-x11.c flutter-peer-presentation-x11.c; do
             verify_committed_test_source "$SCRIPT_DIR/$file"
             /usr/bin/sha256sum -- "$SCRIPT_DIR/$file"
         done
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
             verify_committed_test_source "$SCRIPT_DIR/flutter-peer-soak.py"
             /usr/bin/sha256sum -- "$SCRIPT_DIR/flutter-peer-soak.py"
         fi
@@ -5340,7 +5346,8 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 13 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] \
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] \
            || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] \
-           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ] \
+           || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
             lifecycle_payload_grafts+=(
                 "debian-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz"
                 "repo/scripts/test-linux-debian-install.py=$SCRIPT_DIR/test-linux-debian-install.py"
@@ -5358,12 +5365,12 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
              || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 14 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 15 ] \
              || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 16 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] \
              || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ] \
-             || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+             || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
             lifecycle_payload_grafts+=(
                 "repo/scripts/test-linux-installed-remote.py=$SCRIPT_DIR/test-linux-installed-remote.py"
                 "repo/scripts/flutter-peer-netem.py=$SCRIPT_DIR/flutter-peer-netem.py"
             )
-            if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+            if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
                 lifecycle_payload_grafts+=("repo/scripts/flutter-peer-soak.py=$SCRIPT_DIR/flutter-peer-soak.py")
             fi
         fi
@@ -5774,7 +5781,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         guest_invocation+=" --linux-flutter-app-build /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
     else
         guest_invocation+=" --linux-flutter-app-replay /mnt/rustdesk-verifier-inputs/source.tar $FLUTTER_PEER_SOURCE_COMMIT $FLUTTER_PEER_SOURCE_TREE $FLUTTER_PEER_SOURCE_ARCHIVE_SHA256 $FLUTTER_APP_COMMIT $FLUTTER_APP_TREE $FLUTTER_APP_RECIPE_SHA256 $FLUTTER_APP_EXPECTED_MANIFEST_SHA256 '$FLUTTER_APP_BUILD_CONTEXT' '$FLUTTER_APP_ENGINE_CONTEXT'"
-        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
+            guest_invocation+=' --installed-remote-input-congestion-soak'
+        elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
             guest_invocation+=' --installed-remote-input-soak'
         elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ]; then
             guest_invocation+=' --installed-remote-input-congestion'
@@ -9627,7 +9636,23 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'Linux Flutter app build cloud-init completion marker'
     printf '%s\n' "${app_artifact_receipts[0]}"
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
-    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ]; then
+        require_exact_fixed_receipt \
+            "LINUX_DEBIAN_REMOTE_INPUT_CONGESTION_SOAK_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root samples=7320 healthy_duration_ms=14640000 impairment_cycles=12 recovery=preserved-connection credential=preserved child=unchanged network=restored desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined" \
+            'installed Remote four-hour impaired input and package lifecycle'
+        require_exact_fixed_receipt \
+            'FLUTTER_PEER_INPUT_SOAK_OK baseline_ms=240000 duration_ms=14400000 windows=60 samples=7320 interval_ms=2000 deadline_ms=1000 p95_drift_ms=250 p99_drift_ms=250 stable_connection=true resources=bounded input=viewer-xtest pixels=viewer-root' \
+            'installed Remote timed input and actual pixels without latency drift'
+        require_exact_fixed_receipt \
+            'FLUTTER_PEER_INPUT_CONGESTION_SOAK_OK rounds=4 cycles=12 windows=61 healthy_samples=7320 profiles=jitter,bandwidth,bandwidth-jitter hold_ms=20000 recovery_limit_ms=2500 healthy_duration_ms=14640000 baseline=fixed stable_connection=true resources=bounded' \
+            'installed Remote repeated impairment and recovery over four hours'
+        require_exact_fixed_receipt \
+            'LINUX_INSTALLED_NETWORK_RETIRED=pass profiles=24 actor_wrong_role=refused observer=exact-child loopback=restored ingress=removed interface=removed socket=removed' \
+            'installed Remote network controller retirement'
+        [ "$(/usr/bin/grep -c '^FLUTTER_PEER_SOAK_SERVER_OK=' "$SERIAL_LOG")" -eq 1 ] \
+            && [ "$(/usr/bin/grep -c '^LINUX_INSTALLED_SOAK_OBSERVER=' "$SERIAL_LOG")" -eq 1 ] \
+            || fail 'installed Remote service resource observation is absent or duplicated'
+    elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ]; then
         require_exact_fixed_receipt \
             "LINUX_DEBIAN_REMOTE_INPUT_SOAK_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root samples=7320 healthy_duration_ms=14640000 connection=preserved credential=preserved child=unchanged desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined" \
             'installed Remote four-hour input control and package lifecycle'

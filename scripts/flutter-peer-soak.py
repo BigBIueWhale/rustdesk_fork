@@ -115,6 +115,11 @@ def observe(pid, start, source_pid, source_start, scenario, uid, gid):
 
 
 def main():
+    if len(sys.argv) == 7 and sys.argv[1] == '--installed':
+        assert os.getuid() == os.getgid() == 0 and sys.argv[6] == 'input-congestion-soak'
+        for _ in observe(*sys.argv[2:], 4001, 4001):
+            pass
+        return
     assert len(sys.argv) == 6 and os.getuid() != 0 and os.getgid() != 0
     for _ in observe(*sys.argv[1:], os.getuid(), os.getgid()):
         pass

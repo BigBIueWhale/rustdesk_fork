@@ -7566,7 +7566,13 @@ and installed/platform acceptance remain OPEN. Command/task ownership is covered
 Credential provisioning and Android CM work
 remain open under the user's pivot.
 
-**Automatic reconnect — texture reuse and refresh correction pass three installed outage cycles.**
+**Automatic reconnect — refresh recovery demonstrated; ordinary-desktop CM startup fails.**
+Earlier installed pixel/recovery runs used a desktop account with a `nologin`
+shell, which production classified as prelogin and therefore did not launch CM.
+Their measured display results remain scoped to that fixture; they do not accept
+the ordinary desktop's complete session startup. The corrected fixture and
+reproduced CM failure are recorded at the end of this section.
+
 `8fe1fe12` caps the shared model's exponential retry delay at 30 seconds, preserving
 the initial 1/2/4/8/16-second waits. Timer and displayed countdown consume the same
 value; manual action, retry classification, credential suppression and owner/reset
@@ -7760,11 +7766,26 @@ unattributed loopback `127.0.0.1:8100`. The launcher denies owned host IP socket
 no host service is inspected or changed. The full-build final inventory had shown
 removal of that same endpoint; neither change is attributed to this work.
 
-The retained corrected-run tail still contains **96 audio-helper startup errors**
-for missing exact CM peer identity, following 95/93 in the earlier runs. Required
-audio startup/output remains OPEN and is the next concrete functionality issue;
-display acceptance does not imply audio acceptance. Superseded app `2eb7015e`
-is retired after all 74 payloads verify, freeing 70,791,168 allocated bytes;
+The 96 missing-CM-identity audio errors in that run came from the prelogin fixture.
+`acdecc87` creates the intended UID4001 desktop account with `/bin/bash` and
+records its actual passwd entry; unrelated UID4002 retains `nologin`. Reusing
+app `3c289cff`, three short installed replays now reach CM launch, but all close
+the Remote connection after twenty failed endpoint attempts, about six seconds.
+At `a3873514`, read-only guest procfs observation binds CM PID7933 to the exact
+server parent, start time, executable object, UID4001 and `--cm` role, then
+observes its **SIGSEGV exit** (zombie wait status11), followed by reaping. The
+guest kernel independently records that PID's fault. The CM log directory exists
+with zero log files. The baseline passes twelve displayed states at maximum age
+309 ms; the first suspension fails because the connection closes. This is a
+startup failure, not a completed recovery or audio pass. Exact crashing code and
+cause remain unproved; next identify the faulting startup mapping/call before a
+product correction. Service confinement and authority checks are unchanged.
+`installed-cm-process-a3873514.json` binds nine files/239,546 bytes verified on
+CTE/TUF, joined VM/private/RAM retirement and four zero endpoint deltas. Earlier
+observations are in `installed-cm-login-acdecc87.json` and
+`installed-cm-log-dabcaab7.json`. Ordinary installed sessions and required audio
+remain OPEN. Superseded app `2eb7015e` is retired after all 74 payloads verify,
+freeing 70,791,168 allocated bytes;
 its manifest/evidence and matching engine remain, with `77cc3441` retained as
 the immediate pre-refresh baseline (`video-refresh-retired-2eb7015e.json`).
 The separate surviving-transport delay failure, other outage schedules,
@@ -20745,6 +20766,12 @@ CM side effect is made.
 
 **Linux `_pa` authority and capture lifetime — authorized ordinary-user
 production pair passed; installed-service and churn evidence OPEN.**
+The current full-app installed replay reaches CM launch with the corrected login
+account but observes that exact helper die by SIGSEGV before endpoint readiness
+(`installed-cm-process-a3873514.json`, reconnect section above). Resolving that
+startup failure is the prerequisite for installed audio acceptance; earlier
+prelogin-fixture display passes did not exercise successful CM/audio startup.
+
 `src/ipc/pulse_audio.rs` derives PID/UID/start identity from the accepted Unix
 socket before reading a `StartCapture` request, then validates the exact current
 subscriber token. Its event-driven PulseAudio context, source lookup, and bounded

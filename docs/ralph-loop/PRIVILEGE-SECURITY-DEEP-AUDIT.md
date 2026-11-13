@@ -153169,3 +153169,36 @@ Reuse app3c289cff and its engine; no product change or rebuild. Diff review and
 whitespace check pass; native execution follows. This append preserves the prior
 16,304,355-byte audit prefix, SHA-256
 bcc31b3c8541f62cfe1c0d32cd9b1f437d61cae9fa06f3ebfe4d0f83bd656e59.
+
+### Installed CM startup — exact SIGSEGV observed
+
+At a3873514, EzMZmDPGSj reuses app3c289cff and the unchanged service unit.
+The new read-only observer identifies live CM7933, parent7725, start7623,
+image65025:395342, role--cm and all four UIDs4001, with zero effective
+capabilities, NoNewPrivs1 and Seccomp2. Its retained proc directory observes
+the same process become a zombie with wait status11 (exit_code=-11), then
+be reaped. Across 1,498 samples, maximum sample gap is13.745 ms and no candidate
+vanishes before identification. The guest kernel independently records
+rustdesk-servic[7933] segfault at7fd206362980, ip7fd206362980, error15.
+This proves the helper's SIGSEGV, not the faulting component or underlying cause.
+No confinement change, debugger attachment or product rebuild was used.
+
+The helper leaves a CM directory with explicitly zero matching log files.
+Twenty endpoint attempts and nine missing-CM audio errors precede bootstrap
+timeout/connection closure. The three-second baseline passes twelve states,
+maximum age309 ms and gap49 ms; the first suspension fails. No recovery,
+audio or complete package acceptance is claimed. Next identify the faulting
+startup mapping/call; do not repeat unchanged observations or weaken confinement
+on inference. The current ledger now scopes earlier successful pixel runs to
+their nologin/prelogin fixture and records the ordinary-desktop startup failure.
+
+QEMU3343723 joins zero; private66306:84062425 and RAM29:14134 retire under
+the shared lock. Supervisor94.984 seconds; scratch peak4,216,619,008 bytes,
+minimum available RAM39,691,476,992 bytes; four zero endpoint deltas;
+tmpfs_swap_disabled=false. Empty failed payload and duplicate private logs were
+reconciled before exact retirement. Capsule installed-cm-process-a3873514.json
+binds nine files/239,546 bytes copied and SHA-verified on CTE/TUF, outer SHA-256
+1c2f254ce1c4a14e946ea96ff4dfc7577f70d3deedecde939455498ba48fccd3.
+No owned jobs or source freezes remain. Ledger counting follows this edit.
+This append preserves the prior16,306,324-byte audit prefix, SHA-256
+96fa2c50a81d6c765abe1f538e5702ecf1467b8ec927c29f1b090db757d8bc00.

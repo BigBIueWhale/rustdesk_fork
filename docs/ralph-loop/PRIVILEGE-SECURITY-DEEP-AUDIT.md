@@ -152293,3 +152293,65 @@ allocator observations, so ordinary acceptance remains separate. Source syntax
 and diff checks pass; native compilation and execution are pending.
 HARDENING_STATUS.md is unchanged. This append preserves the prior 16,245,212-byte
 audit prefix, SHA-256 ae1bf43b3e6ec7af8c52e293ceefd0c4a63ab084a289f0bc82045a000ea1f090.
+
+## 2026-11-13 — RSS growth resolves into allocator-reported free pixel-sized chunks
+
+TUF ISzKtTtMiI at a2742f46 reuses unchanged app 2eb7015e and reproduces the
+unchanged 128-MiB RSS-growth failure during the first outage. Viewer 7872 starts
+at 371,088 KiB and reaches 526,584 KiB, growth 155,496 KiB. FD peak is 50 from
+47, threads peak at the initial 65. All 120 baseline responses pass, response
+p95/p99 349/353 ms and frame-age p95/p99 299/316 ms. The old socket retires
+naturally 44,069 ms after loss; the bound fails 3,330 ms later, before restoration
+or any reconnect. Failure cleanup restores healthy delivery; counters show
+19 drops and zero forward packets delivered during the 47.411-second loss.
+This is diagnostic evidence, not a new ordinary acceptance run.
+
+The 17,240-byte observer builds identically twice in the guest, SHA-256
+04e6f5db7bc01ee9eebdb5635934876da16afa123a143126d5d01113d1ca31e8.
+Source SHA-256 febd9568876328aacf5b13328cfa33c8630ee2ecce4b175de144f6b73efc96f0.
+Exact descriptor/mapping attachment succeeds. Independent bounded decompression
+and XML parsing verify all 155 complete records, 5,851,824 raw / 638,834 compressed
+bytes, SHA-256 ea9e437ae53e014af8137a3bbe462c0979197670ea1be49580b1c8d14fc6e3fb.
+Sampling duration median/p95/maximum is 569.474/958.287/1,027.205 microseconds.
+Viewer termination during failed-scenario cleanup does not execute the normal
+destructor trailer. The fixture's final completion parser therefore raises at
+EOF after retaining the raw records and parsed samples; the original resource
+failure is also retained. No collector-completion claim follows.
+
+At 225.424 s (65 ms before observed socket retirement), the main arena reports
+58,628 KiB system, 10,263.17 KiB free and 48,364.83 KiB nonfree. At 228.429 s
+(390 ms before the resource refusal), those are 195,160 / 146,613.95 / 48,546.05
+KiB. All-arena nonfree bytes likewise stay about 107,000 KiB; mmap bytes increase
+4,100 KiB. Actual smaps heap RSS at retirement/failure rises 53,432→201,216 KiB;
+total RSS 375,612→532,020 KiB, with zero observed swap. The near-flat nonfree
+total alongside rapidly growing free/system memory supports transient allocation
+churn and retained free pages. It does not prove every allocation lifetime,
+thread-cache state, or an exact responsible stack. Samples span different times.
+Main-arena large-bin free totals grow from 11,650,723 bytes in three chunks at
+226.426 s to 69,904,386/18 at 227.428 s and 147,576,005/37 at 228.429 s.
+The common chunk size is near 3,883,520 bytes, exactly 1,312×740×4 payload bytes;
+the recorded viewer window is 1,300×740, making aligned pixel storage a candidate.
+
+Read-only research authenticates the existing engine graph manifest and
+git-000.tar (SHA-256 ec5faa7c7deff4d789de80e128dbf35c25466457b99985711238ce9391e4d72b).
+At pinned framework 6a19cca56475dbfba1478ee68d7bd0c2ef891da1,
+engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc:277-300 creates,
+uploads and deletes a full-frame texture on every non-shareable GTK draw.
+Primary source: https://raw.githubusercontent.com/flutter/flutter/6a19cca56475dbfba1478ee68d7bd0c2ef891da1/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc
+The earlier complete Heaptrack report has a 7.77-MB Mesa/Flutter/GTK peak stack
+over 5,906 calls. Those convergent observations make this path the next narrow
+attribution target; they do not establish that this branch caused the current
+growth. The diagnostic package pins Mesa 22.3.6-1+deb12u2 and glibc
+2.36-9+deb12u14. No allocator tuning, trim calls, product patch, threshold
+relaxation or rerun of unchanged ordinary acceptance is justified yet.
+
+Independent reconciliation verifies QEMU 2826061 joined zero, exact private
+66306:78035667 / RAM 29:13226 retirement and four zero host endpoint deltas.
+Supervisor duration is 238.982 seconds, peak RAM scratch 4,225,413,120 bytes,
+tmpfs_swap_disabled=false. Nine files/1,195,507 bytes are copied and SHA-verified
+on CTE/TUF before ending the freeze. Capsule: remote-expired-allocator-a2742f46.json;
+outer SHA-256 1f82a15e531a7d25fc41d1920ce98ac9497eb1e154ac026ee47270e2058806c1.
+HARDENING_STATUS.md records this material evidence and the next attribution step;
+its fresh isolated count is pending. This append preserves the prior
+16,247,382-byte prefix, SHA-256
+6dce7661e274b258889cddee1d404b9c121e0fba2cde0e3d5bdfa8d5aef07aa0.

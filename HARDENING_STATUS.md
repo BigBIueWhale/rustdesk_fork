@@ -7620,9 +7620,27 @@ through Flutter. This does not attribute the ordinary resident-memory growth
 or establish a leak. `remote-expired-heaptrack-70498b1a.json` binds the report,
 compressed timeline, five joined tool processes, nine files/1,308,131 bytes,
 four zero host endpoint deltas and exact joined cleanup. Bulk traces retired.
-Next: lower-overhead allocator arena/free-space accounting paired with `smaps`
-during the ordinary failure, distinguishing retained free pages, live allocations
-and other mappings before choosing a correction. No allocator tuning is justified yet.
+Lower-overhead allocator accounting now reproduces the bound failure in the first
+outage (`ISzKtTtMiI`, fixture `a2742f46`, unchanged app). RSS rises **155,496 KiB**;
+the old socket retires at 44.069 seconds and the bound fails 3.330 seconds later.
+All 120 baseline responses pass. The 155 verified one-second snapshots take
+0.569 ms median / 1.027 ms maximum each. Across the adjacent retirement/failure
+samples, main-arena system bytes rise 58,628→195,160 KiB and reported free space
+10,263→146,614 KiB, while nonfree space stays near 48,365→48,546 KiB.
+The contemporaneous `[heap]` RSS rises 53,432→201,216 KiB with no observed swap.
+This supports retained free-space growth after temporary allocations, not a
+similar increase in live allocator bytes; thread caches and sampling gaps remain.
+The last large free bin totals 147,576,005 bytes in 37 chunks, mostly around
+3,883,520 bytes. That size matches a 1,312×740×4 pixel buffer; the existing
+Heaptrack report also has a 7.77-MB Mesa/Flutter/GTK stack over 5,906 calls.
+The pinned engine's non-shareable compositor creates/uploads/deletes a texture
+per GTK draw. This is a concrete attribution candidate, not an established cause.
+Next: tie the growing buffer allocations to that path and validate owned texture
+reuse if justified. No product correction, allocator tuning or bound change yet.
+`remote-expired-allocator-a2742f46.json` binds nine files/1,195,507 bytes on both
+hosts, four zero endpoint deltas and joined VM/private/RAM cleanup. All 155 raw
+records survive; failed-scenario termination omits the destructor trailer, so
+the completion parser also rejects. No complete diagnostic or release pass is claimed.
 The separate surviving-transport delay failure, other outage schedules,
 physical scanout, endurance, desktop/mobile coverage, final artifacts,
 independent review and complete R-S0/R-F5 remain OPEN.

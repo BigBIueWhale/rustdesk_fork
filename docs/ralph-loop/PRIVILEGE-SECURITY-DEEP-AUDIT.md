@@ -151209,3 +151209,14 @@ acceptance and the earlier long-outage failures OPEN. Next useful validation is
 the existing mixed-degradation input scenario through this installed path.
 This append preserves the prior 16,170,142-byte audit prefix, SHA-256
 67d1fd1a4206d0e8610fe202f3842fff66bd7326d72164431882ab96b2c44a82.
+
+Fresh ledger count at 545462ae, Es522qY9zQ/tool77267: 419,456 tokens /
+1,913,113 bytes, SHA-256
+1175f2c1b52fea868ac96555f4cfad7a49c31b4dfa3d16ab0e9215789d304a08.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+installed-input-ledger-545462ae.json binds eight files/115,598 bytes on CTE/TUF.
+QEMU 3965959 joins zero after 30.312 seconds; three zero listener deltas and
+exact private/process/socket/RAM retirement pass. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,174,158-byte audit prefix, SHA-256
+69395e7cc8f9ab35223e19f96b8589db6c391bd5c176a97cbeb6a7cd0cf3effd.

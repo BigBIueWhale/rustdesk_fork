@@ -7714,10 +7714,29 @@ it does not identify a specific cause or rule out unsampled events.
 bind eighteen files/1,537,396 bytes on CTE/TUF and exact joined VM/private/RAM
 cleanup. The first run has four zero endpoint deltas; the second has three zero
 deltas and a final unattributed removal of pre-existing loopback port 8096, with
-no additions or host-service changes. Next retain the exact server's bounded
-existing log around the failed window, then distinguish capture/encode pacing,
-frame acknowledgement and dispatch as needed. Reuse the built app; avoid the
-existing broad presentation trace's additional shadow decoder unless justified.
+no additions or host-service changes.
+The bounded existing server log now identifies a cause. At `d1fa0209`, unchanged
+app `77cc3441` first completes all three outages, **480 responses** and normal
+package lifecycle (`5q8Q8XxwAL`), with RSS growth **55,744 KiB** and maximum
+healthy age 468 ms. A single diagnostic repeat (`nbbHvFBJtP`) reproduces the
+third-window failure after 360 responses: normal refresh returns `SWITCH` into
+`ServiceTmpl::run`'s error path, followed by **990.293 ms** before capture-loop
+re-entry. Clock-aligned source/pixel records show state 2,136 held throughout
+that delay, reaching **1,105 ms** age; state 2,140 appears after capture resumes.
+The same path waits 270 ms during the passing run. Its exponential error delay
+survives clean capture-loop exits, so ordinary reconfiguration can inherit an
+enlarged retry delay. The repeat's RSS growth is **51,248 KiB**; resources stay
+bounded. `compositor-expired-server[-repeat]-d1fa0209.json` bind eighteen files /
+1,735,081 bytes on both hosts and exact joined cleanup. First-run endpoint deltas
+are three zero plus one unattributed loopback removal; repeat deltas are all zero.
+Next give expected video reconfiguration an explicit normal outcome, retaining
+normal cadence and bounded retries for actual failures. Verify both paths and
+the installed recovery scenario; no further unchanged diagnostic repeat is needed.
+The passing run supports the memory correction but does not close the reproduced
+freshness failure. The retained logs also show **95/93 audio-helper startup
+failures** for missing exact CM peer identity. Audio output is untested and this
+required-functionality issue remains OPEN separately; display acceptance does
+not imply audio acceptance.
 The separate surviving-transport delay failure, other outage schedules,
 physical scanout, endurance, desktop/mobile coverage, final artifacts,
 independent review and complete R-S0/R-F5 remain OPEN.

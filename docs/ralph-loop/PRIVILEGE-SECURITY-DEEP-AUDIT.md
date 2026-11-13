@@ -152872,3 +152872,70 @@ The resulting log will decide whether lifecycle transitions explain the gap or
 whether capture, encoder pacing and frame-acknowledgement timing need observation.
 This append preserves the prior 16,284,351-byte audit prefix, SHA-256
 7d9306af449679b6dfd4e07c2a885744e6f1d060102bf2452559b8c9da9046b1.
+
+### Normal refresh incurs error backoff; failed pixels now aligned to the pause
+
+At d1fa0209, 5q8Q8XxwAL passes all three expiries, 480 independently reconciled
+responses, four windows, and normal Debian restart/reinstall/remove/purge.
+Response p95/p99: 353/362, 350/354, 349/357, 350/368 ms. Maximum response/age:
+373/468 ms. Across 212 resource samples, RSS is 354,212→409,956 KiB, growth
+55,744 KiB; descriptors 45→48 and threads at most the original 65. Automatic
+reconnects take 859/379/612 ms and four fresh states another 793/703/705 ms.
+The server-log snapshot retains the final 65,488 bytes of a 322,516-byte prefix.
+It shows normal refresh returning SWITCH, followed by about 270 ms before the
+monitor loop re-enters. This passing execution does not erase the earlier fails.
+
+One unchanged diagnostic repeat is justified to obtain the missing failed-window
+log, not to accumulate passes. nbbHvFBJtP reproduces the third-window refusal
+after 360 clock-reconciled responses. Response p95/p99: 353/357, 356/370 and
+357/375 ms; maximum healthy age before refusal 660 ms. Reconnects are
+3,805/7,163/333 ms; four fresh states follow in 696/814/739 ms. Loss counters
+show 28/31/27 drops and zero delivery. All 209 resource samples remain bounded:
+RSS 360,536→411,784 KiB, growth 51,248 KiB; descriptors 45→47, threads at most 61.
+All 102 TCP snapshots bind by endpoint and inode to the observed replacements.
+
+At third-window trial zero, 26 observations hold state 2136; both keymaps are
+released and no request 360 is sent. Initial age is 768 ms. The 28 post-refusal
+samples reach 1,105 ms, then state 2140 appears at 207 ms without intervention.
+The exact live server's final log retains 65,479 bytes from a 268,002-byte prefix.
+Its two clock anchors span only 4,629 ns in combined realtime-minus-monotonic
+bounds. Using the final bracket midpoint, refresh is at 614711869 us, SWITCH
+error at 614713248 us, and capture-loop re-entry at 615703541 us: **990293 us**
+between error and re-entry. State 2136 published at 614602484 us and remains
+visible at capture 615702906 us, immediately before re-entry. State 2140,
+published at 615612334 us, is visible at capture 615814524 us afterward.
+The clock samples bracket reads; endpoint agreement is not a general proof
+against arbitrary intervening clock changes. This isolated run uses no such
+clock change, and the raw anchors and wall timestamps remain retained.
+
+Source path: video_service.rs:1259 logs the normal OPTION_REFRESH transition
+and returns the string SWITCH as an error. ServiceTmpl::run at service.rs:334–350
+applies exponential error backoff followed by its 30-ms normal cadence; clean
+callback returns do not reset that error history. The observed 990-ms pause
+matches 960+30 ms, whereas the passing run shows 240+30 ms. Expected capture
+reconfiguration and real failures require distinct outcomes. Correct that local
+API/control flow, preserving normal cadence and bounded real-error retry;
+exercise both paths and then the installed failing scenario. Do not relax the
+freshness checks or repeat unchanged diagnostics again. No product fix is claimed.
+
+The retained server logs additionally contain 95/93 audio startup errors from
+connection.rs:1591 for absent exact CM peer identity. Those are actual fixture
+observations, not proof of audio output or of the cause of that missing identity.
+Record required audio functionality as OPEN; it is separate from this video fix.
+
+Passing run: QEMU 3165221 joins zero; private 66306:84059565 and RAM 29:13740
+retire; 778.628 seconds, peak RAM scratch 4,270,473,216 bytes. First three endpoint
+deltas zero, final unattributed removal tcp 127.0.0.1:8096 with no additions.
+Capsule compositor-expired-server-d1fa0209.json: nine files/825,226 bytes,
+outer e3feb565b9c11ef1ae1255fe6c66c5b8c11dd07d090627bcbb97b2c6a1008467.
+Failed repeat: QEMU 3217710 joins zero; private 66306:82229911 and RAM 29:13782
+retire under the shared lock; four zero endpoint deltas; 628.581 seconds,
+peak RAM scratch 4,218,580,992 bytes. Capsule
+compositor-expired-server-repeat-d1fa0209.json: nine files/909,855 bytes,
+outer ab7867fb8280656e438e24e6d533c1f8a997e95ab365e1693b37f6e8ef5afb2f.
+Both runs have tmpfs_swap_disabled=false. Both capsules and all raw files are
+copied and SHA-verified on CTE/TUF before ending their source freezes.
+The ledger now distinguishes the complete memory/display pass from the reproduced
+refresh failure and separate audio observation. Its required fresh count follows.
+This append preserves the prior 16,286,249-byte audit prefix, SHA-256
+f01851652a6a143d4a9c1c0200b9b14ec9ba92740cad557dc5c217b8002e5407.

@@ -152469,3 +152469,53 @@ capsule compositor-ledger-fe85b090.json, outer SHA-256
 cb0546bf8e4dddd82d4b1f7403c1ed3eb79862557995270e7eed055cd9ccfdd5.
 This audit-only append preserves the prior 16,258,391-byte prefix, SHA-256
 fb67ecd188eaeab932f3d7df9a8b0b0497e2148a1ee2318ade2d69c5df29abc2.
+
+## 2026-11-13 — Upload failure semantics and engine integration
+
+Previous turn is progress: real GTK/Mesa component A/B supports texture reuse.
+Continue the demonstrated ordinary R-F5 RSS failure before unrelated coverage.
+Review finds that the candidate committed dimensions without checking upload
+success. It now returns false, retires the texture and clears dimensions on a
+GL error; only an error-free upload commits the dimensions. The next frame
+therefore allocates again. The native observer injects negative width at the
+actual driver call, separately for allocation and subimage update, producing
+GL_INVALID_VALUE without exhausting memory. Each refused draw leaves Cairo's
+output untouched, restores the binding and emits the expected warning; each
+ordinary retry shows correct pixels in the same context. Khronos documents
+ignored non-OOM error commands and undefined GL state after OOM:
+https://raw.githubusercontent.com/KhronosGroup/OpenGL-Refpages/main/gl4/glGetError.xml
+This does not claim GPU-OOM or context-loss recovery.
+
+TUF VjR9efRNwE at 1f19668a passes these two new cases and the existing complete
+120-frame/context/resize/reentrant-disposal comparison. Baseline binary SHA-256
+0a5e6be3960b8e4fd235a813f9e6ac808a16d558f72f6298d632e5c5e551a4b8;
+candidate 96d32d3316e626201818a73856d79224d01234965e6a126fcde62ea8005c673d;
+candidate patch fd573dfd95f2e1f0de5c51eaa473639288e6bb69cd75fd26e34f80a89278b141.
+QEMU 2909368 joins zero; exact private 66306:77903698 / RAM 29:13390 retire,
+with four zero endpoint deltas. Supervisor 40.882 seconds, peak RAM scratch
+3,773,181,952 bytes, tmpfs_swap_disabled=false. Nine files/84,527 bytes are
+copied and SHA-verified on CTE/TUF; capsule compositor-retry-1f19668a.json,
+outer 2e482c3c9573ad5d6e8266e78519f3408bf20e158d7d4d33987a29dbb64033ed.
+
+Integrate the candidate into the existing single authenticated engine patch;
+preserve the prior 120,203-byte patch prefix exactly and remove the duplicate
+candidate file/mount/identity. The existing manifest patch_sha256 now binds all
+21 touched files. Upstream mocked compositor teardown releases its GTK texture,
+and mock_epoxy supports the new subimage call with its existing pixel-read check.
+The original GN recipes will compile those two changed consumers before the
+integration build. Native component evidence remains distinct from the required
+installed repeated-outage/resource acceptance.
+
+Actual TUF inspection finds three intentional 89,128,960-byte engine archives:
+63493887, ddb1541d and reproducibility copy 7e103957, matching the November 3
+preservation record. All four current app caches select ddb1541d. For this
+necessary changed-engine build, preserve those three generations by authenticated,
+identity-checked no-clobber renames under the shared run lock, as in the prior
+engine comparison; restore their exact paths after terminal reconciliation.
+Do not copy the archives or change canonical inputs. A single new bounded toolkit
+will bring intentional engine archives to four (about 340 MiB total). The four-app
+limit remains binding; retire a verified superseded app before admitting its
+replacement. Source/input freeze and all RAM/storage/network controls persist.
+HARDENING_STATUS.md records this checkpoint; its fresh count follows integration
+evidence. This append preserves the prior 16,259,253-byte audit prefix, SHA-256
+8fda391d0d28cc749fdc8e75bdb58207bb4926e8d40b8ec1b78324ebd7c470a1.

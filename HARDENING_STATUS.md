@@ -7657,11 +7657,19 @@ files/189,162 bytes on both hosts, eight zero endpoint deltas and joined cleanup
 The 43.545-second accepted supervisor compiles real pinned compositor, renderer,
 framebuffer, GL manager and task-runner sources; Flutter engine dispatch is a
 test double. This is component evidence, not installed-app memory acceptance.
-`res/flutter/linux-compositor-texture.patch` is currently applied only by the
-focused native shard. Next: integrate the tested candidate into the authenticated
-engine/application build and rerun the ordinary repeated-outage scenario against
-the unchanged RSS/presentation bounds. Retained engine/app artifacts remain unchanged;
-no allocator tuning, relaxed bound or full memory-failure correction is claimed.
+Upload-refusal/retry also passes (`VjR9efRNwE`, `1f19668a`): two actual Mesa
+invalid-value refusals, for allocation and subimage update, return failure without
+drawing stale pixels; each next frame reallocates and presents successfully in
+the same context. Cache dimensions commit only after an error-free upload, and
+failed storage retires. This does not establish recovery from GPU out-of-memory
+or context loss. `compositor-retry-1f19668a.json` binds nine files/84,527 bytes,
+four zero endpoint deltas and joined cleanup. The component patch is now included
+in the single authenticated `res/flutter/linux-accessibility-retirement.patch`;
+the duplicate candidate patch is removed. The engine manifest's existing patch
+digest binds the whole correction. Next: build the integrated engine/application
+and rerun ordinary repeated outages against the unchanged RSS/presentation bounds.
+Retained artifacts remain unchanged; no allocator tuning, relaxed bound or full
+memory-failure correction is claimed.
 The separate surviving-transport delay failure, other outage schedules,
 physical scanout, endurance, desktop/mobile coverage, final artifacts,
 independent review and complete R-S0/R-F5 remain OPEN.

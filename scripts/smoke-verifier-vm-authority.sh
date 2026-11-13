@@ -1285,7 +1285,6 @@ readonly ENGINE_PREPARE_SOURCE="$SCRIPT_DIR/prepare-flutter-linux-engine.py"
 readonly ENGINE_RETIREMENT_PATCH="$REPO_ROOT/res/flutter/linux-accessibility-retirement.patch"
 readonly ENGINE_RETIREMENT_TEST="$SCRIPT_DIR/test-flutter-linux-accessible-retirement.cc"
 readonly ENGINE_SETTINGS_TEST="$SCRIPT_DIR/test-flutter-linux-settings.cc"
-readonly ENGINE_COMPOSITOR_PATCH="$REPO_ROOT/res/flutter/linux-compositor-texture.patch"
 readonly ENGINE_COMPOSITOR_TEST="$SCRIPT_DIR/test-flutter-linux-compositor.cc"
 readonly ENGINE_GRAPH_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-graph"
 readonly ENGINE_METADATA_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-git-metadata"
@@ -3401,9 +3400,8 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
     verify_committed_test_source "$ENGINE_RETIREMENT_PATCH"
     verify_committed_test_source "$ENGINE_RETIREMENT_TEST"
     verify_committed_test_source "$ENGINE_SETTINGS_TEST"
-    verify_committed_test_source "$ENGINE_COMPOSITOR_PATCH"
     verify_committed_test_source "$ENGINE_COMPOSITOR_TEST"
-    engine_prepare_source_before="$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST" "$ENGINE_COMPOSITOR_PATCH" "$ENGINE_COMPOSITOR_TEST")"
+    engine_prepare_source_before="$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST" "$ENGINE_COMPOSITOR_TEST")"
     for input in \
         "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE" \
@@ -5046,7 +5044,6 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
         "repo/res/flutter/linux-accessibility-retirement.patch=$ENGINE_RETIREMENT_PATCH"
         "repo/scripts/test-flutter-linux-accessible-retirement.cc=$ENGINE_RETIREMENT_TEST"
         "repo/scripts/test-flutter-linux-settings.cc=$ENGINE_SETTINGS_TEST"
-        "repo/res/flutter/linux-compositor-texture.patch=$ENGINE_COMPOSITOR_PATCH"
         "repo/scripts/test-flutter-linux-compositor.cc=$ENGINE_COMPOSITOR_TEST"
         "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
         "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
@@ -10618,7 +10615,7 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 fi
 if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     [ "$(engine_prepare_input_inventory)" = "$engine_prepare_inputs_before" ] \
-        && [ "$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST" "$ENGINE_COMPOSITOR_PATCH" "$ENGINE_COMPOSITOR_TEST")" = "$engine_prepare_source_before" ] \
+        && [ "$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST" "$ENGINE_COMPOSITOR_TEST")" = "$engine_prepare_source_before" ] \
         || fail 'engine preparation input/source postcondition differs'
     [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \

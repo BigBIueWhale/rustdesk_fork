@@ -476,9 +476,9 @@ def compositor_test():
                                 engine, env, deadline).decode())
     units = ["fl_compositor", "fl_compositor_software", "fl_framebuffer", "fl_egl_image",
              "fl_opengl_manager", "fl_compositor_opengl_shader", "fl_task_runner"]
-    patch = Path("/authority/compositor.patch")
+    patch = Path("/authority/retirement.patch")
     patch_bytes = patch.read_bytes()
-    require(0 < len(patch_bytes) <= 32768, "compositor patch exceeds bound")
+    require(0 < len(patch_bytes) <= 160 * 1024, "engine patch exceeds bound")
     with native_display(env, deadline) as display_env:
         for baseline in (True, False):
             if not baseline:
@@ -813,7 +813,7 @@ raise SystemExit(subprocess.call([
     node_test(True)
     patch_path = Path("/authority/retirement.patch")
     patch_bytes = patch_path.read_bytes()
-    require(0 < len(patch_bytes) <= 128 * 1024, "retirement patch exceeds bound")
+    require(0 < len(patch_bytes) <= 160 * 1024, "retirement patch exceeds bound")
     git = ["/usr/bin/git", "--no-replace-objects", "-c", "core.hooksPath=/dev/null"]
     command(git + ["apply", "--check", "--whitespace=error-all", str(patch_path)],
             framework, env, deadline)
@@ -826,7 +826,10 @@ raise SystemExit(subprocess.call([
                        "fl_semantics_generation.cc", "fl_semantics_generation.h",
                        "fl_socket_accessible.cc", "fl_socket_accessible.h",
                        "fl_view.cc", "fl_view_accessible.cc", "fl_view_accessible.h",
-                       "fl_view_accessible_test.cc", "fl_settings_portal.cc")]
+                       "fl_view_accessible_test.cc", "fl_settings_portal.cc",
+                       "fl_compositor_opengl.cc", "fl_compositor_opengl.h",
+                       "fl_compositor_opengl_test.cc", "fl_view_renderer.cc",
+                       "testing/mock_epoxy.cc")]
     changed = command(git + ["diff", "--name-only", "--", "engine/src/flutter/shell/platform/linux"],
                       framework, env, deadline).decode().splitlines()
     changed += command(git + ["ls-files", "--others", "--exclude-standard", "--",
@@ -835,12 +838,16 @@ raise SystemExit(subprocess.call([
     require(sorted(changed) == sorted(expected_paths), "retirement patch source scope differs")
     command(git + ["diff", "--check"], framework, env, deadline)
     print("ENGINE_ACCESSIBLE_RETIREMENT_PATCH=applied sha256="
-          + hashlib.sha256(patch_bytes).hexdigest() + " files=16 sdk_archive=unchanged", flush=True)
+          + hashlib.sha256(patch_bytes).hexdigest() + " files=21 sdk_archive=unchanged", flush=True)
     settings_test(False)
     objects.append("obj/flutter/shell/platform/linux/flutter_linux_sources.fl_semantics_generation.o")
-    upstream_tests = ["obj/flutter/shell/platform/linux/flutter_linux_unittests." + unit + ".o"
-                      for unit in ("fl_accessible_node_test", "fl_accessible_text_field_test",
-                                   "fl_view_accessible_test", "fl_view_test")]
+    upstream_tests = {
+        (Path("obj/flutter/shell/platform/linux") / Path(unit).parent /
+         ("flutter_linux_unittests." + Path(unit).name + ".o")).as_posix():
+        Path(engine) / "flutter/shell/platform/linux" / (unit + ".cc")
+        for unit in ("fl_accessible_node_test", "fl_accessible_text_field_test",
+                     "fl_view_accessible_test", "fl_view_test",
+                     "fl_compositor_opengl_test", "testing/mock_epoxy")}
     command([framework + "/third_party/ninja/ninja", "-C", "out/host_release", "-j2",
              *objects],
             engine, env, deadline)
@@ -850,7 +857,7 @@ raise SystemExit(subprocess.call([
     # Compile the migrated consumers with their exact generated command, not
     # the unittest executable's order-only engine/fixture build dependencies.
     # This proves translation-unit compatibility, never suite or engine linking.
-    for name in upstream_tests:
+    for name, source_path in upstream_tests.items():
         query = command([framework + "/third_party/ninja/ninja", "-C", "out/host_release",
                          "-t", "query", name], engine, env, deadline)
         print("ENGINE_UPSTREAM_TEST_QUERY path=" + name + "\n"
@@ -861,19 +868,18 @@ raise SystemExit(subprocess.call([
                 "upstream object command is not one bounded invocation")
         arguments = shlex.split(recipe.decode())
         cwd = Path(engine) / "out/host_release"
-        unit = name.rsplit(".", 2)[1]
         require(arguments and (cwd / arguments[0]).resolve(strict=True)
                     == Path(clang).resolve(strict=True)
                 and arguments.count("-c") == arguments.count("-o") == 1
                 and (cwd / arguments[arguments.index("-c") + 1]).resolve(strict=True)
-                    == Path(engine) / "flutter/shell/platform/linux" / (unit + ".cc")
+                    == source_path
                 and (cwd / arguments[arguments.index("-o") + 1]).resolve() == cwd / name,
                 "upstream object compiler/source/output differs: " + repr(arguments))
         print("ENGINE_UPSTREAM_TEST_COMPILE_START path=" + name
               + " recipe_sha256=" + hashlib.sha256(recipe).hexdigest(), flush=True)
         command(arguments, cwd, env, deadline)
         artifact_receipt(name, "upstream-test-compile")
-    print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=8 upstream_test_objects=4 "
+    print("ENGINE_ACCESSIBLE_RETIREMENT_COMPILE=pass production_units=8 upstream_test_objects=6 "
           "view_teardown=unexecuted engine_restart=unexecuted app_replay=unexecuted", flush=True)
     print("FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 "
           "indexes=original pub=path-only network=none engine_build=unexecuted", flush=True)

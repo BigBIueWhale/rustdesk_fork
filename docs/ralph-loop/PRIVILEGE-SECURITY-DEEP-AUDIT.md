@@ -151652,3 +151652,24 @@ copied and hash-verified on CTE/TUF before unfreezing. The 89.234-second run pea
 at 4,215,767,040 RAM scratch bytes; normal package lifecycle after the scenario
 is not reached. This append preserves the prior 16,202,779-byte audit prefix,
 SHA-256 d1a1f18fff84bdfd6f752a9554d221909be1478f1191f940dc4adbd99b0758cb.
+
+The diagnostic replay RtblLzWw5e/tool94798 at a119d09f confirms a fixture decoder
+failure: actual frame 13 is decoded, but the response decoder returns ambiguity.
+The retained 200x120 RGB image shows response one. Independent inspection finds
+five frame-valid geometries (spans 96/98/100) all reading response one; scanning
+the short response band independently also admits spurious 126 at span 90 and
+zero at span 102. The frame counter therefore supplies the missing geometry.
+The joint decoder now admits the response only at the same verified horizontal
+geometry and its source-relative position, with three agreeing rows. Conflicting
+valid pairs still refuse. Controls cover every response zero through 120, absent
+and inconsistent rows, while existing full-frame identity controls remain.
+
+The failed result and exact pixels remain in
+remote-installed-input-animation-a119d09f.json: nine files/357,106 bytes copied
+and hash-verified on both hosts. QEMU 1651621 joins zero after 87.890 seconds;
+four zero listener deltas, exact private/RAM/process/socket retirement and retained
+output equality reconcile before unfreezing. Peak RAM scratch is 4,215,308,288
+bytes. This is a corrected test-decoder defect, not an application correction;
+installed replay is still required. All timing/resource bounds are unchanged.
+This append preserves the prior 16,203,989-byte audit prefix, SHA-256
+02f46d452f8d42cd8c2e01598ce84fe95dc0c66f3a8cf67b7c18963f3001ec4d.

@@ -262,8 +262,10 @@ static int x11_frame_row(const uint8_t *pixels, unsigned int y, unsigned int lef
     return darkest_light - lightest_dark >= 5 ? code : -1;
 }
 
-static int64_t x11_frame_decode(const uint8_t pixels[X11_FRAME_BYTES]) {
+static int64_t x11_frame_decode_pair(const uint8_t pixels[X11_FRAME_BYTES], int *response) {
     int64_t identity = -1;
+    int response_identity = -1;
+    if (response != NULL) *response = -1;
     /* Centered content may be letterboxed. Require at least two samples per Manchester bar. */
     for (unsigned int span = 24U * 2U; span <= X11_FRAME_WIDTH; span += 2U) {
         int centered = (int)(X11_FRAME_WIDTH - span) / 2;
@@ -305,15 +307,36 @@ static int64_t x11_frame_decode(const uint8_t pixels[X11_FRAME_BYTES]) {
                     previous_end = runs[cursor++].end;
                 }
                 if (valid && minimum >= 3U && maximum - minimum <= 2U) {
-                    if (identity >= 0 && identity != (int64_t)candidate) {
+                    int response_candidate = -1;
+                    if (response != NULL) {
+                        /* The response band's midpoint is at 70% of the source,
+                         * relative to the verified upper 40% animation counter.
+                         * A one-byte code alone cannot determine image geometry. */
+                        unsigned int y = runs[start].top +
+                            (previous_end - runs[start].top) * 7U / 4U;
+                        if (y == 0U || y + 1U >= X11_FRAME_HEIGHT) continue;
+                        response_candidate = x11_frame_row(pixels, y, (unsigned int)left, span);
+                        if (response_candidate < 0 || response_candidate > 255 ||
+                            x11_frame_row(pixels, y - 1U, (unsigned int)left, span) != response_candidate ||
+                            x11_frame_row(pixels, y + 1U, (unsigned int)left, span) != response_candidate)
+                            continue;
+                    }
+                    if (identity >= 0 && (identity != (int64_t)candidate ||
+                                         response_identity != response_candidate)) {
                         return -1; /* Ambiguous pixels never acquire freshness. */
                     }
                     identity = candidate;
+                    response_identity = response_candidate;
                 }
             }
         }
     }
+    if (response != NULL) *response = response_identity;
     return identity;
+}
+
+static int64_t x11_frame_decode(const uint8_t pixels[X11_FRAME_BYTES]) {
+    return x11_frame_decode_pair(pixels, NULL);
 }
 
 static uint8_t x11_frame_component(unsigned long pixel, unsigned long mask) {
@@ -326,28 +349,10 @@ static uint8_t x11_frame_component(unsigned long pixel, unsigned long mask) {
     return (uint8_t)((value * 255UL + normalized / 2UL) / normalized);
 }
 
-/* Independent input-response band below the centered desktop's midpoint. The
- * upper four-row animation counter and every malformed/ambiguous band are excluded. */
+/* Response identity is admitted only with a complete, unambiguous frame/geometry. */
 static inline int x11_response_decode(const uint8_t pixels[X11_FRAME_BYTES]) {
-    int identity = -1;
-    for (unsigned int span = 48U; span <= X11_FRAME_WIDTH; span += 2U) {
-        int centered = (int)(X11_FRAME_WIDTH - span) / 2;
-        for (int left = centered - 3; left <= centered + 3; ++left) {
-            int previous = -1;
-            unsigned int length = 0U;
-            if (left < 0 || (unsigned int)left + span > X11_FRAME_WIDTH) continue;
-            for (unsigned int y = X11_FRAME_HEIGHT / 2U; y < X11_FRAME_HEIGHT; ++y) {
-                int code = x11_frame_row(pixels, y, (unsigned int)left, span);
-                length = code == previous ? length + 1U : 1U;
-                previous = code;
-                if (code >= 0 && code <= 255 && length >= 3U) {
-                    if (identity >= 0 && identity != code) return -1;
-                    identity = code;
-                }
-            }
-        }
-    }
-    return identity;
+    int response = -1;
+    return x11_frame_decode_pair(pixels, &response) < 0 ? -1 : response;
 }
 
 static int x11_frame_capture_pixels(Display *display, Window window,

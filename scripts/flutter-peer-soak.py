@@ -11,9 +11,13 @@ import sys
 import time
 
 
-def main():
-    assert len(sys.argv) == 6 and os.getuid() != 0 and os.getgid() != 0
-    pid, start, source_pid, source_start, scenario = sys.argv[1:]
+def observe(pid, start, source_pid, source_start, scenario, uid, gid):
+    # Installed children are non-dumpable. Only the disposable guest controller
+    # may observe those resources; the source/viewer and coordination stay user-owned.
+    assert uid > 0 and gid > 0
+    assert (os.getuid(), os.getgid()) == (uid, gid) or (
+        os.getuid() == os.getgid() == 0 and (uid, gid) == (4001, 4001)
+        and 'rustdesk.verifier_vm=1' in pathlib.Path('/proc/cmdline').read_text().split())
     limits = {'viewer-soak': (14459, 240, 14700), 'input-soak': (14639, 243, 14700),
               'congestion-soak': (14699, 244, 15120), 'input-congestion-soak': (14879, 247, 15300)}
     assert scenario in limits
@@ -30,7 +34,7 @@ def main():
             s = os.fstat(stream.fileno())
             assert stat.S_ISREG(s.st_mode)
             assert (s.st_uid, s.st_gid, stat.S_IMODE(s.st_mode), s.st_nlink, s.st_size) == (
-                os.getuid(), os.getgid(), 0o600, 1, 6)
+                uid, gid, 0o600, 1, 6)
             assert stream.read(7) == b'ready\n'
         return True
 
@@ -65,6 +69,9 @@ def main():
 
         assert marker('soak.begin')
         baseline = sample()
+        print('FLUTTER_PEER_SOAK_SERVER_BASELINE=' + json.dumps(dict(
+            pid=pid, start=start, lifetime_pid=source_pid, lifetime_start=source_start,
+            resources=baseline), sort_keys=True), flush=True)
         peak = baseline.copy()
         began = window_start = time.monotonic()
         cpu_start = baseline['cpu_ticks']
@@ -90,6 +97,7 @@ def main():
                 cpu_start, window_start = current['cpu_ticks'], now
             if done:
                 break
+            yield
             time.sleep(1)
         assert now - began >= minimum_seconds and windows >= minimum_windows and samples >= 14000
         print('FLUTTER_PEER_SOAK_SERVER_OK=' + json.dumps(dict(
@@ -98,10 +106,18 @@ def main():
         temporary = coord / 'soak.observed.tmp'
         with os.fdopen(os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
                               0o600), 'wb') as f:
+            if os.getuid() == 0:
+                os.fchown(f.fileno(), uid, gid)
             f.write(b'ready\n')
         rename = ctypes.CDLL(None, use_errno=True).renameat2
         if rename(-100, os.fsencode(temporary), -100, os.fsencode(coord / 'soak.observed'), 1) != 0:
             raise OSError(ctypes.get_errno(), 'publish soak observation')
+
+
+def main():
+    assert len(sys.argv) == 6 and os.getuid() != 0 and os.getgid() != 0
+    for _ in observe(*sys.argv[1:], os.getuid(), os.getgid()):
+        pass
 
 
 if __name__ == '__main__':

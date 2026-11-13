@@ -755,7 +755,12 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if remote in ('input-loss', 'input-congestion'):
+    if remote == 'input-soak':
+        print(f'LINUX_DEBIAN_REMOTE_INPUT_SOAK_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root '
+              'samples=7320 healthy_duration_ms=14640000 connection=preserved credential=preserved child=unchanged '
+              'desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
+    elif remote in ('input-loss', 'input-congestion'):
         print(f'LINUX_DEBIAN_REMOTE_{remote.upper().replace("-", "_")}_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root '
               'samples=480 impairment_cycles=3 recovery=preserved-connection credential=preserved child=unchanged '
@@ -840,7 +845,7 @@ if __name__ == '__main__':
                                                      '--run-upgrade', '--run-conffiles', '--run-camera', '--run-camera-busy', '--run-remote', '--run-remote-network',
                                                      '--run-remote-loss', '--run-remote-congestion', '--run-remote-backoff',
                                                      '--run-remote-input-recovery', '--run-remote-input-loss',
-                                                     '--run-remote-input-congestion')),
+                                                     '--run-remote-input-congestion', '--run-remote-input-soak')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
@@ -853,4 +858,5 @@ if __name__ == '__main__':
          remote={'--run-remote': 'suspend', '--run-remote-network': 'network',
                  '--run-remote-loss': 'loss', '--run-remote-congestion': 'congestion',
                  '--run-remote-backoff': 'backoff', '--run-remote-input-recovery': 'input-recovery',
-                 '--run-remote-input-loss': 'input-loss', '--run-remote-input-congestion': 'input-congestion'}.get(sys.argv[1], False))
+                 '--run-remote-input-loss': 'input-loss', '--run-remote-input-congestion': 'input-congestion',
+                 '--run-remote-input-soak': 'input-soak'}.get(sys.argv[1], False))

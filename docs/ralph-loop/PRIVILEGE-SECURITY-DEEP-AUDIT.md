@@ -151297,3 +151297,46 @@ exact private/process/socket/RAM retirement pass. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,179,346-byte audit prefix, SHA-256
 8d9f0b0d22bd84e90903bc4a37b92019fa25590dd98ff5d7db2923e1ec2fec45.
+
+## 2026-11-13 — Installed healthy input endurance preparation
+
+Selected R-F5's missing installed multi-hour input control after the accepted
+short loss/congestion checkpoint. TUF's existing password-authenticated SSH
+master is available; both trees started clean at 1f135493. This reuses app
+2eb7015e and the existing native four-hour input observer instead of rebuilding
+or repeating unchanged short cases. Native installed endurance acceptance is
+still OPEN; this entry records preparation, not a completed run.
+
+Mode 20, --installed-remote-input-soak, traverses the existing normal Debian
+installation, PAM/logind-selected service child and authenticated Flutter viewer.
+The unchanged C workload has 7,320 ordered responses in 61 four-minute windows:
+240 seconds of baseline and 14,400 seconds of subsequent healthy measurement.
+Each input has a no-input quiet control and actual viewer-root pixel response.
+The original 1,000-ms response limit and 250-ms p95/p99 drift allowance apply
+throughout; original connection, process, resources and released keys are checked.
+No impairment is installed in this healthy control. Package reinstall/removal/
+purge, child/credential preservation and exact joined cleanup remain required.
+
+The installed child deliberately remains non-dumpable (src/platform/linux.rs).
+Linux's [dumpability documentation](https://man7.org/linux/man-pages/man2/PR_SET_DUMPABLE.2const.html)
+and [proc fd access rules](https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html)
+explain why its resource observation belongs to the disposable guest's root
+controller. The shared soak helper now exposes its unchanged sampling loop as
+a generator. The root-only guest branch observes the exact recorded child and
+retained actor lifetime; the actor supervises its ordinary-user source/viewer/
+driver. Marker ownership remains UID/GID 4001, including the root-published
+observation acknowledgement. The existing non-root CLI stays non-root.
+
+Native FD-3 progress uses a fixed Bash exec with positional arguments and an
+inherited file-backed stderr, following [Python subprocess semantics](https://docs.python.org/3.11/library/subprocess.html).
+The root controller forwards bounded progress once per native update and rejects
+120 seconds without input progress. The actor caps each log at 2 MiB and checks
+source/bus/viewer lifetime during the run; the controller caps its aggregate log
+at 6 MiB. Driver/package/VM budgets are 14,760/14,940/15,120 seconds; resource
+observation retains its original duration, sample, CPU, RSS, thread and FD bounds.
+This changes six fixture/orchestration files, with no application source change.
+Bash syntax, Python parsing and diff checks pass; native execution is the next
+decisive check, and full acceptance requires terminal reconciliation and copied
+evidence. No new artifact cache or host network/service change is needed.
+This append preserves the prior 16,180,012-byte audit prefix, SHA-256
+c46e00b3ee8972230ebf6332d2d11f66040a9e47e4c2c01eb2886eed7c7cc4e4.

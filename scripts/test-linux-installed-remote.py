@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Observe Remote pixels and viewer/network recovery through the installed service."""
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 import ctypes
 import importlib.util
 import json
@@ -30,7 +30,7 @@ NETWORK_PROFILES = {
     'input-loss': ['random3', 'random8', 'burst'],
     'input-congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
 }
-INPUT_SCENARIOS = ('input-recovery', 'input-loss', 'input-congestion')
+INPUT_SCENARIOS = ('input-recovery', 'input-loss', 'input-congestion', 'input-soak')
 
 
 def require(condition, message):
@@ -140,8 +140,46 @@ def observe_network(settings, actor, network):
           'observer=exact-child loopback=restored ingress=removed interface=removed socket=removed', flush=True)
 
 
+def observe_soak(record, actor, log):
+    spec = importlib.util.spec_from_file_location('peer_soak', SCRIPT.with_name('flutter-peer-soak.py'))
+    soak = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(soak)
+    start = Path(f'/proc/{actor.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
+    began = last_progress = time.monotonic()
+    pending = b''
+    with log.open('rb') as output:
+        def supervise():
+            nonlocal pending, last_progress
+            require(actor.poll() is None and time.monotonic() - began < 14820,
+                    'installed input soak actor exited or timed out')
+            require(os.fstat(output.fileno()).st_size <= 6291456, 'installed soak log exceeds its bound')
+            pending += output.read(65536)
+            lines = pending.split(b'\n')
+            pending = lines.pop()
+            require(len(pending) <= 8192, 'installed soak progress line exceeds its bound')
+            for line in lines:
+                if line.startswith((b'FLUTTER_PEER_INPUT_SOAK_PROGRESS ',
+                                    b'FLUTTER_PEER_INPUT_SOAK_WINDOW_COMPLETE ')):
+                    print('LINUX_INSTALLED_SOAK_LIVE ' + line.decode('ascii'), flush=True)
+                    last_progress = time.monotonic()
+            require(time.monotonic() - last_progress < 120, 'installed input soak progress stopped')
+
+        while not os.path.lexists(COORD / 'soak.begin'):
+            supervise()
+            require(time.monotonic() - began < 90, 'installed input soak did not begin')
+            time.sleep(0.05)
+        last_progress = time.monotonic()
+        # The retained actor owns and supervises the source, viewer and pixel driver.
+        # Observe the non-dumpable service child from guest root, not from that actor.
+        with closing(soak.observe(record['pid'], str(record['start']), actor.pid, start,
+                                  'input-soak', 4001, 4001)) as observation:
+            for _ in observation:
+                supervise()
+
+
 def session(network=False):
-    require(network is False or network in NETWORK_PROFILES, 'unknown Remote network scenario')
+    require(network is False or network in NETWORK_PROFILES or network == 'input-soak',
+            'unknown Remote scenario')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(settings)
@@ -190,7 +228,7 @@ def session(network=False):
                 require(source.poll() is None and time.monotonic() < deadline,
                         'installed Remote source did not publish')
                 time.sleep(0.05)
-            if network:
+            if network in NETWORK_PROFILES:
                 deadline = time.monotonic() + 5
                 while not Path(NETWORK_ENDPOINT).exists():
                     require(time.monotonic() < deadline, 'network controller did not start')
@@ -202,21 +240,38 @@ def session(network=False):
                                       stdout=log('viewer.log'), stderr=subprocess.STDOUT)
             processes.append(viewer)
             start = Path(f'/proc/{viewer.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
-            driver = subprocess.Popen([str(settings.WORK / 'presentation-driver'), ':77', ':79',
-                                       str(viewer.pid), start,
-                                       {'network': '--network-impairment', 'loss': '--network-loss',
-                                        'congestion': '--network-congestion',
-                                        'backoff': '--network-backoff',
-                                        'input-recovery': '--input-recovery', 'input-loss': '--input-loss',
-                                        'input-congestion': '--input-congestion'}.get(network, '--viewer-suspend')],
+            driver_args = [str(settings.WORK / 'presentation-driver'), ':77', ':79',
+                           str(viewer.pid), start,
+                           {'network': '--network-impairment', 'loss': '--network-loss',
+                            'congestion': '--network-congestion', 'backoff': '--network-backoff',
+                            'input-recovery': '--input-recovery', 'input-loss': '--input-loss',
+                            'input-congestion': '--input-congestion',
+                            'input-soak': '--input-soak'}.get(network, '--viewer-suspend')]
+            if network == 'input-soak':
+                # Fixed shell text duplicates the inherited log as the native progress FD.
+                driver_args = ['/bin/bash', '--noprofile', '--norc', '-c', 'exec "$@" 3>&2',
+                               'installed-input-soak', *driver_args]
+            driver = subprocess.Popen(driver_args,
                                       env={**environment, 'XAUTHORITY': str(authority)},
-                                      stdout=log('driver.log'), stderr=subprocess.STDOUT)
+                                      stdout=log('driver.log'),
+                                      stderr=None if network == 'input-soak' else subprocess.STDOUT)
             processes.append(driver)
             clock = Path('/proc/self/ns/time').stat()
             for process in (source, viewer, driver):
                 current = Path(f'/proc/{process.pid}/ns/time').stat()
                 require((current.st_dev, current.st_ino) == (clock.st_dev, clock.st_ino),
                         'Remote observer and source clocks differ')
+            if network == 'input-soak':
+                deadline = time.monotonic() + 14760
+                while driver.poll() is None:
+                    require(source.poll() is None and bus.poll() is None and time.monotonic() < deadline,
+                            'installed input soak source/bus exited or driver timed out')
+                    require(viewer.poll() is None or (COORD / 'soak.done').exists(),
+                            'installed input soak viewer exited before completion')
+                    for name in ('driver.log', 'source-error.log', 'frame-source.log', 'viewer.log'):
+                        require((COORD / name).stat().st_size <= 2097152,
+                                'installed input soak output exceeds its bound')
+                    time.sleep(0.1)
             require(driver.wait(timeout=240 if network == 'input-recovery' else 300 if network in INPUT_SCENARIOS
                                 else 180 if network else 120) == 0,
                     'installed Remote pixel observer failed')
@@ -242,12 +297,14 @@ def session(network=False):
             for name in ('driver.log', 'source-error.log', 'frame-source.log', 'viewer.log'):
                 path = COORD / name
                 if path.exists():
-                    require(path.stat().st_size <= 131072, 'Remote observer output exceeds its bound')
+                    require(path.stat().st_size <= (2097152 if network == 'input-soak' else 131072),
+                            'Remote observer output exceeds its bound')
                     print(path.read_text(), end='', file=sys.stderr, flush=True)
 
 
 def scenario(settings, receiver, record, network=False):
-    require(network is False or network in NETWORK_PROFILES, 'unknown Remote network scenario')
+    require(network is False or network in NETWORK_PROFILES or network == 'input-soak',
+            'unknown Remote scenario')
     guard(settings, 0)
     COORD.mkdir(mode=0o700)
     os.chown(COORD, 4001, 4001)
@@ -261,7 +318,9 @@ def scenario(settings, receiver, record, network=False):
             actor = subprocess.Popen([*settings.ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
                                       str(SCRIPT), '--session-' + network if network else '--session'], env=settings.ENV,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=output)
-            if network:
+            if network == 'input-soak':
+                observe_soak(record, actor, log)
+            elif network in NETWORK_PROFILES:
                 observe_network(settings, actor, network)
             raw, _ = actor.communicate(timeout=180)
             require(actor.returncode == 0 and len(raw) <= 4096, 'installed Remote session failed')
@@ -278,6 +337,7 @@ def scenario(settings, receiver, record, network=False):
             'scenario': network or 'suspend',
             'holds_ms': NETWORK_HOLDS if network == 'network' else [18000] if network == 'backoff'
                         else [2000, 6000, 2000] if network == 'input-recovery'
+                        else [] if network == 'input-soak'
                         else [20000] * 3 if network else [2000, 6000, 12000],
             'recovery_limit_ms': 2500, 'freshness_limit_ms': 1000,
         }, sort_keys=True), flush=True)
@@ -288,7 +348,8 @@ def scenario(settings, receiver, record, network=False):
             actor.wait(timeout=20)
             actor.stdout.close()
         if log.exists():
-            require(log.stat().st_size <= (2097152 if network == 'input-recovery' else 4194304 if network in INPUT_SCENARIOS
+            require(log.stat().st_size <= (6291456 if network == 'input-soak'
+                                          else 2097152 if network == 'input-recovery' else 4194304 if network in INPUT_SCENARIOS
                                           else 1048576),
                     'installed Remote output exceeds its bound')
             print(log.read_text(), end='', flush=True)
@@ -297,9 +358,10 @@ def scenario(settings, receiver, record, network=False):
 if __name__ == '__main__':
     require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion'],
                             ['--session-backoff'], ['--session-input-recovery'], ['--session-input-loss'],
-                            ['--session-input-congestion']),
+                            ['--session-input-congestion'], ['--session-input-soak']),
             'closed installed Remote session request required')
     session(network={'--session-network': 'network', '--session-loss': 'loss',
                      '--session-congestion': 'congestion', '--session-backoff': 'backoff',
                      '--session-input-recovery': 'input-recovery', '--session-input-loss': 'input-loss',
-                     '--session-input-congestion': 'input-congestion'}.get(sys.argv[1], False))
+                     '--session-input-congestion': 'input-congestion',
+                     '--session-input-soak': 'input-soak'}.get(sys.argv[1], False))

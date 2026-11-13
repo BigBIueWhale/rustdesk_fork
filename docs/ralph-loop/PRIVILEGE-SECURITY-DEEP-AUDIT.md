@@ -153071,3 +153071,19 @@ Every run retained its source freeze through terminal status, reconciliation and
 verified copies. The ledger records this scoped pass and needs its fresh count.
 This append preserves the prior 16,294,026-byte audit prefix, SHA-256
 9ad0f749dc570e226ebe0df42f0edd0eaec1822cf417428c4de46e7222832926.
+
+### Fresh ledger count after installed refresh acceptance
+
+At afea0008, TUF UlHEAJ1RwA passes the fixed tiktoken 0.12.0/cl100k_base/
+encode_ordinary count, seven controls and byte round trip: 425,393 tokens,
+1,937,869 bytes, input SHA-256
+1a8fba96d41694a817eca8b629fab5f22b4912ce2af9390678e0d9729403e142.
+The approximate 400,000-token target remains OPEN. QEMU 3331248 joins zero;
+private 66306:84062397 and RAM 29:14022 retire with three zero endpoint deltas.
+Supervisor 30.150 seconds; peak RAM scratch 403,165,184 bytes;
+tmpfs_swap_disabled=false. Eight files/117,548 bytes are SHA-verified on CTE/TUF;
+capsule video-refresh-ledger-afea0008.json, outer SHA-256
+dfc83dea176e283f06d5c19a3f5f780515b2a5e2c6bc9aca7a6848f299a22e3a.
+No owned jobs or source freezes remain. This audit-only append preserves the
+counted ledger and prior 16,299,978-byte audit prefix, SHA-256
+c6ce821ed333a5190c798089313972c264a1169e3ffecd0261295bff541dfbe7.

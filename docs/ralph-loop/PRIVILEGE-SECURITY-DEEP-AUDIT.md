@@ -153945,3 +153945,43 @@ Outer SHA-256 d183d6feaaee5fce3ea3e2c073cfdbfa119e176e0cb439fa6b86eba8c55dbcb1.
 No owned job or source freeze remains; goal active. This audit-only append preserves
 the prior 16,357,399-byte prefix, SHA-256
 404eb09262673805e060e868b51c9e34d429b9d52df20c9183e9b1a66a9b7fef.
+
+### Libyuv arithmetic — authenticated native baseline
+
+The R-R3 native-codec blocker takes priority over pending rendered file-column
+geometry: establish the existing library failure and required correction before
+changing the pin. TUF's existing password-only SSH master is usable. Copy only
+the already-authenticated 566,889-byte source archive missing from its input
+closure; no fresh acquisition or SSH configuration change occurs.
+
+`05d1f560` adds the seventeen-case native reproduction and reuses the bounded
+compiled-component VM lane: 2-GiB guest, 6-GiB scratch, 4-GiB file ceiling,
+512-MiB non-root/no-capability container, no guest/container network. All source
+and compiler inputs are authenticated/read-only. An initial pre-admission refusal
+finds group-writable Git checkout modes; removing group/other write on the five
+owned changed files restores the existing entry requirement, without relaxing it.
+
+TUF `9GtnJ3EWGg` confirms ten healthy pixel controls, six SIGFPE exits across
+ScalePlane/_16/_12 at heights 32768 and 32769, and one UBSan signed affine-stride
+overflow. The affine case reserves 2 GiB of virtual address space but commits
+one page. Binary SHA-256 is
+5ef0e649bef416a0865f95859aaf5bc889d7702d044ead1469842246faa66044.
+Capsule `libyuv-arithmetic-baseline-05d1f560-native.json` binds all seventeen
+results, 78 authenticated source/header hashes, compiler/fixture identity and
+eight retained files/97,064 bytes, rehashed on CTE and TUF.
+
+Supervisor time is 31.462 seconds; scratch peak 3,949,535,232 bytes. QEMU 3589249
+joins zero; private 66306:86948570 and RAM 29:15395 run.hymnm1yo retire. Three
+endpoint deltas are zero. tmpfs swap is not disabled. This is source-native
+dependency evidence, not application reachability or a product exploit.
+
+The original upstream guard permits 32768, so that guard alone cannot close the
+observed boundary. Upstream 0b9e5c922deec7c9921ae385f6242a9a27754d6e addresses the
+division/coordinate overflow; fb6341d326846fbbe669ad5173e520f66b339621 supplies
+the earlier error-return API. Primary links and next-step scope are in
+docs/NATIVE-CODEC-WATCH.md. Review/authenticate a candidate, compare native valid
+and refusal behavior, and rebuild affected caches/artifacts before closing R-R3.
+No library pin or product implementation changes in this checkpoint. Goal active;
+no owned job or source freeze remains. This append preserves the prior
+16,358,226-byte prefix, SHA-256
+9a91a3e359a9a894a023e35213e100f840bcc9c3ad3309c60471a0def30773a7.

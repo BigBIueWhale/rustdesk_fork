@@ -74,7 +74,7 @@ Package: libyuv
 Status: OPEN ADVISORY
 Disposition: source-pinned overlay; monitor upstream libyuv advisories and treat
 image conversion/scaling memory-safety advisories as release-blocking until
-patched or isolated by the decoder sandbox.
+remediated or the affected path is proven unreachable in the release artifacts.
 libyuv version: 1857
 LIBYUV_COMMIT: 0faf8dd0e004520a61a603a4d2996d5ecc80dc3f
 libyuv SHA512: be6b343ab6c62e8f2d1571fedf25f5facbf7cd7fe8e1cc4949dab7549ad15f962c91ea43bf567785e54382d7689514f6b66d61bd56b3f38ba54ef51c5fd0da9b
@@ -92,10 +92,26 @@ verbatim is not an adequate backport.
 No direct calls to these APIs were found in the fork's Rust/C/C++ sources.
 That source observation does not prove transitive or compiled-artifact
 unreachability. Resolve this entry through reviewed remediation or exact-artifact
-reachability evidence before release. No product exploit or native reproduction
-is established. The source-bound review record is
+reachability evidence before release. The source-bound review record is
 `.harness-state/verifier-vm/native-codec-review-a0122e2e.json`; the broader current
 advisory review, including other upstream arithmetic fixes, remains incomplete.
+
+Native reproduction at `05d1f560`: `--libyuv-arithmetic-tests` builds the
+authenticated 1857 source with UBSan in a disposable no-network VM. Ten valid
+pixel controls pass; `ScalePlane`, `_16` and `_12` each produce SIGFPE for
+32,768 and 32,769 source rows, and `ARGBAffineRow_C` reports signed
+stride-multiplication overflow. This is dependency-source execution, not a
+product exploit or final-artifact reachability result. The retained capsule is
+`.harness-state/verifier-vm/libyuv-arithmetic-baseline-05d1f560-native.json`.
+The 32,768 boundary remains within the original upstream dimension guard.
+Upstream [`0b9e5c92`](https://chromium.googlesource.com/libyuv/libyuv/%2B/0b9e5c922deec7c9921ae385f6242a9a27754d6e)
+addresses this fixed-point division boundary and other scaling overflows.
+The earlier [`fb6341d3`](https://fuchsia.googlesource.com/third_party/libyuv/%2B/fb6341d326846fbbe669ad5173e520f66b339621)
+changes scaling APIs to return errors, including allocation failures.
+Candidate selection must account for these API/behavior changes, authenticate
+the source, preserve valid pixel conversion, and rebuild affected native caches
+and artifacts. Neither an unapplied patch nor the successful reproduction clears
+this OPEN ADVISORY.
 
 Package: opus
 Status: reviewed

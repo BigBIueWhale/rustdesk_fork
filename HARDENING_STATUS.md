@@ -12063,18 +12063,28 @@ or any unresolved advisory ledger entry. Its checker/self-test execution after d
 decoupling has not been replayed in isolation and remains **OPEN**; source inspection does not
 establish scanner, native-codec or release acceptance.
 
-**R-R3 libyuv arithmetic finding — OPEN; release-blocking applicability review.**
+**R-R3 libyuv arithmetic finding — OPEN; native source reproduction confirmed.**
 The SHA512-authenticated `0faf8dd0` / version-1857 archive lacks the changes in
 upstream [`ef08f21f`](https://fuchsia.googlesource.com/third_party/libyuv/+/ef08f21f6d94addd69e5ae521d0f75f14cb644ed%5E%21/).
 `docs/NATIVE-CODEC-WATCH.md` now records `OPEN ADVISORY`, which the existing
-watcher rejects. No direct fork calls to the affected scaling/affine APIs were
-found; transitive/native-artifact reachability and reproduction remain unproved.
-The older scaling API returns `void`, so a backport requires an explicit API and
-failure-semantics review. Remediation or exact-artifact unreachability evidence
-is required before clearing the entry. The bounded source/pin review is
-`.harness-state/verifier-vm/native-codec-review-a0122e2e.json`. Broader advisory
-freshness, other upstream arithmetic fixes, isolated watcher replay and final
-native/release acceptance remain OPEN. This is not a reproduced product exploit.
+watcher rejects. At `05d1f560`, TUF `9GtnJ3EWGg` builds the authenticated source
+with UBSan and runs seventeen native cases: ten valid pixel controls pass;
+all three scaling APIs produce SIGFPE at both 32,768 and 32,769 source rows;
+`ARGBAffineRow_C` produces signed stride-multiplication overflow. The affine
+fixture reserves virtual space and commits one page, not a 2-GiB pixel buffer.
+The no-network run completes in 31.462 seconds with joined cleanup and three
+zero endpoint deltas; bounded evidence is
+`.harness-state/verifier-vm/libyuv-arithmetic-baseline-05d1f560-native.json`.
+No direct fork calls to those APIs were found; transitive/application-artifact
+reachability remains unproved. The older scaling API returns `void`; a backport
+must preserve explicit failure propagation. The original dimension guard alone
+does not cover the reproduced 32,768 boundary. Upstream `0b9e5c92` separately
+corrects fixed-point overflow and that boundary. Next: review/authenticate a
+candidate containing the required corrections and compare native behavior,
+then rebuild affected artifact closures. Remediation or exact-artifact
+unreachability evidence is required before clearing the entry. Broader advisory
+freshness, watcher replay and final native/release acceptance remain OPEN.
+This reproduces dependency behavior, not a product exploit.
 
 **The remaining native-decode residual is distinct (recorded 2026-07-05 under the universal-deployment re-rating).**
 The in-process VP8/VP9, image, audio, clipboard, and compression decode paths on

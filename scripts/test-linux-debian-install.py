@@ -755,7 +755,12 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
             if user_created:
                 command(['/usr/sbin/userdel', 'rdreceiver4002'], 'retire-user')
     settings.wait_network_retirement(network_before)
-    if remote == 'input-congestion-soak':
+    if remote == 'input-animation':
+        print(f'LINUX_DEBIAN_REMOTE_INPUT_ANIMATION_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
+              'dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root '
+              'samples=120 animation=continuous connection=preserved credential=preserved child=unchanged '
+              'desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
+    elif remote == 'input-congestion-soak':
         print(f'LINUX_DEBIAN_REMOTE_INPUT_CONGESTION_SOAK_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root '
               'samples=7320 healthy_duration_ms=14640000 impairment_cycles=12 recovery=preserved-connection '
@@ -852,7 +857,7 @@ if __name__ == '__main__':
                                                      '--run-remote-loss', '--run-remote-congestion', '--run-remote-backoff',
                                                      '--run-remote-input-recovery', '--run-remote-input-loss',
                                                      '--run-remote-input-congestion', '--run-remote-input-soak',
-                                                     '--run-remote-input-congestion-soak')),
+                                                     '--run-remote-input-congestion-soak', '--run-remote-input-animation')),
             'closed Debian installation arguments required')
     require(len(sys.argv) == 8 or re.fullmatch('[0-9a-f]{64}', sys.argv[8]), 'graphical agent digest differs')
     main(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]), sys.argv[5], sys.argv[6], sys.argv[7],
@@ -867,4 +872,5 @@ if __name__ == '__main__':
                  '--run-remote-backoff': 'backoff', '--run-remote-input-recovery': 'input-recovery',
                  '--run-remote-input-loss': 'input-loss', '--run-remote-input-congestion': 'input-congestion',
                  '--run-remote-input-soak': 'input-soak',
+                 '--run-remote-input-animation': 'input-animation',
                  '--run-remote-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False))

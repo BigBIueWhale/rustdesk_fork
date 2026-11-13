@@ -229,7 +229,7 @@ def observe_impaired_soak(settings, record, actor, log):
 
 
 def session(network=False):
-    require(network is False or network in NETWORK_PROFILES or network == 'input-soak',
+    require(network is False or network in NETWORK_PROFILES or network in ('input-soak', 'input-animation'),
             'unknown Remote scenario')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
@@ -269,7 +269,8 @@ def session(network=False):
                             and 0 < info.st_size <= 4096, 'Remote display authority differs')
                     combined.write(path.read_bytes())
             source = subprocess.Popen([str(settings.WORK / 'presentation-source'),
-                                       *(['--input-response', str(COORD)] if network in INPUT_SCENARIOS else [])],
+                                       *(['--input-animation'] if network == 'input-animation' else
+                                         ['--input-response', str(COORD)] if network in INPUT_SCENARIOS else [])],
                 env={**environment, 'DISPLAY': ':77', 'XAUTHORITY': '/run/user/4001/gdm/Xauthority',
                      'RUSTDESK_PRESENTATION_TRACE': '1'},
                 stdout=log('frame-source.log'), stderr=log('source-error.log'))
@@ -297,6 +298,7 @@ def session(network=False):
                             'congestion': '--network-congestion', 'backoff': '--network-backoff',
                             'input-recovery': '--input-recovery', 'input-loss': '--input-loss',
                             'input-congestion': '--input-congestion',
+                            'input-animation': '--input-animation',
                             'input-soak': '--input-soak',
                             'input-congestion-soak': '--input-congestion-soak'}.get(network, '--viewer-suspend')]
             if network in SOAK_SCENARIOS:
@@ -355,7 +357,7 @@ def session(network=False):
 
 
 def scenario(settings, receiver, record, network=False):
-    require(network is False or network in NETWORK_PROFILES or network == 'input-soak',
+    require(network is False or network in NETWORK_PROFILES or network in ('input-soak', 'input-animation'),
             'unknown Remote scenario')
     guard(settings, 0)
     COORD.mkdir(mode=0o700)
@@ -391,7 +393,7 @@ def scenario(settings, receiver, record, network=False):
             'scenario': network or 'suspend',
             'holds_ms': NETWORK_HOLDS if network == 'network' else [18000] if network == 'backoff'
                         else [2000, 6000, 2000] if network == 'input-recovery'
-                        else [] if network == 'input-soak'
+                        else [] if network in ('input-soak', 'input-animation')
                         else [20000] * 12 if network == 'input-congestion-soak'
                         else [20000] * 3 if network else [2000, 6000, 12000],
             'recovery_limit_ms': 2500, 'freshness_limit_ms': 1000,
@@ -414,11 +416,12 @@ if __name__ == '__main__':
     require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion'],
                             ['--session-backoff'], ['--session-input-recovery'], ['--session-input-loss'],
                             ['--session-input-congestion'], ['--session-input-soak'],
-                            ['--session-input-congestion-soak']),
+                            ['--session-input-congestion-soak'], ['--session-input-animation']),
             'closed installed Remote session request required')
     session(network={'--session-network': 'network', '--session-loss': 'loss',
                      '--session-congestion': 'congestion', '--session-backoff': 'backoff',
                      '--session-input-recovery': 'input-recovery', '--session-input-loss': 'input-loss',
                      '--session-input-congestion': 'input-congestion',
+                     '--session-input-animation': 'input-animation',
                      '--session-input-soak': 'input-soak',
                      '--session-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False))

@@ -326,6 +326,30 @@ static uint8_t x11_frame_component(unsigned long pixel, unsigned long mask) {
     return (uint8_t)((value * 255UL + normalized / 2UL) / normalized);
 }
 
+/* Independent input-response band below the centered desktop's midpoint. The
+ * upper four-row animation counter and every malformed/ambiguous band are excluded. */
+static inline int x11_response_decode(const uint8_t pixels[X11_FRAME_BYTES]) {
+    int identity = -1;
+    for (unsigned int span = 48U; span <= X11_FRAME_WIDTH; span += 2U) {
+        int centered = (int)(X11_FRAME_WIDTH - span) / 2;
+        for (int left = centered - 3; left <= centered + 3; ++left) {
+            int previous = -1;
+            unsigned int length = 0U;
+            if (left < 0 || (unsigned int)left + span > X11_FRAME_WIDTH) continue;
+            for (unsigned int y = X11_FRAME_HEIGHT / 2U; y < X11_FRAME_HEIGHT; ++y) {
+                int code = x11_frame_row(pixels, y, (unsigned int)left, span);
+                length = code == previous ? length + 1U : 1U;
+                previous = code;
+                if (code >= 0 && code <= 255 && length >= 3U) {
+                    if (identity >= 0 && identity != code) return -1;
+                    identity = code;
+                }
+            }
+        }
+    }
+    return identity;
+}
+
 static int x11_frame_capture_pixels(Display *display, Window window,
                                     uint8_t pixels[X11_FRAME_BYTES], uint64_t *captured_us) {
     XWindowAttributes attributes, root_attributes, after;

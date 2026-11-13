@@ -293,7 +293,7 @@ int main(int argc, char **argv) {
     unsigned int frame_interval_ms = FRAME_INTERVAL_MS;
     unsigned int monitors = 1U;
     ResponseInput response = {0};
-    int input_response = 0, interactive = 0, response_ready = 0;
+    int input_response = 0, interactive = 0, response_ready = 0, input_animation = 0;
     int response_on_pause = 0, pause_acknowledged = 0, response_active = 0;
     const char *response_directory = NULL;
     unsigned int code_height, code_top = 0U;
@@ -326,11 +326,13 @@ int main(int argc, char **argv) {
         /* Keep the counter below the viewer's collapsed toolbar handle when
          * Adaptive removes the top letterbox. Midpoint palette probes stay clear. */
         code_top = SOURCE_HEIGHT / 10U;
+    } else if (argc == 2 && strcmp(argv[1], "--input-animation") == 0) {
+        input_response = input_animation = 1;
     } else if (argc == 3 && strcmp(argv[1], "--input-response") == 0) {
         input_response = 1;
         response_directory = argv[2];
     } else if (argc != 1) {
-        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd [--pause-output FILE [--input-response DIRECTORY]]|--two-monitors|--inset-counter|--input-response DIRECTORY]\n", stderr);
+        fputs("FLUTTER_PEER_SOURCE_FAIL usage: frame-source [--full-hd [--pause-output FILE [--input-response DIRECTORY]]|--two-monitors|--inset-counter|--input-animation|--input-response DIRECTORY]\n", stderr);
         return 1;
     }
     if (getrlimit(RLIMIT_FSIZE, &output_limit) != 0) {
@@ -540,6 +542,7 @@ int main(int argc, char **argv) {
         unsigned int high = (frame >> 4U) & 15U;
         unsigned int row, bar;
         uint64_t publication_us;
+        uint64_t response_us = 0U;
 
         if (input_response && !response_on_pause) {
             int received;
@@ -552,7 +555,16 @@ int main(int argc, char **argv) {
                 }
             } while (interactive && received == 0 && stop_requested == 0);
             if (stop_requested != 0) break;
-            if (received == 1) interactive = 1;
+            if (received == 1) {
+                if (input_animation) {
+                    response_us = monotonic_micros();
+                    if (response.request > 255U || response_us == 0U) {
+                        fputs("FLUTTER_PEER_SOURCE_FAIL animation response exhausted\n", stderr);
+                        exit_status = 1;
+                        goto cleanup;
+                    }
+                } else interactive = 1;
+            }
         }
 
         XSetForeground(display, graphics, rgb_pixel(visual, palette[low]));
@@ -575,6 +587,19 @@ int main(int argc, char **argv) {
                 XFillRectangle(display, back_buffer, graphics, (int)start,
                                (int)(code_top + row * code_height / STATE_CODE_ROWS),
                                end - start, code_height / STATE_CODE_ROWS);
+            }
+        }
+        /* An independent one-byte response band cannot form a four-row frame code.
+         * It changes only after a complete native request; animation never waits for input. */
+        if (input_animation) {
+            for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+                unsigned int start = bar * source_width / STATE_CODE_BARS;
+                unsigned int end = (bar + 1U) * source_width / STATE_CODE_BARS;
+                const uint8_t *color = state_code_bar_is_white(response.request << 24U, 0U, bar)
+                    ? code_white : code_black;
+                XSetForeground(display, graphics, rgb_pixel(visual, color));
+                XFillRectangle(display, back_buffer, graphics, (int)start,
+                               (int)(source_height * 3U / 5U), end - start, source_height / 5U);
             }
         }
         /*
@@ -603,6 +628,27 @@ int main(int argc, char **argv) {
             fprintf(stderr, "FLUTTER_PEER_SOURCE_FAIL source window occluded frame=%u\n", frame);
             exit_status = 1;
             break;
+        }
+        if (input_animation) {
+            for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+                const uint8_t *color = state_code_bar_is_white(response.request << 24U, 0U, bar)
+                    ? code_white : code_black;
+                if (!root_pixel_matches(display, root,
+                        (int)((bar * 2U + 1U) * source_width / (STATE_CODE_BARS * 2U)),
+                        (int)(source_height * 7U / 10U), rgb_pixel(visual, color))) {
+                    fputs("FLUTTER_PEER_SOURCE_FAIL response pixels occluded\n", stderr);
+                    exit_status = 1;
+                    goto cleanup;
+                }
+            }
+            if (response_us != 0U && fprintf(stderr,
+                    "FLUTTER_PEER_SOURCE_RESPONSE request=%u response=%u state=%u "
+                    "accepted_us=%llu publication_us=%llu\n", response.request - 1U,
+                    response.request, frame, (unsigned long long)response_us,
+                    (unsigned long long)publication_us) < 0) {
+                exit_status = 1;
+                goto cleanup;
+            }
         }
         if (trace_enabled != 0) {
             if (printf("RUSTDESK_PRESENTATION_TRACE stage=source-publish monotonic_us=%llu "

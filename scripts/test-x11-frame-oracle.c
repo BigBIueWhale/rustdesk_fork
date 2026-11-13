@@ -75,6 +75,24 @@ static int unit_cases(void) {
     make_pixels(pixels, 0x01020304U, 0U, 50U, 100U);
     REQUIRE(x11_frame_decode(pixels) == 0x01020304);
     {
+        uint8_t marker[X11_FRAME_BYTES];
+        memset(marker, 180, sizeof(marker));
+        make_pixels(marker, 0x7b000000U, 0U, 50U, 100U);
+        REQUIRE(x11_response_decode(pixels) < 0);
+        memcpy(pixels + 72U * X11_FRAME_WIDTH * 3U, marker, sizeof(row));
+        REQUIRE(x11_frame_decode(pixels) == 0x01020304 && x11_response_decode(pixels) == 123);
+        make_pixels(pixels, 0x01020305U, 0U, 50U, 100U);
+        REQUIRE(x11_frame_decode(pixels) == 0x01020305 && x11_response_decode(pixels) == 123);
+        make_pixels(marker, 0x7c000000U, 0U, 50U, 100U);
+        memcpy(pixels + 96U * X11_FRAME_WIDTH * 3U, marker, sizeof(row));
+        REQUIRE(x11_response_decode(pixels) < 0);
+        memset(pixels + 60U * X11_FRAME_WIDTH * 3U, 180,
+               (X11_FRAME_HEIGHT - 60U) * X11_FRAME_WIDTH * 3U);
+        memcpy(pixels + 72U * X11_FRAME_WIDTH * 3U, marker, 2U * X11_FRAME_WIDTH * 3U);
+        REQUIRE(x11_response_decode(pixels) < 0);
+        puts("X11_RESPONSE_BAND_CASES=pass independent=true absent=refused ambiguous=refused short=refused");
+    }
+    {
         uint8_t half[X11_FRAME_BYTES];
         memset(pixels, 180, sizeof(pixels));
         make_pixels(pixels, 0x01020304U, 0U, 0U, 100U);

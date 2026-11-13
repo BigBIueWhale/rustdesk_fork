@@ -4656,6 +4656,104 @@ fail:
     return -1;
 }
 
+static int exercise_input_animation(Display *source, Display *display, ViewerWindow *viewer,
+                                     SourceHistory *history, const ConnectionIdentity *connection,
+                                     const ProcessResources *baseline) {
+    enum { SAMPLES = 120, QUIET_MS = 650 };
+    unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0}, maximum = 0U, trial = 0U;
+    uint64_t maximum_age = 0U;
+    int64_t previous_frame = -1;
+    const char *phase = "setup";
+    Window focus;
+    int revert;
+    XSetInputFocus(source, DefaultRootWindow(source), RevertToParent, CurrentTime);
+    XSync(source, False);
+    XGetInputFocus(source, &focus, &revert);
+    if (focus != DefaultRootWindow(source) || return_focus_with_pointer(display, viewer) != 0)
+        goto fail;
+    for (trial = 0U; trial < SAMPLES; ++trial) {
+        uint64_t quiet = x11_frame_monotonic_us(), request_us = 0U;
+        unsigned int distinct = 0U, samples = 0U;
+        int64_t quiet_first = -1, quiet_last = -1;
+        if (quiet == 0U) goto fail;
+        phase = "animation-without-response";
+        for (;;) {
+            uint8_t pixels[X11_FRAME_BYTES];
+            uint64_t captured = 0U, age = 0U;
+            int64_t frame = x11_frame_capture(display, viewer->window, pixels, &captured);
+            int response = frame < 0 ? -1 : x11_response_decode(pixels);
+            if (frame < 0 || frame < previous_frame || response != (int)trial ||
+                x11_frame_age(history, "/coord", frame, captured, &age) != 0 || age > FRESH_LIMIT_MS)
+                goto fail;
+            if (frame != previous_frame) ++distinct;
+            previous_frame = quiet_last = frame;
+            if (quiet_first < 0) quiet_first = frame;
+            if (age > maximum_age) maximum_age = age;
+            ++samples;
+            uint64_t now = x11_frame_monotonic_us();
+            if (now < quiet || now - quiet > (QUIET_MS + 100U) * 1000ULL) goto fail;
+            if (now - quiet >= QUIET_MS * 1000ULL) break;
+            if (sleep_millis(20U) != 0) goto fail;
+        }
+        if (distinct < 2U || quiet_last - quiet_first < 2 || samples < 4U ||
+            !keyboard_is_released(source) || !keyboard_is_released(display)) goto fail;
+        phase = "request";
+        request_us = x11_frame_monotonic_us();
+        if (request_us == 0U || send_response_request(display, trial) != 0) goto fail;
+        phase = "response-and-freshness";
+        for (;;) {
+            uint8_t pixels[X11_FRAME_BYTES];
+            uint64_t captured = 0U, age = 0U;
+            int64_t frame = x11_frame_capture(display, viewer->window, pixels, &captured);
+            int response = frame < 0 ? -1 : x11_response_decode(pixels);
+            uint64_t now = x11_frame_monotonic_us();
+            if (now < request_us || now - request_us > FRESH_LIMIT_MS * 1000ULL ||
+                frame < previous_frame || response < (int)trial || response > (int)trial + 1 ||
+                x11_frame_age(history, "/coord", frame, captured, &age) != 0 || age > FRESH_LIMIT_MS)
+                goto fail;
+            previous_frame = frame;
+            if (age > maximum_age) maximum_age = age;
+            if (response == (int)trial + 1) {
+                ConnectionIdentity current = {{0}, {0}, 0UL};
+                ProcessResources resources = {0};
+                ViewerWindow same_viewer = {0};
+                if (frame <= quiet_last || history->publication_us[frame] < request_us ||
+                    inspect_viewer_candidate(display, viewer->window, viewer->pid, &same_viewer) != 1 ||
+                    same_viewer.window != viewer->window ||
+                    !keyboard_is_released(source) || !keyboard_is_released(display) ||
+                    read_connection_identity(&current) != 0 || !same_connection(connection, &current) ||
+                    read_process_resources(viewer->pid, &resources) != 0 ||
+                    !resources_are_bounded(baseline, &resources)) goto fail;
+                now = x11_frame_monotonic_us();
+                if (now < captured || now - request_us > FRESH_LIMIT_MS * 1000ULL) goto fail;
+                unsigned int latency = (unsigned int)((now - request_us + 999U) / 1000U);
+                ++histogram[latency];
+                if (latency > maximum) maximum = latency;
+                printf("FLUTTER_PEER_INPUT_ANIMATION_SAMPLE request=%u response=%d frame=%lld "
+                       "request_us=%llu publication_us=%llu captured_us=%llu elapsed_us=%llu "
+                       "age_ms=%llu quiet_first=%lld quiet_last=%lld quiet_samples=%u\n",
+                       trial, response, (long long)frame, (unsigned long long)request_us,
+                       (unsigned long long)history->publication_us[frame],
+                       (unsigned long long)captured, (unsigned long long)(now - request_us),
+                       (unsigned long long)age, (long long)quiet_first, (long long)quiet_last, samples);
+                if ((trial + 1U) % 30U == 0U) print_resources("input-animation", trial + 1U, &resources);
+                break;
+            }
+            if (sleep_millis(10U) != 0) goto fail;
+        }
+    }
+    printf("FLUTTER_PEER_INPUT_ANIMATION_OK samples=120 deadline_ms=1000 freshness_limit_ms=1000 "
+           "p95_ms=%u p99_ms=%u maximum_ms=%u maximum_age_ms=%llu "
+           "stable_connection=true same_window=true resources=bounded pixels=viewer-root\n",
+           latency_percentile(histogram, SAMPLES, 95U), latency_percentile(histogram, SAMPLES, 99U),
+           maximum, (unsigned long long)maximum_age);
+    return 0;
+fail:
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-animation phase=%s request=%u frame=%lld\n",
+            phase, trial, (long long)previous_frame);
+    return -1;
+}
+
 static int exercise_input_latency(Display *source, Display *display, ViewerWindow *viewer,
                                    SourceHistory *history, const ConnectionIdentity *connection,
                                    const ProcessResources *baseline, const char *start,
@@ -9105,6 +9203,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--viewer-soak") != 0 &&
                                     strcmp(argv[5], "--congestion-soak") != 0 &&
                                     strcmp(argv[5], "--input-latency") != 0 &&
+                                    strcmp(argv[5], "--input-animation") != 0 &&
                                     strcmp(argv[5], "--input-recovery") != 0 &&
                                     strcmp(argv[5], "--input-loss") != 0 &&
                                     strcmp(argv[5], "--input-congestion") != 0 &&
@@ -9506,6 +9605,16 @@ int main(int argc, char **argv) {
     if (argc == 6 && strcmp(argv[5], "--native-components") == 0) {
         int result = exercise_native_components(display, &viewer, &history, argv[4],
                                                  &current_connection, &baseline_resources);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
+    if (argc == 6 && strcmp(argv[5], "--input-animation") == 0) {
+        int result = exercise_input_animation(source, display, &viewer, &history,
+                                               &current_connection, &baseline_resources);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

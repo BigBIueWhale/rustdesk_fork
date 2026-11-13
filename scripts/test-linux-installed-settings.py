@@ -128,11 +128,11 @@ def prepare_drivers(graphical=False, camera=False, remote=False):
              '-o', f'/out/source-{copy}'], timeout=60)
     if digest('/out/source-first') != digest('/out/source-second'):
         raise RuntimeError('repeated recording source builds differ')
-    if remote:
-        return
     run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
          '/work/scripts/test-x11-frame-oracle.c', *flags, '-o', '/out/frame-oracle'], timeout=60)
     print(run(['/out/frame-oracle', '--unit']), end='', flush=True)
+    if remote:
+        return
     if graphical:
         for copy in ('first', 'second'):
             run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
@@ -2651,7 +2651,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
     if package_install:
         subprocess.run(['/usr/bin/python3', '-B', '-I', '-S',
                         str(SCRIPT.with_name('test-linux-debian-install.py')),
-                        '--run-remote-' + remote if remote in ('network', 'loss', 'congestion', 'backoff', 'input-recovery', 'input-loss', 'input-congestion', 'input-soak', 'input-congestion-soak') else '--run-remote' if remote
+                        '--run-remote-' + remote if remote in ('network', 'loss', 'congestion', 'backoff', 'input-recovery', 'input-loss', 'input-congestion', 'input-soak', 'input-congestion-soak', 'input-animation') else '--run-remote' if remote
                         else '--run-camera-busy' if camera == 'busy' else '--run-camera' if camera
                         else '--run-admin-failure' if admin_failure else '--run-concurrent-stop' if concurrent_stop
                         else '--run-conffiles' if conffiles
@@ -2698,7 +2698,7 @@ if __name__ == '__main__':
         session(admin_failure=True, graphical=True)
     elif len(sys.argv) == 19 and sys.argv[1] == '--run-graphical':
         main(sys.argv[2:], graphical=True)
-    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles', '--run-package-camera', '--run-package-camera-busy', '--run-package-remote', '--run-package-remote-network', '--run-package-remote-loss', '--run-package-remote-congestion', '--run-package-remote-backoff', '--run-package-remote-input-recovery', '--run-package-remote-input-loss', '--run-package-remote-input-congestion', '--run-package-remote-input-soak', '--run-package-remote-input-congestion-soak'):
+    elif len(sys.argv) == 18 and sys.argv[1] in ('--run', '--run-uncertain', '--run-admin-failure', '--run-concurrent-stop', '--run-package', '--run-package-install', '--run-package-upgrade', '--run-package-conffiles', '--run-package-camera', '--run-package-camera-busy', '--run-package-remote', '--run-package-remote-network', '--run-package-remote-loss', '--run-package-remote-congestion', '--run-package-remote-backoff', '--run-package-remote-input-recovery', '--run-package-remote-input-loss', '--run-package-remote-input-congestion', '--run-package-remote-input-soak', '--run-package-remote-input-congestion-soak', '--run-package-remote-input-animation'):
         main(sys.argv[2:], uncertain=sys.argv[1] == '--run-uncertain',
              admin_failure=sys.argv[1] == '--run-admin-failure', concurrent_stop=sys.argv[1] == '--run-concurrent-stop',
              package=sys.argv[1] == '--run-package',
@@ -2710,6 +2710,7 @@ if __name__ == '__main__':
                      '--run-package-remote-backoff': 'backoff',
                      '--run-package-remote-input-recovery': 'input-recovery', '--run-package-remote-input-loss': 'input-loss',
                      '--run-package-remote-input-congestion': 'input-congestion',
+                     '--run-package-remote-input-animation': 'input-animation',
                      '--run-package-remote-input-soak': 'input-soak',
                      '--run-package-remote-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False))
     else:

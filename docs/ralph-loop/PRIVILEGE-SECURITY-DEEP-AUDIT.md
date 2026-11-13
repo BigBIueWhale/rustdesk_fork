@@ -151602,3 +151602,36 @@ exact private/process/socket/RAM retirement pass. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 the prior 16,199,903-byte audit prefix, SHA-256
 dcda906d8f502cf61fee7ac2ac04827a6293623801563a3064f5a25ca4ed2e01.
+
+## 2026-11-13 — Concurrent animation and input-response acceptance preparation
+
+The existing TUF SSH master executes commands as UID 1000; both checkouts begin
+clean at 708f2530. R-F5's concurrent animation/input condition is selected after
+the outage diagnostic checkpoint: previous input tests stop animation and cannot
+prove this combination. This closes a concrete evidence gap without repeating
+the known outage failure or the passed four-hour event-driven scenarios.
+
+The fixture keeps its 32-bit frame counter at four publications per second and
+adds an independent one-byte response band below the desktop midpoint. Only a
+complete ordered native request changes that band; its 255-response bound refuses
+wrap. Both markers share the existing pixmap copy and actual source-root readback.
+The [Xlib copying contract](https://www.x.org/releases/current/doc/libX11/libX11/libX11.html#Copying_Areas)
+and [XTEST event semantics](https://xorg.freedesktop.org/releases/current/doc/libXtst/xtestlib.html)
+support retaining these native primitives. The observer decodes both markers
+from one actual viewer-root image, requires publication after each timed request,
+and retains the same TCP pair, viewer window and existing resource limits.
+
+Before every one of 120 requests, at least 650 ms without input must preserve the
+response marker while advancing at least two frame identities. Both visible
+response and displayed-frame age retain the predeclared 1,000-ms bounds. Separate
+decoder controls reject absent, short and ambiguous bands and preserve response
+identity while animation changes. Source response records permit independent
+reconciliation against publication history and observer samples. This is a short
+healthy installed scenario, not impairment, endurance or physical-scanout proof.
+
+Shell syntax, Python parsing and diff checks pass. The installed replay compiles
+source/observer twice with warnings as errors, runs decoder controls and reuses
+app 2eb7015e in the admitted zero-NIC VM; no new application cache is needed.
+Runtime acceptance remains pending. This append preserves the prior
+16,200,565-byte audit prefix, SHA-256
+642112fb99838414e1c9930708bd51e473051c9515e12972af21eab55f07d295.

@@ -351,6 +351,7 @@ case "$#:${8:-}" in
                 --installed-remote-input-congestion) FLUTTER_INSTALLED_SETTINGS=19 ;;
                 --installed-remote-input-soak) FLUTTER_INSTALLED_SETTINGS=20 ;;
                 --installed-remote-input-congestion-soak) FLUTTER_INSTALLED_SETTINGS=21 ;;
+                --installed-remote-input-animation) FLUTTER_INSTALLED_SETTINGS=22 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -14877,6 +14878,7 @@ run_flutter_peer_presentation() {
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 19 ] || settings_mode=--run-package-remote-input-congestion
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 20 ] || settings_mode=--run-package-remote-input-soak
         [ "$FLUTTER_INSTALLED_SETTINGS" -ne 21 ] || settings_mode=--run-package-remote-input-congestion-soak
+        [ "$FLUTTER_INSTALLED_SETTINGS" -ne 22 ] || settings_mode=--run-package-remote-input-animation
         settings_extra=()
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             settings_mode=--run-graphical

@@ -99,11 +99,11 @@ fn failed_incoming_recording_retires_while_video_continues() {
                 .fill(40 + index as u8 * 40);
         }
         controller.reset();
-        assert!(handle_one_frame(
+        assert_eq!(handle_one_frame(
             0, &service, &controller, EncodeInput::YUV(&yuv), index * 2000,
             &mut encoder, &mut recorder, &mut failures, &mut first_frame,
             64, 48, &mut None,
-        ).expect("recording failure must not fail video publication"));
+        ).expect("recording failure must not fail video publication"), ControlFlow::Continue(true));
         if index == 1 { retired_after_failure = recorder.is_none(); }
         assert_eq!(failures, 0);
         let Some(VideoEgressItem::Frame(frame)) = receiver.try_recv() else {

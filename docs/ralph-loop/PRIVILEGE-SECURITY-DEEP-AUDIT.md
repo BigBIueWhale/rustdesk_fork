@@ -152955,3 +152955,36 @@ capsule refresh-backoff-ledger-3caabdf1.json, outer SHA-256
 This audit-only append preserves the counted ledger and prior 16,290,885-byte
 audit prefix, SHA-256
 192381985f6e1e897cb0096974d106e10c3458c3e658f819cf3453898027fca0.
+
+### Video refresh correction — explicit normal reconfiguration
+
+Continue the reproduced R-F5 refresh-backoff failure before unrelated cleanup or
+the separate audio issue: its capture-loop cause is now measured. TUF's existing
+SSH connection works; both checkouts started clean at e3efc274. No host runtime
+or authentication change is needed. The selected result is normal capture restart
+without failure backoff, while actual failures retain bounded retries and exact
+generation/recording/frame-controller retirement.
+
+Video helpers now return Result<ControlFlow<()>> (frame publication additionally
+carries its existing delivered/pending boolean). Expected quality, recording,
+display, privacy, scale and subscriber transitions break normally; run returns
+Ok for these, refresh, codec/chroma and screenshot capture reconfiguration.
+The shared service loop/API and its normal 30-ms cadence are unchanged. Encoder
+failure/ENCODE_NEED_SWITCH retains the original error after disabling the failed
+encoder. Its VRAM producer diagnoses repeated suspicious output, not an ordinary
+configuration event. Windows unavailable-desktop/UAC handling remains on its
+existing error path, which changes desktop only after capture objects retire.
+Display enumeration errors now propagate instead of disappearing into .ok().
+
+The standard ControlFlow API expresses early exit separately from failure;
+Break/Continue and is_break are stable before pinned Rust 1.75. Primary reference:
+https://doc.rust-lang.org/std/ops/enum.ControlFlow.html . Existing QoS fixtures now
+require the precise normal outcome for configuration and stale-generation cases,
+and preserve explicit encoder-error/retry/confirmation assertions. The two native
+recording fixtures retain their delivered-frame assertions with the new type.
+Whitespace/full diff review passes. Next run the focused controller fixture and
+full-parent compilation, then build/replay the actual installed candidate with
+the existing numeric thresholds. No native pass or installed correction is yet
+claimed; other-platform capture execution and broader R-F5 remain OPEN.
+This append preserves the prior 16,291,786-byte audit prefix, SHA-256
+abdd380628e2fa2ebf709d2404305a796e17ee82bbd486b2ad7a809422bfd47b.

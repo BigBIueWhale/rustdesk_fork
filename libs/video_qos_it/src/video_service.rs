@@ -1,6 +1,6 @@
 use super::{video_qos::{DisplayActivity, DisplayGeneration, VideoQoS}, Enum, ImageQuality};
 use hbb_common::{anyhow::anyhow, lazy_static::lazy_static, ResultType};
-use std::{cell::{Cell, RefCell}, sync::{mpsc, Mutex}, time::{Duration, Instant}};
+use std::{cell::{Cell, RefCell}, ops::ControlFlow, sync::{mpsc, Mutex}, time::{Duration, Instant}};
 
 struct EncoderGate {
     stage: &'static str,
@@ -78,7 +78,7 @@ fn publish_test_bitrate(qos: &mut VideoQoS, generation: &DisplayGeneration, bitr
 }
 
 fn apply(encoder: &mut Encoder, ratio: &mut f32, generation: &DisplayGeneration,
-         activity: &mut DisplayActivity) -> ResultType<()> {
+         activity: &mut DisplayActivity) -> ResultType<ControlFlow<()>> {
     qos_apply::check_qos(encoder, ratio, &mut Duration::ZERO, false,
         activity, "monitor", generation)
 }
@@ -100,7 +100,8 @@ fn failed_quality_change_preserves_confirmation_and_retries() {
         observations.push(error.as_deref() == Some("controlled encoder quality failure")
             && unchanged && retried && encoder.bitrate_reads.get() == 0);
     }
-    let retried = apply(&mut encoder, &mut ratio, &generation, &mut activity).is_ok();
+    let retried = matches!(apply(&mut encoder, &mut ratio, &generation, &mut activity),
+        Ok(ControlFlow::Continue(())));
     let confirmed = ratio == target && VIDEO_QOS.lock().unwrap().bitrate() == 2500;
     println!("VIDEO_QOS_APPLY=retry success={retried} confirmed={confirmed} requests={} bitrate_reads={}", encoder.requests.len(), encoder.bitrate_reads.get());
     assert!(observations.into_iter().all(|ok| ok) && retried && confirmed
@@ -118,11 +119,10 @@ fn unsupported_quality_changes_require_recreation() {
             let mut ratio = original;
             let mut encoder = Encoder::new(false, 0);
             let result = apply(&mut encoder, &mut ratio, &generation, &mut activity);
-            let error = result.as_ref().err().map(ToString::to_string);
             let expected_bitrate = if registered { 2000 } else { 0 };
             let unchanged = ratio == original && VIDEO_QOS.lock().unwrap().bitrate() == expected_bitrate;
-            println!("VIDEO_QOS_APPLY=unsupported registered={registered} quality={quality} result={error:?} unchanged={unchanged} requests={}", encoder.requests.len());
-            observations.push(error.as_deref() == Some("SWITCH") && unchanged
+            println!("VIDEO_QOS_APPLY=unsupported registered={registered} quality={quality} result={result:?} unchanged={unchanged} requests={}", encoder.requests.len());
+            observations.push(matches!(result, Ok(ControlFlow::Break(()))) && unchanged
                 && encoder.requests.is_empty() && encoder.bitrate_reads.get() == 0);
         }
     }
@@ -138,10 +138,12 @@ fn successful_quality_changes_publish_once_per_target() {
         VIDEO_QOS.lock().unwrap().user_image_quality(7, quality);
         let target = VIDEO_QOS.lock().unwrap().ratio();
         targets.push(target);
-        apply(&mut encoder, &mut ratio, &generation, &mut activity).unwrap();
+        assert_eq!(apply(&mut encoder, &mut ratio, &generation, &mut activity).unwrap(),
+            ControlFlow::Continue(()));
         assert_eq!(ratio, target);
         assert_eq!(VIDEO_QOS.lock().unwrap().bitrate(), encoder.bitrate);
-        apply(&mut encoder, &mut ratio, &generation, &mut activity).unwrap();
+        assert_eq!(apply(&mut encoder, &mut ratio, &generation, &mut activity).unwrap(),
+            ControlFlow::Continue(()));
         assert_eq!(encoder.requests, targets);
         assert_eq!(encoder.bitrate_reads.get(), targets.len());
     }
@@ -155,15 +157,15 @@ fn recording_switch_and_periodic_accounting_remain_active() {
     let mut spf = Duration::ZERO;
     for _ in 0..7 { activity.on_frame(); }
     activity.elapse_for_test(Duration::from_secs(2));
-    qos_apply::check_qos(&mut encoder, &mut ratio, &mut spf, false,
-        &mut activity, "monitor", &generation).unwrap();
+    assert_eq!(qos_apply::check_qos(&mut encoder, &mut ratio, &mut spf, false,
+        &mut activity, "monitor", &generation).unwrap(), ControlFlow::Continue(()));
     let (pending, second) = activity.pending_for_test();
     assert_eq!(pending, 0);
     assert!(spf > Duration::ZERO && second.elapsed() < Duration::from_secs(1));
     VIDEO_QOS.lock().unwrap().user_record(7, true);
     let result = qos_apply::check_qos(&mut encoder, &mut ratio, &mut spf, false,
         &mut activity, "monitor", &generation);
-    assert_eq!(result.unwrap_err().to_string(), "SWITCH");
+    assert_eq!(result.unwrap(), ControlFlow::Break(()));
     assert!(encoder.requests.is_empty() && encoder.bitrate_reads.get() == 0);
     println!("VIDEO_QOS_APPLY=controls accounting=true pacing=true record_switch=true unchanged_target_no_apply=true");
 }
@@ -200,7 +202,7 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
             let result = qos_apply::check_qos(&mut encoder, &mut ratio, &mut spf, false,
                 &mut activity, "monitor", &worker_generation);
             let (count, second) = activity.pending_for_test();
-            (encoder, ratio, spf, result.err().map(|error| error.to_string()), count, second)
+            (encoder, ratio, spf, result.map_err(|error| error.to_string()), count, second)
         });
         let entered = entered_rx.recv_timeout(Duration::from_secs(2)).is_ok();
         let applied = if let Ok(mut qos) = VIDEO_QOS.try_lock() {
@@ -231,7 +233,7 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
             true
         } else { false };
         let released = release_tx.send(()).is_ok();
-        let (mut encoder, mut ratio, spf, error, count, second) = worker.join().unwrap();
+        let (mut encoder, mut ratio, spf, result, count, second) = worker.join().unwrap();
         joined += 1;
         available += usize::from(applied);
         let mut correct = entered && released && applied && encoder.requests == [requested];
@@ -239,29 +241,29 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
             "feedback" => {
                 let mut qos = VIDEO_QOS.lock().unwrap();
                 let latest = qos.ratio();
-                correct &= error.is_none() && ratio == requested && qos.bitrate() == 2500
+                correct &= result == Ok(ControlFlow::Continue(())) && ratio == requested && qos.bitrate() == 2500
                     && qos.fps() == 2 && spf == Duration::from_millis(500) && latest != requested;
                 drop(qos);
                 let mut retry_activity = VIDEO_QOS.lock().unwrap()
                     .new_display_activity("monitor", &generation).unwrap();
                 let retry = apply(&mut encoder, &mut ratio, &generation, &mut retry_activity);
-                correct &= retry.is_ok() && ratio == latest && encoder.requests == [requested, latest]
+                correct &= matches!(retry, Ok(ControlFlow::Continue(()))) && ratio == latest && encoder.requests == [requested, latest]
                     && VIDEO_QOS.lock().unwrap().bitrate() == 3000;
             }
             "replace" | "reset" => {
                 let mut qos = VIDEO_QOS.lock().unwrap();
-                correct &= error.as_deref() == Some("SWITCH") && ratio == original && qos.bitrate() == 7777;
+                correct &= result == Ok(ControlFlow::Break(())) && ratio == original && qos.bitrate() == 7777;
                 qos.remove_display("monitor", &generation);
                 correct &= !qos.in_vbr_state();
             }
             "record" => {
                 let qos = VIDEO_QOS.lock().unwrap();
-                correct &= error.as_deref() == Some("SWITCH") && ratio == original
+                correct &= result == Ok(ControlFlow::Break(())) && ratio == original
                     && qos.bitrate() == 2000 && qos.record();
             }
             "failure" => {
                 let mut qos = VIDEO_QOS.lock().unwrap();
-                correct &= error.as_deref() == Some("controlled encoder quality failure")
+                correct &= result.as_ref().err().map(String::as_str) == Some("controlled encoder quality failure")
                     && ratio == original && qos.bitrate() == 2000
                     && qos.ratio() != requested && qos.fps() == 2 && encoder.bitrate_reads.get() == 0;
             }
@@ -269,14 +271,14 @@ fn encoder_calls_allow_feedback_and_revalidate_the_display_owner() {
                 let qos = VIDEO_QOS.lock().unwrap();
                 let (stored, period) = qos.display_activity_for_test("monitor").unwrap();
                 assert!(period.elapsed() < Duration::from_secs(3), "activity fixture exceeded its period");
-                correct &= error.is_none() && ratio == requested && qos.bitrate() == 2500
+                correct &= result == Ok(ControlFlow::Continue(())) && ratio == requested && qos.bitrate() == 2500
                     && count == 0 && second.elapsed() < Duration::from_secs(1) && stored == 0;
                 println!("VIDEO_QOS_APPLY=activity stage={stage} stored={stored} pending={count} retired={correct}");
             }
             _ => unreachable!(),
         }
         passed += usize::from(correct);
-        println!("VIDEO_QOS_ENCODER_OWNER=observed stage={stage} event={event} available={applied} entered={entered} released={released} joined=true correct={correct} error={error:?}");
+        println!("VIDEO_QOS_ENCODER_OWNER=observed stage={stage} event={event} available={applied} entered={entered} released={released} joined=true correct={correct} result={result:?}");
     }
     println!("VIDEO_QOS_ENCODER_OWNER=observed cases=11 available={available} passed={passed} joined={joined}");
     assert_eq!(passed, 11);

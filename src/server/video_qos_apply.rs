@@ -1,6 +1,7 @@
 use super::{Duration, Encoder, VIDEO_QOS};
 use crate::server::video_qos::{DisplayActivity, DisplayGeneration};
-use hbb_common::{anyhow::bail, log, ResultType};
+use hbb_common::{log, ResultType};
+use std::ops::ControlFlow;
 
 pub(super) fn check_qos(
     encoder: &mut Encoder,
@@ -10,13 +11,13 @@ pub(super) fn check_qos(
     activity: &mut DisplayActivity,
     name: &str,
     generation: &DisplayGeneration,
-) -> ResultType<()> {
+) -> ResultType<ControlFlow<()>> {
     let requested_ratio = {
         let mut video_qos = VIDEO_QOS.lock().unwrap();
         if client_record != video_qos.record()
             || !video_qos.sync_display_activity(name, generation, activity)
         {
-            bail!("SWITCH");
+            return Ok(ControlFlow::Break(()));
         }
         *spf = video_qos.spf();
         video_qos.ratio()
@@ -24,7 +25,7 @@ pub(super) fn check_qos(
     let bitrate = if *ratio != requested_ratio {
         if !encoder.support_changing_quality() {
             log::info!("switch to change quality");
-            bail!("SWITCH");
+            return Ok(ControlFlow::Break(()));
         }
         encoder.set_quality(requested_ratio)?;
         Some(encoder.bitrate())
@@ -35,18 +36,18 @@ pub(super) fn check_qos(
     if client_record != video_qos.record()
         || !video_qos.sync_display_activity(name, generation, activity)
     {
-        bail!("SWITCH");
+        return Ok(ControlFlow::Break(()));
     }
     if let Some(bitrate) = bitrate {
         if !video_qos.set_display_bitrate(name, generation, bitrate) {
-            bail!("SWITCH");
+            return Ok(ControlFlow::Break(()));
         }
         *ratio = requested_ratio;
     }
     *spf = video_qos.spf();
     if !video_qos.update_display_data(name, generation, activity) {
-        bail!("SWITCH");
+        return Ok(ControlFlow::Break(()));
     }
     drop(video_qos);
-    Ok(())
+    Ok(ControlFlow::Continue(()))
 }

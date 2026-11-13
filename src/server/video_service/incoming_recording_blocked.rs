@@ -299,9 +299,9 @@ fn blocked_recording_write_preserves_capture_progress() {
                         .fill(30 + index as u8 * 15);
                 }
                 controller.reset();
-                assert!(handle_one_frame(0, service, &controller, EncodeInput::YUV(&yuv),
+                assert_eq!(handle_one_frame(0, service, &controller, EncodeInput::YUV(&yuv),
                     index * 250, &mut encoder, &mut recorder, &mut failures, &mut first,
-                    64, 48, &mut None).unwrap());
+                    64, 48, &mut None).unwrap(), ControlFlow::Continue(true));
                 if recorder.is_none() && retired_at.is_none() { retired_at = Some(index); }
                 if index < 11 && !advance_rx.recv().unwrap_or(false) { break; }
             }

@@ -62,7 +62,7 @@ use std::sync::Once;
 use std::{
     collections::{HashMap, HashSet},
     io::ErrorKind::WouldBlock,
-    ops::{Deref, DerefMut},
+    ops::{ControlFlow, Deref, DerefMut},
     sync::{Arc, Condvar, Mutex, OnceLock, Weak},
     time::{self, Duration, Instant},
 };
@@ -1083,6 +1083,8 @@ fn get_capturer(
 }
 
 fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
+    // Reconfiguration completes this capture generation normally. Only failures
+    // enter ServiceTmpl's error backoff; all exits retire the generation's owners.
     let mut _raii = Raii::new(vs.sp.name());
     // Wayland only support one video capturer for now. It is ok to call ensure_inited() here.
     //
@@ -1171,9 +1173,9 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
     c.set_output_texture(encoder.input_texture());
     #[cfg(target_os = "android")]
     if vs.source.is_monitor() {
-        if let Err(e) = check_change_scale(vs.android_generation, encoder.is_hardware()) {
-            try_broadcast_display_changed(&sp, display_idx, &c, true, vs.android_generation).ok();
-            bail!(e);
+        if check_change_scale(vs.android_generation, encoder.is_hardware())?.is_break() {
+            let _ = try_broadcast_display_changed(&sp, display_idx, &c, true, vs.android_generation)?;
+            return Ok(());
         }
     }
     let bitrate = encoder.bitrate();
@@ -1183,15 +1185,15 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
         if !video_qos.is_display_current(&_raii.name, &_raii.generation)
             || client_record != video_qos.record()
         {
-            bail!("SWITCH");
+            return Ok(());
         }
         if !video_qos.set_display_bitrate(&_raii.name, &_raii.generation, bitrate) {
-            bail!("SWITCH");
+            return Ok(());
         }
         if !video_qos.set_support_changing_quality(
             &_raii.name, &_raii.generation, support_changing_quality,
         ) {
-            bail!("SWITCH");
+            return Ok(());
         }
     }
     log::info!("initial quality: {quality:?}");
@@ -1226,17 +1228,17 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
     let Some(mut activity) = VIDEO_QOS.lock().unwrap()
         .new_display_activity(&_raii.name, &_raii.generation)
     else {
-        bail!("SWITCH");
+        return Ok(());
     };
 
     while sp.ok() {
         #[cfg(target_os = "linux")]
         if crate::ipc::recording_policy::enabled_for_server()? != record_incoming {
-            bail!("SWITCH");
+            return Ok(());
         }
         #[cfg(windows)]
         check_uac_switch(c.privacy_mode_id, c._capturer_privacy_mode_id)?;
-        check_qos(
+        if check_qos(
             &mut encoder,
             &mut quality,
             &mut spf,
@@ -1244,7 +1246,9 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
             &mut activity,
             &_raii.name,
             &_raii.generation,
-        )?;
+        )?.is_break() {
+            return Ok(());
+        }
         if sp.is_option_true(OPTION_REFRESH) {
             if vs.source.is_monitor() {
                 let _ = try_broadcast_display_changed(
@@ -1254,10 +1258,10 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
                     true,
                     #[cfg(target_os = "android")]
                     vs.android_generation,
-                );
+                )?;
             }
             log::info!("switch to refresh");
-            bail!("SWITCH");
+            return Ok(());
         }
         if codec_format != Encoder::negotiated_codec() {
             log::info!(
@@ -1265,35 +1269,33 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
                 codec_format,
                 Encoder::negotiated_codec()
             );
-            bail!("SWITCH");
+            return Ok(());
         }
-        // R-X9: the "portable service running changed" SWITCH trigger is excised — the
-        // portable SYSTEM service is gone, so its running-state is a constant `false` and
-        // can never change. (Was: bail!("SWITCH") on last != client::running().)
         if Encoder::use_i444(&encoder_cfg) != use_i444 {
             log::info!("switch due to i444 changed");
-            bail!("SWITCH");
+            return Ok(());
         }
         #[cfg(all(windows, feature = "vram"))]
         if c.is_gdi() && encoder.input_texture() {
             log::info!("changed to gdi when using vram");
             VRamEncoder::set_fallback_gdi(sp.name(), true);
-            bail!("SWITCH");
+            return Ok(());
         }
         if vs.source.is_monitor() {
-            check_privacy_mode_changed(
+            if check_privacy_mode_changed(
                 &sp,
                 display_idx,
                 &c,
                 #[cfg(target_os = "android")]
                 vs.android_generation,
-            )?;
+            )?.is_break() {
+                return Ok(());
+            }
         }
         #[cfg(windows)]
         {
-            // R-X9: the `&& !portable_service::client::running()` guard is excised — the
-            // portable service is gone (running() was always going to be false here), so a
-            // desktop change always bails. Behaviorally identical (it was `&& !false`).
+            // The service error path selects the input desktop after this
+            // generation's capturer and encoder have been destroyed.
             if crate::platform::windows::desktop_changed() {
                 bail!("Desktop changed");
             }
@@ -1303,14 +1305,16 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
             last_check_displays = now;
             // This check may be redundant, but it is better to be safe.
             // The previous check in `sp.is_option_true(OPTION_REFRESH)` block may be enough.
-            try_broadcast_display_changed(
+            if try_broadcast_display_changed(
                 &sp,
                 display_idx,
                 &c,
                 false,
                 #[cfg(target_os = "android")]
                 vs.android_generation,
-            )?;
+            )?.is_break() {
+                return Ok(());
+            }
         }
 
         frame_controller.reset();
@@ -1401,7 +1405,7 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
                             }
                         }
                         if restore_vram || matches!(&frame, scrap::Frame::Texture(_)) {
-                            bail!("SWITCH");
+                            return Ok(());
                         }
                     }
 
@@ -1410,7 +1414,7 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
                     if let Some(trace) = presentation_trace.as_ref() {
                         trace.trace_yuv(display_idx, ms, &yuv_format, &frame);
                     }
-                    frame_pending = !handle_one_frame(
+                    let ControlFlow::Continue(encoded) = handle_one_frame(
                         display_idx,
                         &sp,
                         &frame_controller,
@@ -1423,7 +1427,10 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
                         capture_width,
                         capture_height,
                         &mut presentation_trace,
-                    )?;
+                    )? else {
+                        return Ok(());
+                    };
+                    frame_pending = !encoded;
                     activity.on_frame();
                 }
                 #[cfg(windows)]
@@ -1476,7 +1483,7 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
                     if repeat_encode_counter < repeat_encode_max {
                         repeat_encode_counter += 1;
                     }
-                    frame_pending = !handle_one_frame(
+                    let ControlFlow::Continue(encoded) = handle_one_frame(
                         display_idx,
                         &sp,
                         &frame_controller,
@@ -1489,7 +1496,10 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
                         capture_width,
                         capture_height,
                         &mut presentation_trace,
-                    )?;
+                    )? else {
+                        return Ok(());
+                    };
+                    frame_pending = !encoded;
                     activity.on_frame();
                 }
             }
@@ -1497,14 +1507,16 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
                 // This check may be redundant, but it is better to be safe.
                 // The previous check in `sp.is_option_true(OPTION_REFRESH)` block may be enough.
                 if vs.source.is_monitor() {
-                    try_broadcast_display_changed(
+                    if try_broadcast_display_changed(
                         &sp,
                         display_idx,
                         &c,
                         true,
                         #[cfg(target_os = "android")]
                         vs.android_generation,
-                    )?;
+                    )?.is_break() {
+                        return Ok(());
+                    }
                 }
 
                 #[cfg(windows)]
@@ -1527,13 +1539,15 @@ fn run(vs: VideoService, recordings: &mut RecordingWorkers) -> ResultType<()> {
         let wait_begin = Instant::now();
         while wait_begin.elapsed().as_millis() < timeout_millis as _ {
             if vs.source.is_monitor() {
-                check_privacy_mode_changed(
+                if check_privacy_mode_changed(
                     &sp,
                     display_idx,
                     &c,
                     #[cfg(target_os = "android")]
                     vs.android_generation,
-                )?;
+                )?.is_break() {
+                    return Ok(());
+                }
             }
             if frame_wait_can_finish(&sp, &frame_controller, Duration::from_millis(300)) {
                 break;
@@ -1737,7 +1751,7 @@ fn get_recorder(
 }
 
 #[cfg(target_os = "android")]
-fn check_change_scale(android_generation: u64, hardware: bool) -> ResultType<()> {
+fn check_change_scale(android_generation: u64, hardware: bool) -> ResultType<ControlFlow<()>> {
     use hbb_common::config::keys::OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE as SCALE_SOFT;
 
     // Raw-video admission is committed at the end of startCapture() in Android.
@@ -1770,9 +1784,9 @@ fn check_change_scale(android_generation: u64, hardware: bool) -> ResultType<()>
     if old_scale != new_scale {
         log::info!("switch due to scale changed, {old_scale} -> {new_scale}");
         // switch is not a must, but it is better to do so.
-        bail!("SWITCH");
+        return Ok(ControlFlow::Break(()));
     }
-    Ok(())
+    Ok(ControlFlow::Continue(()))
 }
 
 fn check_privacy_mode_changed(
@@ -1780,7 +1794,7 @@ fn check_privacy_mode_changed(
     display_idx: usize,
     ci: &CapturerInfo,
     #[cfg(target_os = "android")] android_generation: u64,
-) -> ResultType<()> {
+) -> ResultType<ControlFlow<()>> {
     let privacy_mode_id_2 = get_privacy_mode_conn_id().unwrap_or(INVALID_PRIVACY_MODE_CONN_ID);
     if ci.privacy_mode_id != privacy_mode_id_2 {
         if privacy_mode_id_2 != INVALID_PRIVACY_MODE_CONN_ID {
@@ -1791,21 +1805,21 @@ fn check_privacy_mode_changed(
             sp.send_to_others(msg_out, privacy_mode_id_2);
         }
         log::info!("switch due to privacy mode changed");
-        try_broadcast_display_changed(
+        let _ = try_broadcast_display_changed(
             &sp,
             display_idx,
             ci,
             true,
             #[cfg(target_os = "android")]
             android_generation,
-        )
-        .ok();
-        bail!("SWITCH");
+        )?;
+        return Ok(ControlFlow::Break(()));
     }
-    Ok(())
+    Ok(ControlFlow::Continue(()))
 }
 
-/// Returns whether an encoded frame was handed to the current subscribers.
+/// Continues with whether an encoded frame was handed to current subscribers,
+/// or requests reconfiguration before encoding for a changed subscriber set.
 #[inline]
 fn handle_one_frame(
     display: usize,
@@ -1820,15 +1834,19 @@ fn handle_one_frame(
     width: usize,
     height: usize,
     presentation_trace: &mut Option<PresentationVideoTrace>,
-) -> ResultType<bool> {
+) -> ResultType<ControlFlow<(), bool>> {
+    let mut reconfigure = false;
     sp.snapshot(|sps| {
         // so that new sub and old sub share the same encoder after switch
         if sps.has_subscribes() {
             log::info!("switch due to new subscriber");
-            bail!("SWITCH");
+            reconfigure = true;
         }
         Ok(())
     })?;
+    if reconfigure {
+        return Ok(ControlFlow::Break(()));
+    }
 
     let first = *first_frame;
     *first_frame = false;
@@ -1856,7 +1874,7 @@ fn handle_one_frame(
                 frame_controller.key.display_idx,
                 |connection_ids, generation| frame_controller.prepare(connection_ids, generation),
             )?;
-            return Ok(true);
+            return Ok(ControlFlow::Continue(true));
         }
         Ok(None) => *encode_fail_counter = 0,
         Err(e) => {
@@ -1877,20 +1895,20 @@ fn handle_one_frame(
                 if encoder.is_hardware() {
                     encoder.disable();
                     log::error!("switch due to encoding fails, first frame: {first}, error: {e:?}");
-                    bail!("SWITCH");
+                    return Err(e);
                 }
             }
             match e.to_string().as_str() {
                 scrap::codec::ENCODE_NEED_SWITCH => {
                     encoder.disable();
                     log::error!("switch due to encoder need switch");
-                    bail!("SWITCH");
+                    return Err(e);
                 }
                 _ => {}
             }
         }
     }
-    Ok(false)
+    Ok(ControlFlow::Continue(false))
 }
 
 #[cfg(windows)]
@@ -1920,14 +1938,13 @@ fn try_broadcast_display_changed(
     cap: &CapturerInfo,
     refresh: bool,
     #[cfg(target_os = "android")] android_generation: u64,
-) -> ResultType<()> {
+) -> ResultType<ControlFlow<()>> {
     if refresh {
         // Get display information immediately.
         crate::display_service::check_displays_changed(
             #[cfg(target_os = "android")]
             android_generation,
-        )
-        .ok();
+        )?;
     }
     if let Some(display) = check_display_changed(
         cap.ndisplay,
@@ -1946,10 +1963,10 @@ fn try_broadcast_display_changed(
                 sps.send_shared(msg_out.clone());
                 Ok(())
             })?;
-            bail!("SWITCH");
+            return Ok(ControlFlow::Break(()));
         }
     }
-    Ok(())
+    Ok(ControlFlow::Continue(()))
 }
 
 pub fn make_display_changed_msg(

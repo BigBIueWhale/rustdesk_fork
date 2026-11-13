@@ -90,19 +90,24 @@ class ArtifactSelectionTests(unittest.TestCase):
             select_artifact(encode(artifact, FINISHED), "cpace_it")
 
     def test_protobuf_parser_package_is_exact(self):
-        artifact = copy.deepcopy(ARTIFACT)
-        artifact["manifest_path"] = "/source/libs/protobuf_it/Cargo.toml"
-        artifact["target"] = {"name": "protobuf_it", "kind": ["lib"],
-                              "src_path": "/source/libs/protobuf_it/src/lib.rs"}
-        artifact["executable"] = "/cargo-target/debug/deps/protobuf_it-0123456789abcdef"
-        self.assertEqual(select_artifact(encode(artifact, FINISHED), "protobuf_it"),
-                         artifact["executable"])
-        for field in ("manifest_path", "target", "profile", "executable"):
-            value = {"test": False} if field == "profile" else ARTIFACT[field]
-            with self.subTest(field=field), self.assertRaises(ValueError):
-                select_artifact(encode(dict(artifact, **{field: value}), FINISHED), "protobuf_it")
-        with self.assertRaises(ValueError):
-            select_artifact(encode(artifact, FINISHED), "protobuf_it", "/cargo-target/fuse-test-source")
+        for package in ("protobuf_it", "protobuf"):
+            artifact = copy.deepcopy(ARTIFACT)
+            artifact["manifest_path"] = f"/source/libs/{package}/Cargo.toml"
+            artifact["target"] = {"name": package, "kind": ["lib"],
+                                  "src_path": f"/source/libs/{package}/src/lib.rs"}
+            artifact["executable"] = f"/cargo-target/debug/deps/{package}-0123456789abcdef"
+            self.assertEqual(select_artifact(encode(artifact, FINISHED), package),
+                             artifact["executable"])
+            for field in ("manifest_path", "target", "profile", "executable"):
+                value = {"test": False} if field == "profile" else ARTIFACT[field]
+                with self.subTest(package=package, field=field), self.assertRaises(ValueError):
+                    select_artifact(encode(dict(artifact, **{field: value}), FINISHED), package)
+            for source in ("/cargo-target/fuse-test-source", "/vendor"):
+                with self.subTest(package=package, source=source), self.assertRaises(ValueError):
+                    select_artifact(encode(artifact, FINISHED), package, source)
+            with self.assertRaises(ValueError):
+                select_artifact(encode(dict(artifact,
+                    manifest_path="/vendor/protobuf-3.7.2/Cargo.toml"), FINISHED), package)
 
     def test_exact_artifact_with_unrelated_output(self):
         dependency = dict(ARTIFACT, manifest_path="/vendor/other/Cargo.toml")

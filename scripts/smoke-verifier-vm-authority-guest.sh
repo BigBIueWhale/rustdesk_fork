@@ -4436,6 +4436,9 @@ run_focused_rust_tests() {
                 libs/protobuf_it/build.rs
                 libs/protobuf_it/src/lib.rs
                 libs/protobuf_it/src/protobuf_tests.rs
+                libs/protobuf/Cargo.toml
+                libs/protobuf/build.rs
+                libs/protobuf/src/coded_input_stream/buf_read_iter.rs
                 libs/hbb_common/protos/message.proto
                 libs/hbb_common/protos/rendezvous.proto
                 libs/hbb_common/src/protos/mod.rs
@@ -6974,6 +6977,29 @@ run_focused_rust_tests() {
                                     "$artifact_sha" "$group_status"
                                 exit "$group_status"
                             fi
+                            cargo test --offline --locked -p protobuf --lib --features with-bytes \
+                                --no-run --message-format=json-render-diagnostics --color never \
+                                >/cargo-target/protobuf-runtime-build.json
+                            runtime_executable="$(python3 -I -S \
+                                /source/scripts/select-hbb-common-test-artifact.py \
+                                /cargo-target/protobuf-runtime-build.json protobuf)"
+                            [ -f "$runtime_executable" ] && [ ! -L "$runtime_executable" ] \
+                                && [ -x "$runtime_executable" ] \
+                                && [ "$(stat -c "%u:%g:%h" -- "$runtime_executable")" = 1000:1000:1 ]
+                            runtime_sha="$(sha256sum "$runtime_executable" | cut -d " " -f 1)"
+                            "$runtime_executable" --list --format terse >/cargo-target/protobuf-runtime-list
+                            runtime_count="$(grep -c ": test$" /cargo-target/protobuf-runtime-list)"
+                            [ "$runtime_count" -gt 0 ]
+                            runtime_status=0
+                            timeout --signal=TERM --kill-after=5s 20s \
+                                "$runtime_executable" --color never --test-threads=1 \
+                                >/cargo-target/protobuf-runtime.log 2>&1 || runtime_status=$?
+                            sed "s/^/PROTOBUF_RUNTIME /" /cargo-target/protobuf-runtime.log
+                            [ "$(sha256sum "$runtime_executable" | cut -d " " -f 1)" = "$runtime_sha" ]
+                            [ "$runtime_status" -eq 0 ] || exit "$runtime_status"
+                            [ "$(grep -Ec "^test result: ok[.] $runtime_count passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in [0-9.]+s$" /cargo-target/protobuf-runtime.log)" -eq 1 ]
+                            printf "PROTOBUF_RUNTIME_ARTIFACT=pass sha256=%s tests=%s source=workspace unchanged=before-after\n" \
+                                "$runtime_sha" "$runtime_count"
                         elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
                             group_status=0
                             timeout --signal=TERM --kill-after=5s 20s \
@@ -9236,7 +9262,9 @@ PY
             grep -E '^test fs::tests::read_step_[[:alnum:]_]+ [.][.][.] ok$|^READ_TERMINAL_(LOG|RETIREMENT)' "$output"
         elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'protobuf parser test total differs'
-            grep -E '^test protobuf_tests::[[:alnum:]_]+ [.][.][.] ok$|^PROTOBUF_LENGTH_INPUT ' "$output"
+            grep -E '^test protobuf_tests::[[:alnum:]_]+ [.][.][.] ok$|^PROTOBUF_LENGTH_INPUT |^PROTOBUF_RUNTIME[ _]' "$output"
+            [ "$(grep -Ec '^PROTOBUF_RUNTIME_ARTIFACT=pass sha256=[0-9a-f]{64} tests=[1-9][0-9]* source=workspace unchanged=before-after$' "$output")" -eq 1 ] \
+                || fail 'protobuf runtime regression receipt differs'
         elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'TCP key-transition total differs'
             grep -E '^test [[:alnum:]_]+ [.][.][.] ok$' "$output"

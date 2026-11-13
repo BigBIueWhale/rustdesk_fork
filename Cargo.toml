@@ -235,11 +235,12 @@ jni = "0.21"
 android-wakelock = { git = "https://github.com/rustdesk-org/android-wakelock" }
 
 [workspace]
-members = ["libs/scrap", "libs/hbb_common", "libs/enigo", "libs/clipboard", "libs/portable", "libs/portable_pty", "libs/pake", "libs/cpace_it", "libs/config_it", "libs/surface_it", "libs/compress_it", "libs/libxdo-sys-stub", "libs/video_qos_it", "libs/protobuf_it"]
+members = ["libs/scrap", "libs/hbb_common", "libs/enigo", "libs/clipboard", "libs/portable", "libs/portable_pty", "libs/pake", "libs/cpace_it", "libs/config_it", "libs/surface_it", "libs/compress_it", "libs/libxdo-sys-stub", "libs/video_qos_it", "libs/protobuf", "libs/protobuf_it"]
 exclude = ["vdi/host"]
 
 [patch.crates-io]
 libxdo-sys = { path = "libs/libxdo-sys-stub" }
+protobuf = { path = "libs/protobuf" }
 
 [patch."https://github.com/rustdesk-org/nokhwa.git"]
 nokhwa-bindings-linux = { path = "libs/nokhwa-bindings-linux" }

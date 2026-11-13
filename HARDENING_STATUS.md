@@ -7634,13 +7634,34 @@ The last large free bin totals 147,576,005 bytes in 37 chunks, mostly around
 3,883,520 bytes. That size matches a 1,312×740×4 pixel buffer; the existing
 Heaptrack report also has a 7.77-MB Mesa/Flutter/GTK stack over 5,906 calls.
 The pinned engine's non-shareable compositor creates/uploads/deletes a texture
-per GTK draw. This is a concrete attribution candidate, not an established cause.
-Next: tie the growing buffer allocations to that path and validate owned texture
-reuse if justified. No product correction, allocator tuning or bound change yet.
+per GTK draw. Exact ELF relocation/disassembly now resolves that Heaptrack frame
+to its glTexImage2D call; this attributes the recorded allocation stack, without
+yet proving the cause of the ordinary RSS failure.
 `remote-expired-allocator-a2742f46.json` binds nine files/1,195,507 bytes on both
 hosts, four zero endpoint deltas and joined VM/private/RAM cleanup. All 155 raw
 records survive; failed-scenario termination omits the destructor trailer, so
 the completion parser also rejects. No complete diagnostic or release pass is claimed.
+The texture-reuse candidate now passes native component A/B on real GTK/Mesa
+(`KKFPUCmafl`, source `29b90b27`). Across 120 changing frames, the original makes
+120 texture allocations; the candidate makes one allocation and 119 subimage
+updates. Both produce the expected Cairo pixels. The candidate also restores
+the actual drawing context/binding, reallocates on resize, deletes its texture
+before GTK unrealize/dispose, preserves the compositor for pending raster work,
+and creates a fresh texture after realization. A pending platform task that
+destroys the widget during the frame wait aborts that old draw without recreating
+the retired texture. Repeated disposal passes. The earlier baseline-only run
+`9ApRNBO7Cc` demonstrates incorrect binding restoration after GDK switches contexts;
+the comparison records that failure while requiring restoration in the candidate.
+`compositor-native-e878562e.json` and `compositor-native-29b90b27.json` bind eighteen
+files/189,162 bytes on both hosts, eight zero endpoint deltas and joined cleanup.
+The 43.545-second accepted supervisor compiles real pinned compositor, renderer,
+framebuffer, GL manager and task-runner sources; Flutter engine dispatch is a
+test double. This is component evidence, not installed-app memory acceptance.
+`res/flutter/linux-compositor-texture.patch` is currently applied only by the
+focused native shard. Next: integrate the tested candidate into the authenticated
+engine/application build and rerun the ordinary repeated-outage scenario against
+the unchanged RSS/presentation bounds. Retained engine/app artifacts remain unchanged;
+no allocator tuning, relaxed bound or full memory-failure correction is claimed.
 The separate surviving-transport delay failure, other outage schedules,
 physical scanout, endurance, desktop/mobile coverage, final artifacts,
 independent review and complete R-S0/R-F5 remain OPEN.

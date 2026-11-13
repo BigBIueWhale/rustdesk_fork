@@ -152411,3 +152411,46 @@ The unchanged resource and presentation bounds remain binding. HARDENING_STATUS.
 is unchanged pending native evidence. This append preserves the prior
 16,252,664-byte audit prefix, SHA-256
 37026d387d5c351c7568d35be5ba4175720d22b42d40b933cdb199f5bbb3992c.
+
+### Native compositor comparison — component PASS, installed RSS acceptance OPEN
+
+TUF 9ApRNBO7Cc at e878562e compiles the original compositor but fails its first
+actual GL-binding assertion: binding 2 remains in the rendering context instead
+of sentinel 1 after GDK drawing. The source restores the saved binding after
+gdk_cairo_draw_from_gl without restoring the caller's context. No candidate
+executes in that first run. The comparison now counts this original mismatch
+while retaining strict restoration for the candidate; it does not relax pixels,
+allocation counts or candidate lifecycle assertions. Failed capsule:
+compositor-native-e878562e.json, nine files/103,808 bytes on CTE/TUF. QEMU 2894765
+joins zero; private 66306:77903624 and RAM 29:13296 retire, with four zero endpoint
+deltas. Supervisor 38.968 seconds, peak scratch 3,857,719,296 bytes.
+
+TUF KKFPUCmafl at 29b90b27 passes the complete native comparison. Original binary
+9007e71ab3f4b18556858f3495209e90e0c1ca88064160f059d9bb9baaaad698 performs
+120 allocations/zero subimage updates for 120 changing frames. Candidate binary
+cea17565cba387bdeaca171b7fd26f77b18d77587b3d4cb90bdf04dfad0e8168 performs
+one allocation/119 updates, with patch SHA-256
+721cf1a14f90b563a1415639d07a3e05d1b445d1e78cdefa53befa686c2fdfa1.
+Both read back the expected changing Cairo pixels; the candidate restores the
+real GL binding, resizes larger/smaller, retires the texture on GTK unrealize,
+retains the compositor for subsequent presentation, and recreates a texture
+with a new context. A real task-runner wait dispatches the fixture engine task
+that destroys the widget; the old draw returns false with no new allocation,
+the old texture no longer exists, and repeated dispose succeeds. GTK/Mesa,
+framebuffer/compositor/renderer/task-runner code is native; the Flutter engine
+dispatch boundary is a double. Raster concurrency, full Flutter engine/application,
+ordinary RSS recovery and release acceptance remain unproved by this component run.
+
+Independent reconciliation verifies QEMU 2897988 joined zero, private
+66306:77903637 / RAM 29:13324 retirement and four zero endpoint deltas.
+Supervisor 43.545 seconds, peak scratch 3,775,012,864 bytes; both runs report
+tmpfs_swap_disabled=false. The accepted capsule compositor-native-29b90b27.json
+binds nine files/85,354 bytes copied and SHA-verified on both hosts before ending
+the freeze. Outer SHA-256
+59bd5da0379c0ba69e5e385fe16b49b6e6a811a6251b4fa9dc09b81fb3d63b18.
+The existing engine/application caches remain unchanged. The candidate patch is
+applied only in the focused native shard; integration and ordinary repeated-outage
+acceptance are the next decisive step. HARDENING_STATUS.md records this limited
+component pass; its required fresh isolated token count is next.
+This append preserves the prior 16,255,477-byte audit prefix, SHA-256
+8a62faac226523649471eddd775a90f43851c89e46475bf802d5ebb372f5d0be.

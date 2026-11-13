@@ -4151,6 +4151,22 @@ VM/private/RAM cleanup. The transport review below establishes no portable
 correction; both failed cases remain OPEN. Do not repeat unchanged runs or turn
 the observed late recovery into a passing deadline.
 
+**Native input during the same stall (`717ee375`) — delay localized further.**
+TUF `HkYTCJgoXX` retains the failed 2,500-ms verdict, then sends four real viewer
+key taps. Their exact controlled-root press/release pairs arrive in
+**10.289–10.359 ms**, while the viewer still displays state 21, **20,730–21,077 ms
+old**, against source states 103/104. Transport snapshots show 266 additional
+reverse bytes received while forward sent/acknowledged bytes stay unchanged:
+cwnd remains one, RTO 13,056 ms and the send queue 2,048 bytes. Ordinary reverse
+input does not clear this observed display stall. Forward ACK progress resumes
+between 8.58 and 8.80 seconds after restoration; first fresh pixels appear at
+9.036 seconds and four distinct fresh states at 9.666 seconds. Follow-up maximum
+age is 350 ms against a 325-ms baseline. The connection/window and resource bounds
+persist. `remote-installed-backoff-input-717ee375.json` binds nine files /
+416,931 bytes on CTE/TUF, four zero listener deltas and joined VM/private/RAM
+cleanup. This is failed installed-app diagnostic evidence, not a correction,
+permanent-lag finding or proof about every possible heartbeat schedule.
+
 **Transport-recovery design checkpoint — no socket-policy change justified.**
 The reviewed Linux 6.1 thin-stream option resumes exponential backoff after six
 linear retries; keepalive defers with outstanding data, and `TCP_USER_TIMEOUT`

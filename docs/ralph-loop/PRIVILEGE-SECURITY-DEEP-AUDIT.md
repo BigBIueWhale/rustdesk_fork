@@ -151540,3 +151540,54 @@ claim. Diff checks pass; the existing isolated installed replay will compile the
 driver twice with warnings as errors and execute it against app 2eb7015e.
 This append preserves the prior 16,193,832-byte audit prefix, SHA-256
 f8055ffeb28da35f9d89ba7a6578590cb9d3b8426ce2234182a86f310d0d5b57.
+
+## 2026-11-13 — Native input remains responsive during the display stall
+
+TUF HkYTCJgoXX/tool77695, fixture 717ee375, exits one for the original
+fresh-frame-recovery deadline. The driver builds twice with -Werror and equal
+bytes inside the admitted guest; installed app 2eb7015e is reused. After an
+18,038-ms total outage with nine drops and zero delivery, the unchanged
+2,500-ms recovery condition fails before any diagnostic input is generated.
+
+All four native a–d press/release pairs reach the controlled root in
+10,307/10,292/10,359/10,289 microseconds. Every key is released. Concurrent
+viewer-root observations still show state 21 at ages 20,730/20,845/20,961/21,077 ms,
+while the source has reached states 103/103/104/104. Independent reconciliation
+binds each sample to the ordered 144-publication source history and native times.
+The complete input diagnostic takes 362.237 ms within the original fifteen-second
+post-failure observation budget.
+
+Transport records immediately before/after the diagnostic show server received
+bytes rising from 786 to 1,052, while bytes sent/acknowledged remain 45,688/34,400.
+Its send queue remains 2,048 bytes, cwnd one, RTO 13,056 ms and backoff six.
+The native input and reverse transport therefore work while forward display
+delivery is stalled. This falsifies assuming that ordinary reverse traffic alone
+will clear this observed state; it does not test every heartbeat design or provide
+a portable retransmission mechanism. Original connection/window identity persists.
+Forward ACK progress is observed between 8.582761 and 8.804927 seconds after
+restoration, first fresh pixels at 9.036 seconds and four fresh states at 9.666
+seconds. Follow-up maximum age is 350 ms against a 325-ms baseline. RSS grows
+3,740 KiB, descriptors by one and threads decline. The failed verdict stays failed.
+
+The actor joins its exact owned children; retained output records driver exit one,
+source completion, and service pidfd retirement with inactive/successful unit state.
+Normal package reinstall/remove/purge acceptance is not reached in this failed run.
+Actual terminal, retained/private output equality, exact storage/private identities,
+four zero listener deltas, QEMU 1645715 join zero and absent process/socket/RAM
+state were reconciled before approved private-tree retirement. Capsule
+remote-installed-backoff-input-717ee375.json binds nine files/416,931 bytes copied
+and hash-verified on CTE/TUF. Outer SHA-256:
+7805fe8d595a0263dd814f1e21ba1670c5948fc275a993ae7f5ee3372bf53b89.
+Storage elapsed time is 117.862 seconds, peak RAM scratch 4,216,160,256 bytes;
+tmpfs_swap_disabled remains false. Source/input freeze ended only after copying.
+
+This is new installed correctness evidence that separates responsive native input
+from stale presentation during the reproduced outage failure. It supports the
+transport design decision against an unproved heartbeat patch. No product policy,
+recovery threshold or release requirement changed; R-F5 remains OPEN and this
+unchanged diagnostic need not be repeated. The next useful recovery work requires
+a mechanism consistent with the supported direct-TCP/session-lifetime contract;
+the remaining installed continuous-display and concurrent input/visible-response
+acceptance also remains actionable at this checkpoint.
+This append preserves the prior 16,196,462-byte audit prefix, SHA-256
+50e8ec7e273606babef6e7fba8eb2395437c23a9ab21a268e37966be2f2bcf12.

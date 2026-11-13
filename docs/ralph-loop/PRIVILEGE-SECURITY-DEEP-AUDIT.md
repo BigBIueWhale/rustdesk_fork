@@ -153418,3 +153418,41 @@ fixture lacks the required daemon before choosing a product correction. This is
 more decisive than changing permissions based on a misleading error string.
 This append preserves the prior16,320,972-byte audit prefix, SHA-256
 9b5b8aaaa81ceef8247a9770494780e738fcb0198e3696958feac391894f5237.
+
+### Installed audio diagnostic — missing provider, misleading error text
+
+xeuTRGaA2v at c13eb56c passes with unchanged app3c289cff and exact same package
+SHA-256 c33359b39fbbfedb58de7d5ed59f55f88edb2b8e46336f7c25a4d675e6056913.
+The separate native client runs as UID4001 with libpulse.so.0.24.2 SHA-256
+38b07a06cefcaabd8db3edaddafea0ab5b5d2ee15e8641929f7d07d45fb66d59.
+Default user/system sockets /run/user/4001/pulse/native and /run/pulse/native
+are absent. pa_context_connect returns -1, whose formatted text is Access denied;
+pa_context_errno returns6, Connection refused, with context state5 (Failed).
+HOME, USER, XDG_RUNTIME_DIR and absent PULSE_SERVER/PULSE_RUNTIME_PATH match
+the exact CM7960's observed environment. This proves the fixture lacks a usable
+default audio provider at the observation and reproduces the error-reporting
+ambiguity. It is a separate native client, not a trace of the CM's context and
+not capture/playback acceptance. No permission or helper-authority change follows.
+
+CM7960 remains alive39.840 seconds, UID4001, CapEff0, NoNewPrivs1, Seccomp2;
+its actual capture logs35 Access denied messages with35 server resets and two
+initial missing-CM observations. The same connection/viewer/service generation
+survives all three suspensions: recovery2069/914/1164 ms, healthy maximum frame
+ages356/351/354 ms versus baseline348 ms. Existing2500/1000-ms limits hold.
+Package reinstall/removal/purge and process cleanup pass. QEMU3436956 joins0;
+private66306:84064756 and RAM29:14359 retire. Supervisor186.353 seconds,
+scratch peak4,285,804,544 bytes, minimum available RAM37,967,736,832 bytes,
+four zero endpoint deltas, tmpfs_swap_disabled=false. Nine files/204,349 bytes
+are copied and SHA-verified on CTE/TUF in installed-audio-diagnostic-c13eb56c.json;
+outer SHA-256 dbf5671a42021f07bb5ce90e598a61c6de8f615017b91d8fae6d428086bae156.
+
+The existing pinned33,561,135-byte PulseAudio candidate is present on TUF,
+owned1000:1000, mode0400, one link; its SHA-256 matches
+50f18b087a3ecfb69f8221546136101733cc1415cdb42778af70261bf2376115.
+Next admit that existing authenticated daemon/monitor into the installed fixture,
+preserve normal product library/environment/authority paths, then measure real
+capture and viewer playback. Correct the product's context-error reporting as
+part of that work. No new download or application rebuild was needed here.
+All owned jobs/source freezes are closed; goal remains active. Fresh ledger
+count follows. This append preserves the prior16,322,612-byte audit prefix,
+SHA-256 a1496a892b0153f16bc8e86c8ecf88ad686e03111661c108e9e58b0860049520.

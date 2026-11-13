@@ -7796,10 +7796,16 @@ Package reinstall/remove/purge and joined cleanup pass. Capsule
 CTE/TUF and four zero endpoint deltas. This is Linux Xvfb presentation/lifecycle
 acceptance for this scenario, not physical scanout, all settings or a full release.
 
-Audio advances past the single initial missing-CM observation, but capture reports
-**36 `Access denied` results**, paired with server resets. Required audio output
-remains OPEN; next establish the exact PulseAudio connection/authentication
-prerequisite or defect without weakening helper authority. Superseded app
+Audio acceptance remains **OPEN**. `c13eb56c` observes the same installed library
+as an ordinary native client: both default PulseAudio sockets are absent,
+`pa_context_connect` returns -1 and context errno6 reports **Connection refused**.
+The pinned Rust binding formats the generic -1 as `Access denied`; that log does
+not establish authentication rejection. The diagnostic's selected environment
+matches the exact live CM. Startup/suspension and package lifecycle still pass;
+`installed-audio-diagnostic-c13eb56c.json` binds the evidence and joined cleanup.
+Next provide the fixture's missing audio daemon/monitor from the authenticated
+candidate and prove installed capture/playback. Product error reporting also
+needs the actual context error; helper authority remains mandatory. Superseded app
 `2eb7015e` is retired after all 74 payloads verify,
 freeing 70,791,168 allocated bytes;
 its manifest/evidence and matching engine remain, with `77cc3441` retained as
@@ -20782,12 +20788,14 @@ CM side effect is made.
 
 **Linux `_pa` authority and capture lifetime — authorized ordinary-user
 production pair passed; installed-service and churn evidence OPEN.**
-The corrected full-app installed replay now creates `_cm` and `_pa` endpoints
-and passes ordinary desktop suspension recovery, but capture reports 36 `Access
-denied` results (`installed-cm-policy-admitted-d39e78ed.json`, reconnect section
-above). Installed audio output remains unproved. Establish the exact daemon/
-authentication prerequisite or defect next; earlier prelogin-fixture display
-passes did not exercise successful CM/audio startup.
+The corrected installed replay creates `_cm`/`_pa` and passes ordinary desktop
+suspension recovery. Its apparent `Access denied` capture result is misleading:
+the native diagnostic finds absent default sockets and context errno6,
+**Connection refused**, while the generic -1 return formats as `Access denied`
+(`installed-audio-diagnostic-c13eb56c.json`, reconnect section above). Installed
+audio output remains unproved. Next supply the fixture's missing daemon/monitor
+and validate capture/playback; correct context-error reporting without changing
+helper authority. Earlier prelogin display passes did not exercise CM/audio.
 
 `src/ipc/pulse_audio.rs` derives PID/UID/start identity from the accepted Unix
 socket before reading a `StartCapture` request, then validates the exact current

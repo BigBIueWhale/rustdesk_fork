@@ -151790,3 +151790,14 @@ R-F5 remain OPEN; the separate long-outage failure is unchanged. The ledger has
 been updated and its fresh isolated count is pending. This append preserves the
 prior 16,210,726-byte audit prefix, SHA-256
 10ae3ff2cb26fdf949e401cb4a3979c4d532815044890a3576b483ea406b4fc0.
+
+Fresh ledger count at f78da924, 6yeSYr6QDd/tool77050: 421,802 tokens /
+1,922,979 bytes, SHA-256
+94531801e097464452c351b62da410170155bd10e5267af2743bcd0938807977.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+animation-congestion-ledger-f78da924.json binds eight files/115,603 bytes on
+CTE/TUF. QEMU 2064950 joins zero after 30.678 seconds; three zero listener
+deltas and exact private/process/socket/RAM retirement reconcile. The approximate
+400,000-token target remains OPEN. This audit-only append preserves the counted
+ledger and prior 16,213,328-byte audit prefix, SHA-256
+16f30e70e8b759355f1c57ebb2be824f1b30f5c3061b7f4281161b41321cf412.

@@ -52,6 +52,7 @@ FLUTTER_PEER_CANDIDATE=0
 FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_REPLAY=0
 FLUTTER_INSTALLED_SETTINGS=0
+FLUTTER_HEAPTRACK=0
 FLUTTER_VIEWER_SUSPEND=0
 FLUTTER_CLIPBOARD_TEXT=0
 FLUTTER_KEYBOARD_INPUT=0
@@ -774,6 +775,7 @@ case "$#:${1:-}" in
                 --installed-remote-input-animation) FLUTTER_INSTALLED_SETTINGS=22 ;;
                 --installed-remote-input-animation-congestion) FLUTTER_INSTALLED_SETTINGS=23 ;;
                 --installed-remote-expired) FLUTTER_INSTALLED_SETTINGS=24 ;;
+                --installed-remote-expired-heaptrack) FLUTTER_INSTALLED_SETTINGS=24; FLUTTER_HEAPTRACK=1 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -1005,6 +1007,7 @@ esac
 readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA256 FLUTTER_VIEWER_SUSPEND
 readonly FLUTTER_NETWORK_IMPAIRMENT
 readonly FLUTTER_INSTALLED_SETTINGS
+readonly FLUTTER_HEAPTRACK
 readonly FLUTTER_CLIPBOARD_TEXT
 readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
@@ -1865,6 +1868,19 @@ installed_settings_input_inventory() {
         /usr/bin/sha256sum -- "$runtime"
         verify_committed_test_source "$SCRIPT_DIR/test-linux-debian-install.py"
         /usr/bin/sha256sum -- "$SCRIPT_DIR/test-linux-debian-install.py"
+    fi
+    if [ "$FLUTTER_HEAPTRACK" -eq 1 ]; then
+        local profiler=$REPO_ROOT/online/candidates/heaptrack/heaptrack-candidate.tar.gz
+        [ "$FLUTTER_INSTALLED_SETTINGS" -eq 24 ] \
+            && [ -d "${profiler%/*}" ] && [ ! -L "${profiler%/*}" ] \
+            && [ "$(/usr/bin/readlink -f -- "${profiler%/*}")" = "${profiler%/*}" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "${profiler%/*}")" = "$HOST_UID:$HOST_GID:700" ] \
+            && [ -f "$profiler" ] && [ ! -L "$profiler" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$profiler")" = "$HOST_UID:$HOST_GID:400:1:$HEAPTRACK_CANDIDATE_ARCHIVE_SIZE" ] \
+            || fail 'allocation profiler input authority differs'
+        verify_sha256 "$profiler" "$HEAPTRACK_CANDIDATE_ARCHIVE_SHA256"
+        /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$profiler"
+        /usr/bin/sha256sum -- "$profiler"
     fi
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
         local agent=$REPO_ROOT/online/candidates/polkit-agent/polkit-agent-candidate.tar.gz
@@ -5355,6 +5371,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
                 "debian-runtime-candidate.tar.gz=$REPO_ROOT/online/candidates/debian-runtime/debian-runtime-candidate.tar.gz"
                 "repo/scripts/test-linux-debian-install.py=$SCRIPT_DIR/test-linux-debian-install.py"
             )
+        fi
+        if [ "$FLUTTER_HEAPTRACK" -eq 1 ]; then
+            lifecycle_payload_grafts+=("heaptrack-candidate.tar.gz=$REPO_ROOT/online/candidates/heaptrack/heaptrack-candidate.tar.gz")
         fi
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             lifecycle_payload_grafts+=("polkit-agent-candidate.tar.gz=$REPO_ROOT/online/candidates/polkit-agent/polkit-agent-candidate.tar.gz")

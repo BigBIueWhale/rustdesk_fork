@@ -152085,3 +152085,38 @@ cache or relax the original test. HARDENING_STATUS.md is unchanged, so its last
 422,430-token count still binds. This append preserves the prior 16,231,058-byte
 audit prefix, SHA-256
 0f0a79078fdb32ed24c2d17b69a692474bfa67f99a10a477cfad73f2ab22b28e.
+
+## 2026-11-13 — Installed expiry allocation tracing prepared
+
+Previous turn completed the authenticated profiler prerequisite. Continue the
+same reproduced R-F5 resource failure with the unchanged 2eb7015e application.
+The explicit --installed-remote-expired-heaptrack diagnostic reuses the expiry
+scenario and every original latency/resource threshold. It consumes only the
+pinned profiler archive, refuses any changed version/bytes of a shared product
+dependency, and installs missing profiler dependencies inside the zero-NIC guest.
+No acceptance result can be issued from the instrumented session, even if the
+ordinary pixel observer finishes successfully.
+
+The ordinary viewer remains the directly owned Popen process. Only its launch
+receives the profiler preload; a private FIFO and owned gzip process bound raw
+trace storage to 128 MiB. Attachment requires that exact viewer's open FIFO and
+collector mapping. After viewer retirement, owned interpretation/compression
+and CLI-analysis processes are joined; interpreted storage is capped at 128 MiB,
+reports/timeline at their smaller bounds. Only bounded reports and trace hashes
+are retained; bulk trace files retire with the guest. Peak stacks are unmerged,
+built-in/embedded suppressions are disabled, and a heap-size timeline accompanies
+the report. The tool's end-of-trace "leak" label means allocations unfreed at
+fixture termination, not independently established product leaks. Instrumented
+timings/RSS are diagnostic and cannot close ordinary R-F5 acceptance.
+
+Primary v1.4.0 sources reviewed: src/track/heaptrack_preload.cpp,
+src/track/libheaptrack.cpp and src/analyze/print/heaptrack_print.cpp under
+https://github.com/KDE/heaptrack/tree/v1.4.0. The collector opens its output
+close-on-exec, clears profiling launch variables and disables tracing in forked
+children; the fixture still owns and joins its exact processes. CLI analysis has
+no time-range option in this version, so retain its bounded timeline with peak
+and terminal-allocation stacks. Source parsing and diff checks pass; execution
+is pending. No product correction or root-cause attribution is claimed.
+HARDENING_STATUS.md is unchanged. This append preserves the prior 16,233,390-byte
+audit prefix, SHA-256
+7580911dcc23d1d7f7a1a3b757783cf00d716a54ec87ca0659277a67e76077d1.

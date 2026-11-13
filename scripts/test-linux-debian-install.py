@@ -46,14 +46,17 @@ def command(arguments, phase, timeout=180, expected=0):
     return result.stdout.decode('utf-8')
 
 
-def runtime_inputs(source):
+def runtime_inputs(source, kind='debian-runtime'):
+    require(kind in ('debian-runtime', 'heaptrack'), 'unknown runtime closure')
+    prefix = 'DEBIAN_RUNTIME' if kind == 'debian-runtime' else 'HEAPTRACK'
+    limit = 512 * 1024 * 1024 if kind == 'debian-runtime' else 128 * 1024 * 1024
     pins = dict(re.findall(r'^([A-Z0-9_]+)="([^"]*)"',
                            (source / 'scripts/pins.env').read_text(), re.M))
-    archive = MEDIA / 'debian-runtime-candidate.tar.gz'
-    require(archive.stat().st_size == int(pins['DEBIAN_RUNTIME_CANDIDATE_ARCHIVE_SIZE'])
-            and digest(archive) == pins['DEBIAN_RUNTIME_CANDIDATE_ARCHIVE_SHA256'],
+    archive = MEDIA / (kind + '-candidate.tar.gz')
+    require(archive.stat().st_size == int(pins[prefix + '_CANDIDATE_ARCHIVE_SIZE'])
+            and digest(archive) == pins[prefix + '_CANDIDATE_ARCHIVE_SHA256'],
             'Debian runtime archive differs from its pin')
-    destination = WORK / 'debian-runtime'
+    destination = WORK / kind
     destination.mkdir(mode=0o700)
     (destination / 'packages').mkdir(mode=0o700)
     metadata = {}
@@ -72,7 +75,7 @@ def runtime_inputs(source):
                 require(plan is None and member.size <= 1024 * 1024, 'runtime metadata order/size differs')
                 data = payload.read()
                 key = member.name.split('.')[0].upper()
-                require(hashlib.sha256(data).hexdigest() == pins['DEBIAN_RUNTIME_CANDIDATE_' + key + '_SHA256'],
+                require(hashlib.sha256(data).hexdigest() == pins[prefix + '_CANDIDATE_' + key + '_SHA256'],
                         'runtime metadata differs from its pin')
                 metadata[member.name] = data
                 continue
@@ -80,7 +83,7 @@ def runtime_inputs(source):
                 require(set(metadata) == {'contract', 'control', 'manifest.tsv', 'plan.json'},
                         'runtime metadata is incomplete')
                 plan = json.loads(metadata['plan.json'])
-                require(0 < len(plan) <= 512 and sum(r['bytes'] for r in plan.values()) <= 512 * 1024 * 1024,
+                require(0 < len(plan) <= 512 and sum(r['bytes'] for r in plan.values()) <= limit,
                         'runtime closure exceeds its admission bound')
                 for line in metadata['manifest.tsv'].decode().splitlines():
                     name, version, architecture, filename, size, sha = line.split('\t')
@@ -448,6 +451,21 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
         require(prepared_manifest[candidate.name] == {'bytes': candidate.stat().st_size, 'sha256': digest(candidate)},
                 'prepared package differs')
     runtime, records, control = runtime_inputs(source)
+    heaptrack = (MEDIA / 'heaptrack-candidate.tar.gz').exists()
+    require(not heaptrack or remote == 'expired', 'allocation profiling requires the expiry diagnostic')
+    if heaptrack:
+        profiler, profiler_records, _ = runtime_inputs(source, 'heaptrack')
+        for filename, record in profiler_records.items():
+            require(not any(r['name'] == record['name'] for r in records.values()) or filename in records,
+                    'profiler selects another version of a product dependency')
+            if filename in records:
+                require(records[filename] == record, 'profiler changes a product dependency')
+            else:
+                shutil.copyfile(profiler / 'packages' / filename, runtime / 'packages' / filename)
+                (runtime / 'packages' / filename).chmod(0o400)
+                require(digest(runtime / 'packages' / filename) == record['sha256'], 'profiler cache copy differs')
+                records[filename] = record
+        print('LINUX_INSTALLED_HEAPTRACK_INPUT=verified version=1.4.0-2 acceptance=diagnostic-only', flush=True)
     controls = WORK / 'debian-control'
     command(['/usr/bin/dpkg-deb', '--control', str(archive), str(controls)], 'control')
     require((controls / 'control').read_bytes() == control, 'package and resolved dependency metadata differ')
@@ -640,7 +658,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                         mapped_core(record, manifest, 'installed-remote' if remote else 'installed-camera')
                         try:
                             presentation_fixture.scenario(settings, receiver, record,
-                                **({'network': remote if remote != 'suspend' else False}
+                                **({'network': remote if remote != 'suspend' else False, 'heaptrack': heaptrack}
                                    if remote else {'busy': camera == 'busy'}))
                         except BaseException:
                             settings.stop_service(receiver, record)

@@ -2,6 +2,7 @@
 """Observe Remote pixels and viewer/network recovery through the installed service."""
 from contextlib import ExitStack, closing, contextmanager
 import ctypes
+import hashlib
 import importlib.util
 import json
 import os
@@ -242,9 +243,131 @@ def observe_impaired_soak(settings, record, actor, log):
             print(resource_log.read_text(), end='', flush=True)
 
 
-def session(network=False):
+class AllocationTrace:
+    """Own the guest-only collector pipe and offline report processes."""
+
+    def __init__(self):
+        self.root = COORD / 'heaptrack'
+        self.root.mkdir(mode=0o700)
+        self.fifo = self.root / 'raw.pipe'
+        self.raw = self.root / 'raw.gz'
+        self.anchor = None
+        self.collector = None
+        self.jobs = []
+        self.viewer_pid = None
+
+    def start(self, environment):
+        os.mkfifo(self.fifo, 0o600)
+        self.anchor = os.open(self.fifo, os.O_RDWR | os.O_CLOEXEC)
+        with os.fdopen(os.open(self.fifo, os.O_RDONLY | os.O_CLOEXEC), 'rb') as reader, \
+                self.raw.open('xb') as output, (self.root / 'compressor.log').open('xb') as errors:
+            self.collector = subprocess.Popen(
+                ['/usr/bin/prlimit', '--fsize=134217728', '--', '/usr/bin/gzip', '-1', '-c'],
+                stdin=reader, stdout=output, stderr=errors, env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'})
+            self.jobs.append(self.collector)
+        return {**environment, 'LD_PRELOAD': '/usr/lib/heaptrack/libheaptrack_preload.so',
+                'DUMP_HEAPTRACK_OUTPUT': str(self.fifo)}
+
+    def connected(self, viewer):
+        expected = self.fifo.stat()
+        deadline = time.monotonic() + 10
+        while viewer.poll() is None and time.monotonic() < deadline:
+            for fd in Path(f'/proc/{viewer.pid}/fd').iterdir():
+                try:
+                    current = fd.stat()
+                except FileNotFoundError:
+                    continue
+                if (current.st_dev, current.st_ino) == (expected.st_dev, expected.st_ino):
+                    require('/usr/lib/heaptrack/libheaptrack_preload.so' in
+                            Path(f'/proc/{viewer.pid}/maps').read_text(), 'viewer collector mapping absent')
+                    self.viewer_pid = viewer.pid
+                    os.close(self.anchor)
+                    self.anchor = None
+                    print('LINUX_INSTALLED_HEAPTRACK_ATTACHED=' + json.dumps({
+                        'viewer': viewer.pid, 'monotonic_ns': time.monotonic_ns(),
+                        'fifo_inode': expected.st_ino, 'acceptance': 'diagnostic-only'}), file=sys.stderr, flush=True)
+                    return
+            time.sleep(0.02)
+        raise RuntimeError('viewer did not open its allocation trace')
+
+    def stop_jobs(self):
+        for process in reversed(self.jobs):
+            if process.poll() is None:
+                process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait()
+
+    def finish(self):
+        if self.anchor is not None:
+            os.close(self.anchor)
+            self.anchor = None
+        try:
+            if self.collector is None:
+                return
+            require(self.collector.wait(timeout=15) == 0 and self.viewer_pid is not None,
+                    'allocation trace compressor or viewer attachment failed')
+            require(0 < self.raw.stat().st_size <= 134217728, 'compressed allocation trace exceeds its bound')
+            interpreted = self.root / 'interpreted.gz'
+            env = {'PATH': '/usr/bin:/bin', 'LC_ALL': 'C', 'HOME': str(self.root)}
+            with interpreted.open('xb') as output, (self.root / 'interpret.log').open('xb') as errors:
+                unpack = subprocess.Popen(['/usr/bin/gzip', '-dc', str(self.raw)],
+                                          stdout=subprocess.PIPE, stderr=errors, env=env)
+                self.jobs.append(unpack)
+                interpret = subprocess.Popen(['/usr/lib/heaptrack/libexec/heaptrack_interpret'],
+                                             stdin=unpack.stdout, stdout=subprocess.PIPE, stderr=errors, env=env)
+                self.jobs.append(interpret)
+                unpack.stdout.close()
+                compress = subprocess.Popen(
+                    ['/usr/bin/prlimit', '--fsize=134217728', '--', '/usr/bin/gzip', '-1', '-c'],
+                    stdin=interpret.stdout, stdout=output, stderr=errors, env=env)
+                self.jobs.append(compress)
+                interpret.stdout.close()
+                deadline = time.monotonic() + 120
+                for process in (unpack, interpret, compress):
+                    require(process.wait(timeout=max(0.1, deadline - time.monotonic())) == 0,
+                            'allocation trace interpretation failed')
+            require(0 < interpreted.stat().st_size <= 134217728, 'interpreted allocation trace exceeds its bound')
+            report = self.root / 'report.txt'
+            timeline = self.root / 'timeline.massif'
+            with report.open('xb') as output:
+                analyze = subprocess.Popen([
+                    '/usr/bin/prlimit', '--fsize=1048576', '--', '/usr/bin/heaptrack_print', str(interpreted),
+                    '--merge-backtraces=false', '--print-peaks=true', '--print-leaks=true',
+                    '--print-allocators=false', '--print-temporary=false', '--peak-limit=30',
+                    '--disable-builtin-suppressions', '--disable-embedded-suppressions',
+                    '--print-massif=' + str(timeline), '--massif-detailed-freq=0'],
+                    stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, env=env)
+                self.jobs.append(analyze)
+                require(analyze.wait(timeout=120) == 0, 'allocation report failed')
+            for name in ('compressor.log', 'interpret.log', 'report.txt', 'timeline.massif'):
+                path = self.root / name
+                limit = 1048576 if name == 'timeline.massif' else 262144 if name == 'report.txt' else 65536
+                require(path.stat().st_size <= limit, 'allocation report exceeds its evidence bound')
+                print('LINUX_INSTALLED_HEAPTRACK_REPORT_BEGIN name=' + name,
+                      file=sys.stderr, flush=True)
+                print(path.read_text(), end='', file=sys.stderr, flush=True)
+                print('LINUX_INSTALLED_HEAPTRACK_REPORT_END name=' + name,
+                      file=sys.stderr, flush=True)
+            def identity(path):
+                with path.open('rb') as stream:
+                    return {'bytes': path.stat().st_size, 'sha256': hashlib.file_digest(stream, 'sha256').hexdigest()}
+            print('LINUX_INSTALLED_HEAPTRACK_COMPLETE=' + json.dumps({
+                'viewer': self.viewer_pid, 'raw': identity(self.raw), 'interpreted': identity(interpreted),
+                'report': identity(report), 'timeline': identity(timeline),
+                'processes': [{'pid': p.pid, 'exit': p.returncode} for p in self.jobs],
+                'acceptance': 'diagnostic-only', 'retained': 'reports-only',
+                'end_state': 'viewer-retired-by-fixture'}), file=sys.stderr, flush=True)
+        finally:
+            self.stop_jobs()
+
+
+def session(network=False, heaptrack=False):
     require(network is False or network in NETWORK_PROFILES or network in ('input-soak', 'input-animation'),
             'unknown Remote scenario')
+    require(not heaptrack or network == 'expired', 'allocation tracing requires the expiry diagnostic')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(settings)
@@ -262,6 +385,7 @@ def session(network=False):
                    'LIBGL_ALWAYS_SOFTWARE': '1'}
     processes = []
     viewer = None
+    trace = None
     with ExitStack() as files:
         environment = files.enter_context(settings.recording_display(environment, 79, '1600x1200x24'))
         def log(name):
@@ -301,10 +425,16 @@ def session(network=False):
                     time.sleep(0.05)
                 network_request(b'healthy', refused=True)
                 network_request(b'attach')
+            viewer_environment = environment
+            if heaptrack:
+                trace = AllocationTrace()
+                viewer_environment = trace.start(environment)
             viewer = subprocess.Popen(['/usr/share/rustdesk/rustdesk', '--connect', '127.0.0.1'],
-                                      env=environment, stdin=subprocess.DEVNULL,
+                                      env=viewer_environment, stdin=subprocess.DEVNULL,
                                       stdout=log('viewer.log'), stderr=subprocess.STDOUT)
             processes.append(viewer)
+            if trace is not None:
+                trace.connected(viewer)
             start = Path(f'/proc/{viewer.pid}/stat').read_text().rsplit(') ', 1)[1].split()[19]
             driver_args = [str(settings.WORK / 'presentation-driver'), ':77', ':79',
                            str(viewer.pid), start,
@@ -364,19 +494,25 @@ def session(network=False):
                         process.send_signal(signal.SIGCONT)
                     process.terminate()
                 process.wait(timeout=8)
-            settings.retire_children()
-            for name in ('driver.log', 'source-error.log', 'frame-source.log', 'viewer.log'):
-                path = COORD / name
-                if path.exists():
-                    require(path.stat().st_size <= (2097152 if network in SOAK_SCENARIOS
-                                                   else 1048576 if network in ('input-animation-congestion', 'expired') else 131072),
-                            'Remote observer output exceeds its bound')
-                    print(path.read_text(), end='', file=sys.stderr, flush=True)
+            try:
+                if trace is not None:
+                    trace.finish()
+            finally:
+                settings.retire_children()
+                for name in ('driver.log', 'source-error.log', 'frame-source.log', 'viewer.log'):
+                    path = COORD / name
+                    if path.exists():
+                        require(path.stat().st_size <= (2097152 if network in SOAK_SCENARIOS
+                                                       else 1048576 if network in ('input-animation-congestion', 'expired') else 131072),
+                                'Remote observer output exceeds its bound')
+                        print(path.read_text(), end='', file=sys.stderr, flush=True)
+    require(not heaptrack, 'allocation tracing is diagnostic; ordinary acceptance remains unproved')
 
 
-def scenario(settings, receiver, record, network=False):
+def scenario(settings, receiver, record, network=False, heaptrack=False):
     require(network is False or network in NETWORK_PROFILES or network in ('input-soak', 'input-animation'),
             'unknown Remote scenario')
+    require(not heaptrack or network == 'expired', 'allocation tracing requires the expiry diagnostic')
     guard(settings, 0)
     COORD.mkdir(mode=0o700)
     os.chown(COORD, 4001, 4001)
@@ -388,7 +524,8 @@ def scenario(settings, receiver, record, network=False):
     try:
         with log.open('xb') as output:
             actor = subprocess.Popen([*settings.ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
-                                      str(SCRIPT), '--session-' + network if network else '--session'], env=settings.ENV,
+                                      str(SCRIPT), '--session-' + network if network else '--session',
+                                      *(['--heaptrack'] if heaptrack else [])], env=settings.ENV,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=output)
             if network == 'input-soak':
                 observe_soak(record, actor, log)
@@ -421,7 +558,7 @@ def scenario(settings, receiver, record, network=False):
         if actor is not None:
             if actor.poll() is None:
                 actor.terminate()
-            actor.wait(timeout=20)
+            actor.wait(timeout=270 if heaptrack else 20)
             actor.stdout.close()
         if log.exists():
             require(log.stat().st_size <= (6291456 if network in (*SOAK_SCENARIOS, 'input-animation-congestion')
@@ -433,6 +570,9 @@ def scenario(settings, receiver, record, network=False):
 
 
 if __name__ == '__main__':
+    heaptrack = sys.argv[1:] == ['--session-expired', '--heaptrack']
+    if heaptrack:
+        sys.argv.pop()
     require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion'],
                             ['--session-backoff'], ['--session-input-recovery'], ['--session-input-loss'],
                             ['--session-input-congestion'], ['--session-input-soak'],
@@ -447,4 +587,5 @@ if __name__ == '__main__':
                      '--session-input-animation-congestion': 'input-animation-congestion',
                      '--session-expired': 'expired',
                      '--session-input-soak': 'input-soak',
-                     '--session-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False))
+                     '--session-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False),
+            heaptrack=heaptrack)

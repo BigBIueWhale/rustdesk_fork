@@ -151801,3 +151801,47 @@ deltas and exact private/process/socket/RAM retirement reconcile. The approximat
 400,000-token target remains OPEN. This audit-only append preserves the counted
 ledger and prior 16,213,328-byte audit prefix, SHA-256
 16f30e70e8b759355f1c57ebb2be824f1b30f5c3061b7f4281161b41321cf412.
+
+## 2026-11-13 — Natural transport expiry and automatic recovery prepared
+
+Continue R-F5 with installed automatic recovery after transport expiry. The earlier
+18-second surviving-transport failures remain OPEN. Linux 6.1 tcp_process_loss
+and tcp_xmit_recovery require forward ACK/loss evidence; the observed reverse
+key traffic does not establish that missing forward data arrived. RFC 6069's
+TCP-LCD addresses prolonged-disruption backoff using ICMP feedback and a sender
+TCP change. Linux tcp_ld_RTO_revert depends on the matching quoted sequence and
+unreachable feedback; silent loss supplies neither. This does not justify an
+application heartbeat or fabricated ICMP workaround. Windows TCP_MAXRT and
+Apple connection-drop options remain expiry controls, not a portable recovery
+correction. Primary sources:
+https://raw.githubusercontent.com/torvalds/linux/v6.1/net/ipv4/tcp_input.c,
+https://raw.githubusercontent.com/torvalds/linux/v6.1/net/ipv4/tcp_ipv4.c,
+https://www.rfc-editor.org/rfc/rfc6069.html,
+https://learn.microsoft.com/en-us/windows/win32/winsock/ipproto-tcp-socket-options,
+https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/netinet/tcp_usrreq.c.
+
+The adjacent missing installed condition is natural expiry followed by automatic
+authenticated recovery in the same viewer process/window. Existing model retry
+tests prove scheduling, not this outcome. The new scenario uses the unchanged
+installed 2eb7015e app, continuous four-Hz animation and two 120-response windows
+around 65 seconds of total forward loss. No fixture socket closure, restart,
+manual reconnect or new password entry occurs. Retained viewer /proc/PID/fd
+authority must show the original socket absent and a different established
+socket owned by that same process. proc_pid_fd(5) documents the inode mapping:
+https://man7.org/linux/man-pages/man5/proc_pid_fd.5.html. Timer documentation
+https://api.dart.dev/dart-async/Timer-class.html concerns callback scheduling;
+native reconnect and presented pixels remain necessary evidence.
+
+Use the existing 45-second automatic-reconnect observation bound after restoration,
+then require four fresh frames within 2,500 ms of the observed new connection.
+This distinct expired-transport condition does not relax the surviving-transport
+2,500-ms criterion. Recovered response and age p95/p99 must remain within 250 ms
+of their original baseline, with unchanged 1,000-ms healthy ceilings. Installed
+child/listener/credential/profile preservation, package lifecycle and exact cleanup
+remain required. Driver/network-owner deadlines are 480/540 seconds within the
+existing package/VM bounds. Reuse authenticated caches and bounded RAM scratch;
+no new application build, cache, host networking or product change is needed.
+TUF is reachable over the existing SSH master, with approximately 46 GiB available
+RAM and empty admitted scratch before launch. No native result is claimed yet.
+This append preserves the prior 16,213,998-byte audit prefix, SHA-256
+9d70ef821f601474cd60730f369e9739d74b12161c2a44109505a9f580f23403.

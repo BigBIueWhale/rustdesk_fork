@@ -4902,6 +4902,94 @@ static int exercise_input_animation(Display *source, Display *display, ViewerWin
     return 0;
 }
 
+static int exercise_expired_connection(Display *source, Display *display, ViewerWindow *viewer,
+                                       SourceHistory *history, const ConnectionIdentity *connection,
+                                       const ProcessResources *baseline) {
+    unsigned int request = 0U, original[4] = {0}, recovered[4] = {0};
+    int64_t last_frame = -1;
+    unsigned long long before_drops = 0ULL, before_packets = 0ULL, drops = 0ULL, packets = 0ULL;
+    uint64_t began = 0U, retired = 0U, restored = 0U, connected = 0U, fresh_ms = 0U, age = 0U;
+    unsigned int observations = 0U;
+    int restore_needed = 0;
+    const char *phase = "baseline";
+    ConnectionIdentity replacement = {{0}, {0}, 0UL}, current = {{0}, {0}, 0UL};
+    ViewerWindow same_viewer = {0};
+    ProcessResources resources = {0};
+    if (connection_fds < 0 ||
+        exercise_input_animation_window(source, display, viewer, history, connection, baseline,
+                                         0U, &request, &last_frame, original) != 0) goto fail;
+    phase = "apply-loss";
+    restore_needed = 1;
+    if (network_profile("loss", &before_drops, &before_packets) != 0) goto fail;
+    began = monotonic_millis();
+    if (began == 0U) goto fail;
+    phase = "natural-expiry";
+    for (;;) {
+        uint64_t now = monotonic_millis();
+        int owned = viewer_owns_socket(connection->inode);
+        if (owned < 0 || now < began || now - began > 65500U ||
+            (retired != 0U && owned != 0) || ++observations > 700U ||
+            inspect_viewer_candidate(display, viewer->window, viewer->pid, &same_viewer) != 1 ||
+            same_viewer.window != viewer->window ||
+            x11_frame_refresh(history, "/coord") != 0 || history->complete) goto fail;
+        if (!owned && retired == 0U) retired = now;
+        if (now - began >= 65000U) break;
+        if (sleep_millis(100U) != 0) goto fail;
+    }
+    if (retired == 0U || viewer_owns_socket(connection->inode) != 0) goto fail;
+    printf("FLUTTER_PEER_EXPIRED_TRANSPORT old_inode=%lu retired_after_ms=%llu observations=%u "
+           "viewer=retained intervention=none\n", connection->inode,
+           (unsigned long long)(retired - began), observations);
+    fflush(stdout);
+    phase = "restore";
+    restored = monotonic_millis();
+    if (network_profile("healthy", &drops, &packets) != 0) goto fail;
+    restore_needed = 0;
+    if (drops <= before_drops || packets != before_packets) goto fail;
+    phase = "automatic-reconnect";
+    if (wait_for_replacement_connection(connection, &replacement) != 0 ||
+        viewer_owns_socket(connection->inode) != 0 || viewer_owns_socket(replacement.inode) != 1) goto fail;
+    connected = monotonic_millis();
+    if (connected < restored || connected - restored > RECONNECT_LIMIT_MS ||
+        inspect_viewer_candidate(display, viewer->window, viewer->pid, &same_viewer) != 1 ||
+        same_viewer.window != viewer->window) goto fail;
+    phase = "fresh-pixels";
+    if (wait_for_current_frames(display, viewer, history, RECOVERY_LIMIT_MS, 4U, &fresh_ms, &age) != 0 ||
+        read_connection_identity(&current) != 0 || !same_connection(&replacement, &current) ||
+        read_process_resources(viewer->pid, &resources) != 0 ||
+        !resources_are_bounded(baseline, &resources)) goto fail;
+    uint64_t fresh = monotonic_millis();
+    if (fresh < connected || fresh - connected > RECOVERY_LIMIT_MS) goto fail;
+    print_resources("expired-recovery", 1U, &resources);
+    printf("FLUTTER_PEER_EXPIRED_RECOVERY old_inode=%lu new_inode=%lu new_local=%s new_remote=%s "
+           "began_ms=%llu restored_ms=%llu connected_ms=%llu fresh_ms=%llu "
+           "reconnect_ms=%llu first_fresh_ms=%llu four_fresh_ms=%llu drops=%llu delivered_during_loss=0 "
+           "same_window=true credential=retained\n", connection->inode, replacement.inode,
+           replacement.local, replacement.remote, (unsigned long long)began, (unsigned long long)restored,
+           (unsigned long long)connected, (unsigned long long)fresh,
+           (unsigned long long)(connected - restored), (unsigned long long)fresh_ms,
+           (unsigned long long)(fresh - connected), drops - before_drops);
+    fflush(stdout);
+    phase = "recovered-envelope";
+    if (exercise_input_animation_window(source, display, viewer, history, &replacement, baseline,
+                                         1U, &request, &last_frame, recovered) != 0) goto fail;
+    for (unsigned int i = 0U; i < 4U; ++i) {
+        if (recovered[i] > original[i] + 250U) goto fail;
+    }
+    puts("FLUTTER_PEER_EXPIRED_RECOVERY_OK hold_ms=65000 reconnect_limit_ms=45000 freshness_recovery_ms=2500 "
+         "samples=240 windows=2 drift_ms=250 baseline=fixed old_socket=retired new_socket=authenticated "
+         "viewer=retained animation=continuous intervention=none resources=bounded");
+    return 0;
+fail:
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL expired-connection phase=%s began_ms=%llu retired_ms=%llu "
+            "restored_ms=%llu connected_ms=%llu now_ms=%llu request=%u\n", phase,
+            (unsigned long long)began, (unsigned long long)retired, (unsigned long long)restored,
+            (unsigned long long)connected, (unsigned long long)monotonic_millis(), request);
+    if (restore_needed && network_profile("healthy", &drops, &packets) != 0)
+        fputs("FLUTTER_PEER_X11_FAIL expired-connection restoration; supervisor retains cleanup\n", stderr);
+    return -1;
+}
+
 static int exercise_input_latency(Display *source, Display *display, ViewerWindow *viewer,
                                    SourceHistory *history, const ConnectionIdentity *connection,
                                    const ProcessResources *baseline, const char *start,
@@ -9353,6 +9441,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--input-latency") != 0 &&
                                     strcmp(argv[5], "--input-animation") != 0 &&
                                     strcmp(argv[5], "--input-animation-congestion") != 0 &&
+                                    strcmp(argv[5], "--expired-connection") != 0 &&
                                     strcmp(argv[5], "--input-recovery") != 0 &&
                                     strcmp(argv[5], "--input-loss") != 0 &&
                                     strcmp(argv[5], "--input-congestion") != 0 &&
@@ -9512,7 +9601,7 @@ int main(int argc, char **argv) {
     }
     int isolation = argc == 6 && (strcmp(argv[5], "--isolation-slow") == 0 ||
                                   strcmp(argv[5], "--isolation-healthy") == 0);
-    if (isolation || camera) {
+    if (isolation || camera || (argc == 6 && strcmp(argv[5], "--expired-connection") == 0)) {
         char path[64];
         snprintf(path, sizeof(path), "/proc/%lu/fd", viewer_pid);
         connection_fds = open(path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
@@ -9754,6 +9843,18 @@ int main(int argc, char **argv) {
     if (argc == 6 && strcmp(argv[5], "--native-components") == 0) {
         int result = exercise_native_components(display, &viewer, &history, argv[4],
                                                  &current_connection, &baseline_resources);
+        if (atspi_exit() != 0) result = -1;
+        if (close_viewer(display, viewer.window) != 0) result = -1;
+        XCloseDisplay(display);
+        XCloseDisplay(source);
+        return result == 0 ? 0 : 1;
+    }
+
+    if (argc == 6 && strcmp(argv[5], "--expired-connection") == 0) {
+        int result = exercise_expired_connection(source, display, &viewer, &history,
+                                                  &current_connection, &baseline_resources);
+        if (close(connection_fds) != 0) result = -1;
+        connection_fds = -1;
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

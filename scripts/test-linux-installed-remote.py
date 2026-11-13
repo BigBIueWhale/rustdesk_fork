@@ -26,6 +26,7 @@ NETWORK_PROFILES = {
     'loss': ['random3', 'random8', 'burst'],
     'congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
     'backoff': ['loss'],
+    'expired': ['loss'],
     'input-recovery': ['loss'] * 3,
     'input-loss': ['random3', 'random8', 'burst'],
     'input-congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
@@ -78,6 +79,7 @@ def observe_network(settings, actor, network, supervise=None):
         listener.listen(1)
         listener.settimeout(0.2)
         deadline = time.monotonic() + (15180 if network == 'input-congestion-soak'
+                                       else 540 if network == 'expired'
                                        else 960 if network == 'input-animation-congestion'
                                        else 300 if network == 'input-recovery' else 360 if network in INPUT_SCENARIOS else 240)
         try:
@@ -85,7 +87,10 @@ def observe_network(settings, actor, network, supervise=None):
                 require(time.monotonic() < deadline, 'installed network actor deadline exceeded')
                 if supervise is not None:
                     supervise()
-                owner.observe_transport()
+                # Expiry requires replacement; its native observer binds the old
+                # and new socket inodes to the retained viewer's actual descriptors.
+                if network != 'expired':
+                    owner.observe_transport()
                 try:
                     channel, _ = listener.accept()
                 except socket.timeout:
@@ -128,7 +133,14 @@ def observe_network(settings, actor, network, supervise=None):
                     channel.sendall(reply)
             require(actor.wait() == 0 and profiles == expected and refusals == 1,
                     'installed network scenario did not finish')
-            owner.validate_observations()
+            if network == 'expired':
+                sizes = owner.packet_sizes()
+                require(sizes['oversized'] == owner.packet_size_baseline['oversized']
+                        and sizes['at_mtu'] > owner.packet_size_baseline['at_mtu'],
+                        'expiry packet-size coverage differs')
+                print('LINUX_INSTALLED_EXPIRED_PACKETS=' + json.dumps(sizes, sort_keys=True), flush=True)
+            else:
+                owner.validate_observations()
         finally:
             try:
                 if actor.poll() is None:
@@ -272,7 +284,7 @@ def session(network=False):
                             and 0 < info.st_size <= 4096, 'Remote display authority differs')
                     combined.write(path.read_bytes())
             source = subprocess.Popen([str(settings.WORK / 'presentation-source'),
-                                       *(['--input-animation'] if network in ('input-animation', 'input-animation-congestion') else
+                                       *(['--input-animation'] if network in ('input-animation', 'input-animation-congestion', 'expired') else
                                          ['--input-response', str(COORD)] if network in INPUT_SCENARIOS else [])],
                 env={**environment, 'DISPLAY': ':77', 'XAUTHORITY': '/run/user/4001/gdm/Xauthority',
                      'RUSTDESK_PRESENTATION_TRACE': '1'},
@@ -303,6 +315,7 @@ def session(network=False):
                             'input-congestion': '--input-congestion',
                             'input-animation': '--input-animation',
                             'input-animation-congestion': '--input-animation-congestion',
+                            'expired': '--expired-connection',
                             'input-soak': '--input-soak',
                             'input-congestion-soak': '--input-congestion-soak'}.get(network, '--viewer-suspend')]
             if network in SOAK_SCENARIOS:
@@ -331,6 +344,7 @@ def session(network=False):
                                 'installed input soak output exceeds its bound')
                     time.sleep(0.1)
             require(driver.wait(timeout=900 if network == 'input-animation-congestion'
+                                else 480 if network == 'expired'
                                 else 240 if network == 'input-recovery' else 300 if network in INPUT_SCENARIOS
                                 else 180 if network else 120) == 0,
                     'installed Remote pixel observer failed')
@@ -357,7 +371,7 @@ def session(network=False):
                 path = COORD / name
                 if path.exists():
                     require(path.stat().st_size <= (2097152 if network in SOAK_SCENARIOS
-                                                   else 1048576 if network == 'input-animation-congestion' else 131072),
+                                                   else 1048576 if network in ('input-animation-congestion', 'expired') else 131072),
                             'Remote observer output exceeds its bound')
                     print(path.read_text(), end='', file=sys.stderr, flush=True)
 
@@ -398,6 +412,7 @@ def scenario(settings, receiver, record, network=False):
             'profile': 'unchanged', 'session_exit': 0,
             'scenario': network or 'suspend',
             'holds_ms': NETWORK_HOLDS if network == 'network' else [18000] if network == 'backoff'
+                        else [65000] if network == 'expired'
                         else [2000, 6000, 2000] if network == 'input-recovery'
                         else [] if network in ('input-soak', 'input-animation')
                         else [20000] * 12 if network == 'input-congestion-soak'
@@ -412,6 +427,7 @@ def scenario(settings, receiver, record, network=False):
             actor.stdout.close()
         if log.exists():
             require(log.stat().st_size <= (6291456 if network in (*SOAK_SCENARIOS, 'input-animation-congestion')
+                                          else 2097152 if network == 'expired'
                                           else 2097152 if network == 'input-recovery' else 4194304 if network in INPUT_SCENARIOS
                                           else 1048576),
                     'installed Remote output exceeds its bound')
@@ -423,7 +439,7 @@ if __name__ == '__main__':
                             ['--session-backoff'], ['--session-input-recovery'], ['--session-input-loss'],
                             ['--session-input-congestion'], ['--session-input-soak'],
                             ['--session-input-congestion-soak'], ['--session-input-animation'],
-                            ['--session-input-animation-congestion']),
+                            ['--session-input-animation-congestion'], ['--session-expired']),
             'closed installed Remote session request required')
     session(network={'--session-network': 'network', '--session-loss': 'loss',
                      '--session-congestion': 'congestion', '--session-backoff': 'backoff',
@@ -431,5 +447,6 @@ if __name__ == '__main__':
                      '--session-input-congestion': 'input-congestion',
                      '--session-input-animation': 'input-animation',
                      '--session-input-animation-congestion': 'input-animation-congestion',
+                     '--session-expired': 'expired',
                      '--session-input-soak': 'input-soak',
                      '--session-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False))

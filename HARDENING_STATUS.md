@@ -7566,12 +7566,12 @@ and installed/platform acceptance remain OPEN. Command/task ownership is covered
 Credential provisioning and Android CM work
 remain open under the user's pivot.
 
-**Automatic reconnect — refresh recovery demonstrated; ordinary-desktop CM startup fails.**
+**Automatic reconnect — refresh recovery demonstrated; ordinary-desktop CM startup and suspension recovery pass.**
 Earlier installed pixel/recovery runs used a desktop account with a `nologin`
 shell, which production classified as prelogin and therefore did not launch CM.
 Their measured display results remain scoped to that fixture; they do not accept
 the ordinary desktop's complete session startup. The corrected fixture and
-reproduced CM failure are recorded at the end of this section.
+CM correction and ordinary-desktop acceptance are recorded at the end of this section.
 
 `8fe1fe12` caps the shared model's exponential retry delay at 30 seconds, preserving
 the initial 1/2/4/8/16-second waits. Timer and displayed countdown consume the same
@@ -7768,23 +7768,39 @@ removal of that same endpoint; neither change is attributed to this work.
 
 The 96 missing-CM-identity audio errors in that run came from the prelogin fixture.
 `acdecc87` creates the intended UID4001 desktop account with `/bin/bash` and
-records its actual passwd entry; unrelated UID4002 retains `nologin`. Reusing
-app `3c289cff`, three short installed replays now reach CM launch, but all close
-the Remote connection after twenty failed endpoint attempts, about six seconds.
-At `a3873514`, read-only guest procfs observation binds CM PID7933 to the exact
-server parent, start time, executable object, UID4001 and `--cm` role, then
-observes its **SIGSEGV exit** (zombie wait status11), followed by reaping. The
-guest kernel independently records that PID's fault. The CM log directory exists
-with zero log files. The baseline passes twelve displayed states at maximum age
-309 ms; the first suspension fails because the connection closes. This is a
-startup failure, not a completed recovery or audio pass. Exact crashing code and
-cause remain unproved; next identify the faulting startup mapping/call before a
-product correction. Service confinement and authority checks are unchanged.
-`installed-cm-process-a3873514.json` binds nine files/239,546 bytes verified on
-CTE/TUF, joined VM/private/RAM retirement and four zero endpoint deltas. Earlier
-observations are in `installed-cm-login-acdecc87.json` and
-`installed-cm-log-dabcaab7.json`. Ordinary installed sessions and required audio
-remain OPEN. Superseded app `2eb7015e` is retired after all 74 payloads verify,
+records its actual passwd entry; unrelated UID4002 retains `nologin`. This exposes
+a real CM startup crash and six-second connection closure in unchanged app
+`3c289cff`. Exact process observation proves SIGSEGV; a temporary guest signal
+trace then captures an instruction-permission fault in anonymous `rw-p` memory,
+with a caller candidate in Mesa `swrast_dri.so`. Evidence is retained in
+`installed-cm-process-a3873514.json` and `installed-cm-fault-32bfb867.json`.
+
+`02b5fa37` removes the unit's incompatible `MemoryDenyWriteExecute` setting and
+the codec-only probe/gates that incorrectly claimed whole-service compatibility.
+This removes one defense-in-depth restriction from the service tree; it is not
+a privilege-immunity claim. Exact helper/IPC authority and the remaining unit
+restrictions persist. The one-shot tracer is removed. `d39e78ed` binds the unit
+as a separately copied package input, with exact archive/source byte validation;
+all compiled application sources still must match the retained artifact.
+
+With the same app bytes and corrected package unit, **ordinary installed startup
+and all three suspension cycles pass**. Exact CM PID7940 remains alive through
+39 seconds, with UID4001, zero effective capabilities, NoNewPrivs1 and Seccomp2.
+It creates both `_cm` and `_pa` endpoints. Following 2/6/12-second viewer holds,
+four fresh frames recover in **2,010/656/1,116 ms**, below the original 2,500-ms
+limit. Healthy maximum ages are **334/357/340 ms**, baseline 323 ms. The same
+viewer/window/connection, service generation and credentials persist. Sampled
+viewer RSS growth peaks at 3,196 KiB; descriptors remain 45 and threads decrease.
+Package reinstall/remove/purge and joined cleanup pass. Capsule
+`installed-cm-policy-admitted-d39e78ed.json` binds nine files/202,427 bytes on
+CTE/TUF and four zero endpoint deltas. This is Linux Xvfb presentation/lifecycle
+acceptance for this scenario, not physical scanout, all settings or a full release.
+
+Audio advances past the single initial missing-CM observation, but capture reports
+**36 `Access denied` results**, paired with server resets. Required audio output
+remains OPEN; next establish the exact PulseAudio connection/authentication
+prerequisite or defect without weakening helper authority. Superseded app
+`2eb7015e` is retired after all 74 payloads verify,
 freeing 70,791,168 allocated bytes;
 its manifest/evidence and matching engine remain, with `77cc3441` retained as
 the immediate pre-refresh baseline (`video-refresh-retired-2eb7015e.json`).
@@ -20766,11 +20782,12 @@ CM side effect is made.
 
 **Linux `_pa` authority and capture lifetime — authorized ordinary-user
 production pair passed; installed-service and churn evidence OPEN.**
-The current full-app installed replay reaches CM launch with the corrected login
-account but observes that exact helper die by SIGSEGV before endpoint readiness
-(`installed-cm-process-a3873514.json`, reconnect section above). Resolving that
-startup failure is the prerequisite for installed audio acceptance; earlier
-prelogin-fixture display passes did not exercise successful CM/audio startup.
+The corrected full-app installed replay now creates `_cm` and `_pa` endpoints
+and passes ordinary desktop suspension recovery, but capture reports 36 `Access
+denied` results (`installed-cm-policy-admitted-d39e78ed.json`, reconnect section
+above). Installed audio output remains unproved. Establish the exact daemon/
+authentication prerequisite or defect next; earlier prelogin-fixture display
+passes did not exercise successful CM/audio startup.
 
 `src/ipc/pulse_audio.rs` derives PID/UID/start identity from the accepted Unix
 socket before reading a `StartCapture` request, then validates the exact current

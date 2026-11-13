@@ -153324,3 +153324,53 @@ package bytes. Shell syntax, whitespace and scoped diff review pass; repeat the
 previously refused launch with this necessary admission correction.
 This append preserves the prior16,314,675-byte audit prefix, SHA-256
 890e26d6597e9401bc8b7f05b6fd78eec9ca5134ae1893942ddc74421ee1e362.
+
+### Installed CM policy correction — ordinary session acceptance passes
+
+An initial d39e78ed launch refused its freshly checked-out entry mode0775 before
+the confined body, VM or scratch creation. Exact committed bytes, ordinary owner
+and single-link regular file were verified, then that repository file's mode was
+restored to0755 without content change. Two files/999 bytes on both hosts retain
+the refusal in installed-cm-policy-d39e78ed.json. Subsequent remote Git updates
+use a restrictive umask; no host service or broader permission change is needed.
+
+GaM5vPbanc at d39e78ed then passes with unchanged app3c289cff and the revised
+package unit. Its 73 application payloads retain their bytes; package SHA-256
+c33359b39fbbfedb58de7d5ed59f55f88edb2b8e46336f7c25a4d675e6056913,
+unit SHA-256 7aab56c09c3357e5bb2a8e721eab9c3838dd080b218d54787064c908efb40bfa.
+The package validator exact-matches the current unit; the native installed check
+proves the package-owned unit and actual service. No application rebuild, fault
+tracing, instrumentation preload or service-policy override is used.
+
+The read-only observer retains CM7940, parent7734, start7524, image65025:394464
+through39.297 seconds. It remains sleeping/alive, UID4001, CapEff0, NoNewPrivs1,
+Seccomp2. The helper creates ipc_cm and ipc_pa; twenty endpoint failures and the
+six-second session closure disappear. Baseline13 states/max age323 ms passes.
+After 2/6/12-second viewer holds, recovery takes2,010/656/1,116 ms; first fresh
+pixels appear after616/54/334 ms. Three healthy follow-ups have maximum ages
+334/357/340 ms, below the unchanged1,000-ms ceiling; recovery stays within the
+original2,500-ms deadline. The same connection/window/viewer and service/credential
+identities persist. RSS samples356116/359312/356156/356752 KiB, descriptors45
+throughout, threads64/54/53/53 satisfy the existing bounds. Actual package
+reinstall, removal, purge and desktop/process cleanup pass.
+
+This closes the reproduced CM startup/ordinary suspension failure for this Linux
+Xvfb scenario. It does not accept physical scanout, all settings, other platforms,
+endurance or the full release. Audio remains OPEN: one initial missing-CM result
+is followed by36 server resets and36 helper "PulseAudio capture ended: Access
+denied" messages. The capture call is reached after the helper's requester and
+per-connection validation. Next determine the exact PulseAudio daemon/authentication
+prerequisite or defect; do not relax those authority checks. Missing fixed-path
+xrandr/fusermount diagnostics also remain outside this scenario's acceptance.
+
+QEMU3404766 joins zero; private66306:84064732 and RAM29:14284 retire under the
+shared lock. Supervisor186.560 seconds; peak scratch4,260,880,384 bytes; minimum
+available RAM34,988,220,416 bytes; four zero endpoint deltas;
+tmpfs_swap_disabled=false. Capsule installed-cm-policy-admitted-d39e78ed.json
+binds nine files/202,427 bytes copied and SHA-verified on CTE/TUF; outer SHA-256
+23d4fda84e569675e453aaf429c2413f384e6adeecd155659253ec8fabb3d91c.
+All source freezes are released and no owned jobs remain. The current ledger
+records the correction, its defense-in-depth tradeoff and the remaining audio
+failure; fresh counting follows. This append preserves the prior16,316,378-byte
+audit prefix, SHA-256
+c1a1c9308a8ed6f31b5214fe86a88fc20bed53198f56d76580885e55a5c6b4db.

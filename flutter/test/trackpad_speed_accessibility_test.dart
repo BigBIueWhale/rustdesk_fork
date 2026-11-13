@@ -25,6 +25,8 @@ Future<void> _show(WidgetTester tester, {
 String _displayedSpeed(WidgetTester tester) =>
     tester.widget<TextField>(find.byType(TextField)).controller!.text;
 
+final _sliderSemantics = find.semantics.byFlag(ui.SemanticsFlag.isSlider);
+
 void main() {
   testWidgets('trackpad announces speed across its enabled and disabled range', (tester) async {
     final semantics = tester.ensureSemantics();
@@ -32,7 +34,7 @@ void main() {
       for (final enabled in [true, false]) {
         for (final speed in [10, 11, 20, 99, 100, 101, 235, 250, 500, 990, 999, 1000]) {
           await _show(tester, speed: speed, enabled: enabled);
-          final data = tester.getSemantics(find.byType(Slider)).getSemanticsData();
+          final data = _sliderSemantics.evaluate().single.getSemanticsData();
           expect(data.value, '$speed%', reason: 'speed=$speed enabled=$enabled');
           expect(_displayedSpeed(tester), '$speed');
         }
@@ -48,7 +50,7 @@ void main() {
       for (final increase in [true, false]) {
         final calls = <int>[];
         await _show(tester, save: (value) async { calls.add(value); return value; });
-        final node = tester.getSemantics(find.byType(Slider));
+        final node = _sliderSemantics.evaluate().single;
         final before = node.getSemanticsData();
         final predicted = increase ? before.increasedValue : before.decreasedValue;
         tester.binding.pipelineOwner.semanticsOwner!.performAction(node.id,
@@ -59,7 +61,7 @@ void main() {
         expect(calls, [expected]);
         expect(_displayedSpeed(tester), '$expected');
         expect(predicted, '$expected%');
-        expect(tester.getSemantics(find.byType(Slider)).getSemanticsData().value, '$expected%');
+        expect(_sliderSemantics.evaluate().single.getSemanticsData().value, '$expected%');
         await tester.pumpWidget(const SizedBox.shrink());
       }
     } finally {
@@ -97,18 +99,18 @@ void main() {
       await tester.pump(const Duration(seconds: 1));
       expect(calls, [235]);
       expect(_displayedSpeed(tester), '235');
-      expect(tester.getSemantics(find.byType(Slider)).getSemanticsData().value, '235%');
+      expect(_sliderSemantics.evaluate().single.getSemanticsData().value, '235%');
       for (final speed in [235, 101, 999]) {
         await _show(tester, speed: speed, fieldKey: fieldKey, save: save);
         expect(tester.state(find.byType(TrackpadSpeedWidget)), same(state));
         expect(_displayedSpeed(tester), '$speed');
-        expect(tester.getSemantics(find.byType(Slider)).getSemanticsData().value, '$speed%');
+        expect(_sliderSemantics.evaluate().single.getSemanticsData().value, '$speed%');
         expect(calls, [235]);
       }
       await tester.pumpWidget(const SizedBox.shrink());
       await _show(tester, speed: 235, save: save);
       expect(_displayedSpeed(tester), '235');
-      expect(tester.getSemantics(find.byType(Slider)).getSemanticsData().value, '235%');
+      expect(_sliderSemantics.evaluate().single.getSemanticsData().value, '235%');
       expect(calls, [235]);
     } finally {
       await tester.pumpWidget(const SizedBox.shrink());
@@ -124,7 +126,7 @@ void main() {
           final calls = <int>[];
           await _show(tester, speed: speed,
               save: (value) async { calls.add(value); return value; });
-          final node = tester.getSemantics(find.byType(Slider));
+          final node = _sliderSemantics.evaluate().single;
           final before = node.getSemanticsData();
           final predicted = increase ? before.increasedValue : before.decreasedValue;
           final expected = (speed + (increase ? 1 : -1)).clamp(10, 1000);
@@ -134,7 +136,7 @@ void main() {
           await tester.pump(const Duration(seconds: 1));
           expect(_displayedSpeed(tester), '$expected');
           expect(predicted, '$expected%');
-          expect(tester.getSemantics(find.byType(Slider)).getSemanticsData().value, '$expected%');
+          expect(_sliderSemantics.evaluate().single.getSemanticsData().value, '$expected%');
           expect(calls, expected == speed ? isEmpty : [expected]);
           await tester.pumpWidget(const SizedBox.shrink());
         }
@@ -151,7 +153,7 @@ void main() {
       final calls = <int>[];
       await _show(tester, enabled: false,
           save: (value) async { calls.add(value); return value; });
-      final node = tester.getSemantics(find.byType(Slider));
+      final node = _sliderSemantics.evaluate().single;
       final data = node.getSemanticsData();
       expect(data.hasAction(ui.SemanticsAction.increase), isFalse);
       expect(data.hasAction(ui.SemanticsAction.decrease), isFalse);

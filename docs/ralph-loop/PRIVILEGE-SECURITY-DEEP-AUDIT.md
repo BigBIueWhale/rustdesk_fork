@@ -152009,3 +152009,15 @@ no login configuration or key changes are made. The ledger now distinguishes
 single-expiry success from repeated-resource failure; its fresh isolated count
 is pending. This append preserves the prior 16,224,504-byte audit prefix,
 SHA-256 5ae539364a28bbde11971d0348105ca67241850bbe8dd701d4c97e27535c2734.
+
+Fresh ledger count at 2db3bd19, jZKBxvBRth/tool33271: 422,430 tokens /
+1,925,573 bytes, SHA-256
+f4ab52fb99b73e1ee38f8aeced2805550cfaceb3ebd0fb2770c309902003fc82.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and whole-input round trip pass.
+expired-memory-ledger-2db3bd19.json binds eight files/115,768 bytes on CTE/TUF.
+QEMU 2409185 joins zero after 30.577 seconds; peak RAM scratch is 403,206,144
+bytes. Three zero listener deltas and exact private 66306:78035662,
+RAM 29:13003, process/socket retirement reconcile. The approximate 400,000-token
+budget remains OPEN. This audit-only append leaves the counted ledger unchanged
+and preserves the prior 16,228,316-byte audit prefix, SHA-256
+23932905bd3fc17b70661df314dca793ba1445f3e71ce16bf092d46dddddffea.

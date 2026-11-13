@@ -151878,3 +151878,14 @@ bounds, other outage schedules, physical scanout, endurance, other platforms and
 final release acceptance remain OPEN. The ledger is updated; its fresh isolated
 count is pending. This append preserves the prior 16,217,060-byte audit prefix,
 SHA-256 0b6b2676f425bf35bfa74b22fff37e880dc0ffa705d59950db3b4e76d2148256.
+
+Fresh ledger count at a174f2ab, jR2TRHIVJ8/tool85783: 422,172 tokens /
+1,924,522 bytes, SHA-256
+aa2f9d1a89ec16187dfa5f627f5994aef8e63ec8b4e5f234d8380cb560d6729e.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+expired-recovery-ledger-a174f2ab.json binds eight files/115,918 bytes on CTE/TUF.
+QEMU 2220659 joins zero after 30.068 seconds; three zero listener deltas and
+exact private 66306:77904651, RAM 29:12891, process/socket retirement reconcile.
+The approximate 400,000-token target remains OPEN. This audit-only append leaves
+the counted ledger unchanged and preserves the prior 16,219,365-byte audit prefix,
+SHA-256 96ed6ff9ffefd5e2b352a83821f588ccf66bf678411961b4215f27d5e7e10567.

@@ -151152,3 +151152,60 @@ exact private/process/socket/RAM retirement pass. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,169,487-byte audit prefix, SHA-256
 e0898624ef264644e001784cb54a33e6cc4e4fe85b5a0e5d97818f92b8e9b55f.
+
+## 2026-11-13 — Installed input-to-visible outage recovery
+
+Selected the missing installed R-F5 input measurement after the congestion
+checkpoint, ahead of repeating unchanged long-outage failures or rebuilding.
+The retained full app already supports the existing native input-response fixture;
+the missing integration is normal Debian installation, root-owned credential,
+PAM/logind-selected service child and actual authenticated Flutter viewer.
+Reviewed the required authority/latency sections and existing fixture source.
+[X.Org XTEST](https://xorg.freedesktop.org/releases/current/doc/libXtst/xtestlib.html)
+defines simulated press/release events; sending them alone does not prove a
+response. Retained the observer's 200-ms quiet control, publication-after-input
+requirement, exact viewer-root pixels, shared monotonic clock and numeric bounds.
+
+08f5b70a wires closed installed mode 17 through both launchers, settings/package
+orchestration and installed Remote fixture. The existing C observer now avoids
+a redundant healthy request when response observation fails after restoration;
+its failure verdict persists. Whole-job budgets are 240 seconds for the driver
+and 300 for its controller, with a bounded 2-MiB actor log for 480 trials and
+transport sampling. Response/recovery/drift limits remain 1,000/2,500/250 ms.
+Bash syntax, Python parsing and diff checks passed; native compilation ran inside
+the disposable guest. There is no product change or additional application cache.
+
+First run E4sqWGa999/tool30899 at 08f5b70a exits 1 before input measurement:
+I disabled the source trace required by x11-frame-oracle.h. Viewed states advance,
+but publication identity remains -1, so initial freshness refuses after 30 seconds.
+d11d5fb8 restores source timestamps, matching the standalone fixture. The failed
+run is preserved in remote-installed-input-recovery-08f5b70a.json: nine files /
+184,141 bytes, QEMU 3930048 joined zero after 115.487 seconds, four zero listener
+deltas and exact private/RAM cleanup. It is a fixture failure, not product evidence.
+
+Corrected run Gn1IZSVpa7/tool64503 exits zero on app 2eb7015e, manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a.
+Three requested 2/6/2-second outages hold inputs 121/242/363 without source,
+publication-count or viewer-pixel advancement; drops are 18/18/14. Exact pending
+responses appear 1,460,816/1,077,957/1,374,816 us after restoration. Independently
+recomputed 480 ordered samples produce baseline p95/p99 117/125 ms and recovered
+119/167, 124/164, 118/157 ms; maximum response 175 ms and upward drift 7/42 ms.
+All 495 source publication identities/timestamps reconcile. The 596 TCP samples
+retain the original pair until ordinary closure. Viewer RSS grows at most
+7,096 KiB, FDs by one, and threads decline. Supervisor 7609, child 7731/start 7299,
+generation 09102c2d-c4b0-416e-93a4-fa1cd1d74636, listener 25630 and credential/profile
+persist. Actor/source/viewer/observer retirement, controller restoration, desktop
+retirement, ordinary-user refusal and normal reinstall/remove/purge all pass.
+
+remote-installed-input-recovery-d11d5fb8.json binds nine files/1,346,708 bytes,
+copied and hash-verified on CTE/TUF before source/input unfreeze. Outer SHA-256
+0b88d88fd9aebc74a03a42100383b2c904ac7d413158b67763782ef6095851e1.
+QEMU 3944678 joins zero after 313.258 seconds; peak RAM workspace 4,241,002,496 bytes
+and private identity 66306:78035133 retire, with four zero host listener deltas.
+The storage receipt reports tmpfs_swap_disabled=false; no no-swap claim is made.
+This event-driven software-display evidence leaves physical scanout, concurrent
+animation/input, installed loss/congestion input, multi-hour/current-platform
+acceptance and the earlier long-outage failures OPEN. Next useful validation is
+the existing mixed-degradation input scenario through this installed path.
+This append preserves the prior 16,170,142-byte audit prefix, SHA-256
+67d1fd1a4206d0e8610fe202f3842fff66bd7326d72164431882ab96b2c44a82.

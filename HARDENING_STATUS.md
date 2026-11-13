@@ -4185,6 +4185,28 @@ Kernel jitter is uncontrolled; software Xvfb pixels do not establish physical
 scanout, input latency, baseline-tail equivalence, multi-hour drift or other
 platforms. Those obligations, the loss/outage failures and complete R-F5 remain OPEN.
 
+**Installed Linux input-to-visible outage recovery — three cycles PASS.**
+TUF `Gn1IZSVpa7`, fixture `d11d5fb8`, reuses installed app `2eb7015e`.
+Each 2/6/2-second complete outage holds one input without source/publication/pixel
+advancement. Its exact response appears **1,461/1,078/1,375 ms** after restoration,
+within the unchanged 2,500-ms limit. Independent recomputation of 480 ordered
+responses confirms baseline p95/p99 **117/125 ms** and recovered windows
+**119/167, 124/164 and 118/157 ms**. Worst healthy/recovered response is 175 ms;
+maximum p95/p99 upward drift is 7/42 ms, within the fixed 250-ms allowance.
+Each measurement follows 200 ms of unchanged pixels/publication count and requires
+publication after native viewer input and its exact response in viewer-root pixels.
+All 596 TCP observations retain the original pair until normal closure; the
+viewer window, service child/listener and credential persist. RSS grows at most
+7,096 KiB, descriptors by one and threads decline. Desktop retirement and normal
+package reinstall/remove/purge pass. `remote-installed-input-recovery-d11d5fb8.json`
+binds nine files/1,346,708 bytes on CTE/TUF, 313.258 seconds, four zero listener
+deltas and joined private/RAM cleanup. The initial missing-source-trace fixture
+failure is retained separately; it did not reach input measurement. No product
+change or application rebuild was needed. This event-driven XTEST/Xvfb workload
+does not establish physical scanout, concurrent animation/input, installed
+random-loss/congestion input, multi-hour drift or other platforms. The existing
+long-outage failures and complete R-F5 acceptance remain OPEN.
+
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without
 rebuilding. All 120 unique three-key requests injected into the viewer produce

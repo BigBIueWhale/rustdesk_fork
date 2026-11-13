@@ -152454,3 +152454,18 @@ acceptance are the next decisive step. HARDENING_STATUS.md records this limited
 component pass; its required fresh isolated token count is next.
 This append preserves the prior 16,255,477-byte audit prefix, SHA-256
 8a62faac226523649471eddd775a90f43851c89e46475bf802d5ebb372f5d0be.
+
+### Compositor-evidence ledger count
+
+TUF i5YsoAVCMn at fe85b090 passes the required fresh isolated count: 423,347
+tokens / 1,929,543 bytes, input SHA-256
+d868ad36742599e2d02e513d406fc8aef92206fc02ff9ca9fb140b7ebee11dc8.
+The fixed method, seven controls and whole-input round trip pass; the approximate
+400,000-token target remains OPEN. QEMU 2902149 joins zero; private/RAM/process/
+socket retirement and three zero endpoint deltas independently reconcile.
+Supervisor 31.080 seconds, peak RAM scratch 402,960,384 bytes,
+tmpfs_swap_disabled=false. Eight files/115,589 bytes are verified on CTE/TUF;
+capsule compositor-ledger-fe85b090.json, outer SHA-256
+cb0546bf8e4dddd82d4b1f7403c1ed3eb79862557995270e7eed055cd9ccfdd5.
+This audit-only append preserves the prior 16,258,391-byte prefix, SHA-256
+fb67ecd188eaeab932f3d7df9a8b0b0497e2148a1ee2318ade2d69c5df29abc2.

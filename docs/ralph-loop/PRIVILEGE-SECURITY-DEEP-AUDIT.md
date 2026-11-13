@@ -151706,3 +151706,14 @@ independent markers. Endurance, physical scanout, other platforms and the known
 long-outage failures remain OPEN. The ledger records the bounded result; its fresh
 isolated count is pending. This append preserves the prior 16,205,446-byte audit
 prefix, SHA-256 5177c31baf4add07c0aa7d86e858f35e64fda98e75a59baa559323d8ad831952.
+
+Fresh ledger count at e67ef4f8, 3DQB7lw113/tool64965: 421,377 tokens /
+1,921,148 bytes, SHA-256
+d4ac32f9b349f0473fb89efe64c0181fe12750bf2aae94188c142b432b3a0e1b.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+input-animation-ledger-e67ef4f8.json binds eight files/117,247 bytes on CTE/TUF.
+QEMU 1665023 joins zero after 30.282 seconds; three zero listener deltas and
+exact private/process/socket/RAM retirement reconcile. The approximate
+400,000-token target remains OPEN. This audit-only append preserves the counted
+ledger and the prior 16,207,719-byte audit prefix, SHA-256
+3b2f1040b13e1cf684afb3c42686c433e6697caee7271565c2074bab4bbaac24.

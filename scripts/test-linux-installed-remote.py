@@ -488,15 +488,17 @@ def session(network=False, heaptrack=False):
             print('LINUX_INSTALLED_REMOTE_PROCESSES=' + json.dumps([
                 {'pid': process.pid, 'exit_before_cleanup': process.poll()}
                 for process in processes], sort_keys=True), file=sys.stderr, flush=True)
-            for process in reversed(processes):
-                if process.poll() is None:
-                    if process is viewer:
-                        process.send_signal(signal.SIGCONT)
-                    process.terminate()
-                process.wait(timeout=8)
             try:
-                if trace is not None:
-                    trace.finish()
+                try:
+                    for process in reversed(processes):
+                        if process.poll() is None:
+                            if process is viewer:
+                                process.send_signal(signal.SIGCONT)
+                            process.terminate()
+                        process.wait(timeout=8)
+                finally:
+                    if trace is not None:
+                        trace.finish()
             finally:
                 settings.retire_children()
                 for name in ('driver.log', 'source-error.log', 'frame-source.log', 'viewer.log'):

@@ -152120,3 +152120,40 @@ is pending. No product correction or root-cause attribution is claimed.
 HARDENING_STATUS.md is unchanged. This append preserves the prior 16,233,390-byte
 audit prefix, SHA-256
 7580911dcc23d1d7f7a1a3b757783cf00d716a54ec87ca0659277a67e76077d1.
+
+## 2026-11-13 — Allocation-profiler loader origin repaired
+
+TUF remains connected through the existing password-authenticated SSH master.
+The first installed profiler run hO6NY2DZey at eb29ae0e exits 1 before viewer
+connection or observer creation: viewer 7957 cannot load
+`$ORIGIN/lib/librustdesk.so`. Attachment and compressor assertions then fail.
+This is diagnostic integration failure; no outage or allocation evidence exists.
+The package bootstrap still authenticates through the real service; service stop
+retires its supervisor and child. Independent reconciliation verifies QEMU
+2598669 joined zero, exact RAM 29:13072 and private 66306:77904671 retired,
+and four empty host endpoint deltas. The resource supervisor records 82.439 s
+and 4,233,121,792-byte peak RAM scratch; tmpfs_swap_disabled remains false.
+Nine files/165,847 bytes are copied and SHA-verified on both hosts before edits.
+Capsule: remote-expired-heaptrack-eb29ae0e.json. Outer SHA-256:
+ab399597b15b5b76f12af1f0a01eb602615bfdbeb4dd2d0bc75e23b46787cb83.
+
+Primary sources explain the observed failure:
+https://raw.githubusercontent.com/KDE/heaptrack/v1.4.0/src/track/heaptrack_preload.cpp
+wraps dlopen and calls the original loader from the collector;
+https://raw.githubusercontent.com/bminor/glibc/glibc-2.36/dlfcn/dlopen.c
+passes that return address, and
+https://raw.githubusercontent.com/bminor/glibc/glibc-2.36/elf/dl-open.c
+selects its caller map for dynamic tokens. The expansion contract is documented
+at https://man7.org/linux/man-pages/man8/ld.so.8.html. Our runner's main.cc uses
+`$ORIGIN/lib/librustdesk.so`; the later Dart core load uses an absolute path.
+
+The diagnostic fixture now copies the installed authenticated collector unchanged
+beside the runner inside the disposable guest, root-owned and mode 0444, and
+preloads only that copy into the owned viewer. It records the copy's size/hash,
+requires its mapping when observing the trace FIFO, and removes its exact inode
+after the actor and analysis retire. Thus the wrapper's origin resolves the
+unchanged application library. No runner, application artifact, dependency pin,
+acceptance deadline or resource bound changes. This is ready for a justified
+retry, not yet runtime acceptance. HARDENING_STATUS.md remains unchanged.
+This append preserves the prior 16,235,699-byte audit prefix, SHA-256
+aef65b7668019ef21736a0395e03d95cc2114ed7641b3c032ec6f46473417ec3.

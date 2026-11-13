@@ -21,6 +21,7 @@ import time
 SCRIPT = Path('/mnt/rustdesk-verifier-inputs/repo/scripts/test-linux-installed-remote.py')
 COORD = Path('/coord')
 NETWORK_ENDPOINT = '/netem.sock'
+ALLOCATION_PRELOAD = Path('/usr/share/rustdesk/libheaptrack_preload.so')
 NETWORK_HOLDS = [6000, 2000, 6000, 1750, 5750, 2250, 6250, 2500, 6500]
 NETWORK_PROFILES = {
     'network': ['delay'] + ['loss'] * 8,
@@ -265,7 +266,7 @@ class AllocationTrace:
                 ['/usr/bin/prlimit', '--fsize=134217728', '--', '/usr/bin/gzip', '-1', '-c'],
                 stdin=reader, stdout=output, stderr=errors, env={'PATH': '/usr/bin:/bin', 'LC_ALL': 'C'})
             self.jobs.append(self.collector)
-        return {**environment, 'LD_PRELOAD': '/usr/lib/heaptrack/libheaptrack_preload.so',
+        return {**environment, 'LD_PRELOAD': str(ALLOCATION_PRELOAD),
                 'DUMP_HEAPTRACK_OUTPUT': str(self.fifo)}
 
     def connected(self, viewer):
@@ -278,7 +279,7 @@ class AllocationTrace:
                 except FileNotFoundError:
                     continue
                 if (current.st_dev, current.st_ino) == (expected.st_dev, expected.st_ino):
-                    require('/usr/lib/heaptrack/libheaptrack_preload.so' in
+                    require(str(ALLOCATION_PRELOAD) in
                             Path(f'/proc/{viewer.pid}/maps').read_text(), 'viewer collector mapping absent')
                     self.viewer_pid = viewer.pid
                     os.close(self.anchor)
@@ -522,8 +523,27 @@ def scenario(settings, receiver, record, network=False, heaptrack=False):
     listener = receiver.direct_listener(record)
     require(listener is not None, 'installed Remote listener absent')
     actor = None
+    preload_identity = None
     log = settings.WORK / 'installed-remote.log'
     try:
+        if heaptrack:
+            # dlopen interposition makes $ORIGIN relative to the collector.
+            # Keep its authenticated bytes beside the unchanged runner, in this guest only.
+            original = Path('/usr/lib/heaptrack/libheaptrack_preload.so')
+            info = original.lstat()
+            require(stat.S_ISREG(info.st_mode) and info.st_uid == info.st_gid == 0
+                    and not info.st_mode & 0o022 and 0 < info.st_size <= 1048576,
+                    'installed allocation collector authority differs')
+            payload = original.read_bytes()
+            with ALLOCATION_PRELOAD.open('xb') as output:
+                output.write(payload)
+                os.fchmod(output.fileno(), 0o444)
+                preload_identity = os.fstat(output.fileno())
+            require(ALLOCATION_PRELOAD.read_bytes() == payload, 'allocation collector copy differs')
+            print('LINUX_INSTALLED_HEAPTRACK_PRELOAD=' + json.dumps({
+                'path': str(ALLOCATION_PRELOAD), 'bytes': len(payload),
+                'sha256': hashlib.sha256(payload).hexdigest(),
+                'acceptance': 'diagnostic-only'}), flush=True)
         with log.open('xb') as output:
             actor = subprocess.Popen([*settings.ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
                                       str(SCRIPT), '--session-' + network if network else '--session',
@@ -562,6 +582,11 @@ def scenario(settings, receiver, record, network=False, heaptrack=False):
                 actor.terminate()
             actor.wait(timeout=270 if heaptrack else 20)
             actor.stdout.close()
+        if preload_identity is not None:
+            current = ALLOCATION_PRELOAD.lstat()
+            require((current.st_dev, current.st_ino) == (preload_identity.st_dev, preload_identity.st_ino),
+                    'allocation collector copy identity changed')
+            ALLOCATION_PRELOAD.unlink()
         if log.exists():
             require(log.stat().st_size <= (6291456 if network in (*SOAK_SCENARIOS, 'input-animation-congestion')
                                           else 2097152 if network == 'expired'

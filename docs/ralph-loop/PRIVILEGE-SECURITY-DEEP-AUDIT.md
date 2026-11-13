@@ -152939,3 +152939,19 @@ The ledger now distinguishes the complete memory/display pass from the reproduce
 refresh failure and separate audio observation. Its required fresh count follows.
 This append preserves the prior 16,286,249-byte audit prefix, SHA-256
 f01851652a6a143d4a9c1c0200b9b14ec9ba92740cad557dc5c217b8002e5407.
+
+### Fresh ledger count after the refresh-backoff diagnosis
+
+At 3caabdf1, TUF HGp07NNoQt passes the fixed tiktoken 0.12.0/cl100k_base/
+encode_ordinary count, seven controls and byte round trip: 424,798 tokens,
+1,935,405 bytes, input SHA-256
+75965a26ecc4a60e94f947a2fb7c4343182563038bf6d09b6107783d8993f900.
+The approximate 400,000-token target remains OPEN. QEMU 3291244 joins zero;
+private 66306:84062363 and RAM 29:13829 retire, with three zero endpoint deltas.
+Supervisor 30.466 seconds; peak RAM scratch 403,095,552 bytes;
+tmpfs_swap_disabled=false. Eight files/117,661 bytes are SHA-verified on CTE/TUF;
+capsule refresh-backoff-ledger-3caabdf1.json, outer SHA-256
+7056567aca82ebcecc19214bcba126fea9c062ed41449a5443c2d115fa2c4bd2.
+This audit-only append preserves the counted ledger and prior 16,290,885-byte
+audit prefix, SHA-256
+192381985f6e1e897cb0096974d106e10c3458c3e658f819cf3453898027fca0.

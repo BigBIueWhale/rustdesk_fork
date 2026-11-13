@@ -295,6 +295,29 @@ class AudioFixture:
         for role, windows in counts.items():
             require(sum(windows.values()) >= 100 and windows['tone'] * 100 >= sum(windows.values()) * 95,
                     role + ' steady audio did not retain the expected tone')
+        recoveries = re.findall(r'^FLUTTER_PEER_SUSPEND_RECOVERY_OK (.*)$',
+                                (COORD / 'driver.log').read_text(), re.M)
+        require(len(recoveries) == 3, 'audio recovery phases are incomplete')
+        for cycle, line in enumerate(recoveries, 1):
+            phase = dict(item.split('=', 1) for item in line.split())
+            require(int(phase['cycle']) == cycle and int(phase['healthy_ms']) == 15000
+                    and 0 <= int(phase['healthy_started_ms']) - int(phase['resumed_ms']) <= 2500,
+                    'audio recovery phase identity or timing differs')
+            rows = [row for row in self.timeline if int(phase['healthy_started_ms'])
+                    <= row['monotonic_ms'] <= int(phase['healthy_ended_ms'])]
+            require(len(rows) >= 2 and rows[-1]['monotonic_ms'] - rows[0]['monotonic_ms'] >= 13000,
+                    'audio recovery observation interval is insufficient')
+            windows = {role: {kind: rows[-1][role]['windows'][kind] - rows[0][role]['windows'][kind]
+                             for kind in ('silent', 'tone', 'other')} for role in ('source', 'viewer')}
+            print('LINUX_INSTALLED_AUDIO_RECOVERY=' + json.dumps({
+                'cycle': cycle, 'resumed_ms': int(phase['resumed_ms']),
+                'start_ms': rows[0]['monotonic_ms'], 'end_ms': rows[-1]['monotonic_ms'],
+                'windows': windows, 'minimum_tone_percent': 95, 'window_ms': 100,
+                'scope': 'post-suspension output continuity; audio age unmeasured',
+            }), file=sys.stderr, flush=True)
+            for role, counts in windows.items():
+                require(sum(counts.values()) >= 130 and counts['tone'] * 100 >= sum(counts.values()) * 95,
+                        role + ' audio did not remain continuous after suspension ' + str(cycle))
         require(self.owner is not None, 'installed Remote audio stream ownership was not observed')
         deadline = time.monotonic() + 5
         initial_silence = self.signal.counts['silent']

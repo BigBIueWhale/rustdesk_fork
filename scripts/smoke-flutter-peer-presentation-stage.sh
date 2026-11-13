@@ -2654,7 +2654,7 @@ PY
       [ "$(grep -Ec '^FLUTTER_PEER_SUSPENDED_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
         && [ "$(grep -Ec '^FLUTTER_PEER_SUSPEND_RECOVERY_OK cycle=[123] ' <<<"$controller_output")" -eq 3 ] \
         || fail 'three actual suspension/recovery cycles are missing'
-      grep -Fxq 'FLUTTER_PEER_SUSPEND_PRESENTATION_OK cycles=3 holds_ms=2000,6000,12000 recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 actual_peer=true x11_pixels=true same_window=true stable_connection=true resources=bounded threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072' \
+      grep -Fxq 'FLUTTER_PEER_SUSPEND_PRESENTATION_OK cycles=3 holds_ms=2000,6000,12000 recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=15000 actual_peer=true x11_pixels=true same_window=true stable_connection=true resources=bounded threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072' \
         <<<"$controller_output" || fail 'focused viewer suspension verdict is missing'
       viewer_result='viewer=joined xvfb=joined suspension_cycles=3 stable_connection=true resources=bounded'
     else

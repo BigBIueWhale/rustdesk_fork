@@ -2468,23 +2468,28 @@ static int exercise_viewer_suspension(Display *source, Display *display,
                                     &first_fresh, &recovery_age) != 0) goto finished;
         recovery_ms = monotonic_millis() - resumed_at;
         phase = "healthy-follow-up-and-resources";
+        uint64_t healthy_started = monotonic_millis();
         if (recovery_ms > RECOVERY_LIMIT_MS ||
             inspect_viewer_candidate(display, viewer->window, pid, &same_viewer) != 1 ||
             same_viewer.window != viewer->window || !viewer_pidfd_alive(pidfd) ||
             viewer_process_state(process, pid, start, &state) != 0 || state == 'T' ||
-            observe_current_frames_for_duration(source, display, viewer, history, 3000U,
+            observe_current_frames_for_duration(source, display, viewer, history, 15000U,
                                                 &max_gap, &max_age, &distinct) != 0 ||
             max_age > FRESH_LIMIT_MS || read_connection_identity(&after) != 0 ||
             !same_connection(connection, &after) ||
             read_process_resources(pid, &resources) != 0 ||
             !resources_are_bounded(baseline, &resources)) goto finished;
+        uint64_t healthy_ended = monotonic_millis();
         print_resources("suspend", cycle + 1U, &resources);
         printf("FLUTTER_PEER_SUSPEND_RECOVERY_OK cycle=%u recovery_ms=%llu "
                "first_fresh_ms=%llu recovery_observed_maximum_age_ms=%llu "
-               "healthy_ms=3000 healthy_maximum_gap_ms=%llu healthy_maximum_age_ms=%llu "
+               "healthy_ms=15000 resumed_ms=%llu healthy_started_ms=%llu healthy_ended_ms=%llu "
+               "healthy_maximum_gap_ms=%llu healthy_maximum_age_ms=%llu "
                "distinct=%u same_window=true stable_connection=true resources=bounded\n",
                cycle + 1U, (unsigned long long)recovery_ms, (unsigned long long)first_fresh,
-               (unsigned long long)recovery_age, (unsigned long long)max_gap,
+               (unsigned long long)recovery_age, (unsigned long long)resumed_at,
+               (unsigned long long)healthy_started, (unsigned long long)healthy_ended,
+               (unsigned long long)max_gap,
                (unsigned long long)max_age, distinct);
         fflush(stdout);
     }
@@ -10354,7 +10359,7 @@ int main(int argc, char **argv) {
                  "healthy_ms=3000 actual_peer=true x11_pixels=true same_window=true "
                  "stable_connection=true resources=bounded");
         } else puts("FLUTTER_PEER_SUSPEND_PRESENTATION_OK cycles=3 holds_ms=2000,6000,12000 "
-             "recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=3000 "
+             "recovery_limit_ms=2500 freshness_limit_ms=1000 healthy_ms=15000 "
              "actual_peer=true x11_pixels=true same_window=true stable_connection=true "
              "resources=bounded threads_growth_max=8 fds_growth_max=16 rss_growth_kib_max=131072");
         return 0;

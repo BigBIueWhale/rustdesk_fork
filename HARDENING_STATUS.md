@@ -7610,8 +7610,19 @@ The unchanged app remains `2eb7015e`; no product correction or threshold change
 is claimed. `remote-installed-expired-repeated-b1ae68e6.json` and
 `remote-installed-expired-memory-c59acdad.json` bind eighteen files/766,520 bytes
 on CTE/TUF, eight zero host listener deltas and exact joined cleanup.
-Next: bounded allocation-stack/lifetime profiling during natural reconnect,
-then a justified correction and the unchanged repeated-recovery test.
+Allocation profiling now completes (`gWsjH52feU`, fixture `70498b1a`), with
+11,124,254 calls and a verified 62,389-snapshot timeline. All three reconnects
+and 480 responses pass under instrumentation; its RSS grows 101,020 KiB from
+a higher baseline, so this does not supersede either ordinary failure.
+Tracked live allocations stay mostly around 150–156 MB between reconnects,
+with a 164.18-MB peak; the largest reported stacks are in Mesa software rendering
+through Flutter. This does not attribute the ordinary resident-memory growth
+or establish a leak. `remote-expired-heaptrack-70498b1a.json` binds the report,
+compressed timeline, five joined tool processes, nine files/1,308,131 bytes,
+four zero host endpoint deltas and exact joined cleanup. Bulk traces retired.
+Next: lower-overhead allocator arena/free-space accounting paired with `smaps`
+during the ordinary failure, distinguishing retained free pages, live allocations
+and other mappings before choosing a correction. No allocator tuning is justified yet.
 The separate surviving-transport delay failure, other outage schedules,
 physical scanout, endurance, desktop/mobile coverage, final artifacts,
 independent review and complete R-S0/R-F5 remain OPEN.

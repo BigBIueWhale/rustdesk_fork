@@ -152196,3 +152196,54 @@ The capsule's preliminary description is superseded by this report-failure findi
 HARDENING_STATUS.md remains unchanged; R-F5 and allocation attribution remain OPEN.
 This append preserves the prior 16,238,107-byte audit prefix, SHA-256
 4c17fe298f926d22fa65e6489123342c25677cbfcb982e0d12c7304a36c71ea9.
+
+## 2026-11-13 — Complete allocation trace; ordinary memory failure remains OPEN
+
+TUF gWsjH52feU at 70498b1a completes the repaired diagnostic on unchanged app
+2eb7015e. Viewer 7975 opens the verified collector FIFO/mapping; three natural
+transport expiries retire after 41,606/38,566/44,573 ms. Restored connectivity
+reconnects in 652/1,828/451 ms; four fresh frames follow in 706/737/786 ms.
+All 480 responses/four windows pass the original bounds under instrumentation.
+RSS starts at 474,976 KiB and peaks at 575,996 KiB, growth 101,020 KiB; FD peak
+is 51 from 49, threads peak at the initial 61. These instrumented observations
+do not reproduce or supersede the two uninstrumented resource failures.
+The explicit diagnostic-only guard exits 1; no ordinary acceptance is claimed.
+
+All five compressor/interpreter/analyzer processes join zero. The 632.54-second
+trace records 11,124,254 allocation calls. Raw/interpreted compressed files are
+76,221,158/28,914,848 bytes and retire with the VM. The complete 126,864-byte
+report is retained verbatim, SHA-256
+0a51322d25865795fb980ef7ff6aa56038f1e979ab2580e8f8e5a22aea193917.
+The 7,769,378-byte timeline is retained as 422,673 compressed bytes; independent
+bounded decompression reproduces SHA-256
+71789c1c98bbcb8342e6c7819edf7cd621d23ed313c497df9af92b8302e0127e.
+Its 62,389 nondecreasing snapshots span 0.010–632.537 seconds. The format puts
+its single command/seconds-unit header at the end; inspection must not assume
+that header comes first. The report and decoded timeline match their completion
+receipt hashes exactly. No allocation-tool error output is omitted in this run.
+
+Tracked live allocation totals stay mostly near 150–156 MB between reconnects,
+with temporary peaks up to the report's 164.18 MB. The largest per-stack peaks
+are Mesa swrast calls through Flutter (two 8.39-MB entries); the texture renderer
+copy has a 2.46-MB peak. Many internal frames lack symbols. The report's 55.74-MB
+terminal "leaked" total means unfreed at trace end, not a proved product leak.
+This collector observes hooked allocations, not every mapping or allocator-free
+resident page; its higher starting RSS and different growth prevent attribution
+of the ordinary 171,320-KiB increase from this run alone. The evidence motivates
+lower-overhead allocator/free-space plus smaps accounting during the original
+failure. No product edit, forced collection, allocator tuning or relaxed bound
+is justified. Primary API review: https://man7.org/linux/man-pages/man3/malloc_info.3.html
+includes all arenas; https://man7.org/linux/man-pages/man3/mallinfo.3.html warns
+that mallinfo/mallinfo2 omit other arenas. Any diagnostic must report its own
+perturbation and cannot replace ordinary acceptance.
+
+The 823.694-second supervisor records 4,351,942,656-byte peak RAM scratch,
+QEMU 2759172 joined zero, and tmpfs_swap_disabled=false. Independent reconciliation
+verifies exact private 66306:78035665 / RAM 29:13156 retirement and four empty
+host endpoint deltas. Nine files/1,308,131 bytes are copied and hash-verified on
+CTE/TUF before ending the source/input freeze. Capsule:
+remote-expired-heaptrack-70498b1a.json. Outer SHA-256:
+f88218d7f854fa6d0f99d2e227df0bed21d8e21bd0d93dde876bfbdfe7899ff7.
+HARDENING_STATUS.md records this checkpoint without closing R-F5; its mandatory
+fresh isolated count is next. This append preserves the prior 16,240,794-byte
+audit prefix, SHA-256 b5cb7197d45a9287b3f57546ea283486f173124cfac75eeba301e631bf6a5b21.

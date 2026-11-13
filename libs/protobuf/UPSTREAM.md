@@ -14,8 +14,15 @@ EOF before an active protobuf length boundary returns `UnexpectedEof`. Reaching
 the declared boundary and ordinary unbounded EOF retain their existing behavior.
 This covers generated nested messages and packed fields through byte slices,
 shared `Bytes`, `Read` and `BufRead` inputs without changing the wire format.
+Byte slices and shared `Bytes` start with their actual extent as the input limit;
+byte-field allocation checks that limit first. In `coded_input_stream/mod.rs`,
+packed-field limits are established before reserving their vectors. These reject
+inflated lengths before allocation for finite inputs; unbounded reader resource
+limits remain a separate obligation.
 The original file SHA-256 is
 `2cba31136e56dd63c9a17d1bf4627f430b2ed3ddb35abf4479f57bcb912cdb4e`.
+The original `coded_input_stream/mod.rs` SHA-256 is
+`9c9eef558aec08a5071303896703aae82a1fa1358d50784e836319e9dcdd2789`.
 
 The generated production-schema regressions live in `libs/protobuf_it`.
 Run them through `scripts/smoke-verifier-vm-authority.sh --protobuf-parser-tests`.

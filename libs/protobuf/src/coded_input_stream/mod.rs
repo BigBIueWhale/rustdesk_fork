@@ -382,6 +382,7 @@ impl<'a> CodedInputStream<'a> {
         target: &mut Vec<T::ProtobufValue>,
     ) -> crate::Result<()> {
         let len_bytes = self.read_raw_varint64()?;
+        let old_limit = self.push_limit(len_bytes)?;
 
         let reserve = if len_bytes <= READ_RAW_BYTES_MAX_ALLOC as u64 {
             (len_bytes as usize) / (T::ENCODED_SIZE as usize)
@@ -393,7 +394,6 @@ impl<'a> CodedInputStream<'a> {
 
         target.reserve(reserve);
 
-        let old_limit = self.push_limit(len_bytes)?;
         while !self.eof()? {
             target.push(T::read(self)?);
         }
@@ -406,6 +406,7 @@ impl<'a> CodedInputStream<'a> {
         target: &mut Vec<T::ProtobufValue>,
     ) -> crate::Result<()> {
         let len_bytes = self.read_raw_varint64()?;
+        let old_limit = self.push_limit(len_bytes)?;
 
         // value is at least 1 bytes, so this is lower bound of element count
         let reserve = if len_bytes <= READ_RAW_BYTES_MAX_ALLOC as u64 {
@@ -417,7 +418,6 @@ impl<'a> CodedInputStream<'a> {
 
         target.reserve(reserve);
 
-        let old_limit = self.push_limit(len_bytes)?;
         while !self.eof()? {
             target.push(T::read(self)?);
         }

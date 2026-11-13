@@ -85,7 +85,7 @@ impl<'a> BufReadIter<'a> {
             input_source: InputSource::Slice(bytes),
             buf: InputBuf::from_bytes(bytes),
             pos_of_buf_start: 0,
-            limit: NO_LIMIT,
+            limit: bytes.len() as u64,
         }
     }
 
@@ -95,7 +95,7 @@ impl<'a> BufReadIter<'a> {
             input_source: InputSource::Bytes(bytes),
             buf: InputBuf::from_bytes(&bytes),
             pos_of_buf_start: 0,
-            limit: NO_LIMIT,
+            limit: bytes.len() as u64,
         }
     }
 
@@ -203,10 +203,10 @@ impl<'a> BufReadIter<'a> {
 
     #[cfg(feature = "bytes")]
     pub(crate) fn read_exact_bytes(&mut self, len: usize) -> crate::Result<Bytes> {
+        if len as u64 > self.bytes_until_limit() {
+            return Err(WireError::UnexpectedEof.into());
+        }
         if let InputSource::Bytes(bytes) = self.input_source {
-            if len > self.remaining_in_buf_len() {
-                return Err(ProtobufError::WireError(WireError::UnexpectedEof).into());
-            }
             let end = self.buf.pos_within_buf() + len;
 
             let r = bytes.slice(self.buf.pos_within_buf()..end);

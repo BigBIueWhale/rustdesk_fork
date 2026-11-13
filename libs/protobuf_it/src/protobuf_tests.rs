@@ -71,11 +71,17 @@ fn allocation_observer_counts_allocation_and_growth() {
 }
 
 fn reject_length<M: crate::protobuf::Message>(bytes: &[u8]) {
-    let (result, total, largest) = measured(|| M::parse_from_bytes(bytes));
-    assert!(result.is_err(), "{} accepted {bytes:02x?}", M::NAME);
-    // This bound applies to these tiny malformed-length fixtures, not to every
-    // decoded frame. Observe requested allocations, including reallocations.
-    assert!(total <= 4096, "{} requested {total} bytes, largest {largest}", M::NAME);
+    let shared = bytes::Bytes::copy_from_slice(bytes);
+    for source in ["slice", "shared"] {
+        let (result, total, largest) = measured(|| match source {
+            "slice" => M::parse_from_bytes(bytes),
+            _ => M::parse_from_tokio_bytes(&shared),
+        });
+        assert!(result.is_err(), "{} {source} accepted {bytes:02x?}", M::NAME);
+        // This bound applies to these tiny malformed-length fixtures, not to every
+        // decoded frame. Observe requested allocations, including reallocations.
+        assert!(total <= 4096, "{} {source} requested {total} bytes, largest {largest}", M::NAME);
+    }
 }
 
 fn varint(mut value: u64) -> Vec<u8> {
@@ -222,10 +228,30 @@ fn declared_lengths_cannot_exceed_available_bytes() {
         reject_length::<Message>(&unknown);
         reject_length::<Cpace>(&field(1, declared, &[]));
         reject_length::<Message>(&field(11, declared, &[]));
+        reject_length::<CaptureDisplays>(&field(1, declared, &[]));
         let nested = field(1, declared, &[]);
         reject_length::<Cpace>(&field(1, nested.len() as u64, &nested));
         reject_length::<Message>(&field(11, nested.len() as u64, &nested));
+        let encoded = varint(declared);
+        let shared = bytes::Bytes::copy_from_slice(&encoded);
+        for mut input in [
+            crate::protobuf::CodedInputStream::from_bytes(&encoded),
+            crate::protobuf::CodedInputStream::from_tokio_bytes(&shared),
+        ] {
+            let mut target = Vec::new();
+            let (result, total, largest) = measured(|| input.read_repeated_packed_fixed64_into(&mut target));
+            assert!(result.is_err());
+            assert!(total <= 4096, "packed fixed64 requested {total} bytes, largest {largest}");
+        }
     }
+    let mut fixed = vec![16];
+    fixed.extend_from_slice(&1u64.to_le_bytes());
+    fixed.extend_from_slice(&u64::MAX.to_le_bytes());
+    let mut input = crate::protobuf::CodedInputStream::from_bytes(&fixed);
+    let mut target = vec![7];
+    input.read_repeated_packed_fixed64_into(&mut target).unwrap();
+    assert_eq!(target, [7, 1, u64::MAX]);
+    input.check_eof().unwrap();
     for length in [1, 127, 128, 1024] {
         let bytes = field(100, length, &vec![0x55; length as usize]);
         // Unknown fields with complete payloads are valid protobuf. The handshake

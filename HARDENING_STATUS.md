@@ -7566,7 +7566,7 @@ and installed/platform acceptance remain OPEN. Command/task ownership is covered
 Credential provisioning and Android CM work
 remain open under the user's pivot.
 
-**Automatic reconnect — texture reuse reduces observed RSS; repeated recovery remains OPEN.**
+**Automatic reconnect — texture reuse and refresh correction pass three installed outage cycles.**
 `8fe1fe12` caps the shared model's exponential retry delay at 30 seconds, preserving
 the initial 1/2/4/8/16-second waits. Timer and displayed countdown consume the same
 value; manual action, retry classification, credential suppression and owner/reset
@@ -7673,7 +7673,7 @@ only `libflutter_linux_gtk.so` differs from engine `ddb1541d`. Capsule
 `compositor-engine-381500e6.json` binds source, patch, archive and joined cleanup.
 The three earlier engine archives are restored unchanged, alongside this new
 85-MiB toolkit. Superseded app `e4c7550e` is now retired after all 74 payloads
-verify against its manifest; corrected baseline `2eb7015e` remains. The full
+verify against its manifest. The full
 app builds at `77cc3441` (`h6MCToaokV`) within the four-app cap. All 74 new
 payloads verify, and only `libflutter_linux_gtk.so` differs from `2eb7015e`.
 Thirteen view-mode and eight recording widget cases, two native command cases
@@ -7729,14 +7729,44 @@ enlarged retry delay. The repeat's RSS growth is **51,248 KiB**; resources stay
 bounded. `compositor-expired-server[-repeat]-d1fa0209.json` bind eighteen files /
 1,735,081 bytes on both hosts and exact joined cleanup. First-run endpoint deltas
 are three zero plus one unattributed loopback removal; repeat deltas are all zero.
-Next give expected video reconfiguration an explicit normal outcome, retaining
-normal cadence and bounded retries for actual failures. Verify both paths and
-the installed recovery scenario; no further unchanged diagnostic repeat is needed.
-The passing run supports the memory correction but does not close the reproduced
-freshness failure. The retained logs also show **95/93 audio-helper startup
-failures** for missing exact CM peer identity. Audio output is untested and this
-required-functionality issue remains OPEN separately; display acceptance does
-not imply audio acceptance.
+`3c289cff` corrects expected video reconfiguration: helpers return an explicit
+normal break, and the capture callback completes successfully. Refresh, quality,
+recording, display and subscriber transitions retain the normal 30-ms service
+cadence. Actual encoder errors retain their original error and bounded retry;
+display-enumeration errors propagate. The shared service API/backoff is unchanged,
+including Windows desktop/UAC handling after capture objects retire. All **32
+controller and 27 full-library native checks** pass, including exact normal/error
+outcomes, stale-owner refusal and recording/decoder progress. Capsules:
+`video-reconfigure-controller-3c289cff.json`, `video-reconfigure-parent-3c289cff.json`.
+The full application builds with unchanged engine `381500e6`; all 74 payloads
+verify and 27 widget/native build checks pass (`video-refresh-app-3c289cff.json`).
+Only the Rust library and rebuilt static readiness helper differ from `77cc3441`.
+
+Installed replay `Nyq8bjpdZT` passes all **three 65-second outages, 480 responses
+and four latency windows**, followed by normal package lifecycle. Automatic
+reconnect takes **1,190/902/491 ms**; four fresh displayed states arrive within
+another **646/688/925 ms**. Response p95/p99 are **346/347, 345/351, 351/361 and
+355/358 ms**; maximum response/healthy frame age are **368/344 ms**. Every window
+retains the original baseline, 250-ms drift limit and 1,000-ms ceilings. Across
+212 resource samples, viewer RSS grows **62,672 KiB**, descriptors by three and
+threads by zero, within the unchanged bounds. Viewer/window, service generation,
+credentials and profile persist without intervention. The retained server tail
+shows normal refresh → clean capture exit → re-entry in **31.294 ms**, with no
+`SWITCH` error. This accepts the corrected refresh path and this installed Linux
+XTEST/Xvfb scenario; it does not establish physical scanout or other platforms.
+`video-refresh-expired-3c289cff.json` binds nine files/826,814 bytes on CTE/TUF and
+joined VM/private/RAM retirement. Three endpoint deltas are zero; the last adds
+unattributed loopback `127.0.0.1:8100`. The launcher denies owned host IP sockets;
+no host service is inspected or changed. The full-build final inventory had shown
+removal of that same endpoint; neither change is attributed to this work.
+
+The retained corrected-run tail still contains **96 audio-helper startup errors**
+for missing exact CM peer identity, following 95/93 in the earlier runs. Required
+audio startup/output remains OPEN and is the next concrete functionality issue;
+display acceptance does not imply audio acceptance. Superseded app `2eb7015e`
+is retired after all 74 payloads verify, freeing 70,791,168 allocated bytes;
+its manifest/evidence and matching engine remain, with `77cc3441` retained as
+the immediate pre-refresh baseline (`video-refresh-retired-2eb7015e.json`).
 The separate surviving-transport delay failure, other outage schedules,
 physical scanout, endurance, desktop/mobile coverage, final artifacts,
 independent review and complete R-S0/R-F5 remain OPEN.
@@ -9820,8 +9850,10 @@ on unchanged TCP, visible device loss and fresh capture
 (`camera-busy-regression-2eb7015e.json`). Each build/replay has four zero host
 listener deltas and joined VM/RAM/private-state retirement, with evidence copied
 to CTE/TUF. Superseded `4468059d`, `b09f3420` and `843003fe` payloads are retired
-with manifests/evidence retained; the four-app cap holds `6429f3cb`, `a36e5581`,
-`e4c7550e` and `2eb7015e`.
+with manifests/evidence retained. Subsequent compositor/refresh work also retires
+`e4c7550e` and `2eb7015e`; the current TUF four-app cap holds `6429f3cb`,
+`a36e5581`, `77cc3441` and `3c289cff`. Retained provenance includes
+`video-refresh-retired-2eb7015e.json`; historical camera evidence remains valid.
 
 **Installed Linux camera presentation — PASS on the retained app and normal package.**
 TUF `kCAd1m7iqo`, fixture `f8c5137f`, installs app `2eb7015e` through offline APT.

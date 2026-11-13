@@ -152988,3 +152988,86 @@ the existing numeric thresholds. No native pass or installed correction is yet
 claimed; other-platform capture execution and broader R-F5 remain OPEN.
 This append preserves the prior 16,291,786-byte audit prefix, SHA-256
 abdd380628e2fa2ebf709d2404305a796e17ee82bbd486b2ad7a809422bfd47b.
+
+### Video refresh correction — native and installed acceptance
+
+At 3c289cff, controller run p5rIZCHzcw passes all 32 checks: expected
+configuration/stale-owner transitions return Break, unchanged operation returns
+Continue, and controlled encoder failure preserves its error, confirmation and
+retry semantics. Full-parent run 0ePyOtOWgd compiles the production library and
+passes all 27 recording/decoder/policy checks, including both changed frame-helper
+assertions. Execution takes 2/11 seconds after 51/161-second builds. Capsules
+video-reconfigure-controller-3c289cff.json and video-reconfigure-parent-3c289cff.json
+bind eighteen files/231,269 bytes on CTE/TUF. QEMU 3298782/3304554 joins zero;
+private 66306:84062391 and RAM 29:13857/13898 retire under the shared lock.
+Supervisors take 112.445/232.677 seconds; scratch peaks 3,592,003,584/5,338,537,984
+bytes. All eight host endpoint deltas are zero. These exercise the production
+controller with a controlled encoder and the full native library respectively;
+they do not establish other-platform capture behavior or every real-error schedule.
+
+Before a fourth retained app build, exact superseded app 2eb7015e is retired on
+TUF. Both it and retained 77cc3441 pass all 74 payload SHA/size/owner/mode/link
+checks; only their Flutter engine library differs. Descriptor-relative removal
+under shared run/cache locks frees 70,791,168 allocated file bytes. Its manifest,
+complete inventory and evidence remain; the matching ddb1541d engine archive is
+independently SHA-verified, permitting reconstruction with the retained identical
+payloads. No reconstruction run is claimed. video-refresh-retired-2eb7015e.json
+and its two companions total 32,641 bytes on both hosts. Current TUF apps are
+6429f3cb, a36e5581, 77cc3441 and the new 3c289cff; other CTE app caches are untouched.
+
+Full-app run VZOI4vKr2o passes all 74 payload checks and 27 widget/native build
+checks with retained engine 381500e6. Manifest SHA-256:
+7e7a57c26e9970983b911f0ae9d79a9a646186394e4837e4a33a54d1435ab3d5;
+Rust library 20531ab6232ec130fe90f75d6254552d4fc293ebb40f783df1edd766b91d7465.
+Compared with 77cc3441, the Rust library and static smoke-readiness helper change.
+Readiness/IPC sources, Cargo inputs, build recipe and remaining build context are
+unchanged; read-only ELF comparison finds 705 changed bytes: 20 build-ID, 7 text,
+678 rodata. No exact semantic explanation is inferred from those bytes. Initial
+reconciliation assumed only the library changed and refused; after inspecting the
+actual two-file difference, its comparison was corrected, then its missing Git
+cwd fixed. Neither parser failure caused a rebuild or product change. The installed
+replay below executes the actual readiness helper. App allocation is 70,795,264
+bytes. QEMU 3309723 joins zero; private 66306:84062391 and RAM 29:13939 retire.
+Supervisor 1,253.354 seconds; scratch peak 11,916,718,080 bytes; container swap,
+OOM and OOM-kill counters are zero. Three endpoint deltas are zero; the final
+inventory removes pre-existing loopback 127.0.0.1:8100, unattributed. No host service
+is inspected or changed. video-refresh-app-3c289cff.json binds ten files/328,355 bytes.
+
+Installed replay Nyq8bjpdZT now PASSES all three 65-second complete forward
+outages, 480 responses and four fixed-baseline windows. All 2,494 source
+publications and request/publication/presentation ordering reconcile. Response
+p95/p99: 346/347, 345/351, 351/361, 355/358 ms; maxima response/healthy frame age
+368/344 ms over 19,087 age observations. Automatic reconnect 1,190/902/491 ms;
+four fresh states within another 646/688/925 ms. Old sockets retire without
+intervention; loss counters show 28/26/28 drops and zero forward delivery.
+Across 212 resource samples, RSS rises 360,500 to at most 423,172 KiB (+62,672),
+FDs 45 to at most 48 and threads at most the initial 66. Original 1,000-ms
+ceilings, baseline+250-ms drift, 128-MiB/16-FD/8-thread growth, 45-second reconnect
+and 2,500-ms new-connection freshness bounds remain unchanged.
+
+The retained server tail records refresh 19:34:33.456722, normal capture exit
+19:34:33.457903, and new capture generation 19:34:33.488016: 31.294 ms from
+refresh to re-entry, with no SWITCH error. This replaces the reproduced failure
+whose error-to-re-entry delay alone was 990.293 ms. The original server child
+7728/start7336, supervisor7606 and generation a40dbaff-ddc9-47be-bdc2-54a758f5a975
+persist. Before/after clock-offset bounds span 4,499 ns. All 117 bounded TCP
+records bind to their replacement viewer sockets. The retained tail still has
+96 missing-exact-CM-identity audio startup errors; audio output remains unproved.
+No audio authority is relaxed. Next address this concrete required-functionality
+failure; separate surviving-TCP recovery, endurance, physical scanout, other
+platforms, final artifacts/review and complete R-S0/R-F5 remain OPEN.
+
+Normal package lifecycle and cleanup pass. QEMU 3320127 joins zero; private
+66306:84062391 and RAM 29:13980 retire under the shared lock. Supervisor 778.131
+seconds; scratch peak 4,251,787,264 bytes, minimum available RAM 37,905,362,944.
+Three endpoint deltas are zero; the last adds unattributed loopback
+127.0.0.1:8100. The launcher kernel-denies owned host IP sockets; the exact delta
+is retained rather than labeled zero or attributed to this work. No host process
+inventory or service mutation is used. All four runs report
+tmpfs_swap_disabled=false; container swap zero is not a host/tmpfs no-swap claim.
+video-refresh-expired-3c289cff.json binds nine files/826,814 bytes on CTE/TUF,
+outer SHA-256 9481cb6d5cb848215a884780b1a86cad5d159e446daf06c63a60fdefcabd19cf.
+Every run retained its source freeze through terminal status, reconciliation and
+verified copies. The ledger records this scoped pass and needs its fresh count.
+This append preserves the prior 16,294,026-byte audit prefix, SHA-256
+9ad0f749dc570e226ebe0df42f0edd0eaec1822cf417428c4de46e7222832926.

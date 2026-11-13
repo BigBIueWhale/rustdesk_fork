@@ -36,7 +36,7 @@ void fl_engine_execute_task(FlEngine*, FlutterTask*) {
 }
 
 static GdkGLContext* observed_context;
-static unsigned allocations, updates;
+static unsigned allocations, updates, binding_failures;
 static GLuint uploaded_texture;
 static decltype(epoxy_glTexImage2D) real_image;
 static decltype(epoxy_glTexSubImage2D) real_subimage;
@@ -103,7 +103,11 @@ static void draw(FlViewRenderer* renderer, int width, int height, bool red) {
   gdk_gl_context_make_current(observed_context);
   GLint binding;
   glGetIntegerv(GL_TEXTURE_BINDING_2D, &binding);
+#ifdef LEGACY_BASELINE
+  binding_failures += binding != static_cast<GLint>(sentinel);
+#else
   g_assert_cmpuint(binding, ==, sentinel);
+#endif
   g_assert_cmpint(glGetError(), ==, GL_NO_ERROR);
   glDeleteTextures(1, &sentinel);
   cairo_surface_flush(surface);
@@ -160,6 +164,7 @@ int main(int argc, char** argv) {
 #ifdef LEGACY_BASELINE
   g_assert_cmpuint(allocations, ==, 120);
   g_assert_cmpuint(updates, ==, 0);
+  g_assert_cmpuint(binding_failures, >, 0);
   std::puts("ENGINE_COMPOSITOR_NATIVE=baseline frames=120 allocations=120 updates=0 pixels=pass");
 #else
   g_assert_cmpuint(allocations, ==, 1);

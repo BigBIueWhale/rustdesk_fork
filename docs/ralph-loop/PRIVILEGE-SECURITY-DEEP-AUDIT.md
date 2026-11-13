@@ -151673,3 +151673,36 @@ bytes. This is a corrected test-decoder defect, not an application correction;
 installed replay is still required. All timing/resource bounds are unchanged.
 This append preserves the prior 16,203,989-byte audit prefix, SHA-256
 02f46d452f8d42cd8c2e01598ce84fe95dc0c66f3a8cf67b7c18963f3001ec4d.
+
+## 2026-11-13 — Installed concurrent animation/input accepted
+
+TUF YblkR9CTA1/tool11975 at b00ae65d exits zero. The joint decoder passes all
+121 response values and the existing frame controls; source/observer compilation
+is repeated with -Werror and equal bytes. Installed app 2eb7015e is reused.
+All 120 ordered native requests produce their independent response marker in
+actual viewer-root pixels while the frame counter continues at nominal four Hz.
+Every trial first observes at least two frame advances during 650 ms without
+input, with its response marker unchanged. Independent reconciliation checks all
+source request/response identities, timestamps and 428 ordered publications.
+Recomputed response p95/p99 are 347/354 ms, worst 358 ms; maximum observed frame
+age is 332 ms. The 1,000-ms bounds remain fixed and include source cadence plus
+observation overhead. Both roles share the proved guest monotonic namespace.
+
+The same connection/window, child/listener, credential and profile persist.
+Sampled viewer RSS grows at most 6,980 KiB, descriptors by one, and threads decline;
+all resource bounds pass. Exact owned source/viewer/driver exits are zero, desktop
+retirement and normal package reinstall/remove/purge pass. QEMU 1659027 joins zero
+after 255.490 seconds; peak RAM scratch is 4,258,562,048 bytes. Exact private
+66306:78821929 and RAM 29:12709, process/socket absence and four zero listener
+deltas reconcile. tmpfs_swap_disabled remains false. The source/input freeze ends
+only after nine files/273,886 bytes are copied and hash-verified on CTE/TUF.
+Capsule: remote-installed-input-animation-b00ae65d.json. Outer SHA-256:
+cf9dca8a433467403ffbd54a355e590b2c6621b722977d975c3725b6a7eb3b3a.
+
+This closes the stated short healthy installed animation/input evidence gap,
+not a product defect or full R-F5 acceptance. The next decisive expansion is
+concurrent input/animation through realistic network impairment using the same
+independent markers. Endurance, physical scanout, other platforms and the known
+long-outage failures remain OPEN. The ledger records the bounded result; its fresh
+isolated count is pending. This append preserves the prior 16,205,446-byte audit
+prefix, SHA-256 5177c31baf4add07c0aa7d86e858f35e64fda98e75a59baa559323d8ad831952.

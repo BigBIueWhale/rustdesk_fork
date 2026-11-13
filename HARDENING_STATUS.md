@@ -4300,6 +4300,26 @@ animation/input, physical scanout, reproducible random sequences/tails, other
 platforms, exact release artifacts, independent review and the existing long-outage
 failures remain OPEN. No full R-F5 closure.
 
+**Installed Linux concurrent animation/input — healthy scenario PASS.**
+TUF `YblkR9CTA1`, fixture `b00ae65d`, reuses installed app `2eb7015e`.
+All **120 unique responses** pass while the source frame counter keeps advancing
+at nominal four Hz. Before every request, 650 ms without input preserves its
+independent response marker while at least two frame identities advance.
+Independent reconciliation binds each native request, source response/publication
+and actual viewer-root image across 428 publications. Response p95/p99 are
+**347/354 ms**, worst **358 ms**; maximum observed frame age is **332 ms**.
+Both retain the fixed 1,000-ms limit; response timing includes source cadence.
+The connection, viewer, child/listener, credential and profile persist. Sampled
+viewer RSS grows 6,980 KiB, descriptors by one and threads decline. Normal package
+reinstall/remove/purge and all resource bounds pass. The corrected decoder uses
+the full frame's geometry for the independent response band; two earlier fixture
+failures and their retained pixels remain in the audit. The accepted capsule
+`remote-installed-input-animation-b00ae65d.json` binds nine files/273,886 bytes on
+CTE/TUF, four zero listener deltas and exact joined VM/private/RAM cleanup.
+This is short healthy XTEST/Xvfb evidence. Impaired or sustained concurrent input,
+physical scanout, other platforms, the known long-outage failures and full R-F5
+acceptance remain OPEN.
+
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without
 rebuilding. All 120 unique three-key requests injected into the viewer produce

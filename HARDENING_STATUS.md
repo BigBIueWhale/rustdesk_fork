@@ -4203,9 +4203,36 @@ binds nine files/1,346,708 bytes on CTE/TUF, 313.258 seconds, four zero listener
 deltas and joined private/RAM cleanup. The initial missing-source-trace fixture
 failure is retained separately; it did not reach input measurement. No product
 change or application rebuild was needed. This event-driven XTEST/Xvfb workload
-does not establish physical scanout, concurrent animation/input, installed
-random-loss/congestion input, multi-hour drift or other platforms. The existing
+does not establish physical scanout, concurrent animation/input, multi-hour drift
+or other platforms. Installed partial-degradation input follows below. The existing
 long-outage failures and complete R-F5 acceptance remain OPEN.
+
+**Installed Linux input under loss and congestion — six profiles PASS.**
+TUF `ohN5WGvRDV` and `2gLlwYFvYq`, fixture `23bf2503`, reuse installed app
+`2eb7015e`. Twenty seconds each of 3%/8% random loss, burst loss, 80±30-ms jitter,
+32-kbit/s bandwidth and combined bandwidth/jitter preserve all **1,185 ordered
+responses**: 960 healthy/recovered samples and 225 during impairment/recovery.
+Each run retains its original baseline, 1,000-ms healthy response limit,
+250-ms p95/p99 drift allowance and 2,500-ms restoration deadline.
+
+| Installed profiles | Baseline p95/p99 | Largest recovered p95/p99 | Worst healthy/recovered response | Response after restoration |
+| --- | --- | --- | --- | --- |
+| Random/burst loss | 112/120 ms | 147/170 ms | 187 ms | 109/94/466 ms |
+| Jitter/bandwidth/combined | 114/122 ms | 127/165 ms | 179 ms | 142/95/940 ms |
+
+Independent reconciliation verifies every request, source publication and window
+percentile. Actual loss counts are 51/125/53; bandwidth intervals deliver
+79,511/80,110 bytes with throttling. Calibration preserves queued packets through
+restoration. All 1,639 transport observations retain the original socket pairs
+until ordinary closure. Maximum viewer RSS growth is 17,020 KiB, descriptors
+increase by one, and congestion queues stay within 17 packets/5,252 bytes.
+Service children/listeners/credentials persist; desktop retirement and normal
+package reinstall/remove/purge pass. `remote-installed-input-loss-23bf2503.json`
+and `remote-installed-input-congestion-23bf2503.json` bind eighteen files /
+4,033,665 bytes on CTE/TUF, eight zero listener deltas and joined private/RAM
+cleanup. No application rebuild. This event-driven XTEST/Xvfb evidence leaves
+concurrent animation/input, physical scanout, reproducible random sequences/tails,
+installed multi-hour drift, other platforms and the long-outage failures OPEN.
 
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without

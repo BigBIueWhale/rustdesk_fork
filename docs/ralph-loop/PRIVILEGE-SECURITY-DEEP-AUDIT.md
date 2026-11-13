@@ -151220,3 +151220,69 @@ exact private/process/socket/RAM retirement pass. The approximate 400,000-token
 target remains OPEN. This audit-only append preserves the counted ledger and
 prior 16,174,158-byte audit prefix, SHA-256
 69395e7cc8f9ab35223e19f96b8589db6c391bd5c176a97cbeb6a7cd0cf3effd.
+
+## 2026-11-13 — Installed input under partial network degradation
+
+Previous turn made verified progress on installed short-outage input recovery.
+Selected the missing installed loss/congestion input cases over unchanged
+long-outage reruns or another application build. Rechecked current source,
+ledger/audit and TUF's existing SSH connection; both clean trees were at 7e34b159.
+[netem's manual](https://man7.org/linux/man-pages/man8/tc-netem.8.html) distinguishes
+independent random loss from Gilbert-Elliott burst loss; its timing limitations
+preclude a claim of exact reproducible random timing. [TBF's manual](https://man7.org/linux/man-pages/man8/tc-tbf.8.html)
+describes token-based shaping and notes that an inner qdisc changes queue-limit
+semantics. Retained the actual kernel parameter/counter readback, nested queue
+bounds and native queued-datagram restoration calibration. No impairment changes
+or host network operations were needed.
+
+23bf2503 wires closed installed modes 18/19 through the existing six fixture
+files. The source uses input-response mode; the viewer uses the existing
+input-loss/input-congestion observers; congestion selects its existing calibrated
+controller. Those modes have 300/360-second driver/controller job budgets and a
+4-MiB aggregate actor-log cap. Per-response/recovery/drift limits remain
+1,000/2,500/250 ms. The C degradation observer tracks successful restoration so
+a later failure does not send a redundant healthy request. Failure stays failure.
+Bash syntax, Python parsing and diff checks pass; the guest compiles both native
+fixtures twice and checks byte equality. No product source edit or new app cache.
+
+Both runs exit zero on app 2eb7015e, manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a.
+Independent reconciliation orders all 1,185 requests, matches source publications,
+checks degraded-input/publication/capture timestamps and recomputes eight 120-sample windows.
+Each sample has its no-input quiet control and actual viewer-root response.
+
+- Loss: ohN5WGvRDV/tool11592, 480 healthy plus 154 degraded responses. Baseline
+  p95/p99 112/120 ms; recovered 112/113, 113/123 and 147/170 ms; worst healthy
+  response 187 ms. Restored responses take 108,879/93,718/465,059 us. The burst
+  request was already 1,390,860 us old at restoration; worst degraded response
+  is 2,010,742 us. Drops 51/125/53, 645 source states, 823 TCP snapshots.
+  Sampled send/receive queues peak at 2,257/220 bytes, RSS growth at 17,020 KiB.
+- Congestion: 2gLlwYFvYq/tool16863, 480 healthy plus 71 degraded responses.
+  Baseline p95/p99 114/122 ms; recovered 127/160, 126/160 and 127/165 ms; worst
+  healthy response 179 ms. Restored responses take 141,988/94,868/939,373 us;
+  worst degraded response is 2,051,656 us. The limited intervals deliver
+  79,511/80,110 bytes in 20.018/20.132 seconds, with advancing throttle counters.
+  All eight calibration datagrams arrive, including four queued at restoration.
+  There are 571 source states and 816 TCP snapshots. Send/receive queues peak
+  at 5,165/27 bytes, congestion at 17 packets/5,252 bytes, RSS growth at 15,592 KiB.
+
+Each run retains its connection/window, exact child/listener, root credential and
+user profile. Descriptors increase by one and measured threads decline. Actor,
+source, viewer, observer and controller retire; ordinary-user refusal, desktop
+retirement and package reinstall/remove/purge pass. The two
+remote-installed-input-{loss,congestion}-23bf2503.json capsules bind eighteen
+files/4,033,665 bytes copied and hash-verified on CTE/TUF before source/input
+unfreeze. Outer SHA-256s are
+e5355ada899746351a068fcc1fe8dd00dac47847abfd77f3a2b71cb90221d467 and
+67891baa9927d9074df0811fbd053d18712e9b1fe7429a7f8e2a5fc4c0a967dc.
+QEMU 3968114/4032150 join zero after 360.236/360.485 seconds. Peak RAM workspaces
+are 4,242,145,280/4,241,293,312 bytes; exact private/process/socket/RAM state retires
+and eight listener deltas are zero. Both report tmpfs_swap_disabled=false.
+
+These named installed cases are accepted; long-outage failures, physical scanout,
+concurrent animation/input, reproducible random sequences, installed multi-hour
+drift and other-platform acceptance remain OPEN. At this checkpoint reassess
+installed long-session validation against the unresolved transport-recovery
+design; do not rerun unchanged passing cases or infer complete R-F5 acceptance.
+This append preserves the prior 16,174,818-byte audit prefix, SHA-256
+c7b7edfaab406d18ab44350dd1ecca20e90687acaff8b1ff97dff95f27bcdedc.

@@ -1438,7 +1438,7 @@ for caller in ('smoke-verifier-vm-authority.sh', 'online-fetch-vm.sh'):
     modes.update(re.findall(r'\bMODE=([a-z][a-z0-9-]*)', shell.with_name(caller).read_text()))
 # This closed CLI arm derives MODE from its argument instead of a literal assignment.
 modes.add('android-frame-tests')
-if len(modes) != 43:
+if len(modes) != 44:
     raise SystemExit('VM workload control inventory differs')
 special = {mode: mode for mode in ('ledger-token-count', 'cpace-recovery-tests',
                                   'linux-service-uid-tests', 'hbb-common-fs', 'media-kernel-tests',
@@ -1451,6 +1451,7 @@ special.update({'authority-smoke': 'authority-smoke', 'dependency-inventory': 'a
                 'windows-service-result-tests': 'fixed-archive-tests',
                 'pe-canonicalizer-tests': 'fixed-archive-tests',
                 'linux-launcher-tests': 'debian-package-tests',
+                'libyuv-arithmetic-tests': 'debian-package-tests',
                 'debian-maintainer-tests': 'authority-smoke',
                 'android-runtime-log-tests': 'authority-smoke',
                 'network-impairment-probe': 'authority-smoke',

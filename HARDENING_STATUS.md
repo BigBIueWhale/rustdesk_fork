@@ -7830,6 +7830,14 @@ The full build passes 27 controls; all 74 retained payloads verify, with only
 `librustdesk.so` changed from `3c289cff` under the same build inputs/recipe
 (`pa-capture-app-e7bd99a8.json`). This establishes native null-sink output,
 not physical audibility, audio latency, sustained recovery or full acceptance.
+Fixture `31e44cc0` additionally requires audio continuity during 15-second
+healthy presentation intervals after each viewer hold. On the same app/package,
+viewer tone windows are 132/132, 143/143 and 140/141, with no silence; source
+windows are all tone. The measured intervals span 13.199/14.254/14.152 seconds.
+Display recovery is 1,921/904/1,022 ms; 15-second healthy maximum frame ages are
+347/364/336 ms. Ownership, disconnect retirement and package lifecycle pass
+(`pa-recovery-installed-31e44cc0.json`). Constant-tone observations establish
+post-suspension continuity; audio age and network-recovery timing remain unmeasured.
 Earlier `c13eb56c` established
 that absent sockets produced errno6/Connection refused despite the binding's
 misleading `Access denied` text; product error reporting still needs the actual

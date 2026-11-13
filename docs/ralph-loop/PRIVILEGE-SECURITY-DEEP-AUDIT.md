@@ -153754,3 +153754,36 @@ Outer SHA-256 92897f9276e5cf5643096f1ce4c3ddb8d11396d636b75c42909a70dc8f8f508b.
 No owned job or source freeze remains; goal active. This audit-only append preserves
 the prior 16,344,297-byte prefix, SHA-256
 98d72e6fcc0c8a8a5e31ea07e6460689f1f27a5e9279ce25c1ebfe96bd8b40e4.
+
+### Installed audio — continuity after all three viewer suspensions
+
+Previous turn was progress: full-app playback acceptance changed the next action.
+The long-outage records already localize TCP backoff and reject the previously
+reviewed socket-policy substitutions; no unchanged run or speculative patch is
+repeated. The actionable R-S0 gap is audio after suspension: the prior acceptance
+checked steady audio only before the holds. Fixture 31e44cc0 extends each healthy
+presentation interval to 15 seconds, exports monotonic boundaries and requires
+at least 130 classified windows and 95% tone at both source and viewer afterward.
+Recovery/freshness bounds, authority and product bytes are unchanged. Syntax checks
+pass; the real installed guest compiles and executes the changed observer.
+
+TUF g2ZXPqmh87 reuses app e7bd99a8 and identical package 499e9c33. Steady viewer
+tone is 150/152 windows. After 2/6/12-second holds, source tone counts are
+131/143/142; viewer tone is 132/132, 143/143 and 140/141 with zero silence.
+Intervals span 13.199/14.254/14.152 seconds. Independent reconciliation derives
+each count from the retained timeline and exact native phase boundaries.
+Display recovery is 1,921/904/1,022 ms; healthy maximum ages 347/364/336 ms
+against baseline 316 ms. RSS growth peaks at 5,152 KiB; FDs remain 50 and threads
+decline. Same window/connection and server/CM generation persist. Audio retirement,
+ordinary-user refusal, credential persistence and reinstall/remove/purge pass.
+One audio peer-reset log follows normal connection closure; no mid-session reset
+is observed. This measures null-sink continuity, not audio age or physical devices.
+Long-network-outage recovery, audio timing/endurance and full acceptance stay OPEN.
+
+pa-recovery-installed-31e44cc0.json binds nine files/341,654 bytes verified on
+CTE/TUF. Outer SHA-256 c10170e3eb9ac1397f7e18173184b40a3872583c42b575c2a39fcc3e8941299d.
+QEMU 3552566 joins 0; private 66306:82228881 and RAM 29:14935 run.e7iki7r3 retire.
+Supervisor 246.306 seconds, scratch peak 4,465,963,008 bytes, four zero endpoint
+deltas; tmpfs swap not disabled. No owned job/source freeze remains; goal active.
+This append preserves the prior 16,345,183-byte prefix, SHA-256
+2e9d4fa3782b5431fdabc128ee381108f0941796f19a21a5167df30da138218c.

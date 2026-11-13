@@ -152262,3 +152262,34 @@ peak RAM scratch 403,083,264 bytes, tmpfs_swap_disabled=false. Eight files /
 outer SHA-256 8e6af4018c874ed0242581f4c20e139983f37df344d7b7f4fda74a5a7003effd.
 This audit-only append preserves the prior 16,244,276-byte prefix, SHA-256
 5f0f8292004f3f5e386a3f1a0e9e396e447eedffd8b79e6957e92ab855138e5d.
+
+## 2026-11-13 — Lower-overhead allocator accounting for repeated expiry
+
+TUF's existing SSH master and an actual command round trip succeed. Continue
+the two reproduced ordinary R-F5 RSS failures before broadening validation:
+the completed Heaptrack trace changes the workload and cannot attribute them.
+The new explicit --installed-remote-expired-allocator diagnostic reuses app
+2eb7015e and every existing expiry, presentation, resource and runtime bound.
+A guest-only preload samples malloc_info once per second without wrapping
+allocation or loader calls. Two builds must be byte-identical inside the
+existing unprivileged preparation container. Only the ordinary viewer receives
+the root-owned copy and a retained private output descriptor; UID/GID 4001,
+no-new-privileges, descriptor identity/mode and the exact viewer mapping are
+checked. Exec descendants do not inherit the descriptor or preload environment.
+Raw output is capped at 64 MiB, each XML sample at 256 KiB and retained compressed
+evidence at 768 KiB. Bulk data remains in the admitted disposable guest.
+Sample monotonic timestamps/durations and main/all-arena counters accompany the
+unchanged observer's smaps/RSS evidence. Diagnostic execution cannot grant
+ordinary acceptance, and no allocator tuning or product correction is claimed.
+
+Primary references: https://man7.org/linux/man-pages/man3/malloc_info.3.html
+and https://raw.githubusercontent.com/bminor/glibc/glibc-2.36/malloc/malloc.c
+(__malloc_info). The API reports all arenas but not thread-cache free entries;
+its arena observations are not a process-wide atomic snapshot. Free-bin totals
+reconcile against their reported sum; system_mem is read twice after unlocking,
+so any system-total discrepancy is retained instead of falsely rejected.
+The collector reports its own sampling duration; it still adds a thread and
+allocator observations, so ordinary acceptance remains separate. Source syntax
+and diff checks pass; native compilation and execution are pending.
+HARDENING_STATUS.md is unchanged. This append preserves the prior 16,245,212-byte
+audit prefix, SHA-256 ae1bf43b3e6ec7af8c52e293ceefd0c4a63ab084a289f0bc82045a000ea1f090.

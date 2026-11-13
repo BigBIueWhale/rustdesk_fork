@@ -452,6 +452,9 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                 'prepared package differs')
     runtime, records, control = runtime_inputs(source)
     heaptrack = (MEDIA / 'heaptrack-candidate.tar.gz').exists()
+    allocator = (MEDIA / 'allocator-observer.c').exists()
+    require(not allocator or (remote == 'expired' and not heaptrack),
+            'allocator accounting requires its separate expiry diagnostic')
     require(not heaptrack or remote == 'expired', 'allocation profiling requires the expiry diagnostic')
     if heaptrack:
         profiler, profiler_records, _ = runtime_inputs(source, 'heaptrack')
@@ -658,7 +661,8 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
                         mapped_core(record, manifest, 'installed-remote' if remote else 'installed-camera')
                         try:
                             presentation_fixture.scenario(settings, receiver, record,
-                                **({'network': remote if remote != 'suspend' else False, 'heaptrack': heaptrack}
+                                **({'network': remote if remote != 'suspend' else False,
+                                    'heaptrack': heaptrack, 'allocator': allocator}
                                    if remote else {'busy': camera == 'busy'}))
                         except BaseException:
                             settings.stop_service(receiver, record)

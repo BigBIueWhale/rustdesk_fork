@@ -132,6 +132,20 @@ def prepare_drivers(graphical=False, camera=False, remote=False):
          '/work/scripts/test-x11-frame-oracle.c', *flags, '-o', '/out/frame-oracle'], timeout=60)
     print(run(['/out/frame-oracle', '--unit']), end='', flush=True)
     if remote:
+        if Path('/allocator-observer.c').exists():
+            if digest('/allocator-observer.c') != digest('/work/scripts/linux-viewer-allocator.c'):
+                raise RuntimeError('allocator observer source differs')
+            for copy in ('first', 'second'):
+                run(['/usr/bin/cc', '-std=c11', '-O2', '-Wall', '-Wextra', '-Werror',
+                     '-shared', '-fPIC', '-fvisibility=hidden', '-pthread',
+                     '/work/scripts/linux-viewer-allocator.c', '-o', f'/out/allocator-{copy}.so'], timeout=30)
+            if digest('/out/allocator-first.so') != digest('/out/allocator-second.so'):
+                raise RuntimeError('repeated allocator observer builds differ')
+            print('LINUX_ALLOCATOR_OBSERVER_BUILD=' + json.dumps({
+                'sha256': digest('/out/allocator-first.so'),
+                'source_sha256': digest('/allocator-observer.c'),
+                'bytes': Path('/out/allocator-first.so').stat().st_size,
+                'builds': 2, 'equality': 'bytes', 'interposition': 'none'}), flush=True)
         return
     if graphical:
         for copy in ('first', 'second'):
@@ -295,6 +309,10 @@ def prepare_runtime(source, execution, image, client, sock, config, graphical=Fa
     os.chown(prepared, 1000, 1000)
     mounts = [(str(source), '/work', True), (str(execution), '/app', True),
               (str(prepared), '/out', False)]
+    if (MEDIA / 'allocator-observer.c').exists():
+        if remote != 'expired':
+            raise RuntimeError('allocator observer requires the expiry diagnostic')
+        mounts.append((str(MEDIA / 'allocator-observer.c'), '/allocator-observer.c', True))
     if upgrade:
         mounts.append((str(MEDIA / 'debian-upgrade'), '/upgrade-input', True))
     if conffiles:

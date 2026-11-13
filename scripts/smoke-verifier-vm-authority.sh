@@ -53,6 +53,7 @@ FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_REPLAY=0
 FLUTTER_INSTALLED_SETTINGS=0
 FLUTTER_HEAPTRACK=0
+FLUTTER_ALLOCATOR=0
 FLUTTER_VIEWER_SUSPEND=0
 FLUTTER_CLIPBOARD_TEXT=0
 FLUTTER_KEYBOARD_INPUT=0
@@ -776,6 +777,7 @@ case "$#:${1:-}" in
                 --installed-remote-input-animation-congestion) FLUTTER_INSTALLED_SETTINGS=23 ;;
                 --installed-remote-expired) FLUTTER_INSTALLED_SETTINGS=24 ;;
                 --installed-remote-expired-heaptrack) FLUTTER_INSTALLED_SETTINGS=24; FLUTTER_HEAPTRACK=1 ;;
+                --installed-remote-expired-allocator) FLUTTER_INSTALLED_SETTINGS=24; FLUTTER_ALLOCATOR=1 ;;
                 --viewer-suspend) FLUTTER_VIEWER_SUSPEND=1 ;;
                 --network-impairment) FLUTTER_NETWORK_IMPAIRMENT=1 ;;
                 --network-loss) FLUTTER_NETWORK_IMPAIRMENT=2 ;;
@@ -1008,6 +1010,7 @@ readonly FLUTTER_APP_REPLAY FLUTTER_APP_COMMIT FLUTTER_APP_EXPECTED_MANIFEST_SHA
 readonly FLUTTER_NETWORK_IMPAIRMENT
 readonly FLUTTER_INSTALLED_SETTINGS
 readonly FLUTTER_HEAPTRACK
+readonly FLUTTER_ALLOCATOR
 readonly FLUTTER_CLIPBOARD_TEXT
 readonly FLUTTER_KEYBOARD_INPUT
 readonly FLUTTER_MOUSE_INPUT
@@ -1868,6 +1871,10 @@ installed_settings_input_inventory() {
         /usr/bin/sha256sum -- "$runtime"
         verify_committed_test_source "$SCRIPT_DIR/test-linux-debian-install.py"
         /usr/bin/sha256sum -- "$SCRIPT_DIR/test-linux-debian-install.py"
+    fi
+    if [ "$FLUTTER_ALLOCATOR" -eq 1 ]; then
+        verify_committed_test_source "$SCRIPT_DIR/linux-viewer-allocator.c"
+        /usr/bin/sha256sum -- "$SCRIPT_DIR/linux-viewer-allocator.c"
     fi
     if [ "$FLUTTER_HEAPTRACK" -eq 1 ]; then
         local profiler=$REPO_ROOT/online/candidates/heaptrack/heaptrack-candidate.tar.gz
@@ -5374,6 +5381,9 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
         fi
         if [ "$FLUTTER_HEAPTRACK" -eq 1 ]; then
             lifecycle_payload_grafts+=("heaptrack-candidate.tar.gz=$REPO_ROOT/online/candidates/heaptrack/heaptrack-candidate.tar.gz")
+        fi
+        if [ "$FLUTTER_ALLOCATOR" -eq 1 ]; then
+            lifecycle_payload_grafts+=("allocator-observer.c=$SCRIPT_DIR/linux-viewer-allocator.c")
         fi
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 4 ]; then
             lifecycle_payload_grafts+=("polkit-agent-candidate.tar.gz=$REPO_ROOT/online/candidates/polkit-agent/polkit-agent-candidate.tar.gz")

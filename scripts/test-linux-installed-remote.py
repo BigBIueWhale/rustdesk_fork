@@ -10,6 +10,7 @@ import json
 import os
 from pathlib import Path
 import resource
+import re
 import select
 import signal
 import socket
@@ -18,12 +19,14 @@ import struct
 import subprocess
 import sys
 import time
+import xml.etree.ElementTree as ET
 
 
 SCRIPT = Path('/mnt/rustdesk-verifier-inputs/repo/scripts/test-linux-installed-remote.py')
 COORD = Path('/coord')
 NETWORK_ENDPOINT = '/netem.sock'
 ALLOCATION_PRELOAD = Path('/usr/share/rustdesk/libheaptrack_preload.so')
+ALLOCATOR_PRELOAD = Path('/usr/share/rustdesk/liballocator_observer.so')
 NETWORK_HOLDS = [6000, 2000, 6000, 1750, 5750, 2250, 6250, 2500, 6500]
 NETWORK_PROFILES = {
     'network': ['delay'] + ['loss'] * 8,
@@ -385,10 +388,104 @@ class AllocationTrace:
                     file=sys.stderr, flush=True)
 
 
-def session(network=False, heaptrack=False):
+class AllocatorSnapshots:
+    """Sample all glibc arenas without wrapping allocation calls."""
+
+    def __init__(self):
+        self.path = COORD / 'allocator.raw'
+        self.output = self.path.open('xb')
+        self.fd = self.output.fileno()
+        self.viewer_pid = None
+
+    def start(self, environment):
+        return {**environment, 'LD_PRELOAD': str(ALLOCATOR_PRELOAD), 'RUSTDESK_ALLOCATOR_FD': str(self.fd)}
+
+    def connected(self, viewer):
+        expected = self.path.stat()
+        deadline = time.monotonic() + 10
+        while viewer.poll() is None and time.monotonic() < deadline:
+            if self.path.stat().st_size:
+                current = Path(f'/proc/{viewer.pid}/fd/{self.fd}').stat()
+                with self.path.open('rb') as stream:
+                    header = stream.readline(256)
+                require((current.st_dev, current.st_ino) == (expected.st_dev, expected.st_ino)
+                        and header.startswith(f'ALLOCATOR_BEGIN pid={viewer.pid} sequence=0 '.encode())
+                        and str(ALLOCATOR_PRELOAD) in Path(f'/proc/{viewer.pid}/maps').read_text(),
+                        'allocator observer attachment differs')
+                self.viewer_pid = viewer.pid
+                self.output.close()
+                print('LINUX_INSTALLED_ALLOCATOR_ATTACHED=' + json.dumps({
+                    'viewer': viewer.pid, 'inode': expected.st_ino, 'acceptance': 'diagnostic-only'}),
+                    file=sys.stderr, flush=True)
+                return
+            time.sleep(0.02)
+        raise RuntimeError('viewer allocator observer did not start')
+
+    def finish(self):
+        self.output.close()
+        require(0 < self.path.stat().st_size <= 67108864, 'allocator snapshots exceed their guest bound')
+        data = self.path.read_bytes()
+        packed = gzip.compress(data, mtime=0)
+        require(len(packed) <= 786432, 'allocator snapshots exceed their evidence bound')
+        print('LINUX_INSTALLED_ALLOCATOR_RAW=' + json.dumps({
+            'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
+            'encoding': 'gzip+base64', 'data': base64.b64encode(packed).decode('ascii')}),
+            file=sys.stderr, flush=True)
+        samples, previous = 0, 0
+        with self.path.open('rb') as stream:
+            while True:
+                header = stream.readline(256)
+                if header.startswith(b'ALLOCATOR_COMPLETE '):
+                    require(header == f'ALLOCATOR_COMPLETE pid={self.viewer_pid} samples={samples} failed=0\n'.encode()
+                            and not stream.read(1) and samples >= 2, 'allocator completion differs')
+                    break
+                match = re.fullmatch(rb'ALLOCATOR_BEGIN pid=(\d+) sequence=(\d+) begin_ns=(\d+) end_ns=(\d+) bytes=(\d+)\n', header)
+                require(match is not None and samples < 1000, 'allocator sample header differs')
+                pid, sequence, began, ended, size = map(int, match.groups())
+                require(pid == self.viewer_pid and sequence == samples and previous < began <= ended
+                        and 0 < size < 262144, 'allocator sample identity or extent differs')
+                xml = stream.read(size)
+                require(len(xml) == size and stream.readline(32) == b'ALLOCATOR_END\n',
+                        'allocator sample is incomplete')
+                root = ET.fromstring(xml)
+                require(root.tag == 'malloc' and root.attrib == {'version': '1'}, 'allocator format differs')
+                heaps = root.findall('heap')
+                require(0 < len(heaps) <= 256 and [h.attrib for h in heaps] ==
+                        [{'nr': str(i)} for i in range(len(heaps))], 'allocator arena inventory differs')
+                def counters(element):
+                    def value(tag, kind):
+                        values = element.findall(f"{tag}[@type='{kind}']")
+                        require(len(values) == 1 and values[0].get('size', '').isdigit(),
+                                'allocator counter absent or duplicated')
+                        return int(values[0].get('size'))
+                    return {'system_bytes': value('system', 'current'),
+                            'fast_free_bytes': value('total', 'fast'), 'rest_free_bytes': value('total', 'rest')}
+                total, main = counters(root), counters(heaps[0])
+                arena_values = [counters(h) for h in heaps]
+                require(all(sum(h[key] for h in arena_values) == total[key]
+                            for key in ('fast_free_bytes', 'rest_free_bytes')),
+                        'allocator free-space totals do not reconcile')
+                # glibc reads system_mem twice after releasing each arena lock.
+                # Preserve concurrent differences rather than assert an atomic snapshot.
+                system_delta = sum(h['system_bytes'] for h in arena_values) - total['system_bytes']
+                mmap, = root.findall("total[@type='mmap']")
+                print('LINUX_INSTALLED_ALLOCATOR_SAMPLE=' + json.dumps({
+                    'sequence': sequence, 'begin_ns': began, 'end_ns': ended,
+                    'duration_ns': ended - began, 'arenas': len(heaps),
+                    'all_arenas': total, 'main_arena': main, 'mmap_bytes': int(mmap.attrib['size']),
+                    'system_sum_delta_bytes': system_delta,
+                }, sort_keys=True), file=sys.stderr, flush=True)
+                samples += 1
+                previous = ended
+        print(f'LINUX_INSTALLED_ALLOCATOR_COMPLETE viewer={self.viewer_pid} samples={samples} '
+              'interposition=none acceptance=diagnostic-only', file=sys.stderr, flush=True)
+
+
+def session(network=False, heaptrack=False, allocator=False):
     require(network is False or network in NETWORK_PROFILES or network in ('input-soak', 'input-animation'),
             'unknown Remote scenario')
     require(not heaptrack or network == 'expired', 'allocation tracing requires the expiry diagnostic')
+    require(not allocator or (network == 'expired' and not heaptrack), 'allocator diagnostic differs')
     spec = importlib.util.spec_from_file_location('installed_settings', SCRIPT.with_name('test-linux-installed-settings.py'))
     settings = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(settings)
@@ -450,9 +547,13 @@ def session(network=False, heaptrack=False):
             if heaptrack:
                 trace = AllocationTrace()
                 viewer_environment = trace.start(environment)
+            elif allocator:
+                trace = AllocatorSnapshots()
+                viewer_environment = trace.start(environment)
             viewer = subprocess.Popen(['/usr/share/rustdesk/rustdesk', '--connect', '127.0.0.1'],
                                       env=viewer_environment, stdin=subprocess.DEVNULL,
-                                      stdout=log('viewer.log'), stderr=subprocess.STDOUT)
+                                      stdout=log('viewer.log'), stderr=subprocess.STDOUT,
+                                      pass_fds=(trace.fd,) if allocator else ())
             processes.append(viewer)
             if trace is not None:
                 trace.connected(viewer)
@@ -529,13 +630,14 @@ def session(network=False, heaptrack=False):
                                                        else 1048576 if network in ('input-animation-congestion', 'expired') else 131072),
                                 'Remote observer output exceeds its bound')
                         print(path.read_text(), end='', file=sys.stderr, flush=True)
-    require(not heaptrack, 'allocation tracing is diagnostic; ordinary acceptance remains unproved')
+    require(not (heaptrack or allocator), 'allocation tracing is diagnostic; ordinary acceptance remains unproved')
 
 
-def scenario(settings, receiver, record, network=False, heaptrack=False):
+def scenario(settings, receiver, record, network=False, heaptrack=False, allocator=False):
     require(network is False or network in NETWORK_PROFILES or network in ('input-soak', 'input-animation'),
             'unknown Remote scenario')
     require(not heaptrack or network == 'expired', 'allocation tracing requires the expiry diagnostic')
+    require(not allocator or (network == 'expired' and not heaptrack), 'allocator diagnostic differs')
     guard(settings, 0)
     COORD.mkdir(mode=0o700)
     os.chown(COORD, 4001, 4001)
@@ -544,30 +646,35 @@ def scenario(settings, receiver, record, network=False, heaptrack=False):
     require(listener is not None, 'installed Remote listener absent')
     actor = None
     preload_identity = None
+    preload = ALLOCATOR_PRELOAD if allocator else ALLOCATION_PRELOAD
     log = settings.WORK / 'installed-remote.log'
     try:
-        if heaptrack:
-            # dlopen interposition makes $ORIGIN relative to the collector.
-            # Keep its authenticated bytes beside the unchanged runner, in this guest only.
-            original = Path('/usr/lib/heaptrack/libheaptrack_preload.so')
+        if heaptrack or allocator:
+            # Keep the diagnostic beside the unchanged runner in this guest only.
+            # Heaptrack's dlopen wrapper also needs that location for $ORIGIN.
+            original = settings.WORK / 'prepared/allocator-first.so' if allocator else Path('/usr/lib/heaptrack/libheaptrack_preload.so')
+            if allocator:
+                manifest = json.loads((settings.WORK / 'prepared/manifest.json').read_text())
+                require(manifest['allocator-first.so'] == {'bytes': original.stat().st_size,
+                        'sha256': settings.digest(original)}, 'prepared allocator observer differs')
             info = original.lstat()
-            require(stat.S_ISREG(info.st_mode) and info.st_uid == info.st_gid == 0
+            require(stat.S_ISREG(info.st_mode) and info.st_uid == info.st_gid == (1000 if allocator else 0)
                     and not info.st_mode & 0o022 and 0 < info.st_size <= 1048576,
                     'installed allocation collector authority differs')
             payload = original.read_bytes()
-            with ALLOCATION_PRELOAD.open('xb') as output:
+            with preload.open('xb') as output:
                 output.write(payload)
                 os.fchmod(output.fileno(), 0o444)
                 preload_identity = os.fstat(output.fileno())
-            require(ALLOCATION_PRELOAD.read_bytes() == payload, 'allocation collector copy differs')
-            print('LINUX_INSTALLED_HEAPTRACK_PRELOAD=' + json.dumps({
-                'path': str(ALLOCATION_PRELOAD), 'bytes': len(payload),
+            require(preload.read_bytes() == payload, 'allocation collector copy differs')
+            print(('LINUX_INSTALLED_ALLOCATOR_PRELOAD=' if allocator else 'LINUX_INSTALLED_HEAPTRACK_PRELOAD=') + json.dumps({
+                'path': str(preload), 'bytes': len(payload),
                 'sha256': hashlib.sha256(payload).hexdigest(),
                 'acceptance': 'diagnostic-only'}), flush=True)
         with log.open('xb') as output:
             actor = subprocess.Popen([*settings.ordinary(4001), '/usr/bin/python3', '-B', '-I', '-S',
                                       str(SCRIPT), '--session-' + network if network else '--session',
-                                      *(['--heaptrack'] if heaptrack else [])], env=settings.ENV,
+                                      *(['--heaptrack'] if heaptrack else ['--allocator'] if allocator else [])], env=settings.ENV,
                                      stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=output)
             if network == 'input-soak':
                 observe_soak(record, actor, log)
@@ -603,10 +710,10 @@ def scenario(settings, receiver, record, network=False, heaptrack=False):
             actor.wait(timeout=270 if heaptrack else 20)
             actor.stdout.close()
         if preload_identity is not None:
-            current = ALLOCATION_PRELOAD.lstat()
+            current = preload.lstat()
             require((current.st_dev, current.st_ino) == (preload_identity.st_dev, preload_identity.st_ino),
                     'allocation collector copy identity changed')
-            ALLOCATION_PRELOAD.unlink()
+            preload.unlink()
         if log.exists():
             require(log.stat().st_size <= (6291456 if network in (*SOAK_SCENARIOS, 'input-animation-congestion')
                                           else 2097152 if network == 'expired'
@@ -618,7 +725,8 @@ def scenario(settings, receiver, record, network=False, heaptrack=False):
 
 if __name__ == '__main__':
     heaptrack = sys.argv[1:] == ['--session-expired', '--heaptrack']
-    if heaptrack:
+    allocator = sys.argv[1:] == ['--session-expired', '--allocator']
+    if heaptrack or allocator:
         sys.argv.pop()
     require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion'],
                             ['--session-backoff'], ['--session-input-recovery'], ['--session-input-loss'],
@@ -635,4 +743,4 @@ if __name__ == '__main__':
                      '--session-expired': 'expired',
                      '--session-input-soak': 'input-soak',
                      '--session-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False),
-            heaptrack=heaptrack)
+            heaptrack=heaptrack, allocator=allocator)

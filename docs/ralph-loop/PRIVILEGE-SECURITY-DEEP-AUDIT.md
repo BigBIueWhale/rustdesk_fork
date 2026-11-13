@@ -152767,3 +152767,64 @@ native execution follows. HARDENING_STATUS.md will consolidate these observation
 after this diagnostic checkpoint, followed by its required fresh count.
 This append preserves the prior 16,275,565-byte audit prefix, SHA-256
 664bcc11e0539534c72435dfca29448342cfd10ad2451823319cb53ec1ed4d52.
+
+### Recovered-frame stall: TCP diagnostic and checkpoint
+
+The restored existing TUF SSH master works. Exact run k6d5fgLRrB at 9c0eb6c9
+has completed with exit 1; it was reconciled rather than restarted. The same
+app 77cc3441 / manifest d36f837abca4f74d1879858a9ef7c79b69acc4db400d44cc607ef34b298a8533
+passes all 360 baseline/first-two-recovery responses. Independently recomputed
+response p95/p99 are 348/361, 353/373 and 352/364 ms; maximum healthy ages are
+357/420/693 ms. Three old sockets retire after 42,180/43,913/38,687 ms;
+automatic reconnect takes 1,137/861/1,751 ms, and four fresh frames follow in
+719/748/1,635 ms. Loss counters show 27/26/27 drops and no delivery during loss.
+All 209 resource samples remain bounded: RSS 361,792→415,540 KiB, growth
+53,748 KiB; descriptors 45→48; threads never exceed the initial 63.
+
+The third window fails animation-progress before request 360: 25 quiet samples
+hold state 2,083, both keymaps released. Initial age is 743 ms. Twenty-eight
+post-refusal observations retain the failure: state 2,083 reaches 1,082 ms,
+then state 2,087 appears at age 178 ms. The last sample is state 2,097 at 137 ms.
+Independent publication/capture-clock reconciliation passes for all complete
+responses and post-refusal samples. Same-window/connection and resource checks
+pass after observation. This reproduces the brief stall seen in rQBgRaynEt;
+the final 120 responses and complete package lifecycle remain unexecuted.
+
+All 113 TCP records satisfy the existing 120-record/256-KiB diagnostic bounds.
+Parsed endpoints and viewer inodes match each independently observed replacement
+connection. During the third stall, viewer inode 98600/cookie 2002 and opposite
+server inode 98863/cookie 2001 remain fixed at 127.0.0.1:38623↔21118.
+At sequences 95–100 (600225561–601288884 us), forward sent/acked/received
+counters are 7646,7646,7646,7667,7667,7667 bytes. Both queues are zero at every
+sample; server RTO is 204 ms and no forward retrans field appears. The viewer's
+cumulative retrans field stays 0/3 throughout this interval. Source publication
+continues at roughly 250-ms intervals, including states 2084–2087; state 2083
+was published at 600159558 us and is still displayed at capture 601234691 us.
+These facts support an application-side frame-delivery gap, not an observed
+forward TCP backlog. Twenty-one bytes are not identified as a particular message;
+sampling does not prove absence of every transient queue or transport event.
+
+Source review: video_service.rs waits for frame progress in 300-ms pieces up to
+three seconds, separately applies QoS pacing, and sends only produced encoder
+output. A retired connection is removed from the acknowledgement target set;
+VideoQoS creates fresh user state on connection open. These mechanisms are
+candidates to distinguish, not diagnosed causes. The broad presentation trace
+also creates a shadow decoder, so enabling it changes the workload. The exact
+server's ordinary file log already contains encoder/subscriber/refresh transitions
+but the failed scenario retains only its earlier credential snapshot. Next use
+the existing owned_log authority helper to preserve bounded relevant server log
+evidence before retirement; then add narrower timing observation only if needed.
+No product correction or new application build is justified by this record alone.
+
+QEMU 3091449 joins zero; private 66306:82229895 and RAM 29:13665 retire under
+the shared run lock. Supervisor 614.090 seconds; peak RAM scratch 4,218,421,248
+bytes; minimum host available 35,203,768,320 bytes; tmpfs_swap_disabled=false.
+The first three endpoint deltas are zero; final inventory has no additions and
+an unattributed removal of pre-existing tcp 127.0.0.1:8096. It is recorded without
+inspecting or changing unrelated services. Nine files/883,785 bytes are copied
+and SHA-verified on both hosts; capsule compositor-expired-tcp-9c0eb6c9.json,
+outer 31651fb5d7c5c195b463ce910200d6cd75ae2810fff30e2a7965df8a657fd523.
+Source freeze ends after those checks. HARDENING_STATUS.md consolidates both
+diagnostic outcomes and leaves R-F5 OPEN; its required fresh isolated count follows.
+This append preserves the prior 16,279,175-byte audit prefix, SHA-256
+987cb7d52bc67f6cdcd5defa8b11594230ef326134988249c6b935490b21c0ce.

@@ -7694,10 +7694,30 @@ require animation progress and released keys. The third outage and complete
 package lifecycle are unexecuted. This is a failed replay, not full acceptance
 of the memory correction. `compositor-expired-77cc3441.json` binds nine files /
 514,009 bytes on both hosts, four zero endpoint deltas and joined cleanup.
-Next: retain exact quiet-window progress/key-state diagnostics and observe the
-same session briefly after refusal, preserving the failed verdict, to distinguish
-the presentation stall from observer assumptions. Reuse this built app; no
-allocator tuning, relaxed bound or additional application build is justified.
+Two subsequent diagnostic runs reach all three outages with the same app.
+`rQBgRaynEt` (`6e4cbde4`) and `k6d5fgLRrB` (`9c0eb6c9`) each pass 360 responses
+before the third recovered window stalls without held keys or a new input request.
+RSS growth is **48,896/53,748 KiB**, with descriptors/threads bounded. Each retains
+28 post-refusal captures: displayed age reaches **1,061/1,082 ms**, then fresh
+animation resumes without intervention in the same window/connection. These are
+actual age violations, not permanent freezes; the final 120 responses and complete
+package lifecycle remain unexecuted. Earlier failures remain valid evidence.
+The second run also retains 113 bounded, guest-only TCP snapshots. Replacement
+viewer inode 98,600 and opposite server inode 98,863 remain bound to the observed
+connection. Across snapshots at 600.226–601.289 seconds, forward sent, acknowledged
+and received counters advance only **21 bytes** while source states 2,084–2,087
+publish and the viewer holds 2,083; both socket queues are empty at every sample.
+Forward RTO is 204 ms, with no reported forward retransmission. This narrows the
+next investigation to application frame production/dispatch or its feedback;
+it does not identify a specific cause or rule out unsampled events.
+`compositor-expired-observe-6e4cbde4.json` and `compositor-expired-tcp-9c0eb6c9.json`
+bind eighteen files/1,537,396 bytes on CTE/TUF and exact joined VM/private/RAM
+cleanup. The first run has four zero endpoint deltas; the second has three zero
+deltas and a final unattributed removal of pre-existing loopback port 8096, with
+no additions or host-service changes. Next retain the exact server's bounded
+existing log around the failed window, then distinguish capture/encode pacing,
+frame acknowledgement and dispatch as needed. Reuse the built app; avoid the
+existing broad presentation trace's additional shadow decoder unless justified.
 The separate surviving-transport delay failure, other outage schedules,
 physical scanout, endurance, desktop/mobile coverage, final artifacts,
 independent review and complete R-S0/R-F5 remain OPEN.

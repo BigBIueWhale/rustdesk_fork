@@ -7566,7 +7566,7 @@ and installed/platform acceptance remain OPEN. Command/task ownership is covered
 Credential provisioning and Android CM work
 remain open under the user's pivot.
 
-**Automatic reconnect — Linux model/widget and installed expiry scenario accepted.**
+**Automatic reconnect — single expiry passes; repeated recovery exceeds the resource bound.**
 `8fe1fe12` caps the shared model's exponential retry delay at 30 seconds, preserving
 the initial 1/2/4/8/16-second waits. Timer and displayed countdown consume the same
 value; manual action, retry classification, credential suppression and owner/reset
@@ -7597,10 +7597,24 @@ by one; threads decline. Viewer/window, service child/listener, credentials and
 profile persist; normal package reinstall/remove/purge and cleanup pass.
 `remote-installed-expired-15dd0c3e.json` binds nine files/435,395 bytes on CTE/TUF,
 four zero host listener deltas and joined VM/private/RAM retirement.
-This accepts one installed XTEST/Xvfb expiry scenario. It leaves the separate
-surviving-transport delay failure unchanged. Other outage schedules, repeated
-reconnect resource behavior, physical scanout, endurance, desktop/mobile coverage,
-final artifacts, independent review and complete R-S0/R-F5 remain OPEN.
+This accepts one installed XTEST/Xvfb expiry scenario. Repeated recovery now
+fails twice against the original resource baseline: `JKl7er9yS3` (`b1ae68e6`)
+and diagnostic repeat `94z4AhHIr2` (`c59acdad`) exceed the unchanged 128-MiB
+RSS-growth bound during the second outage, before completing the planned three
+cycles. Growth is **150,276/171,320 KiB**; descriptors and threads stay bounded.
+Both first reconnects and before/after latency windows pass. In the diagnostic
+run, four complete viewer `smaps` snapshots show **170,200 KiB** resident growth,
+including **137,452 KiB** in `[heap]`, with zero observed swap. This localizes
+growth without establishing the allocation site, retention lifetime or a leak.
+The unchanged app remains `2eb7015e`; no product correction or threshold change
+is claimed. `remote-installed-expired-repeated-b1ae68e6.json` and
+`remote-installed-expired-memory-c59acdad.json` bind eighteen files/766,520 bytes
+on CTE/TUF, eight zero host listener deltas and exact joined cleanup.
+Next: bounded allocation-stack/lifetime profiling during natural reconnect,
+then a justified correction and the unchanged repeated-recovery test.
+The separate surviving-transport delay failure, other outage schedules,
+physical scanout, endurance, desktop/mobile coverage, final artifacts,
+independent review and complete R-S0/R-F5 remain OPEN.
 
 **Dialog close authority — LINUX FLUTTER WIDGET PASS; DEVICE/FFI/INSTALLED ACCEPTANCE OPEN.**
 The overlay receiver binds each `DialogClose` to one exact entry. Replacement or dismissal

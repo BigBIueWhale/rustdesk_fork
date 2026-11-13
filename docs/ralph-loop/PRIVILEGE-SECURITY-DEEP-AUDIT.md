@@ -151954,3 +151954,58 @@ allocation attribution, not a repeat of unchanged passing acceptance. No
 product correction or repeated-cycle success is claimed. This append preserves
 the prior 16,222,120-byte audit prefix, SHA-256
 1c5eec63848c9004d73b01c5ff75568f913585411996f1a2466a985143f94e8a.
+
+## 2026-11-13 — Repeated-expiry growth localized to viewer heap mappings
+
+Diagnostic repeat 94z4AhHIr2/tool28965 at c59acdad exits 1 at the same
+outage-resources boundary in cycle two. The unchanged installed app is
+2eb7015e2dc0230e913bfd19c6f2a92ee5a24119, manifest SHA-256
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a.
+VmRSS rises from 360,856 to 532,176 KiB: 171,320 KiB growth exceeds the fixed
+131,072-KiB limit. Descriptors remain 45 and threads decline from 66 to 53.
+The second socket retires 41.427 seconds into loss; refusal follows at 46.262
+seconds. This is a failed repeated-recovery scenario, not three-cycle acceptance.
+The first replacement appears 295 ms after restoration, with first/four fresh
+frames another 142/806 ms later. Both 120-response windows pass: response
+p95/p99 349/365 and 353/362 ms, age p95/p99 297/314 and 300/318 ms across
+9,494 observations. First-outage counters establish 25 drops and zero delivery.
+
+The bounded observer reads smaps through the retained viewer proc directory.
+Baseline, first retirement, second retirement and failure snapshots all complete.
+Their RSS totals are 365,988 / 376,028 / 467,248 / 536,188 KiB; anonymous totals
+214,872 / 224,868 / 316,084 / 385,024 KiB. All report zero swap. The same-start
+rw-p [heap] mapping has resident/anonymous/private-dirty values
+49,724 / 57,180 / 122,828 / 187,176 KiB. Thus 137,452 KiB of the 170,200-KiB
+resident increase is in that heap mapping; total anonymous growth is 170,152 KiB.
+The separate VmRSS and smaps samples are not simultaneous or identical metrics.
+Neither identifies allocation stacks or proves that the memory cannot be freed.
+The LLVM, RustDesk and Flutter file-backed resident mappings are unchanged in
+these snapshots. No allocator, renderer or credential-work root cause is claimed.
+
+Reviewed source remains byte-identical to the app checkpoint: client::_start
+reuses the authenticated derived PRS; reconnect_with_credential joins the prior
+I/O worker before replacement; ImageModel disposes replaced/rejected images;
+dialog removal disposes its overlay entry. These observations narrow the next
+investigation but do not explain the heap growth. Linux proc documentation
+(https://docs.kernel.org/filesystems/proc.html) supports the mapping accounting
+and retained-proc-identity interpretation. The next decisive step is allocation
+stack/lifetime profiling in the bounded disposable guest. KDE's heaptrack
+documentation (https://github.com/KDE/heaptrack) describes startup allocation/
+stack tracing; its authenticated tool/dependency inputs are not yet available.
+No profiler was installed or run, and instrumented timing must not count as
+ordinary latency acceptance. Do not relax the RSS bound or repeat this unchanged
+failure without new attribution or a justified correction.
+
+QEMU 2368181 joins zero after 413.060 seconds; peak RAM scratch is
+4,217,913,344 bytes. Four zero endpoint deltas, exact RAM 29:12961 and owned
+process/socket absence reconcile. The identity-checked closure helper retires
+the failed private tree 66306:78035662 under the shared lock after matching its
+output to the retained log. tmpfs_swap_disabled remains false. Nine files /
+405,888 bytes are copied and hash-verified on CTE/TUF before source/input freeze
+ends. Capsule: remote-installed-expired-memory-c59acdad.json. Outer SHA-256:
+897385d2ae64b79a1651e7ce7e9c04418c7a15f2bf5b29aec36d5c1f24d838a0.
+The user's TUF availability update is confirmed through the existing SSH master;
+no login configuration or key changes are made. The ledger now distinguishes
+single-expiry success from repeated-resource failure; its fresh isolated count
+is pending. This append preserves the prior 16,224,504-byte audit prefix,
+SHA-256 5ae539364a28bbde11971d0348105ca67241850bbe8dd701d4c97e27535c2734.

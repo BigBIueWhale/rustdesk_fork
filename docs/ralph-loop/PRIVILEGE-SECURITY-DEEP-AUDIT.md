@@ -153933,3 +153933,15 @@ independent review remain OPEN. No full-application rebuild or host product run
 is claimed. Goal active; the selected component checkpoint is complete. This
 append preserves the prior 16,352,949-byte audit prefix, SHA-256
 4690ad0118711f1204e58d4dcbd935edbd6bc44b9919c23662a9c625af7a3cb8.
+
+Ledger pBScUs7iYM at 34d826af counts 427,034 tokens /1,944,903 bytes,
+SHA-256 69fe31db77d79192e9e2da4a5d257e93b73e41700f96fef455ff09dfc567724b.
+Pinned tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and round trip
+pass; the approximate 400,000-token budget remains OPEN. QEMU 3586516 joins 0;
+private run.pBScUs7iYM and RAM 29:15367 run.ukg96ovy retire in 30.370 seconds,
+scratch peak 403,173,376 bytes, three zero endpoint deltas, tmpfs swap not disabled.
+protobuf-length-ledger-34d826af.json binds eight files/117,150 bytes on both hosts.
+Outer SHA-256 d183d6feaaee5fce3ea3e2c073cfdbfa119e176e0cb439fa6b86eba8c55dbcb1.
+No owned job or source freeze remains; goal active. This audit-only append preserves
+the prior 16,357,399-byte prefix, SHA-256
+404eb09262673805e060e868b51c9e34d429b9d52df20c9183e9b1a66a9b7fef.

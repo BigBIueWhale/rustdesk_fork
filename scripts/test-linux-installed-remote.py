@@ -179,7 +179,7 @@ def session(network=False):
             source = subprocess.Popen([str(settings.WORK / 'presentation-source'),
                                        *(['--input-response', str(COORD)] if network == 'input-recovery' else [])],
                 env={**environment, 'DISPLAY': ':77', 'XAUTHORITY': '/run/user/4001/gdm/Xauthority',
-                     'RUSTDESK_PRESENTATION_TRACE': '0' if network == 'input-recovery' else '1'},
+                     'RUSTDESK_PRESENTATION_TRACE': '1'},
                 stdout=log('frame-source.log'), stderr=log('source-error.log'))
             processes.append(source)
             deadline = time.monotonic() + 5

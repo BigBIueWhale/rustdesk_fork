@@ -1608,6 +1608,58 @@ static void print_resources(const char *phase, unsigned int sequence,
            resources->descriptors);
 }
 
+static int print_viewer_memory(const char *phase, unsigned int cycle) {
+    if (connection_fds < 0) return -1;
+    int fd = openat(connection_fds, "../smaps", O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return -1;
+    FILE *stream = fdopen(fd, "r");
+    if (stream == NULL) { close(fd); return -1; }
+    char line[1024], mapping[1024] = {0};
+    unsigned long long rss = 0ULL, anonymous = 0ULL, dirty = 0ULL, swap = 0ULL;
+    unsigned long long total_rss = 0ULL, total_anonymous = 0ULL, total_swap = 0ULL;
+    unsigned int lines = 0U, mappings = 0U, reported = 0U;
+    int result = -1;
+    for (;;) {
+        int ended = fgets(line, sizeof(line), stream) == NULL;
+        if (ferror(stream) || (!ended && (++lines > 100000U || strchr(line, '\n') == NULL))) break;
+        unsigned long long start, end;
+        char permissions[5];
+        int header = !ended && sscanf(line, "%llx-%llx %4s", &start, &end, permissions) == 3;
+        if (header || ended) {
+            if (mapping[0] != '\0') {
+                if (++mappings > 4096U) break;
+                total_rss += rss;
+                total_anonymous += anonymous;
+                total_swap += swap;
+                if (rss >= 1024ULL) {
+                    if (++reported > 1024U) break;
+                    printf("FLUTTER_PEER_MEMORY_MAP phase=%s cycle=%u rss_kib=%llu anonymous_kib=%llu "
+                           "private_dirty_kib=%llu swap_kib=%llu mapping=%s\n",
+                           phase, cycle, rss, anonymous, dirty, swap, mapping);
+                }
+            }
+            if (ended) { result = mappings > 0U ? 0 : -1; break; }
+            line[strcspn(line, "\n")] = '\0';
+            memcpy(mapping, line, strlen(line) + 1U);
+            rss = anonymous = dirty = swap = 0ULL;
+        } else if (mapping[0] == '\0') {
+            break;
+        } else if (sscanf(line, "Rss: %llu kB", &rss) == 1 ||
+                   sscanf(line, "Anonymous: %llu kB", &anonymous) == 1 ||
+                   sscanf(line, "Private_Dirty: %llu kB", &dirty) == 1 ||
+                   sscanf(line, "Swap: %llu kB", &swap) == 1) {
+            continue;
+        }
+    }
+    if (fclose(stream) != 0) result = -1;
+    printf("FLUTTER_PEER_MEMORY_TOTAL phase=%s cycle=%u rss_kib=%llu anonymous_kib=%llu "
+           "swap_kib=%llu mappings=%u reported=%u status=%s source=retained-viewer-smaps\n",
+           phase, cycle, total_rss, total_anonymous, total_swap, mappings, reported,
+           result == 0 ? "complete" : "failed");
+    fflush(stdout);
+    return result;
+}
+
 /* GTK owns the synthetic source selection. A separate Xlib connection reads the
  * destination selection; only the two real applications can transfer between them. */
 typedef struct {
@@ -4920,7 +4972,7 @@ static int exercise_expired_connection(Display *source, Display *display, Viewer
     ConnectionIdentity replacement = {{0}, {0}, 0UL}, current = {{0}, {0}, 0UL};
     ViewerWindow same_viewer = {0};
     ProcessResources resources = {0};
-    if (connection_fds < 0 ||
+    if (connection_fds < 0 || print_viewer_memory("expiry-baseline", 0U) != 0 ||
         exercise_input_animation_window(source, display, viewer, history, connection, baseline,
                                          0U, &request, &last_frame, original) != 0) goto fail;
     for (cycle = 1U; cycle <= 3U; ++cycle) {
@@ -4940,7 +4992,10 @@ static int exercise_expired_connection(Display *source, Display *display, Viewer
                 inspect_viewer_candidate(display, viewer->window, viewer->pid, &same_viewer) != 1 ||
                 same_viewer.window != viewer->window ||
                 x11_frame_refresh(history, "/coord") != 0 || history->complete) goto fail;
-            if (!owned && retired == 0U) retired = now;
+            if (!owned && retired == 0U) {
+                retired = now;
+                if (print_viewer_memory("expiry-retired", cycle) != 0) goto fail;
+            }
             if (observations % 10U == 0U) {
                 if (read_process_resources(viewer->pid, &resources) != 0) goto fail;
                 print_resources("expired-outage", cycle, &resources);
@@ -5003,6 +5058,8 @@ fail:
             "restored_ms=%llu connected_ms=%llu now_ms=%llu request=%u\n", phase, cycle,
             (unsigned long long)began, (unsigned long long)retired, (unsigned long long)restored,
             (unsigned long long)connected, (unsigned long long)monotonic_millis(), request);
+    if (print_viewer_memory("expiry-failure", cycle) != 0)
+        fputs("FLUTTER_PEER_X11_FAIL expiry memory diagnostics unavailable\n", stderr);
     if (restore_needed && network_profile("healthy", &drops, &packets) != 0)
         fputs("FLUTTER_PEER_X11_FAIL expired-connection restoration; supervisor retains cleanup\n", stderr);
     return -1;

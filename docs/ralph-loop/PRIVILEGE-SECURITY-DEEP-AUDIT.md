@@ -151918,3 +151918,39 @@ inputs, bounded RAM storage and exact joined cleanup. The separate surviving-
 transport delay failure remains OPEN. No repeated-cycle acceptance is claimed
 before execution. This append preserves the prior 16,220,078-byte audit prefix,
 SHA-256 b6a2ca5204caea21d3b9a6cfe517f815ee026c6ba3f90d85e47f20565a95ee38.
+
+## 2026-11-13 — Repeated expiry exposes viewer resource-bound failure
+
+TUF JKl7er9yS3/tool4988 at b1ae68e6 exits 1 during the second outage.
+Viewer RSS reaches 519,964 KiB from initial 369,688 KiB: growth 150,276 KiB
+exceeds the unchanged 131,072-KiB allowance. Threads/descriptors remain bounded.
+The first old socket retires after 45,259 ms; automatic replacement appears
+1,241 ms after restoration and four fresh frames follow within 799 ms. Both
+120-response windows pass, response p95/p99 349/356 and 350/356 ms, age p95/p99
+297/314 and 300/320 ms. The second socket retires around 44.962 seconds into
+loss, followed by RSS samples 439,280, 479,168 and 519,964 KiB. The observer
+retains failure and restores the network; three-cycle acceptance remains OPEN.
+This demonstrates a resource-bound violation, not an identified allocation leak.
+
+QEMU 2326646 joins zero after 409.440 seconds, with peak RAM scratch
+4,216,385,536 bytes. Four zero listener deltas and exact RAM 29:12919,
+process/socket absence reconcile. The retained failed private tree
+66306:77904654 matches the durable log and is retired through the identity-checked
+closure helper under the shared lock. Nine files/360,632 bytes are copied and
+hash-verified on CTE/TUF before source/input freeze ends. Capsule:
+remote-installed-expired-repeated-b1ae68e6.json. Outer SHA-256:
+324541d8be0dee2316619b3740ecc30d8040425b71d7c0763b9b791883fadaf1.
+
+Source review: client::_start reuses the authenticated derived PRS after clearing
+the onboarding plaintext; reconnect_with_credential joins the previous I/O worker.
+ImageModel disposes replaced images. These paths do not establish the source of
+the observed growth. Linux proc documentation permits mapping-level resident/
+anonymous/private-dirty/swap accounting; unlike asynchronous VmRSS counters,
+smaps walks mappings. Add bounded read-only guest snapshots at the initial
+baseline, natural socket retirement and failure through the retained viewer
+proc directory. Keep the same app and all failure/latency/resource thresholds.
+This diagnostic replay is justified by the reproduced failure and missing
+allocation attribution, not a repeat of unchanged passing acceptance. No
+product correction or repeated-cycle success is claimed. This append preserves
+the prior 16,222,120-byte audit prefix, SHA-256
+1c5eec63848c9004d73b01c5ff75568f913585411996f1a2466a985143f94e8a.

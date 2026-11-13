@@ -152844,3 +152844,31 @@ capsule compositor-tcp-ledger-4bbe35c1.json, outer SHA-256
 This audit-only append preserves the counted ledger and prior 16,283,455-byte
 audit prefix, SHA-256
 6906b286c1601e0fbd89344de84aebf64711ecaf874c0bdbe17b85b43c38a961.
+
+## 2026-11-13 — retain server transitions for the recovered-frame stall
+
+The previous turn made progress: TCP observations narrowed the reproducible
+R-F5 stall while preserving failed acceptance and reduced-RSS evidence. Current
+CTE/TUF trees are clean at acceef21, with existing SSH and 49.1 GB available
+memory on TUF. Continue this blocker before unrelated cleanup or a new build.
+
+Read the installed scenario and owned_log authority helper, service-child and
+listener proof, capture/encoder acknowledgement and generic service retry loops.
+ServiceTmpl::run treats callback errors, including current string SWITCH returns,
+with a bounded retry delay; ordinary server logs already report these transitions.
+Their participation in the observed stall is unproved. Preserve at most the last
+64 KiB of complete existing server-log lines before and after the expiry scenario,
+including on its ordinary failure path. Reuse owned_log's no-follow, descriptor,
+ancestry, owner and file-size checks. A held pidfd plus repeated full child-record
+proof binds each snapshot to the unchanged installed server. Report full-prefix
+hash/size, retained offset and bracketed realtime/monotonic samples, so truncation
+and wall-clock alignment remain explicit. No logging level, application byte,
+network condition, observer predicate or acceptance threshold changes.
+
+The 29-line fixture diff and whitespace review pass. Execute the same three-outage
+installed replay in the admitted zero-NIC VM using retained app 77cc3441 and engine
+381500e6; this is a diagnostic integration run, not a rebuild or passing claim.
+The resulting log will decide whether lifecycle transitions explain the gap or
+whether capture, encoder pacing and frame-acknowledgement timing need observation.
+This append preserves the prior 16,284,351-byte audit prefix, SHA-256
+7d9306af449679b6dfd4e07c2a885744e6f1d060102bf2452559b8c9da9046b1.

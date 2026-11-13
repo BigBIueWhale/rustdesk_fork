@@ -657,6 +657,31 @@ def session(network=False, heaptrack=False, allocator=False):
     require(not (heaptrack or allocator), 'allocation tracing is diagnostic; ordinary acceptance remains unproved')
 
 
+def server_log_snapshot(settings, receiver, record, phase):
+    descriptor = os.pidfd_open(record['pid'])
+    try:
+        require(not select.select([descriptor], [], [], 0)[0] and receiver.child_record() == record,
+                'Remote server log owner changed before observation')
+        path, data = settings.owned_log(
+            Path('/home/rdreceiver4001/.local/share/logs/RustDesk/server'), record['pid'], 4001)
+        offset = max(0, len(data) - 65536)
+        if offset:
+            offset = data.index(b'\n', offset) + 1
+        began = time.monotonic_ns()
+        realtime = time.time_ns()
+        ended = time.monotonic_ns()
+        require(not select.select([descriptor], [], [], 0)[0] and receiver.child_record() == record,
+                'Remote server log owner changed during observation')
+        print('LINUX_INSTALLED_REMOTE_SERVER_LOG=' + json.dumps({
+            'phase': phase, **record, 'path': str(path), 'prefix_bytes': len(data),
+            'prefix_sha256': hashlib.sha256(data).hexdigest(), 'offset': offset,
+            'data_base64': base64.b64encode(data[offset:]).decode('ascii'),
+            'monotonic_before_ns': began, 'realtime_ns': realtime, 'monotonic_after_ns': ended,
+        }, sort_keys=True), flush=True)
+    finally:
+        os.close(descriptor)
+
+
 def scenario(settings, receiver, record, network=False, heaptrack=False, allocator=False):
     require(network is False or network in NETWORK_PROFILES or network in ('input-soak', 'input-animation'),
             'unknown Remote scenario')
@@ -673,6 +698,8 @@ def scenario(settings, receiver, record, network=False, heaptrack=False, allocat
     preload = ALLOCATOR_PRELOAD if allocator else ALLOCATION_PRELOAD
     log = settings.WORK / 'installed-remote.log'
     try:
+        if network == 'expired':
+            server_log_snapshot(settings, receiver, record, 'before')
         if heaptrack or allocator:
             # Keep the diagnostic beside the unchanged runner in this guest only.
             # Heaptrack's dlopen wrapper also needs that location for $ORIGIN.
@@ -745,6 +772,8 @@ def scenario(settings, receiver, record, network=False, heaptrack=False, allocat
                                           else 1048576),
                     'installed Remote output exceeds its bound')
             print(log.read_text(), end='', flush=True)
+        if network == 'expired':
+            server_log_snapshot(settings, receiver, record, 'after')
 
 
 if __name__ == '__main__':

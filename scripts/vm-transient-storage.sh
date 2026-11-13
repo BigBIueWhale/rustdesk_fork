@@ -9,7 +9,7 @@ if [ "${MODE:-}" = ledger-token-count ]; then
 elif [ "${MODE:-}" = fixed-archive-tests ] || [ "${MODE:-}" = windows-service-result-tests ] \
     || [ "${MODE:-}" = pe-canonicalizer-tests ]; then
     readonly VM_STORAGE_PROFILE=fixed-archive-tests
-elif [ "${MODE:-}" = debian-package-tests ] || [ "${MODE:-}" = linux-launcher-tests ]; then
+elif [ "${MODE:-}" = debian-package-tests ] || [ "${MODE:-}" = linux-launcher-tests ] || [ "${MODE:-}" = libyuv-arithmetic-tests ]; then
     readonly VM_STORAGE_PROFILE=debian-package-tests
 elif [ "${MODE:-}:${MEDIA_NOKHWA:-0}" = media-kernel-tests:1 ]; then
     readonly VM_STORAGE_PROFILE=media-nokhwa

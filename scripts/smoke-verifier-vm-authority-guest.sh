@@ -93,6 +93,9 @@ case "$#:${8:-}" in
     8:--linux-launcher-tests)
         MODE=linux-launcher-tests
         ;;
+    8:--libyuv-arithmetic-tests)
+        MODE=libyuv-arithmetic-tests
+        ;;
     8:--debian-package-tests)
         MODE=debian-package-tests
         ;;
@@ -1782,7 +1785,10 @@ run_compiled_component_tests() {
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local output=$ROOT/$MODE.out source program
     local -a component_sources sources mounts=()
-    if [ "$MODE" = linux-launcher-tests ]; then
+    if [ "$MODE" = libyuv-arithmetic-tests ]; then
+        component_sources=(scripts/test-libyuv-arithmetic.py scripts/test-libyuv-arithmetic.cc inputs/libyuv.tar.gz)
+        program='import runpy; runpy.run_path("/repo/scripts/test-libyuv-arithmetic.py", run_name="__main__")'
+    elif [ "$MODE" = linux-launcher-tests ]; then
         component_sources=(flutter/linux/main.cc flutter/linux/my_application.h
             flutter/linux/main-before.cc scripts/test-linux-launcher-native.py)
         program='import runpy; runpy.run_path("/repo/scripts/test-linux-launcher-native.py", run_name="__main__")'
@@ -1857,7 +1863,11 @@ PY
     [ "$status" -eq 0 ] \
         && [ "$("$CLIENT" --host "unix://$SOCK" inspect --format '{{.State.Status}}:{{.State.ExitCode}}' "$CONTAINER_ID")" = exited:0 ] \
         || { tail -n 60 "$output" >&2; fail 'compiled component tests failed'; }
-    if [ "$MODE" = linux-launcher-tests ]; then
+    if [ "$MODE" = libyuv-arithmetic-tests ]; then
+        [ "$(grep -Fxc 'LIBYUV_ARITHMETIC_BASELINE=confirmed cases=17 controls=10 sigfpe=6 ubsan_affine=1 boundary=32768 oversize=32769 source=1857 app_reachability=unproved release_gate=open children=joined' "$output")" -eq 1 ] \
+            && [ "$(grep -c '^LIBYUV_ARITHMETIC_ARTIFACTS={' "$output")" -eq 1 ] \
+            && [ "$(wc -l <"$output")" -eq 2 ] || fail 'libyuv native reproduction result differs'
+    elif [ "$MODE" = linux-launcher-tests ]; then
         [ "$(grep -Fxc 'LINUX_LAUNCHER_TESTS=pass cases=8 baseline_sigpipe=3 corrected_epipe=3 healthy=2 library=fixture gui=unexecuted' "$output")" -eq 1 ] \
             && [ "$(wc -l <"$output")" -eq 2 ] || fail 'Linux launcher result differs'
     else
@@ -1900,7 +1910,9 @@ PY
     [ "$(sha256sum "${sources[@]}")" = "$source_before" ] || fail 'compiled component source changed'
     stop_docker_authority
     cat "$output"
-    if [ "$MODE" = linux-launcher-tests ]; then
+    if [ "$MODE" = libyuv-arithmetic-tests ]; then
+        printf 'LIBYUV_ARITHMETIC_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' "$DEV_CHECK_IMAGE_CONFIG_ID"
+    elif [ "$MODE" = linux-launcher-tests ]; then
         printf 'LINUX_LAUNCHER_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' "$DEV_CHECK_IMAGE_CONFIG_ID"
     else
     printf 'DEBIAN_PACKAGE_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=%s generator_sha256=%s checker_sha256=%s source=readonly network=none docker=retired scratch=retired cleanup=joined\n' \
@@ -15976,7 +15988,7 @@ if [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ]; the
     run_debian_package_tests
     exit 0
 fi
-if [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ]; then
+if [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ] || [ "$MODE" = libyuv-arithmetic-tests ]; then
     run_compiled_component_tests
     exit 0
 fi

@@ -521,6 +521,10 @@ case "$#:${1:-}" in
             || { echo 'Debian maintainer-test input/run overrides are forbidden' >&2; exit 2; }
         MODE=debian-maintainer-tests
         ;;
+    1:--libyuv-arithmetic-tests)
+        [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] || exit 2
+        MODE=libyuv-arithmetic-tests
+        ;;
     1:--linux-launcher-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'Linux launcher input/run overrides are forbidden' >&2; exit 2; }
@@ -897,6 +901,7 @@ case "$#:${1:-}" in
         printf 'Focused Debian authorization dependency tests: %s --debian-polkit-tests\n' "${0##*/}" >&2
         printf 'Compiled Debian archive integration tests: %s --debian-package-tests\n' "${0##*/}" >&2
         printf 'Native Linux launcher tests: %s --linux-launcher-tests\n' "${0##*/}" >&2
+        printf 'Pinned libyuv arithmetic reproduction: %s --libyuv-arithmetic-tests\n' "${0##*/}" >&2
         printf 'Native Debian maintainer remove/purge regression: %s --debian-maintainer-tests\n' "${0##*/}" >&2
         printf 'Real VM boot from a private read-only base copy: %s --base-readonly-test\n' "${0##*/}" >&2
         printf 'Focused native Linux app-capsule check: %s --linux-flutter-artifact-tests\n' "${0##*/}" >&2
@@ -1413,7 +1418,7 @@ elif [ "$MODE" = debian-maintainer-tests ]; then
     readonly VM_TIMEOUT_SECONDS=150
     readonly OVERLAY_SIZE=6G
     readonly VM_MEMORY=2048
-elif [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ]; then
+elif [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ] || [ "$MODE" = libyuv-arithmetic-tests ]; then
     readonly VM_TIMEOUT_SECONDS=300
     readonly OVERLAY_SIZE=8G
     readonly VM_MEMORY=2048
@@ -3145,7 +3150,7 @@ fi
 frame_inputs_before=
 FOCUSED_TEST_COMMIT=
 FOCUSED_TEST_TREE=
-if [ "$MODE" = linux-launcher-tests ] || [ "$MODE" = network-impairment-probe ] || [ "$MODE" = pe-canonicalizer-tests ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+if [ "$MODE" = libyuv-arithmetic-tests ] || [ "$MODE" = linux-launcher-tests ] || [ "$MODE" = network-impairment-probe ] || [ "$MODE" = pe-canonicalizer-tests ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
    || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = host-network-tests ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
    || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ] \
    || { [ "$MODE" = android-rust-lifecycle-tests ] \
@@ -3293,7 +3298,17 @@ if [ "$MODE" = linux-launcher-tests ]; then
     for source in "${launcher_sources[@]}"; do verify_committed_test_source "$source"; done
     launcher_sources_before="$(/usr/bin/sha256sum "${launcher_sources[@]}")"
 fi
-if [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ]; then
+if [ "$MODE" = libyuv-arithmetic-tests ]; then
+    libyuv_sources=("$SCRIPT_DIR/test-libyuv-arithmetic.py" "$SCRIPT_DIR/test-libyuv-arithmetic.cc")
+    for source in "${libyuv_sources[@]}"; do verify_committed_test_source "$source"; done
+    libyuv_archive="$ONLINE_INPUTS/libyuv-$LIBYUV_COMMIT.tar.gz"
+    [ -f "$libyuv_archive" ] && [ ! -L "$libyuv_archive" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' "$libyuv_archive")" = "$HOST_UID:$HOST_GID:400:1:566889" ] \
+        || fail 'libyuv captured source metadata differs'
+    verify_sha512 "$libyuv_archive" "$SHA512_LIBYUV"
+    libyuv_sources_before="$(/usr/bin/sha256sum "${libyuv_sources[@]}" "$libyuv_archive")"
+fi
+if [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ] || [ "$MODE" = libyuv-arithmetic-tests ]; then
     [ "$MODE" != debian-package-tests ] || verify_committed_test_source "$REPO_ROOT/res/com.carriez.RustDesk.policy"
     [ -f "$DEV_CHECK_IMAGE_ARCHIVE" ] && [ ! -L "$DEV_CHECK_IMAGE_ARCHIVE" ] \
         && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' "$DEV_CHECK_IMAGE_ARCHIVE")" = \
@@ -4082,7 +4097,7 @@ for source in "$OUTER_SOURCE" "$GUEST_SCRIPT" "$ENTRY_PREFLIGHT" "$VERIFY_SCRIPT
     "$LIB_SOURCE" "$PIN_SOURCE"; do
     [ -f "$source" ] && [ ! -L "$source" ] \
         || fail "verifier-VM source is absent or symlinked: $source"
-    if [ "$MODE" = linux-launcher-tests ] || [ "$MODE" = network-impairment-probe ] || [ "$MODE" = pe-canonicalizer-tests ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
+    if [ "$MODE" = libyuv-arithmetic-tests ] || [ "$MODE" = linux-launcher-tests ] || [ "$MODE" = network-impairment-probe ] || [ "$MODE" = pe-canonicalizer-tests ] || [ "$MODE" = windows-service-result-tests ] || [ "$MODE" = debian-maintainer-tests ] || [ "$MODE" = media-kernel-tests ] || [ "$MODE" = android-frame-tests ] || [ "$MODE" = x11-display-tests ] || [ "$MODE" = linux-flutter-artifact-tests ] \
        || [ "$MODE" = fixed-archive-tests ] || { [ "$MODE" = debian-polkit-tests ] || [ "$MODE" = debian-elf-role-tests ] || [ "$MODE" = debian-package-tests ]; } || [ "$MODE" = ledger-token-count ] || [ "$MODE" = dependency-inventory ] || [ "$MODE" = linux-service-receiver-tests ] || [ "$BASE_READONLY_TEST" -eq 1 ] \
        || [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
         verify_committed_test_source "$source"
@@ -5110,6 +5125,13 @@ elif [ "$MODE" = debian-maintainer-tests ]; then
         || fail 'Debian prerm baseline digest differs'
     /usr/bin/chmod 400 "$debian_prerm_baseline"
     lifecycle_payload_grafts+=("repo/res/DEBIAN/prerm-before=$debian_prerm_baseline")
+elif [ "$MODE" = libyuv-arithmetic-tests ]; then
+    payload_identity=(-uid 4000 -gid 4000)
+    lifecycle_payload_grafts=("devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE"
+        "repo/inputs/libyuv.tar.gz=$libyuv_archive")
+    for source in "${libyuv_sources[@]}"; do
+        lifecycle_payload_grafts+=("repo/${source#"$REPO_ROOT/"}=$source")
+    done
 elif [ "$MODE" = linux-launcher-tests ]; then
     payload_identity=(-uid 4000 -gid 4000)
     lifecycle_payload_grafts=("devcheck.docker.tar.gz=$DEV_CHECK_IMAGE_ARCHIVE")
@@ -5670,7 +5692,7 @@ elif [ "$MODE" = debian-elf-role-tests ]; then
     guest_invocation+=' --debian-elf-role-tests'
 elif [ "$MODE" = debian-polkit-tests ]; then
     guest_invocation+=' --debian-polkit-tests'
-elif [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ]; then
+elif [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ] || [ "$MODE" = libyuv-arithmetic-tests ]; then
     guest_invocation+=" --$MODE"
 elif [ "$MODE" = debian-maintainer-tests ]; then
     guest_invocation+=' --debian-maintainer-tests'
@@ -6693,6 +6715,10 @@ elif [ "$MODE" = linux-service-receiver-tests ]; then
     fi
     require_exact_fixed_receipt "LINUX_SERVICE_RECEIVER_VM=pass harness=$FOCUSED_TEST_COMMIT manifest=$ANDROID_RUNTIME_PEER_MANIFEST_SHA256 source=readonly network=none docker=retired cleanup=joined" 'installed Linux receiver fixture finality'
     require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'installed Linux receiver guest completion'
+elif [ "$MODE" = libyuv-arithmetic-tests ]; then
+    require_exact_fixed_receipt 'LIBYUV_ARITHMETIC_BASELINE=confirmed cases=17 controls=10 sigfpe=6 ubsan_affine=1 boundary=32768 oversize=32769 source=1857 app_reachability=unproved release_gate=open children=joined' 'libyuv baseline native arithmetic observations'
+    require_exact_fixed_receipt "LIBYUV_ARITHMETIC_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=$DEV_CHECK_IMAGE_CONFIG_ID source=readonly network=none docker=retired scratch=retired cleanup=joined" 'libyuv reproduction finality'
+    require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'libyuv reproduction guest completion'
 elif [ "$MODE" = linux-launcher-tests ]; then
     require_exact_fixed_receipt 'LINUX_LAUNCHER_TESTS=pass cases=8 baseline_sigpipe=3 corrected_epipe=3 healthy=2 library=fixture gui=unexecuted' 'native Linux launcher behavior'
     require_exact_fixed_receipt "LINUX_LAUNCHER_TESTS_VM=pass uid=4000 gid=4000 caps=none nnp=yes image=$DEV_CHECK_IMAGE_CONFIG_ID source=readonly network=none docker=retired scratch=retired cleanup=joined" 'native Linux launcher finality'
@@ -10664,6 +10690,13 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
         ARTIFACT_PUBLISHED=1
     fi
 fi
+if [ "$MODE" = libyuv-arithmetic-tests ]; then
+    [ "$(/usr/bin/sha256sum "${libyuv_sources[@]}" "$libyuv_archive")" = "$libyuv_sources_before" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
+        && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \
+        && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
+        || fail 'libyuv reproduction source changed during execution'
+fi
 if [ "$MODE" = linux-launcher-tests ]; then
     [ "$(/usr/bin/sha256sum "${launcher_sources[@]}")" = "$launcher_sources_before" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
@@ -10671,7 +10704,7 @@ if [ "$MODE" = linux-launcher-tests ]; then
         && [ -z "$(git_closed -C "$REPO_ROOT" status --porcelain=v1 --untracked-files=all)" ] \
         || fail 'Linux launcher source changed during execution'
 fi
-if [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ]; then
+if [ "$MODE" = debian-package-tests ] || [ "$MODE" = linux-launcher-tests ] || [ "$MODE" = libyuv-arithmetic-tests ]; then
     [ "$(/usr/bin/sha256sum "$DEV_CHECK_IMAGE_ARCHIVE" "$REPO_ROOT/res/com.carriez.RustDesk.policy")" = "$debian_package_inputs_before" ] \
         || fail 'Debian package-test compiler image or policy changed during execution'
 fi
@@ -10708,6 +10741,9 @@ elif [ "$MODE" = pe-canonicalizer-tests ]; then
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = windows-service-result-tests ]; then
     printf 'WINDOWS_SERVICE_RESULT_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly windows=unexecuted cleanup=joined elapsed_seconds=%s\n' \
+        "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
+elif [ "$MODE" = libyuv-arithmetic-tests ]; then
+    printf 'LIBYUV_ARITHMETIC_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly scope=pinned-source-reproduction release_gate=open cleanup=joined elapsed_seconds=%s\n' \
         "$HOST_UID" "$FOCUSED_TEST_COMMIT" "$FOCUSED_TEST_TREE" "$vm_elapsed_seconds"
 elif [ "$MODE" = linux-launcher-tests ]; then
     printf 'LINUX_LAUNCHER_TESTS_OUTER=pass host_uid=%s commit=%s tree=%s network=none listeners=no-harness-addition inputs=readonly library=fixture gui=unexecuted cleanup=joined elapsed_seconds=%s\n' \

@@ -153868,3 +153868,68 @@ Outer SHA-256 d71ef0c97270e27edf1c26bab70a23df733e2a35d1868ee05c1f70940bae3da0.
 No owned job or source freeze remains; goal active. This audit-only append preserves
 the prior 16,352,121-byte prefix, SHA-256
 d3560d2d6514b63be72bc7845b274f5286765486490ba40282bd7d15251e598d.
+
+### Protobuf length boundaries — generated-parser and runtime acceptance
+
+Continue the reproduced R-S7/R-S0 parser failure before unrelated file-manager
+geometry work. A declared field region must end at its boundary, and known input
+extent must constrain allocation before decoding. This is parser correctness,
+not evidence of an authentication bypass. Primary references are the protobuf
+wire-format specification (https://protobuf.dev/programming-guides/encoding/) and
+upstream v3.7.2 coded_input_stream sources, compared with the authenticated vendor
+closure. Preserve the existing codec/version rather than migrate the protocol.
+
+Fixture 2ecb5369 corrects two unknown-group depth expectations and adds four-input
+truncation controls using the actual Cpace, Message and CaptureDisplays schemas.
+Baseline sgbSMQjyjI passes six of eight tests: all 36 valid controls pass, but all
+24 truncated regions are accepted. Runtime fork 087f5e99 makes physical EOF before
+an active length boundary an error. GHPbRj0NQr then refuses all 24, passing seven
+tests; the unchanged allocation test exposes 4,176 requested bytes for a tiny
+frame with an inflated length, exceeding its 4-KiB bound.
+
+Product cd9891b9 gives byte slices/shared Bytes their known source extent as the
+initial limit, checks byte allocations against it and establishes packed-field
+limits before reservation. Expanded allocation checks cover both finite inputs,
+known/unknown/nested byte fields, packed integers and the fixed-width codec.
+BsiSpxNkV4 passes all eight parser tests; upstream unit compilation stops because
+the registry archive omits its shared hex helper. d699b02a supplies the unchanged
+2,063-byte helper from upstream tag commit 4cb84f305c05f0376ff51b555a2740c5251c1280
+and changes only its test-module path. UPSTREAM.md records checksums. Of 127
+authenticated original files, 123 remain byte-identical, three have the documented
+decoder/test-path changes and unused regenerate.sh is omitted. Cargo retains 832
+packages, changing only protobuf's registry record to the workspace runtime.
+
+Accepted TUF zU5o4rKTOn at d699b02a passes eight generated-schema and 62 upstream
+runtime tests (0.00/0.05 seconds): 24 truncation refusals, 36 valid controls and
+96 inflated-length refusals within the unchanged 4-KiB allocation bound. Parser
+artifact 13de63f294607c7ecf23e1247429cfa10973acc504f18ff6663da827887506d6 is identical
+to the earlier eight-pass build; runtime artifact is
+464f4117254752cc19a6ea2db5b643cf09f4a739f9a77ec4d3d621a2e5d8f0b4.
+Supervisor time is 118.247 seconds, RAM scratch peak 3,020,443,648 bytes.
+QEMU 3580810 joins 0; private 66306:86948555 and RAM 29:15238 run.t5ok39ch retire.
+All four endpoint deltas are zero; tmpfs swap is not disabled.
+
+Evidence capsules, verified on CTE/TUF under .harness-state/verifier-vm/:
+protobuf-length-baseline-2ecb5369.json, protobuf-length-fixed-087f5e99.json,
+protobuf-length-bounded-cd9891b9.json and protobuf-length-accepted-d699b02a.json.
+The accepted capsule binds nine files/92,884 bytes; outer SHA-256
+80456f3d86c20f9a86ac39eb70510793e3670f5868ad0b6ef2404f683624d115.
+Every preceding VM is joined, its RAM retired, and its failed private root removed
+only after exact identity, raw evidence, process/socket absence and storage checks.
+
+Dependency inventory czDxF0F5ZC verifies the new nine-build-script/832-package
+facts but detects eight pre-existing stale expectations. Git history attributes
+the Git-record reduction to 2a3c3caf's local camera binding and the Flutter graph
+to d8d31d75/96295b57's file-selector migration and local Linux handler. 37bab9d1
+updates only those expected values; parser logic and dependency manifests remain
+unchanged. TUF 6MO8DQqf2p passes the exact full inventory in 11.991 seconds;
+QEMU 3584700 joins 0, private 66306:86948558 and RAM 29:15323 run.puw414nf retire,
+three endpoint deltas are zero. Both inventory capsules retain raw evidence;
+accepted outer SHA-256 ab91d74d98807e7938d6d0f4d8083dc22aeb885602ff0dfa1452bb24a067f3d5.
+
+Whole-process/concurrent-peer resource bounds, unbounded reader and dynamic-parser
+acceptance, final installed/cross-platform artifacts, fresh advisories and
+independent review remain OPEN. No full-application rebuild or host product run
+is claimed. Goal active; the selected component checkpoint is complete. This
+append preserves the prior 16,352,949-byte audit prefix, SHA-256
+4690ad0118711f1204e58d4dcbd935edbd6bc44b9919c23662a9c625af7a3cb8.

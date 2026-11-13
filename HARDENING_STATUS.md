@@ -1184,11 +1184,10 @@ removal controls and fail four accessibility cases; the candidate is not a
 verified correction. QEMU joined and RAM scratch retired; bounded diagnostics
 remain. No further chooser change or rerun follows.
 
-**Checkpoint (2026-10-28):** Generated protobuf parser tests and the observed
-truncated-submessage acceptance remain OPEN. The isolated run at
-`bf8918b6` builds successfully and passes four tests, failing three; two failures
-also need recursion-depth test expectations corrected. No parser fix or further
-run follows this pivot. QEMU joined and RAM scratch retired; diagnostics remain.
+**Protobuf length correctness — component acceptance, release integration OPEN.**
+`087f5e99`/`cd9891b9` reject truncated regions and validate known input lengths
+before allocation. TUF `zU5o4rKTOn` at `d699b02a` passes all eight generated-schema
+tests and 62 runtime tests. See the protobuf parser entry for scope and evidence.
 
 
 **Checkpoint (2026-10-28):** Tab-overflow menu coordinates, dismissal and owner
@@ -15964,34 +15963,34 @@ sandbox implementation and checker-repair history remain in Git.
   R-S11b/R-S11c above. Any future IPC audit must distinguish transport admission from
   message authority and must treat the process that enforces a credential/action as
   the owner of that credential/action.
-- **Protobuf parser — pinned source review; runtime/resource acceptance OPEN.**
-  `Cargo.lock` retains runtime `protobuf` 3.7.2, checksum
-  `d65a1d4ddae7d8b5de68153b48f6aa3bba8cb002b243dbdbc55a5afbc98f99f4`.
+- **Protobuf parser — length correction verified; full resource/release acceptance OPEN.**
+  Cargo patches runtime 3.7.2 to `libs/protobuf`; `UPSTREAM.md` records its
+  authenticated registry origin and two decoder changes. Physical EOF before a
+  declared boundary is an error; slices/shared `Bytes` carry their actual extent,
+  and byte/packed-field allocation follows length validation. Valid boundary EOF,
+  wire format and shared-byte slicing remain intact.
   `recv_cpace` in `libs/hbb_common/src/cpace.rs` parses the bounded pre-key
   `Cpace`; `src/server/connection.rs` and `src/client/io_loop.rs` use the static
   `Message::parse_from_bytes` entry for post-key messages. Framing precedes those
   calls. R-S7's 4 KiB pre-key and 32 MiB post-key frame limits remain mandatory.
-  The historical source review identified the configured recursion budget of 100
-  on static nested messages and unknown groups, varints of at most ten bytes,
-  and length checks before raw-byte allocation. The 10,000,000-byte reserve threshold is not
-  a bound on total decoded allocations or process memory. Dynamic/reflection
-  parsing is outside that review; `merge_message_dyn` lacks the static entry's
-  recursion guard and must not inherit its assurance.
-  The pin is in the patched ranges of
-  [RUSTSEC-2024-0437](https://rustsec.org/advisories/RUSTSEC-2024-0437.html) and
-  [RUSTSEC-2019-0003](https://rustsec.org/advisories/RUSTSEC-2019-0003.html).
+  At `d699b02a`, TUF `zU5o4rKTOn` passes eight generated-schema tests and all
+  62 upstream runtime unit tests. Coverage includes 24 truncated-region refusals
+  and 36 valid controls across slice/shared/reader/buffered input, plus 96 tiny
+  inflated-length cases requesting at most 4 KiB each. The baseline `sgbSMQjyjI`
+  accepted all 24 malformed regions; the EOF-only candidate additionally exposed
+  allocation before refusal. Recursion fixtures now reflect the existing first
+  unknown group's uncharged level; the configured budget remains 100.
+  `protobuf-length-accepted-d699b02a.json` binds exact artifacts, outcomes and
+  joined cleanup; the audit retains baseline/intermediate evidence. The same
+  source graph passes isolated dependency inventory in `6MO8DQqf2p` at `37bab9d1`.
   `scripts/verify.sh` checks only the locked runtime version against 3.7.2;
-  it neither executes these parser paths nor scans current advisories. R-A7/R-R3's
-  separate fresh advisory checks remain required. The former blanket soundness
-  and complete DoS-defense claims are withdrawn. Complete exact-artifact evidence
-  for malformed input, recursion, allocation/CPU and concurrent-peer resources remains OPEN;
-  source inspection and the version floor do not supply it. Generated-parser run
-  `Sk2hxtwRat` at `bf8918b6` compiles the actual schemas and passes four of seven
-  tests. The malformed-length test observes acceptance of a missing declared
-  submessage body; two unknown-group tests require corrected depth expectations
-  because their first unknown group does not consume the recursion budget.
-  These failures, their follow-up and full acceptance remain OPEN at the
-  user's pivot. No product parser change or authentication-bypass claim follows.
+  fresh R-A7/R-R3 advisory checks remain required. These component results do not
+  establish transport/authentication authority or total decoded/process memory,
+  CPU and concurrent-peer bounds. Unbounded-reader resource behavior, dynamic
+  parsing (whose `merge_message_dyn` lacks the static recursion guard), complete
+  malformed-input coverage, final-artifact cross-platform integration and
+  independent reproduction remain OPEN. The 10,000,000-byte reserve threshold
+  is not a total memory bound; no complete DoS-defense or immunity claim follows.
 - **Apple artifacts** — macOS/iOS are source-conformed (R-R2 retain-and-check),
   not built; full artifacts need the Apple SDK/toolchain path.
 - **Apple R-R2 release gate integration — ✅ CLOSED 2026-07-11.** `scripts/apple-conform-check.sh`

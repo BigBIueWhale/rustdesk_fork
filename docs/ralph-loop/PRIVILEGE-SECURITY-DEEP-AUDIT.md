@@ -151504,3 +151504,39 @@ three zero listener deltas and exact private/process/socket/RAM retirement pass.
 The approximate 400,000-token target remains OPEN. This audit-only append
 preserves the counted ledger and the prior 16,193,150-byte audit prefix, SHA-256
 ebe37986ff4ba9a7e5f844e31af298c620dca1f1eaffadee008a85f7b6a0f1f8.
+
+## 2026-11-13 — Long-outage native-input diagnostic preparation
+
+The previous turn completed installed congestion endurance and joined evidence
+retirement. Selected the unresolved 18-second-outage recovery design over another
+passing soak. Both hash-verified retained failure traces show the server at cwnd=1,
+unacked=2, lost=2, retrans=1, RTO=13,056 ms and 2,046 queued bytes after restoration;
+the viewer's send queue is empty. This distinguishes the two transport directions.
+[Linux 6.1 tcp_output.c](https://raw.githubusercontent.com/torvalds/linux/v6.1/net/ipv4/tcp_output.c)
+gates ordinary writes on the available congestion window; tail-loss probes require
+Open/CWR rather than Loss state. Additional server application probes therefore
+do not supply an independent retransmission actuator in the observed state.
+[RFC 5681](https://www.rfc-editor.org/rfc/rfc5681.html#section-2) distinguishes
+data-bearing acknowledgments from duplicate ACKs used by fast retransmit. A
+reverse-direction application heartbeat is not thereby a portable recovery fix.
+No transport API, timeout, protocol, policy or acceptance threshold is changed.
+
+The existing native backoff observer now performs one bounded diagnostic only
+after its unchanged 2,500-ms recovery deadline has already failed. It focuses
+the real viewer, sends four released a–d taps with XTEST, and requires each exact
+non-SendEvent press/release pair on the controlled root within 500 ms. Each sample
+records its request/native-delivery times alongside actual viewer-root frame age
+and source identity. Focus traffic is explicit; this observes ordinary input,
+not a pure-ACK or isolated heartbeat experiment. [XTEST's documented event semantics](https://xorg.freedesktop.org/releases/current/doc/libXtst/xtestlib.html)
+and the existing native keyboard fixture provide the implementation basis.
+
+The diagnostic restores its event selection/focus and releases any held local
+key. Its elapsed time consumes the existing fifteen-second post-failure budget;
+first-fresh and maximum-age reporting include its pixel observations. The original
+failed verdict remains failed even if input or subsequent recovery succeeds.
+This single-file fixture change targets whether native input can remain responsive
+while display transport is stalled; it is not a product correction or acceptance
+claim. Diff checks pass; the existing isolated installed replay will compile the
+driver twice with warnings as errors and execute it against app 2eb7015e.
+This append preserves the prior 16,193,832-byte audit prefix, SHA-256
+f8055ffeb28da35f9d89ba7a6578590cb9d3b8426ce2234182a86f310d0d5b57.

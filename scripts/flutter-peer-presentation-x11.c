@@ -2039,6 +2039,94 @@ finished:
     return result;
 }
 
+static int return_focus_with_pointer(Display *display, const ViewerWindow *viewer);
+static int keyboard_is_released(Display *display);
+
+/* Diagnostic traffic starts only after the original recovery deadline failed.
+ * Observe native controlled-side input separately from the viewer's frame age. */
+static int observe_backoff_input(Display *source, Display *display,
+                                 const ViewerWindow *viewer, SourceHistory *history,
+                                 uint64_t *first_fresh_at, uint64_t *maximum_age) {
+    Window root = DefaultRootWindow(source), previous_focus;
+    XWindowAttributes attributes;
+    int previous_revert, result = -1;
+    KeyCode held = 0U;
+    const char *phase = "focus";
+    uint64_t began = x11_frame_monotonic_us();
+    *first_fresh_at = *maximum_age = 0U;
+    if (began == 0U || !XGetWindowAttributes(source, root, &attributes)) return -1;
+    XGetInputFocus(source, &previous_focus, &previous_revert);
+    XSelectInput(source, root, KeyPressMask | KeyReleaseMask);
+    XSetInputFocus(source, root, RevertToParent, CurrentTime);
+    XSync(source, False);
+    if (return_focus_with_pointer(display, viewer) != 0 ||
+        !keyboard_is_released(source) || !keyboard_is_released(display)) goto done;
+    printf("FLUTTER_PEER_BACKOFF_INPUT_BEGIN started_us=%llu focus=viewer-pointer-and-source-root\n",
+           (unsigned long long)began);
+    for (unsigned int index = 0U; index < 4U; ++index) {
+        KeyCode local = XKeysymToKeycode(display, XK_a + index);
+        KeyCode remote = XKeysymToKeycode(source, XK_a + index);
+        uint64_t requested = x11_frame_monotonic_us(), delivered = 0U;
+        unsigned int received = 0U, events = 0U;
+        phase = "native-input";
+        if (local == 0U || remote == 0U || requested < began) goto done;
+        held = local;
+        if (XTestFakeKeyEvent(display, local, True, CurrentTime) == 0 ||
+            XTestFakeKeyEvent(display, local, False, CurrentTime) == 0) goto done;
+        held = 0U;
+        XSync(display, False);
+        while (received < 2U) {
+            uint64_t now = x11_frame_monotonic_us();
+            if (now < requested || now - requested >= 500000U) goto done;
+            while (XPending(source) != 0) {
+                XEvent event;
+                if (++events > 128U) goto done;
+                XNextEvent(source, &event);
+                if (event.type == MappingNotify) {
+                    XRefreshKeyboardMapping(&event.xmapping);
+                    continue;
+                }
+                if (event.type != KeyPress && event.type != KeyRelease) continue;
+                if (received >= 2U || event.xkey.window != root || event.xkey.send_event ||
+                    event.xkey.keycode != remote ||
+                    event.type != (received == 0U ? KeyPress : KeyRelease)) goto done;
+                received += 1U;
+            }
+            if (received < 2U && sleep_millis(10U) != 0) goto done;
+        }
+        delivered = x11_frame_monotonic_us();
+        phase = "pixel-observation";
+        uint64_t captured = 0U, age = 0U;
+        int64_t state = viewer_state(display, viewer, &captured);
+        if (delivered < requested || delivered - requested >= 500000U ||
+            !keyboard_is_released(source) || !keyboard_is_released(display) ||
+            x11_frame_age(history, "/coord", state, captured, &age) != 0) goto done;
+        if (age > *maximum_age) *maximum_age = age;
+        if (age <= FRESH_LIMIT_MS && *first_fresh_at == 0U)
+            *first_fresh_at = monotonic_millis();
+        printf("FLUTTER_PEER_BACKOFF_INPUT_SAMPLE index=%u key=%c requested_us=%llu "
+               "delivered_us=%llu native_elapsed_us=%llu native_events=2 captured_us=%llu "
+               "viewer_state=%lld latest_source=%llu age_ms=%llu released=true\n",
+               index, (int)('a' + index), (unsigned long long)requested,
+               (unsigned long long)delivered, (unsigned long long)(delivered - requested),
+               (unsigned long long)captured, (long long)state,
+               (unsigned long long)(history->count - 1U), (unsigned long long)age);
+        if (index != 3U && sleep_millis(100U) != 0) goto done;
+    }
+    result = 0;
+done:
+    if (held != 0U && XTestFakeKeyEvent(display, held, False, CurrentTime) == 0) result = -1;
+    XSync(display, False);
+    XSelectInput(source, root, attributes.your_event_mask);
+    XSetInputFocus(source, previous_focus, previous_revert, CurrentTime);
+    XSync(source, False);
+    printf("FLUTTER_PEER_BACKOFF_INPUT_END observed=%s phase=%s elapsed_us=%llu verdict=fail\n",
+           result == 0 ? "true" : "false", phase,
+           (unsigned long long)(x11_frame_monotonic_us() - began));
+    fflush(stdout);
+    return result;
+}
+
 static int exercise_network_impairment(Display *source, Display *display,
                                       ViewerWindow *viewer, SourceHistory *history,
                                       unsigned long pid, const ConnectionIdentity *connection,
@@ -2186,8 +2274,19 @@ failed:
         ConnectionIdentity after = {{0}, {0}, 0UL};
         ViewerWindow same_viewer = {0};
         ProcessResources resources = {0};
-        int recovered = wait_for_current_frames(display, viewer, history, 15000U,
-                                               4U, &first, &age) == 0;
+        uint64_t input_first = 0U, input_age = 0U;
+        int input_observed = network_mode == 3 ?
+            observe_backoff_input(source, display, viewer, history, &input_first, &input_age) : -1;
+        uint64_t observation_start = monotonic_millis();
+        uint64_t diagnostic_ms = observation_start - began;
+        int recovered = diagnostic_ms < 15000U &&
+            wait_for_current_frames(display, viewer, history, (unsigned int)(15000U - diagnostic_ms),
+                                    4U, &first, &age) == 0;
+        if (recovered) {
+            first += diagnostic_ms;
+            if (input_first != 0U && input_first - began < first) first = input_first - began;
+        }
+        if (input_age > age) age = input_age;
         uint64_t recovered_at = monotonic_millis();
         max_gap = max_age = 0U;
         distinct = 0U;
@@ -2205,11 +2304,12 @@ failed:
                "observation_limit_ms=15000 recovered=%s observed_after_restore_ms=%llu "
                "first_fresh_after_observation_ms=%llu observation_started_after_restore_ms=%llu "
                "maximum_observed_age_ms=%llu healthy_followup=%s healthy_maximum_age_ms=%llu "
-               "same_window_and_connection=%s resources_bounded=%s\n", cycle + 1U,
+               "same_window_and_connection=%s resources_bounded=%s input_diagnostic=%s\n", cycle + 1U,
                recovered ? "true" : "false", (unsigned long long)(recovered_at - restored_at),
                (unsigned long long)first, (unsigned long long)(began - restored_at),
                (unsigned long long)age, followup ? "true" : "false",
-               (unsigned long long)max_age, stable ? "true" : "false", bounded ? "true" : "false");
+               (unsigned long long)max_age, stable ? "true" : "false", bounded ? "true" : "false",
+               network_mode != 3 ? "skipped" : input_observed == 0 ? "observed" : "unavailable");
         fflush(stdout);
     }
     if (restore_needed && network_profile("healthy", &after_drops, &after_packets) != 0)

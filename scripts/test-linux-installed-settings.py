@@ -295,6 +295,9 @@ def prepare_package(single=False, graphical=False, settings=False, upgrade=False
                   end='', flush=True)
         prepare_drivers(graphical=graphical, camera=camera, remote=remote)
         print(run(['/bin/bash', '/work/scripts/smoke-atspi-prepare.sh'], timeout=60), end='', flush=True)
+    if remote:
+        # The private PulseAudio candidate supplements this authenticated base image.
+        shutil.copyfile('/usr/lib/x86_64-linux-gnu/libgomp.so.1', '/out/audio-libgomp.so.1')
     records = {str(p.relative_to('/out')): {'sha256': digest(p), 'bytes': p.stat().st_size}
                for p in Path('/out').rglob('*') if p.is_file()}
     if sum(r['bytes'] for r in records.values()) > 268435456:

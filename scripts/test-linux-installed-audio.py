@@ -58,6 +58,13 @@ def prepare(settings):
     require(len(archives) == 40, 'installed audio package closure differs')
     for archive in archives:
         settings.run([*settings.ordinary(1000), '/usr/bin/dpkg-deb', '--extract', str(archive), str(ROOT)])
+    base_library = settings.WORK / 'prepared/audio-libgomp.so.1'
+    manifest = json.loads((settings.WORK / 'prepared/manifest.json').read_text())
+    require(manifest['audio-libgomp.so.1'] == {'bytes': base_library.stat().st_size,
+            'sha256': settings.digest(base_library)}, 'audio base dependency differs')
+    target = ROOT / 'usr/lib/x86_64-linux-gnu/libgomp.so.1'
+    require(not os.path.lexists(target), 'audio base dependency conflicts with a package')
+    shutil.copyfile(base_library, target)
     # These tools run with explicit modules, without package configuration or units.
     for relative in ('etc', 'lib/systemd'):
         path = ROOT / relative
@@ -80,6 +87,7 @@ def prepare(settings):
     tools = {name: settings.digest(ROOT / 'usr/bin' / name) for name in ('pulseaudio', 'pactl', 'pacat')}
     print('LINUX_INSTALLED_AUDIO_RUNTIME=' + json.dumps({
         'archive_sha256': arguments['sha256'], 'files': len(paths), 'bytes': total, 'tools': tools,
+        'base_libgomp': manifest['audio-libgomp.so.1'],
         'scope': 'private fixture tools; product libraries remain installed dependencies',
     }, sort_keys=True), flush=True)
 

@@ -599,7 +599,7 @@ class _TrackpadSpeedWidgetState extends State<TrackpadSpeedWidget> {
               value: _value.toDouble(),
               min: kMinTrackpadSpeed.toDouble(),
               max: kMaxTrackpadSpeed.toDouble(),
-              divisions: ((kMaxTrackpadSpeed - kMinTrackpadSpeed) / 10).round(),
+              divisions: kMaxTrackpadSpeed - kMinTrackpadSpeed,
               semanticFormatterCallback: (value) => '${value.round()}%',
               onChanged: widget.enabled ? (v) => _updateValue(v.round()) : null,
             ),

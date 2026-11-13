@@ -505,6 +505,13 @@ class AllocatorSnapshots:
               'interposition=none acceptance=diagnostic-only', file=sys.stderr, flush=True)
 
 
+def audio_module():
+    spec = importlib.util.spec_from_file_location('installed_audio', SCRIPT.with_name('test-linux-installed-audio.py'))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def audio_connection_diagnostic(settings):
     """Observe the installed client library, not the product's capture authority."""
     guard(settings, 4001)
@@ -585,6 +592,7 @@ def session(network=False, heaptrack=False, allocator=False):
     processes = []
     viewer = None
     trace = None
+    audio = None
     with ExitStack() as files:
         environment = files.enter_context(settings.recording_display(environment, 79, '1600x1200x24'))
         def log(name):
@@ -598,6 +606,7 @@ def session(network=False, heaptrack=False, allocator=False):
             require(address.startswith('unix:'), 'Remote session bus is not local')
             environment['DBUS_SESSION_BUS_ADDRESS'] = address
             if network is False:
+                audio = audio_module().AudioFixture(settings, environment, processes, files)
                 print(settings.run(['/usr/bin/python3', '-B', '-I', '-S', str(SCRIPT), '--audio-diagnostic'],
                                    env={**environment, 'DISPLAY': ':77',
                                         'XAUTHORITY': '/run/user/4001/gdm/Xauthority'}, timeout=5),
@@ -629,7 +638,7 @@ def session(network=False, heaptrack=False, allocator=False):
                     time.sleep(0.05)
                 network_request(b'healthy', refused=True)
                 network_request(b'attach')
-            viewer_environment = environment
+            viewer_environment = audio.viewer_environment if audio is not None else environment
             if heaptrack:
                 trace = AllocationTrace()
                 viewer_environment = trace.start(environment)
@@ -669,6 +678,13 @@ def session(network=False, heaptrack=False, allocator=False):
                 current = Path(f'/proc/{process.pid}/ns/time').stat()
                 require((current.st_dev, current.st_ino) == (clock.st_dev, clock.st_ino),
                         'Remote observer and source clocks differ')
+            if audio is not None:
+                deadline = time.monotonic() + 120
+                while driver.poll() is None:
+                    require(source.poll() is None and bus.poll() is None and time.monotonic() < deadline,
+                            'installed audio session source/bus exited or driver timed out')
+                    audio.sample()
+                    audio.observe_owner(viewer)
             if network in SOAK_SCENARIOS:
                 deadline = time.monotonic() + (15120 if network == 'input-congestion-soak' else 14760)
                 while driver.poll() is None:
@@ -685,6 +701,8 @@ def session(network=False, heaptrack=False, allocator=False):
                                 else 180 if network else 120) == 0,
                     'installed Remote pixel observer failed')
             require(viewer.wait(timeout=10) == 0, 'Remote viewer did not close normally')
+            if audio is not None:
+                audio.complete()
             require(source.poll() is None, 'Remote source retired before the viewer')
             source.terminate()
             require(source.wait(timeout=8) == 0, 'Remote source cleanup failed')
@@ -704,11 +722,19 @@ def session(network=False, heaptrack=False, allocator=False):
                                 process.send_signal(signal.SIGCONT)
                             process.terminate()
                         process.wait(timeout=8)
+                    if audio is not None:
+                        audio.retired()
                 finally:
                     if trace is not None:
                         trace.finish()
             finally:
                 settings.retire_children()
+                for path in sorted(COORD.glob('audio-*.log')):
+                    require(path.stat().st_size <= 65536, 'installed audio tool log exceeds its bound')
+                    print('LINUX_INSTALLED_AUDIO_LOG=' + json.dumps({
+                        'name': path.name, 'bytes': path.stat().st_size,
+                        'tail': path.read_text(errors='replace')[-2048:],
+                    }), file=sys.stderr, flush=True)
                 for name in ('driver.log', 'source-error.log', 'frame-source.log', 'viewer.log'):
                     path = COORD / name
                     if path.exists():
@@ -893,6 +919,8 @@ def scenario(settings, receiver, record, network=False, heaptrack=False, allocat
     guard(settings, 0)
     COORD.mkdir(mode=0o700)
     os.chown(COORD, 4001, 4001)
+    if network is False:
+        audio_module().prepare(settings)
     credential, profile = receiver.credential(), settings.user_credential()
     listener = receiver.direct_listener(record)
     require(listener is not None, 'installed Remote listener absent')

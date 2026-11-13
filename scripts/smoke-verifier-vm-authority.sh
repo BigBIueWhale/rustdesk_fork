@@ -1828,6 +1828,23 @@ installed_settings_input_inventory() {
              "$HOST_UID:$HOST_GID:400:1:$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
         || fail 'installed settings runtime archive authority differs'
     verify_sha256 "$archive" "$POLKIT_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+    if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 12 ]; then
+        local audio_parent=${PA_RUNTIME_CANDIDATE%/*}
+        [ -d "$audio_parent" ] && [ ! -L "$audio_parent" ] \
+            && [ "$(/usr/bin/readlink -f -- "$audio_parent")" = "$audio_parent" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$audio_parent")" = "$HOST_UID:$HOST_GID:700" ] \
+            && [ -f "$PA_RUNTIME_CANDIDATE" ] && [ ! -L "$PA_RUNTIME_CANDIDATE" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a:%h:%s' -- "$PA_RUNTIME_CANDIDATE")" = \
+                 "$HOST_UID:$HOST_GID:400:1:$PA_RUNTIME_CANDIDATE_ARCHIVE_SIZE" ] \
+            || fail 'installed audio candidate authority differs'
+        verify_sha256 "$PA_RUNTIME_CANDIDATE" "$PA_RUNTIME_CANDIDATE_ARCHIVE_SHA256"
+        /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$PA_RUNTIME_CANDIDATE"
+        /usr/bin/sha256sum -- "$PA_RUNTIME_CANDIDATE"
+        for file in test-linux-installed-audio.py verify-pa-runtime-candidate.py; do
+            verify_committed_test_source "$SCRIPT_DIR/$file"
+            /usr/bin/sha256sum -- "$SCRIPT_DIR/$file"
+        done
+    fi
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 8 ]; then
         local previous=$REPO_ROOT/.harness-state/linux-flutter-app-artifacts/$DEBIAN_UPGRADE_APP_COMMIT
         git_closed -C "$REPO_ROOT" merge-base --is-ancestor "$DEBIAN_UPGRADE_APP_COMMIT" "$FLUTTER_APP_COMMIT" \
@@ -5355,6 +5372,13 @@ elif [ "$MODE" = flutter-peer-presentation ]; then
     payload_identity=(-uid 1000 -gid 1000)
     lifecycle_payload_grafts=("source.tar=$FLUTTER_PEER_SOURCE_ARCHIVE")
     if [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
+        if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 12 ]; then
+            lifecycle_payload_grafts+=(
+                "pa-runtime-candidate.tar.gz=$PA_RUNTIME_CANDIDATE"
+                "repo/scripts/test-linux-installed-audio.py=$SCRIPT_DIR/test-linux-installed-audio.py"
+                "repo/scripts/verify-pa-runtime-candidate.py=$SCRIPT_DIR/verify-pa-runtime-candidate.py"
+            )
+        fi
         if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 9 ]; then
             for obsolete in startwm.sh xorg.conf; do
                 obsolete_input=$VM_TRANSIENT/debian-old-$obsolete

@@ -153471,3 +153471,31 @@ on both hosts in installed-audio-ledger-f665caa7.json. Outer SHA-256:
 No owned runtime job or source freeze remains. This audit-only append preserves
 the prior16,325,216-byte prefix, SHA-256
 0b9f6caaac15e6348775c99c6184cda9b9cd09bf85a71494a8353ab881f30f12.
+
+### 2026-11-13 — installed Remote audio provider and output fixture
+
+Previous turn: progress; native errno6 and missing sockets identify the provider
+prerequisite. Continue the same R-S0/R-F1 blocker before changing application code.
+Admit the existing signed-snapshot40-package PulseAudio candidate into the ordinary
+installed Remote scenario. Existing candidate validation runs as guestUID1000;
+extraction is unprivileged, then joined private fixture files are published for
+UID4001. Product libraries, package unit and helper authority remain their normal
+installed paths. The same application artifact can decide actual audio behavior.
+
+Two foreground Unix-only audio daemons avoid capture/playback feedback: the
+controlled daemon uses the normal user socket and a440-Hz monitor; the viewer
+uses its own private daemon through its normal PulseAudio server environment.
+The observer records that viewer's null-sink output, requires silence before
+connection, at least eight100-ms tone windows (RMS0.02..0.8,440-Hz coherence>=0.8),
+one active recording/playback attributed to CM/viewer, and retirement plus silence
+after close. Native daemon stream metadata is fixture evidence, not a new IPC
+authority primitive. Physical audibility, endurance and broader audio recovery
+remain outside this scenario. Existing pixel/suspension and package checks remain.
+Every foreground fixture process is owned/joined; socket retirement and bounded
+tool logs are checked. Shared RAM admission/ceilings/monitoring remain in force.
+Primary daemon/recording semantics:
+https://manpages.debian.org/bookworm/pulseaudio/pulseaudio.1.en.html
+https://manpages.debian.org/bookworm/pulseaudio-utils/pacat.1.en.html
+Syntax/scoped review precedes native execution; no pass is claimed yet.
+This append preserves the prior16,326,153-byte audit prefix, SHA-256
+48719c6575cda8c47535e6cebafd58b9a6734b620e4b1551e1a245b2a4f0b53e.

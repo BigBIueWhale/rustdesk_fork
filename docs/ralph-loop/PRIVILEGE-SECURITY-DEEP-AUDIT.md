@@ -153566,3 +153566,19 @@ receipt was corrected after cleanup, preserving that actual message. No full
 audio, physical-device, sustained-latency or release acceptance is claimed.
 This append preserves the prior16,328,056-byte audit prefix, SHA-256
 9f8865f30f1fd4422e128950f6f94e7ed4a4d558d289bb1d9b679aaa3746efac.
+
+### Installed audio output checkpoint — ledger receipt
+
+0CL191fuBR at95a54fec counts426,302 tokens /1,942,014 bytes using
+tiktoken0.12.0/cl100k_base/encode_ordinary, seven controls and byte round trip.
+Ledger SHA-256 ee6d64b61ac280bf708839be6cf10707da400fc0b20bbb5c8157c68255bd23d7;
+the approximate400,000-token budget remains OPEN. QEMU3503429 joins0; private
+run.0CL191fuBR and RAM29:14644 run.dcvfas03 retire. Supervisor30.206 seconds,
+scratch peak403,038,208 bytes, minimum available RAM46,491,045,888 bytes;
+three zero endpoint deltas and tmpfs_swap_disabled=false. Eight files/115,959
+bytes are SHA-verified on CTE/TUF in installed-audio-ledger-95a54fec.json.
+Outer SHA-256 4b7cdcf7eb5c69bd1e3d7ed4cba80f80f83a9fc9f1a35f6f6beadfd36ec63dad.
+No owned runtime job or source freeze remains; goal stays active. Next is the
+steady audio/capture-buffer investigation recorded above. This audit-only append
+preserves the prior16,332,448-byte prefix, SHA-256
+bb7ea79e8d88801f2058c3ec17981fc1ae5447191b4cee151189c7f04fb9f486.

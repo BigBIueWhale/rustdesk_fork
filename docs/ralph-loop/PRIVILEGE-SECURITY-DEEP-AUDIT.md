@@ -152584,3 +152584,19 @@ diff from 2eb7015e; the engine integration is the intended behavioral change.
 HARDENING_STATUS.md records this checkpoint; its required fresh count follows.
 This append preserves the prior 16,263,962-byte audit prefix, SHA-256
 9eee0998210401dfb8c7962c65c51eaee2c7f693608ec1cfa9fe9dfd98fdca26.
+
+### Integrated-engine ledger count
+
+TUF 6vAiLmMfuK at 1def96ea passes the fresh count: 423,618 tokens /
+1,930,649 bytes, input SHA-256
+44baa41f8d41dfe37c31bfd67d000a18efc6d762d9cf1fc3acad6f7f4ef3b3fe.
+The fixed method, seven controls and whole-input round trip pass; the approximate
+400,000-token target remains OPEN. QEMU 2983463 joins zero; private
+66306:78033944 and RAM 29:13479 retire, with three zero endpoint deltas.
+Supervisor 30.702 seconds, peak scratch 403,222,528 bytes,
+tmpfs_swap_disabled=false. Eight files/115,770 bytes are SHA-verified on CTE/TUF;
+capsule compositor-engine-ledger-1def96ea.json, outer SHA-256
+89ca355b5cc21b829aaa8b4605287059584710e904d43673aecbe06f6a0e71c8.
+This audit-only append preserves the counted ledger and prior 16,266,918-byte
+prefix, SHA-256
+1f125be9006d34e9b29e0285c6a7c09341165a5ace77afefff2fc8fea281c9eb.

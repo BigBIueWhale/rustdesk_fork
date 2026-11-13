@@ -719,8 +719,122 @@ def cm_log_snapshot():
         }, sort_keys=True), flush=True)
 
 
+class CmFaultTrace:
+    """One-shot guest diagnostic; preserve signal delivery after reading a fault."""
+
+    def __init__(self, pid, directory):
+        require(os.uname().machine == 'x86_64', 'CM fault observer requires the pinned x86_64 guest')
+        self.pid, self.directory = pid, directory
+        self.attached = False
+        self.stopped = None
+        self.signals = 0
+        self.libc = ctypes.CDLL(None, use_errno=True)
+        self.libc.ptrace.argtypes = [ctypes.c_uint, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+        self.libc.ptrace.restype = ctypes.c_long
+        self.call(0x4206)  # SEIZE; execution continues until an ordinary signal.
+        self.attached = True
+
+    def call(self, request, address=0, data=0):
+        ctypes.set_errno(0)
+        result = self.libc.ptrace(request, self.pid, address, data)
+        if result == -1 and ctypes.get_errno():
+            raise OSError(ctypes.get_errno(), 'exact guest CM ptrace operation failed')
+        return result
+
+    def detach(self):
+        self.call(17, data=self.stopped)  # DETACH and preserve the pending signal.
+        self.attached = False
+        self.stopped = None
+
+    def poll(self):
+        if not self.attached:
+            return
+        pid, status = os.waitpid(self.pid, os.WNOHANG | 0x40000000)  # __WALL
+        if not pid:
+            return
+        if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+            self.attached = False
+            print('LINUX_INSTALLED_CM_TRACE_EXIT=' + json.dumps({
+                'pid': self.pid, 'wait_status': status, 'exit_code': os.waitstatus_to_exitcode(status),
+            }), flush=True)
+            return
+        require(os.WIFSTOPPED(status), 'CM trace returned an unknown state')
+        self.stopped = 0 if status >> 16 else os.WSTOPSIG(status)
+        require(not status >> 16, 'unexpected CM trace event')
+        self.signals += 1
+        require(self.signals <= 64, 'CM trace signal bound exceeded')
+        if self.stopped != signal.SIGSEGV:
+            self.call(7, data=self.stopped)  # CONT; do not suppress other signals.
+            self.stopped = None
+            return
+        try:
+            registers = (ctypes.c_ulonglong * 27)()
+            info = ctypes.create_string_buffer(128)
+            self.call(12, data=ctypes.byref(registers))  # GETREGS, Linux x86_64 user_regs_struct.
+            self.call(0x4202, data=ctypes.byref(info))  # GETSIGINFO.
+            signo, error, code = struct.unpack_from('iii', info.raw)
+            fault, = struct.unpack_from('Q', info.raw, 16)
+            require(signo == signal.SIGSEGV, 'CM fault siginfo differs')
+            with os.fdopen(os.open('maps', os.O_RDONLY | os.O_CLOEXEC, dir_fd=self.directory), 'rb') as source:
+                raw = source.read(262145)
+            require(len(raw) <= 262144, 'CM fault mapping inventory exceeds its bound')
+            mappings = []
+            for line in raw.decode().splitlines():
+                fields = line.split(None, 5)
+                start, end = (int(value, 16) for value in fields[0].split('-'))
+                mappings.append((start, end, fields))
+            def mapping(address):
+                for start, end, fields in mappings:
+                    if start <= address < end:
+                        return {'address': address, 'range': fields[0], 'permissions': fields[1],
+                                'file_offset': int(fields[2], 16) + address - start,
+                                'device': fields[3], 'inode': int(fields[4]),
+                                'path': fields[5] if len(fields) == 6 else ''}
+                return None
+            instruction, stack = int(registers[16]), int(registers[19])
+            stack_mapping = mapping(stack)
+            require(stack_mapping is not None and stack_mapping['path'] == '[stack]',
+                    'CM fault stack is not the main-thread stack')
+            # The top word is only a return-address candidate, not an unwound frame.
+            candidate = self.call(2, address=stack) & ((1 << 64) - 1)  # PEEKDATA.
+            caller = mapping(candidate)
+            if caller is not None and 'x' not in caller['permissions']:
+                caller = None
+            print('LINUX_INSTALLED_CM_FAULT=' + json.dumps({
+                'pid': self.pid, 'signal': signo, 'errno': error, 'code': code,
+                'fault_address': fault, 'instruction': mapping(instruction),
+                'stack_return_candidate': caller, 'mapping_count': len(mappings),
+                'acceptance': 'diagnostic-only; main-thread signal-stop',
+            }, sort_keys=True), flush=True)
+        finally:
+            self.detach()
+
+    def close(self):
+        if not self.attached:
+            return
+        if self.stopped is None:
+            try:
+                self.call(0x4207)  # INTERRUPT solely to detach during observer cleanup.
+            except ProcessLookupError:
+                # An exit racing the interrupt still requires its exact wait below.
+                pass
+            deadline = time.monotonic() + 3
+            while True:
+                pid, status = os.waitpid(self.pid, os.WNOHANG | 0x40000000)
+                if pid:
+                    if os.WIFEXITED(status) or os.WIFSIGNALED(status):
+                        self.attached = False
+                        return
+                    require(os.WIFSTOPPED(status), 'CM trace cleanup state differs')
+                    self.stopped = 0 if status >> 16 else os.WSTOPSIG(status)
+                    break
+                require(time.monotonic() < deadline, 'CM trace cleanup deadline exceeded')
+                time.sleep(0.005)
+        self.detach()
+
+
 def observe_cm_startup(receiver, record, actor):
-    """Read the first exact CM child's startup/exit without tracing or stopping it."""
+    """Identify the exact CM child, then observe its startup fault in the guest."""
     def read_at(directory, name):
         with os.fdopen(os.open(name, os.O_RDONLY | os.O_CLOEXEC, dir_fd=directory), 'rb') as stream:
             data = stream.read(8193)
@@ -737,6 +851,7 @@ def observe_cm_startup(receiver, record, actor):
     began = previous = time.monotonic_ns()
     maximum_gap = samples = vanished = 0
     observation = None
+    trace = None
     with ExitStack() as resources:
         server_fd = os.pidfd_open(record['pid'])
         resources.callback(os.close, server_fd)
@@ -793,6 +908,8 @@ def observe_cm_startup(receiver, record, actor):
                                                       ('Uid', 'Gid', 'NoNewPrivs', 'Seccomp', 'CapEff')},
                                            'exit_observed': False, 'reaped': False}
                             resources.enter_context(candidate.pop_all())
+                            trace = CmFaultTrace(pid, directory)
+                            resources.callback(trace.close)
                             break
                 elif not observation['reaped']:
                     try:
@@ -806,6 +923,8 @@ def observe_cm_startup(receiver, record, actor):
                         if current['state'] == 'Z':
                             observation['exit_observed'] = True
                             observation['exit_code'] = os.waitstatus_to_exitcode(current['wait_status'])
+                if trace is not None:
+                    trace.poll()
                 if actor.poll() is not None:
                     break
                 time.sleep(0.005)
@@ -813,9 +932,10 @@ def observe_cm_startup(receiver, record, actor):
             print('LINUX_INSTALLED_CM_PROCESS=' + json.dumps({
                 'server': record, 'child': observation, 'samples': samples,
                 'maximum_sample_gap_ns': maximum_gap, 'vanished_candidates': vanished,
-                'duration_ns': time.monotonic_ns() - began, 'method': 'read-only-procfs',
+                'duration_ns': time.monotonic_ns() - began, 'method': 'procfs-and-main-thread-signal-trace',
                 'coverage': 'first-observed-exact-cm; short-lived children may be missed',
             }, sort_keys=True), flush=True)
+    require(False, 'CM fault tracing is diagnostic; ordinary acceptance remains unproved')
 
 
 def scenario(settings, receiver, record, network=False, heaptrack=False, allocator=False):

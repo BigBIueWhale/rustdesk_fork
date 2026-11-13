@@ -153220,3 +153220,30 @@ fault's code/mapping; ordinary installed session and audio acceptance remain OPE
 This audit-only append preserves the counted ledger and prior16,308,480-byte
 audit prefix, SHA-256
 7029b6334f884bf2ed957a5c46b0e55b9230e7be649b5ef1eb0a1aa7e1a72052.
+
+### Installed CM fault — bounded signal-stop diagnostic
+
+The previous turn made progress: the unchanged application's exact CM child died
+by SIGSEGV, independently observed in procfs and the guest kernel. Both clean
+hosts are at 0613ba3f and SSH works. Continue that ordinary-session/audio blocker
+before unrelated work. The next result sought is the faulting mapping and a
+possible caller, preserving the shipped service confinement and application.
+
+Temporarily extend the identified guest CM observer with PTRACE_SEIZE on its
+main thread, without syscall/instruction stepping. At SIGSEGV delivery-stop,
+read the x86_64 registers, siginfo, bounded mapping inventory and one stack word
+as a return-address candidate (not a backtrace). Emit only the selected address
+mappings, then detach with the original signal. Other signals are preserved;
+observer cleanup interrupts only this retained tracee to detach or waits for its
+exact exit. No host process is traced. This replay is explicitly diagnostic and
+cannot emit an ordinary acceptance pass. Remove the one-shot tracing after its
+evidence is retained; do not leave ordinary suspension acceptance disabled.
+
+Primary interfaces checked: https://man7.org/linux/man-pages/man2/ptrace.2.html
+(SEIZE does not stop; DETACH resumes and can deliver the stopped signal),
+https://raw.githubusercontent.com/bminor/glibc/glibc-2.36/sysdeps/unix/sysv/linux/x86/sys/user.h
+(27-register x86_64 layout), and Linux6.1 asm-generic/siginfo.h (signal fields
+and aligned fault address). The pinned guest ABI is explicitly required.
+Diff review and whitespace pass; execute the same source-bound app next.
+This append preserves the prior 16,309,524-byte audit prefix, SHA-256
+248a9292c20350b2dbdf01e318a1d9aea95a0656f7f1dfffce567e2f28aa51fc.

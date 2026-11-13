@@ -26,7 +26,7 @@ NETWORK_PROFILES = {
     'loss': ['random3', 'random8', 'burst'],
     'congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
     'backoff': ['loss'],
-    'expired': ['loss'],
+    'expired': ['loss'] * 3,
     'input-recovery': ['loss'] * 3,
     'input-loss': ['random3', 'random8', 'burst'],
     'input-congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
@@ -79,8 +79,7 @@ def observe_network(settings, actor, network, supervise=None):
         listener.listen(1)
         listener.settimeout(0.2)
         deadline = time.monotonic() + (15180 if network == 'input-congestion-soak'
-                                       else 540 if network == 'expired'
-                                       else 960 if network == 'input-animation-congestion'
+                                       else 960 if network in ('input-animation-congestion', 'expired')
                                        else 300 if network == 'input-recovery' else 360 if network in INPUT_SCENARIOS else 240)
         try:
             while actor.poll() is None:
@@ -343,8 +342,7 @@ def session(network=False):
                         require((COORD / name).stat().st_size <= 2097152,
                                 'installed input soak output exceeds its bound')
                     time.sleep(0.1)
-            require(driver.wait(timeout=900 if network == 'input-animation-congestion'
-                                else 480 if network == 'expired'
+            require(driver.wait(timeout=900 if network in ('input-animation-congestion', 'expired')
                                 else 240 if network == 'input-recovery' else 300 if network in INPUT_SCENARIOS
                                 else 180 if network else 120) == 0,
                     'installed Remote pixel observer failed')
@@ -412,7 +410,7 @@ def scenario(settings, receiver, record, network=False):
             'profile': 'unchanged', 'session_exit': 0,
             'scenario': network or 'suspend',
             'holds_ms': NETWORK_HOLDS if network == 'network' else [18000] if network == 'backoff'
-                        else [65000] if network == 'expired'
+                        else [65000] * 3 if network == 'expired'
                         else [2000, 6000, 2000] if network == 'input-recovery'
                         else [] if network in ('input-soak', 'input-animation')
                         else [20000] * 12 if network == 'input-congestion-soak'

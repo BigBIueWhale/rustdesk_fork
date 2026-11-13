@@ -758,7 +758,7 @@ def main(source, prepared, app_input, manifest_sha, commit, probe_sha, agent_arc
     if remote == 'expired':
         print(f'LINUX_DEBIAN_REMOTE_EXPIRED_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '
               'dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root '
-              'samples=240 outage_ms=65000 reconnect=automatic old_socket=retired credential=preserved child=unchanged '
+              'samples=480 outage_ms=65000 cycles=3 reconnect=automatic old_socket=retired credential=preserved child=unchanged '
               'network=restored desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined', flush=True)
     elif remote == 'input-animation-congestion':
         print(f'LINUX_DEBIAN_REMOTE_INPUT_ANIMATION_CONGESTION_NATIVE=pass app_commit={commit} manifest_sha256={manifest_sha} '

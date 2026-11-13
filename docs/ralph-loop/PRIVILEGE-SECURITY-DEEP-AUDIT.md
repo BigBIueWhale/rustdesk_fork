@@ -151889,3 +151889,32 @@ exact private 66306:77904651, RAM 29:12891, process/socket retirement reconcile.
 The approximate 400,000-token target remains OPEN. This audit-only append leaves
 the counted ledger unchanged and preserves the prior 16,219,365-byte audit prefix,
 SHA-256 96ed6ff9ffefd5e2b352a83821f588ccf66bf678411961b4215f27d5e7e10567.
+
+## 2026-11-13 — Repeated natural-expiry recovery prepared
+
+Previous checkpoint made progress: installed automatic recovery passed once.
+Continue R-F5 with three natural-expiry/reconnect cycles on the same installed
+2eb7015e app and viewer. The observed 86,248-KiB first-recovery RSS increase is
+within the existing bound but leaves repeated-resource behavior unproved; this
+decisive native check takes priority over unrelated coverage expansion. Extend
+the existing expiry scenario, without adding a new mode or product change.
+Four 120-response windows share one original latency/resource baseline around
+three 65-second forward outages. Each old socket must retire naturally, each
+replacement must belong to the same viewer, and request/frame identities continue.
+The existing 45-second reconnect, 2,500-ms new-connection freshness, 1,000-ms
+healthy response/age, 250-ms tail drift, 128-MiB RSS growth, 16-descriptor and
+eight-thread growth limits remain unchanged. Sample resources every ten outage
+observations (about one second), plus recovery and healthy responses. Preserve
+offending resource values on refusal. No manual retry, credential replacement,
+forced socket closure, app/service restart or upward baseline reset is allowed.
+
+Linux's proc documentation distinguishes resident-memory accounting from leak
+proof and notes its asynchronous precision: https://docs.kernel.org/filesystems/proc.html.
+Use the existing RSS metric consistently to test its fixed bound; a growth trend
+would require lifetime/allocation investigation, not an unsupported leak claim.
+This deliberately longer integration uses 900/960/1,080-second driver/network/
+package limits inside the existing 1,200-second VM budget. Reuse authenticated
+inputs, bounded RAM storage and exact joined cleanup. The separate surviving-
+transport delay failure remains OPEN. No repeated-cycle acceptance is claimed
+before execution. This append preserves the prior 16,220,078-byte audit prefix,
+SHA-256 b6a2ca5204caea21d3b9a6cfe517f815ee026c6ba3f90d85e47f20565a95ee38.

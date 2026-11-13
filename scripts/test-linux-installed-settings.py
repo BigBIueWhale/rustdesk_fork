@@ -2660,7 +2660,7 @@ def main(arguments, uncertain=False, admin_failure=False, graphical=False, concu
                         str(prepared), str(app_input), manifest_sha, commit, probe_sha,
                         *([agent_archive_sha] if graphical else [])],
                        env=ENV, check=True, timeout=15300 if remote == 'input-congestion-soak'
-                       else 1080 if remote == 'input-animation-congestion'
+                       else 1080 if remote in ('input-animation-congestion', 'expired')
                        else 14940 if remote == 'input-soak' else 840 if uncertain else 600)
         return
     if package:

@@ -9647,18 +9647,18 @@ elif [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 elif [ "$FLUTTER_INSTALLED_SETTINGS" -ne 0 ]; then
     if [ "$FLUTTER_INSTALLED_SETTINGS" -eq 24 ]; then
         require_exact_fixed_receipt \
-            "LINUX_DEBIAN_REMOTE_EXPIRED_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root samples=240 outage_ms=65000 reconnect=automatic old_socket=retired credential=preserved child=unchanged network=restored desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined" \
+            "LINUX_DEBIAN_REMOTE_EXPIRED_NATIVE=pass app_commit=$FLUTTER_APP_COMMIT manifest_sha256=$FLUTTER_APP_EXPECTED_MANIFEST_SHA256 dependencies=apt-checked service=actual viewer=actual input=viewer-xtest pixels=viewer-root samples=480 outage_ms=65000 cycles=3 reconnect=automatic old_socket=retired credential=preserved child=unchanged network=restored desktop=retired reinstall=same-version remove=preserved purge=retired cleanup=joined" \
             'installed Remote natural transport expiry, automatic recovery and package lifecycle'
         require_exact_fixed_receipt \
-            'FLUTTER_PEER_EXPIRED_RECOVERY_OK hold_ms=65000 reconnect_limit_ms=45000 freshness_recovery_ms=2500 samples=240 windows=2 drift_ms=250 baseline=fixed old_socket=retired new_socket=authenticated viewer=retained animation=continuous intervention=none resources=bounded' \
+            'FLUTTER_PEER_EXPIRED_RECOVERY_OK cycles=3 hold_ms=65000 reconnect_limit_ms=45000 freshness_recovery_ms=2500 samples=480 windows=4 drift_ms=250 baseline=fixed old_socket=retired new_socket=authenticated viewer=retained animation=continuous intervention=none resources=bounded' \
             'installed Remote natural expiry and original-envelope recovery'
         require_exact_fixed_receipt \
-            'LINUX_INSTALLED_NETWORK_RETIRED=pass profiles=2 actor_wrong_role=refused observer=exact-child loopback=restored ingress=removed interface=removed socket=removed' \
+            'LINUX_INSTALLED_NETWORK_RETIRED=pass profiles=6 actor_wrong_role=refused observer=exact-child loopback=restored ingress=removed interface=removed socket=removed' \
             'installed Remote expiry network retirement'
-        [ "$(/usr/bin/grep -c '^FLUTTER_PEER_INPUT_ANIMATION_OK ' "$SERIAL_LOG")" -eq 2 ] \
-            && [ "$(/usr/bin/grep -c '^FLUTTER_PEER_INPUT_ANIMATION_SAMPLE ' "$SERIAL_LOG")" -eq 240 ] \
-            && [ "$(/usr/bin/grep -c '^FLUTTER_PEER_EXPIRED_TRANSPORT ' "$SERIAL_LOG")" -eq 1 ] \
-            && [ "$(/usr/bin/grep -c '^FLUTTER_PEER_EXPIRED_RECOVERY ' "$SERIAL_LOG")" -eq 1 ] \
+        [ "$(/usr/bin/grep -c '^FLUTTER_PEER_INPUT_ANIMATION_OK ' "$SERIAL_LOG")" -eq 4 ] \
+            && [ "$(/usr/bin/grep -c '^FLUTTER_PEER_INPUT_ANIMATION_SAMPLE ' "$SERIAL_LOG")" -eq 480 ] \
+            && [ "$(/usr/bin/grep -c '^FLUTTER_PEER_EXPIRED_TRANSPORT ' "$SERIAL_LOG")" -eq 3 ] \
+            && [ "$(/usr/bin/grep -c '^FLUTTER_PEER_EXPIRED_RECOVERY ' "$SERIAL_LOG")" -eq 3 ] \
             || fail 'installed Remote expiry observations absent or duplicated'
     elif [ "$FLUTTER_INSTALLED_SETTINGS" -eq 23 ]; then
         require_exact_fixed_receipt \

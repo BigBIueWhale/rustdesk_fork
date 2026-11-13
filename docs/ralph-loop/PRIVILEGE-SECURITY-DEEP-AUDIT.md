@@ -153374,3 +153374,23 @@ records the correction, its defense-in-depth tradeoff and the remaining audio
 failure; fresh counting follows. This append preserves the prior16,316,378-byte
 audit prefix, SHA-256
 c1a1c9308a8ed6f31b5214fe86a88fc20bed53198f56d76580885e55a5c6b4db.
+
+### Installed CM acceptance — final ledger receipt
+
+The fresh zero-NIC count at ddb66f90 (run BQYthQSWWC) passes all seven controls
+and the whole-input round trip: 426,062 tokens / 1,940,869 bytes, using the fixed
+tiktoken-0.12.0/cl100k_base/encode_ordinary method. Exact ledger SHA-256:
+552007e8c9770300d5f57177b226c81af2383a4b60239610478cb1a5958df650.
+The approximate 400,000-token documentation budget remains OPEN; this receipt
+does not change the ledger or imply release completion.
+
+QEMU3424326 joins zero; private run.BQYthQSWWC and RAM29:14326 retire under
+the shared lock. Supervisor30.538 seconds, scratch peak403,099,648 bytes,
+minimum available RAM46,829,023,232 bytes, three zero endpoint deltas;
+tmpfs_swap_disabled=false. Eight files/115,834 bytes are copied and SHA-verified
+on CTE and TUF in installed-cm-accepted-ledger-ddb66f90.json; outer SHA-256:
+fa3ba8ec8edea082403068a3a4a31bb58798b91619c8c0d75684ccdc1e73e414.
+No owned job or source freeze remains. The goal stays active; next decisive work
+is the ordinary installed session's PulseAudio capture Access denied result.
+This append preserves the prior16,319,742-byte audit prefix, SHA-256
+b21193fda3f0b9718ec96461566e09d24545ad2514f86650977ad3952d36e605.

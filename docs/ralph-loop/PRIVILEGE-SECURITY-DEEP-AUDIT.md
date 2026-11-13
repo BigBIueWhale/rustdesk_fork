@@ -151340,3 +151340,50 @@ decisive check, and full acceptance requires terminal reconciliation and copied
 evidence. No new artifact cache or host network/service change is needed.
 This append preserves the prior 16,180,012-byte audit prefix, SHA-256
 c46e00b3ee8972230ebf6332d2d11f66040a9e47e4c2c01eb2886eed7c7cc4e4.
+
+## 2026-11-13 — Installed healthy input endurance accepted
+
+TUF INoHIUGyzd/tool83327, fixture a661bc1e, exits zero after the normal-package
+--installed-remote-input-soak run. It reuses app 2eb7015e and manifest
+88e68cc5e06b3c297cf71891b0c754301732353270a53c878addd93977948b4a;
+no application rebuild or new artifact cache is needed. Source and input caches
+remained frozen until terminal reconciliation and verified evidence copies.
+
+All 7,320 ordered responses and 61 four-minute windows reconcile independently
+against the retained individual timings: 240 seconds of baseline, then 14,400
+seconds of healthy measurement. Baseline p95/p99 are 114/122 ms; largest window
+values are 149/170 ms; final values are 115/125 ms. Worst response is 187 ms.
+Maximum upward drift is 35/48 ms, within the fixed 250-ms allowance, and every
+response meets the original 1,000-ms deadline. Every request follows at least
+200 ms of unchanged pixels/publication count and requires its own subsequent
+source publication and exact viewer-root pixel response. All 7,331 ordered
+source publications, 244 native progress records and 61 completion records
+reconcile. The C observer checks the original connection/window/viewer identity,
+released keys and resource limits after every response.
+
+Guest-root observation retains the product child's non-dumpable protection and
+records 14,634 samples over 14,640.604 seconds. All 244 CPU windows pass, with a
+2,140-ms maximum against the 10,000-ms limit. Service RSS rises from 76,582,912
+to 79,966,208 bytes; peak descriptors are 37 against 27 initially, and peak
+threads remain 28. Viewer progress samples peak at 397,468 KiB versus 356,896
+initially, descriptors at 48 versus 45, and threads below the initial 62.
+All predeclared bounds pass. Source/viewer/driver exit zero; exact actor, desktop
+and child retirement, ordinary-user refusal, credential/profile preservation and
+normal package reinstall/remove/purge pass. The original supervisor 7595, child
+7718/start7265, generation 235e1916-eabd-4ad3-8d99-c2d3f9005275 and listener
+inode 23220 remain unchanged through the Remote scenario.
+
+remote-installed-input-soak-a661bc1e.json binds nine files/2,120,994 bytes,
+copied and hash-verified on CTE/TUF. Outer SHA-256 is
+5f9bbfdf02d061abea8f7eb2652f53a72871fbc46d9add622acf18c95c39d1d3.
+QEMU 67705 joins zero; storage elapsed time is 14,789.302 seconds and peak RAM
+scratch is 4,268,130,304 bytes. Exact private/process/socket/RAM state retires;
+all four host listener deltas are zero. tmpfs_swap_disabled remains false.
+
+This closes only the installed Linux healthy input endurance control. Impaired
+installed endurance, concurrent animation/input, physical scanout, reproducible
+random sequences/tails, the existing long-outage failures, other platforms and
+complete R-F5 acceptance remain OPEN. Reassess the next release-directed step
+at this checkpoint; an unchanged repeat of this passing run is unnecessary.
+This append preserves the prior 16,183,028-byte audit prefix, SHA-256
+13cebc2091622e4f86c348a676c1eb99dcc0cd71ed3a7954ffb359fa12d95035.

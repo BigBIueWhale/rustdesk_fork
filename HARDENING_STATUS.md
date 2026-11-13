@@ -4232,7 +4232,30 @@ and `remote-installed-input-congestion-23bf2503.json` bind eighteen files /
 4,033,665 bytes on CTE/TUF, eight zero listener deltas and joined private/RAM
 cleanup. No application rebuild. This event-driven XTEST/Xvfb evidence leaves
 concurrent animation/input, physical scanout, reproducible random sequences/tails,
-installed multi-hour drift, other platforms and the long-outage failures OPEN.
+installed impaired multi-hour drift, other platforms and the long-outage failures OPEN.
+
+**Installed Linux healthy input endurance — four-hour control PASS.**
+TUF `INoHIUGyzd`, fixture `a661bc1e`, reuses installed app `2eb7015e` without
+rebuilding. All **7,320 ordered input-to-visible responses** pass across 61
+four-minute windows: the fixed initial baseline plus four subsequent hours.
+Independently recomputed baseline p95/p99 are **114/122 ms**, largest window
+values **149/170 ms**, and final values **115/125 ms**. Worst response is
+**187 ms**; maximum upward p95/p99 drift is 35/48 ms, within the unchanged
+1,000-ms response and 250-ms drift limits. Each input has a no-input quiet
+control and requires its exact source publication and viewer-root pixel response.
+All 7,331 source publications, 244 progress records and window summaries reconcile.
+
+The same connection, viewer, installed child/listener, credential and profile
+persist. Guest-root observation of the non-dumpable child records 14,634 samples
+over 14,640.604 seconds and 244 CPU windows; maximum CPU use is 2,140 ms per
+window, RSS growth 3,383,296 bytes, descriptor growth ten and no thread growth.
+Viewer progress samples peak 40,572 KiB above initial RSS and three descriptors
+higher, with fewer threads. All bounds pass. Desktop retirement and normal
+package reinstall/remove/purge pass. `remote-installed-input-soak-a661bc1e.json`
+binds nine files/2,120,994 bytes on CTE/TUF, four zero listener deltas and joined
+VM/private/RAM retirement. This accepts the installed healthy XTEST/Xvfb control;
+impaired installed endurance, concurrent animation/input, physical scanout,
+long-outage recovery, other platforms and complete R-F5 acceptance remain OPEN.
 
 **Healthy Linux input-to-visible baseline (`b6a53664`).** CTE complete-peer replay
 `TTXmnRc78O` reuses authenticated app `0243c010` and engine `ddb1541d` without

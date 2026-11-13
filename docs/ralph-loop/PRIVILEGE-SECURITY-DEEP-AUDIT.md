@@ -151493,3 +151493,14 @@ do not repeat passing scenarios or weaken deadlines to close them. Reassess the
 next release-directed step here.
 This append preserves the prior 16,189,694-byte audit prefix, SHA-256
 eb6f2b288db5757d989e1187ccdc59c49026c466f44bfbf6738ebf8c9effc117.
+
+Fresh ledger count at d626c931, CdhCAs6qZF/tool42950: 420,774 tokens /
+1,918,534 bytes, SHA-256
+f327a73f890a1076f29e6efdc7cd2e20767222cf7abd6a3a654fe5622b768fd2.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+installed-input-congestion-soak-ledger-d626c931.json binds eight files /
+116,186 bytes on CTE/TUF. QEMU 1643435 joins zero after 30.241 seconds;
+three zero listener deltas and exact private/process/socket/RAM retirement pass.
+The approximate 400,000-token target remains OPEN. This audit-only append
+preserves the counted ledger and the prior 16,193,150-byte audit prefix, SHA-256
+ebe37986ff4ba9a7e5f844e31af298c620dca1f1eaffadee008a85f7b6a0f1f8.

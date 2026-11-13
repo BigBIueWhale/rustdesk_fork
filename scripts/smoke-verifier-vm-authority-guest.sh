@@ -4448,6 +4448,7 @@ run_focused_rust_tests() {
                 protobuf_tests::unknown_groups_enforce_recursion_limit
                 protobuf_tests::nested_messages_share_the_recursion_budget
                 protobuf_tests::declared_lengths_cannot_exceed_available_bytes
+                protobuf_tests::truncated_length_regions_fail_for_all_input_sources
                 protobuf_tests::malformed_wire_values_return_errors
             )
         fi
@@ -9235,7 +9236,7 @@ PY
             grep -E '^test fs::tests::read_step_[[:alnum:]_]+ [.][.][.] ok$|^READ_TERMINAL_(LOG|RETIREMENT)' "$output"
         elif [ "$RUST_TEST_PROFILE" = protobuf-parser ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'protobuf parser test total differs'
-            grep -E '^test protobuf_tests::[[:alnum:]_]+ [.][.][.] ok$' "$output"
+            grep -E '^test protobuf_tests::[[:alnum:]_]+ [.][.][.] ok$|^PROTOBUF_LENGTH_INPUT ' "$output"
         elif [ "$RUST_TEST_PROFILE" = tcp-key-transition ]; then
             [ "$tests_passed" -eq "${#required_tests[@]}" ] || fail 'TCP key-transition total differs'
             grep -E '^test [[:alnum:]_]+ [.][.][.] ok$' "$output"

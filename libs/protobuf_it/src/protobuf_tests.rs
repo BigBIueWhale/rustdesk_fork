@@ -2,7 +2,7 @@
 //! are separate boundaries; a successfully decoded protobuf grants neither.
 
 use crate::{
-    message_proto::{AudioFrame, Cpace, CpaceStep1, CpaceStep2, CpaceStep3, CpaceStep4, Message},
+    message_proto::{AudioFrame, CaptureDisplays, Cpace, CpaceStep1, CpaceStep2, CpaceStep3, CpaceStep4, Message},
     protobuf::Message as _,
 };
 use std::{alloc::{GlobalAlloc, Layout, System}, cell::Cell};
@@ -177,13 +177,15 @@ fn valid_post_key_messages_preserve_exact_fields() {
 fn unknown_groups_enforce_recursion_limit() {
     let pre = cpace();
     let post = post_key();
-    for depth in [0, 1, 99, 100, 101, 256, 1000] {
+    for depth in [0, 1, 99, 100, 101, 102, 256, 1000] {
         let pre_bytes = groups_then(&pre.write_to_bytes().unwrap(), depth);
         let post_bytes = groups_then(&post.write_to_bytes().unwrap(), depth);
         assert!(pre_bytes.len() <= 4096);
         let pre_result = Cpace::parse_from_bytes(&pre_bytes);
         let post_result = Message::parse_from_bytes(&post_bytes);
-        if depth <= 100 {
+        // The generated unknown-field helper skips the first group directly;
+        // each nested group then consumes one runtime recursion level.
+        if depth <= 101 {
             assert_eq!(pre_result.unwrap(), pre, "pre-key depth {depth}");
             assert_eq!(post_result.unwrap(), post, "post-key depth {depth}");
         } else {
@@ -197,12 +199,12 @@ fn unknown_groups_enforce_recursion_limit() {
 fn nested_messages_share_the_recursion_budget() {
     let pre = cpace();
     let post = post_key();
-    for depth in [0, 1, 98, 99, 100, 101] {
+    for depth in [0, 1, 98, 99, 100, 101, 102] {
         let pre_body = groups_then(&pre.step1().write_to_bytes().unwrap(), depth);
         let post_body = groups_then(&post.audio_frame().write_to_bytes().unwrap(), depth);
         let pre_result = Cpace::parse_from_bytes(&field(1, pre_body.len() as u64, &pre_body));
         let post_result = Message::parse_from_bytes(&field(11, post_body.len() as u64, &post_body));
-        if depth < 100 {
+        if depth <= 100 {
             assert_eq!(pre_result.unwrap(), pre, "pre-key nested depth {depth}");
             assert_eq!(post_result.unwrap(), post, "post-key nested depth {depth}");
         } else {
@@ -236,6 +238,67 @@ fn declared_lengths_cannot_exceed_available_bytes() {
             assert!(Message::parse_from_bytes(truncated).is_err());
         }
     }
+}
+
+struct OneByteReader<'a>(&'a [u8]);
+
+impl std::io::Read for OneByteReader<'_> {
+    fn read(&mut self, target: &mut [u8]) -> std::io::Result<usize> {
+        if target.is_empty() || self.0.is_empty() {
+            return Ok(0);
+        }
+        target[0] = self.0[0];
+        self.0 = &self.0[1..];
+        Ok(1)
+    }
+}
+
+fn input_sources<M: crate::protobuf::Message>(bytes: &[u8])
+    -> [(&'static str, crate::protobuf::Result<M>); 4]
+{
+    let mut reader = std::io::BufReader::with_capacity(2, OneByteReader(bytes));
+    let mut input = crate::protobuf::CodedInputStream::from_buf_read(&mut reader);
+    let buffered = M::parse_from(&mut input).and_then(|message| {
+        input.check_eof()?;
+        Ok(message)
+    });
+    [
+        ("slice", M::parse_from_bytes(bytes)),
+        ("shared", M::parse_from_tokio_bytes(&bytes::Bytes::copy_from_slice(bytes))),
+        ("reader", M::parse_from_reader(&mut OneByteReader(bytes))),
+        ("buffered", buffered),
+    ]
+}
+
+fn check_length_regions<M: crate::protobuf::Message>(
+    tag: u64, body: &[u8], failures: &mut Vec<String>,
+) {
+    for valid in [Vec::new(), field(tag, 0, &[]), field(tag, body.len() as u64, body)] {
+        let expected = M::parse_from_bytes(&valid).unwrap();
+        for (source, result) in input_sources::<M>(&valid) {
+            assert!(result.unwrap() == expected, "{} {source}: valid bytes differ", M::NAME);
+        }
+    }
+    let mut refused = 0;
+    for invalid in [field(tag, 1, &[]), field(tag, body.len() as u64 + 1, body)] {
+        for (source, result) in input_sources::<M>(&invalid) {
+            if result.is_err() {
+                refused += 1;
+            } else {
+                failures.push(format!("{} {source} accepted {invalid:02x?}", M::NAME));
+            }
+        }
+    }
+    println!("PROTOBUF_LENGTH_INPUT type={} sources=4 valid=12 refused={refused}/8", M::NAME);
+}
+
+#[test]
+fn truncated_length_regions_fail_for_all_input_sources() {
+    let mut failures = Vec::new();
+    check_length_regions::<Cpace>(1, &[0x0a, 0x01, 0x41], &mut failures);
+    check_length_regions::<Message>(11, &[0x0a, 0x01, 0x41], &mut failures);
+    check_length_regions::<CaptureDisplays>(1, &[0x01], &mut failures);
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
 
 #[test]

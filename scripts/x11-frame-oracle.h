@@ -309,17 +309,23 @@ static int64_t x11_frame_decode_pair(const uint8_t pixels[X11_FRAME_BYTES], int 
                 if (valid && minimum >= 3U && maximum - minimum <= 2U) {
                     int response_candidate = -1;
                     if (response != NULL) {
-                        /* The response band's midpoint is at 70% of the source,
-                         * relative to the verified upper 40% animation counter.
-                         * A one-byte code alone cannot determine image geometry. */
-                        unsigned int y = runs[start].top +
-                            (previous_end - runs[start].top) * 7U / 4U;
-                        if (y == 0U || y + 1U >= X11_FRAME_HEIGHT) continue;
-                        response_candidate = x11_frame_row(pixels, y, (unsigned int)left, span);
-                        if (response_candidate < 0 || response_candidate > 255 ||
-                            x11_frame_row(pixels, y - 1U, (unsigned int)left, span) != response_candidate ||
-                            x11_frame_row(pixels, y + 1U, (unsigned int)left, span) != response_candidate)
-                            continue;
+                        /* Response row centers are at 65% and 75% of the source,
+                         * relative to the verified upper 40% animation counter. */
+                        response_candidate = 0;
+                        for (unsigned int row = 0U; row < 2U; ++row) {
+                            unsigned int y = runs[start].top +
+                                (previous_end - runs[start].top) * (13U + row * 2U) / 8U;
+                            if (y == 0U || y + 1U >= X11_FRAME_HEIGHT) { valid = 0; break; }
+                            int code = x11_frame_row(pixels, y, (unsigned int)left, span);
+                            if (code < 0 || (unsigned int)(code >> 8) != row ||
+                                x11_frame_row(pixels, y - 1U, (unsigned int)left, span) != code ||
+                                x11_frame_row(pixels, y + 1U, (unsigned int)left, span) != code) {
+                                valid = 0;
+                                break;
+                            }
+                            response_candidate = (response_candidate << 8) | (code & 255);
+                        }
+                        if (!valid) continue;
                     }
                     if (identity >= 0 && (identity != (int64_t)candidate ||
                                          response_identity != response_candidate)) {

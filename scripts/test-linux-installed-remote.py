@@ -29,6 +29,7 @@ NETWORK_PROFILES = {
     'input-recovery': ['loss'] * 3,
     'input-loss': ['random3', 'random8', 'burst'],
     'input-congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
+    'input-animation-congestion': ['jitter', 'bandwidth', 'bandwidth-jitter'],
     'input-congestion-soak': ['jitter', 'bandwidth', 'bandwidth-jitter'] * 4,
 }
 SOAK_SCENARIOS = ('input-soak', 'input-congestion-soak')
@@ -61,8 +62,9 @@ def observe_network(settings, actor, network, supervise=None):
     spec = importlib.util.spec_from_file_location('peer_netem', SCRIPT.with_name('flutter-peer-netem.py'))
     netem = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(netem)
-    owner = netem.Impairment(None, congestion=network in ('congestion', 'input-congestion', 'input-congestion-soak'),
-                            long_soak=network == 'input-congestion-soak')
+    owner = netem.Impairment(None, congestion=network in ('congestion', 'input-congestion', 'input-congestion-soak',
+                                                        'input-animation-congestion'),
+                            long_soak=network in ('input-congestion-soak', 'input-animation-congestion'))
     driver_pid = driver_fd = None
     expected = [request for profile in NETWORK_PROFILES[network] for request in (profile, 'healthy')]
     profiles, refusals = [], 0
@@ -76,6 +78,7 @@ def observe_network(settings, actor, network, supervise=None):
         listener.listen(1)
         listener.settimeout(0.2)
         deadline = time.monotonic() + (15180 if network == 'input-congestion-soak'
+                                       else 960 if network == 'input-animation-congestion'
                                        else 300 if network == 'input-recovery' else 360 if network in INPUT_SCENARIOS else 240)
         try:
             while actor.poll() is None:
@@ -269,7 +272,7 @@ def session(network=False):
                             and 0 < info.st_size <= 4096, 'Remote display authority differs')
                     combined.write(path.read_bytes())
             source = subprocess.Popen([str(settings.WORK / 'presentation-source'),
-                                       *(['--input-animation'] if network == 'input-animation' else
+                                       *(['--input-animation'] if network in ('input-animation', 'input-animation-congestion') else
                                          ['--input-response', str(COORD)] if network in INPUT_SCENARIOS else [])],
                 env={**environment, 'DISPLAY': ':77', 'XAUTHORITY': '/run/user/4001/gdm/Xauthority',
                      'RUSTDESK_PRESENTATION_TRACE': '1'},
@@ -299,6 +302,7 @@ def session(network=False):
                             'input-recovery': '--input-recovery', 'input-loss': '--input-loss',
                             'input-congestion': '--input-congestion',
                             'input-animation': '--input-animation',
+                            'input-animation-congestion': '--input-animation-congestion',
                             'input-soak': '--input-soak',
                             'input-congestion-soak': '--input-congestion-soak'}.get(network, '--viewer-suspend')]
             if network in SOAK_SCENARIOS:
@@ -326,7 +330,8 @@ def session(network=False):
                         require((COORD / name).stat().st_size <= 2097152,
                                 'installed input soak output exceeds its bound')
                     time.sleep(0.1)
-            require(driver.wait(timeout=240 if network == 'input-recovery' else 300 if network in INPUT_SCENARIOS
+            require(driver.wait(timeout=900 if network == 'input-animation-congestion'
+                                else 240 if network == 'input-recovery' else 300 if network in INPUT_SCENARIOS
                                 else 180 if network else 120) == 0,
                     'installed Remote pixel observer failed')
             require(viewer.wait(timeout=10) == 0, 'Remote viewer did not close normally')
@@ -351,7 +356,8 @@ def session(network=False):
             for name in ('driver.log', 'source-error.log', 'frame-source.log', 'viewer.log'):
                 path = COORD / name
                 if path.exists():
-                    require(path.stat().st_size <= (2097152 if network in SOAK_SCENARIOS else 131072),
+                    require(path.stat().st_size <= (2097152 if network in SOAK_SCENARIOS
+                                                   else 1048576 if network == 'input-animation-congestion' else 131072),
                             'Remote observer output exceeds its bound')
                     print(path.read_text(), end='', file=sys.stderr, flush=True)
 
@@ -405,7 +411,7 @@ def scenario(settings, receiver, record, network=False):
             actor.wait(timeout=20)
             actor.stdout.close()
         if log.exists():
-            require(log.stat().st_size <= (6291456 if network in SOAK_SCENARIOS
+            require(log.stat().st_size <= (6291456 if network in (*SOAK_SCENARIOS, 'input-animation-congestion')
                                           else 2097152 if network == 'input-recovery' else 4194304 if network in INPUT_SCENARIOS
                                           else 1048576),
                     'installed Remote output exceeds its bound')
@@ -416,12 +422,14 @@ if __name__ == '__main__':
     require(sys.argv[1:] in (['--session'], ['--session-network'], ['--session-loss'], ['--session-congestion'],
                             ['--session-backoff'], ['--session-input-recovery'], ['--session-input-loss'],
                             ['--session-input-congestion'], ['--session-input-soak'],
-                            ['--session-input-congestion-soak'], ['--session-input-animation']),
+                            ['--session-input-congestion-soak'], ['--session-input-animation'],
+                            ['--session-input-animation-congestion']),
             'closed installed Remote session request required')
     session(network={'--session-network': 'network', '--session-loss': 'loss',
                      '--session-congestion': 'congestion', '--session-backoff': 'backoff',
                      '--session-input-recovery': 'input-recovery', '--session-input-loss': 'input-loss',
                      '--session-input-congestion': 'input-congestion',
                      '--session-input-animation': 'input-animation',
+                     '--session-input-animation-congestion': 'input-animation-congestion',
                      '--session-input-soak': 'input-soak',
                      '--session-input-congestion-soak': 'input-congestion-soak'}.get(sys.argv[1], False))

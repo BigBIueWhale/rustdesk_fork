@@ -77,28 +77,30 @@ static int unit_cases(void) {
     {
         uint8_t marker[X11_FRAME_BYTES];
         memset(marker, 180, sizeof(marker));
-        make_pixels(marker, 0x7b000000U, 0U, 50U, 100U);
+        make_pixels(marker, 123U << 16U, 0U, 50U, 100U);
         REQUIRE(x11_response_decode(pixels) < 0);
-        memcpy(pixels + 72U * X11_FRAME_WIDTH * 3U, marker, sizeof(row));
-        memcpy(pixels + 84U * X11_FRAME_WIDTH * 3U, marker, sizeof(row));
+        memcpy(pixels + 72U * X11_FRAME_WIDTH * 3U, marker, 2U * sizeof(row));
         REQUIRE(x11_frame_decode(pixels) == 0x01020304 && x11_response_decode(pixels) == 123);
         make_pixels(pixels, 0x01020305U, 0U, 50U, 100U);
         REQUIRE(x11_frame_decode(pixels) == 0x01020305 && x11_response_decode(pixels) == 123);
-        make_pixels(marker, 0x7c000000U, 0U, 50U, 100U);
-        memcpy(pixels + 84U * X11_FRAME_WIDTH * 3U, marker, X11_FRAME_WIDTH * 3U);
+        make_pixels(marker, 124U << 16U, 0U, 50U, 100U);
+        memcpy(pixels + 90U * X11_FRAME_WIDTH * 3U, marker + sizeof(row), X11_FRAME_WIDTH * 3U);
         REQUIRE(x11_response_decode(pixels) < 0);
         memset(pixels + 60U * X11_FRAME_WIDTH * 3U, 180,
                (X11_FRAME_HEIGHT - 60U) * X11_FRAME_WIDTH * 3U);
-        memcpy(pixels + 83U * X11_FRAME_WIDTH * 3U, marker, 2U * X11_FRAME_WIDTH * 3U);
+        memcpy(pixels + 77U * X11_FRAME_WIDTH * 3U, marker, 2U * X11_FRAME_WIDTH * 3U);
         REQUIRE(x11_response_decode(pixels) < 0);
-        for (unsigned int response = 0U; response <= 120U; ++response) {
-            make_pixels(marker, response << 24U, 0U, 50U, 100U);
-            memcpy(pixels + 72U * X11_FRAME_WIDTH * 3U, marker, sizeof(row));
-            memcpy(pixels + 84U * X11_FRAME_WIDTH * 3U, marker, sizeof(row));
+        for (unsigned int index = 0U; index <= 514U; ++index) {
+            unsigned int response = index == 514U ? 65535U : index;
+            make_pixels(marker, response << 16U, 0U, 50U, 100U);
+            memcpy(pixels + 72U * X11_FRAME_WIDTH * 3U, marker, 2U * sizeof(row));
             REQUIRE(x11_frame_decode(pixels) == 0x01020305 &&
                     x11_response_decode(pixels) == (int)response);
         }
-        puts("X11_RESPONSE_BAND_CASES=pass independent=true absent=refused ambiguous=refused short=refused");
+        memcpy(pixels + 72U * X11_FRAME_WIDTH * 3U, marker + sizeof(row), sizeof(row));
+        memcpy(pixels + 84U * X11_FRAME_WIDTH * 3U, marker, sizeof(row));
+        REQUIRE(x11_response_decode(pixels) < 0);
+        puts("X11_RESPONSE_BAND_CASES=pass bits=16 values=515 independent=true absent=refused ambiguous=refused short=refused reordered=refused");
     }
     {
         uint8_t half[X11_FRAME_BYTES];

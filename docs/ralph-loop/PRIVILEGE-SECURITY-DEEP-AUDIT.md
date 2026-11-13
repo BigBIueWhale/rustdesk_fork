@@ -151717,3 +151717,37 @@ exact private/process/socket/RAM retirement reconcile. The approximate
 400,000-token target remains OPEN. This audit-only append preserves the counted
 ledger and the prior 16,207,719-byte audit prefix, SHA-256
 3b2f1040b13e1cf684afb3c42686c433e6697caee7271565c2074bab4bbaac24.
+
+## 2026-11-13 — Concurrent animation/input congestion acceptance prepared
+
+Continue R-F5 from the healthy installed checkpoint. The next missing condition
+is simultaneous animation and input through network degradation; this gives new
+native evidence while the separately demonstrated long-outage failure stays OPEN.
+The isolated integration keeps the same installed 2eb7015e app, connection,
+service child and original baseline. Four windows of 120 responses surround
+twenty-second jitter, 32-kbit/s bandwidth and combined profiles. Source animation
+continues at nominal four Hz. Healthy response and displayed age remain bounded
+by 1,000 ms; each p95/p99 must stay within 250 ms of its original baseline.
+Restoration is independent of response completion; both a completed response and
+a fresh post-restoration frame must appear within 2,500 ms. Impaired observations
+and input waits have a 23-second absolute bound, without imposing a healthy-link
+latency limit during restriction. Source response identities now use two ordered
+Manchester rows, with no wrap, so every request remains distinct beyond 255.
+Focused pixel controls cover 0–513, 65535, changed frames, absent/short/inconsistent
+and reordered rows. Actual source/root and viewer/root observations remain required.
+
+Research: tc-netem(8), https://man7.org/linux/man-pages/man8/tc-netem.8.html,
+and tc-tbf(8), https://man7.org/linux/man-pages/man8/tc-tbf.8.html, distinguish
+delay distribution, token-bucket shaping and queue limits. Reuse the existing
+calibrated guest-only setup, including queued-datagram-preserving restoration,
+actual parameter readback and byte/queue observations. Use the existing bounded
+30-second healthy / 200-ms impaired transport sampling, with five fast seconds
+after restoration. No host network or product socket settings change.
+
+This is a deliberate roughly ten-minute integration checkpoint, with 900-second
+driver, 960-second network-owner and 1,080-second package deadlines inside the
+existing 1,200-second VM budget. Reuse authenticated inputs and app cache with
+bounded RAM scratch, monitoring, exact joins and evidence retention. No product
+patch or acceptance claim precedes the native result. This append preserves the
+prior 16,208,388-byte audit prefix, SHA-256
+734d7e1eaddbb6373c0aa982aadc3fdd379afd950acf7b987365a6906a5fac52.

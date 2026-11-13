@@ -4656,13 +4656,15 @@ fail:
     return -1;
 }
 
-static int exercise_input_animation(Display *source, Display *display, ViewerWindow *viewer,
+static int exercise_input_animation_window(Display *source, Display *display, ViewerWindow *viewer,
                                      SourceHistory *history, const ConnectionIdentity *connection,
-                                     const ProcessResources *baseline) {
+                                     const ProcessResources *baseline, unsigned int window,
+                                     unsigned int *request, int64_t *last_frame, unsigned int metrics[4]) {
     enum { SAMPLES = 120, QUIET_MS = 650 };
     unsigned int histogram[FRESH_LIMIT_MS + 1U] = {0}, maximum = 0U, trial = 0U;
+    unsigned int ages[FRESH_LIMIT_MS + 1U] = {0}, age_samples = 0U;
     uint64_t maximum_age = 0U;
-    int64_t previous_frame = -1;
+    int64_t previous_frame = *last_frame;
     uint8_t pixels[X11_FRAME_BYTES] = {0};
     uint64_t captured = 0U, age = 0U, request_us = 0U;
     int64_t frame = -1;
@@ -4684,13 +4686,15 @@ static int exercise_input_animation(Display *source, Display *display, ViewerWin
         for (;;) {
             frame = x11_frame_capture(display, viewer->window, pixels, &captured);
             response = frame < 0 ? -1 : x11_response_decode(pixels);
-            if (frame < 0 || frame < previous_frame || response != (int)trial ||
+            if (frame < 0 || frame < previous_frame || response != (int)*request ||
                 x11_frame_age(history, "/coord", frame, captured, &age) != 0 || age > FRESH_LIMIT_MS)
                 goto fail;
             if (frame != previous_frame) ++distinct;
             previous_frame = quiet_last = frame;
             if (quiet_first < 0) quiet_first = frame;
             if (age > maximum_age) maximum_age = age;
+            ++ages[age];
+            if (++age_samples > 30000U) goto fail;
             ++samples;
             uint64_t now = x11_frame_monotonic_us();
             if (now < quiet || now - quiet > (QUIET_MS + 100U) * 1000ULL) goto fail;
@@ -4701,19 +4705,21 @@ static int exercise_input_animation(Display *source, Display *display, ViewerWin
             !keyboard_is_released(source) || !keyboard_is_released(display)) goto fail;
         phase = "request";
         request_us = x11_frame_monotonic_us();
-        if (request_us == 0U || send_response_request(display, trial) != 0) goto fail;
+        if (request_us == 0U || send_response_request(display, *request) != 0) goto fail;
         phase = "response-and-freshness";
         for (;;) {
             frame = x11_frame_capture(display, viewer->window, pixels, &captured);
             response = frame < 0 ? -1 : x11_response_decode(pixels);
             uint64_t now = x11_frame_monotonic_us();
             if (now < request_us || now - request_us > FRESH_LIMIT_MS * 1000ULL ||
-                frame < previous_frame || response < (int)trial || response > (int)trial + 1 ||
+                frame < previous_frame || response < (int)*request || response > (int)*request + 1 ||
                 x11_frame_age(history, "/coord", frame, captured, &age) != 0 || age > FRESH_LIMIT_MS)
                 goto fail;
             previous_frame = frame;
             if (age > maximum_age) maximum_age = age;
-            if (response == (int)trial + 1) {
+            ++ages[age];
+            if (++age_samples > 30000U) goto fail;
+            if (response == (int)*request + 1) {
                 ConnectionIdentity current = {{0}, {0}, 0UL};
                 ProcessResources resources = {0};
                 ViewerWindow same_viewer = {0};
@@ -4729,28 +4735,35 @@ static int exercise_input_animation(Display *source, Display *display, ViewerWin
                 unsigned int latency = (unsigned int)((now - request_us + 999U) / 1000U);
                 ++histogram[latency];
                 if (latency > maximum) maximum = latency;
-                printf("FLUTTER_PEER_INPUT_ANIMATION_SAMPLE request=%u response=%d frame=%lld "
+                printf("FLUTTER_PEER_INPUT_ANIMATION_SAMPLE window=%u request=%u response=%d frame=%lld "
                        "request_us=%llu publication_us=%llu captured_us=%llu elapsed_us=%llu "
                        "age_ms=%llu quiet_first=%lld quiet_last=%lld quiet_samples=%u\n",
-                       trial, response, (long long)frame, (unsigned long long)request_us,
+                       window, *request, response, (long long)frame, (unsigned long long)request_us,
                        (unsigned long long)history->publication_us[frame],
                        (unsigned long long)captured, (unsigned long long)(now - request_us),
                        (unsigned long long)age, (long long)quiet_first, (long long)quiet_last, samples);
                 if ((trial + 1U) % 30U == 0U) print_resources("input-animation", trial + 1U, &resources);
+                ++*request;
                 break;
             }
             if (sleep_millis(10U) != 0) goto fail;
         }
     }
-    printf("FLUTTER_PEER_INPUT_ANIMATION_OK samples=120 deadline_ms=1000 freshness_limit_ms=1000 "
-           "p95_ms=%u p99_ms=%u maximum_ms=%u maximum_age_ms=%llu "
+    metrics[0] = latency_percentile(histogram, SAMPLES, 95U);
+    metrics[1] = latency_percentile(histogram, SAMPLES, 99U);
+    metrics[2] = latency_percentile(ages, age_samples, 95U);
+    metrics[3] = latency_percentile(ages, age_samples, 99U);
+    *last_frame = previous_frame;
+    printf("FLUTTER_PEER_INPUT_ANIMATION_OK window=%u samples=120 deadline_ms=1000 freshness_limit_ms=1000 "
+           "p95_ms=%u p99_ms=%u maximum_ms=%u maximum_age_ms=%llu age_p95_ms=%u age_p99_ms=%u age_samples=%u "
            "stable_connection=true same_window=true resources=bounded pixels=viewer-root\n",
-           latency_percentile(histogram, SAMPLES, 95U), latency_percentile(histogram, SAMPLES, 99U),
-           maximum, (unsigned long long)maximum_age);
+           window, metrics[0], metrics[1], maximum, (unsigned long long)maximum_age,
+           metrics[2], metrics[3], age_samples);
+    fflush(stdout);
     return 0;
 fail:
     fprintf(stderr, "FLUTTER_PEER_X11_FAIL input-animation phase=%s request=%u frame=%lld\n",
-            phase, trial, (long long)previous_frame);
+            phase, *request, (long long)previous_frame);
     fprintf(stderr, "FLUTTER_PEER_INPUT_ANIMATION_REFUSED observed_frame=%lld response=%d "
             "request_us=%llu captured_us=%llu now_us=%llu age_ms=%llu publications=%u history_failed=%d\n",
             (long long)frame, response, (unsigned long long)request_us,
@@ -4762,6 +4775,131 @@ fail:
         g_free(encoded);
     }
     return -1;
+}
+
+static int exercise_animation_congestion(Display *source, Display *display, ViewerWindow *viewer,
+                                         SourceHistory *history, const ConnectionIdentity *connection,
+                                         const ProcessResources *baseline, unsigned int cycle,
+                                         unsigned int *request, int64_t *last_frame) {
+    const char *profiles[] = {"jitter", "bandwidth", "bandwidth-jitter"};
+    unsigned long long before_drops = 0ULL, before_packets = 0ULL, drops = 0ULL, packets = 0ULL;
+    uint64_t began = 0U, restored = 0U, request_us = 0U, completed = 0U, previous = 0U, max_age = 0U;
+    unsigned int responses = 0U, observations = 0U;
+    int pending = 0, restore_needed = 1, response = -1;
+    int64_t frame = -1;
+    uint8_t pixels[X11_FRAME_BYTES] = {0};
+    uint64_t captured = 0U, age = 0U;
+    const char *phase = "apply";
+    if (cycle >= 3U || network_profile(profiles[cycle], &before_drops, &before_packets) != 0) goto fail;
+    began = previous = x11_frame_monotonic_us();
+    if (began == 0U) goto fail;
+    for (;;) {
+        uint64_t now = x11_frame_monotonic_us();
+        if (now < previous) goto fail;
+        if (restored == 0U && now - began >= 20000000U) {
+            phase = "restore";
+            restored = now;
+            if (restored - began > 20500000U || network_profile("healthy", &drops, &packets) != 0)
+                goto fail;
+            restore_needed = 0;
+            if (packets <= before_packets || drops < before_drops) goto fail;
+        }
+        phase = "response-and-freshness";
+        frame = x11_frame_capture(display, viewer->window, pixels, &captured);
+        response = frame < 0 ? -1 : x11_response_decode(pixels);
+        now = x11_frame_monotonic_us();
+        if (now < previous || now - began > 23000000U || ++observations > 3000U ||
+            (restored != 0U && now - restored > RECOVERY_LIMIT_MS * 1000ULL) ||
+            frame < *last_frame || response < (int)*request || response > (int)*request + pending ||
+            x11_frame_age(history, "/coord", frame, captured, &age) != 0 || age > 23000U) goto fail;
+        previous = now;
+        *last_frame = frame;
+        if (age > max_age) max_age = age;
+        if (pending && response == (int)*request + 1) {
+            if (history->publication_us[frame] < request_us || captured < request_us ||
+                !keyboard_is_released(source) || !keyboard_is_released(display)) goto fail;
+            printf("FLUTTER_PEER_ANIMATION_DEGRADED_SAMPLE cycle=%u request=%u response=%d frame=%lld "
+                   "request_us=%llu publication_us=%llu captured_us=%llu elapsed_us=%llu age_ms=%llu\n",
+                   cycle + 1U, *request, response, (long long)frame, (unsigned long long)request_us,
+                   (unsigned long long)history->publication_us[frame], (unsigned long long)captured,
+                   (unsigned long long)(now - request_us), (unsigned long long)age);
+            ++*request;
+            ++responses;
+            completed = now;
+            pending = 0;
+        }
+        if (restored != 0U && completed >= restored && !pending &&
+            history->publication_us[frame] >= restored && age <= FRESH_LIMIT_MS) {
+            ConnectionIdentity current = {{0}, {0}, 0UL};
+            ProcessResources resources = {0};
+            ViewerWindow same_viewer = {0};
+            phase = "continuity";
+            if (inspect_viewer_candidate(display, viewer->window, viewer->pid, &same_viewer) != 1 ||
+                same_viewer.window != viewer->window || read_connection_identity(&current) != 0 ||
+                !same_connection(connection, &current) || read_process_resources(viewer->pid, &resources) != 0 ||
+                !resources_are_bounded(baseline, &resources)) goto fail;
+            now = x11_frame_monotonic_us();
+            if (now < previous || now - restored > RECOVERY_LIMIT_MS * 1000ULL) goto fail;
+            print_resources("animation-recovery", cycle + 1U, &resources);
+            printf("FLUTTER_PEER_ANIMATION_RECOVERY_OK cycle=%u profile=%s responses=%u observations=%u "
+                   "held_us=%llu restored_us=%llu recovery_us=%llu frame=%lld response=%d age_ms=%llu "
+                   "maximum_impaired_age_ms=%llu drops=%llu packets=%llu stable_connection=true same_window=true\n",
+                   cycle + 1U, profiles[cycle], responses, observations,
+                   (unsigned long long)(restored - began), (unsigned long long)restored,
+                   (unsigned long long)(now - restored), (long long)frame, response, (unsigned long long)age,
+                   (unsigned long long)max_age, drops - before_drops, packets - before_packets);
+            fflush(stdout);
+            return 0;
+        }
+        if (!pending && (completed == 0U || now - completed >= 650000U)) {
+            phase = "request";
+            request_us = x11_frame_monotonic_us();
+            if (request_us < previous || !keyboard_is_released(source) || !keyboard_is_released(display) ||
+                send_response_request(display, *request) != 0) goto fail;
+            pending = 1;
+        }
+        if (sleep_millis(10U) != 0) goto fail;
+    }
+fail:
+    fprintf(stderr, "FLUTTER_PEER_X11_FAIL animation-congestion phase=%s cycle=%u request=%u frame=%lld "
+            "response=%d began_us=%llu restored_us=%llu now_us=%llu age_ms=%llu observations=%u\n",
+            phase, cycle + 1U, *request, (long long)frame, response, (unsigned long long)began,
+            (unsigned long long)restored, (unsigned long long)x11_frame_monotonic_us(),
+            (unsigned long long)age, observations);
+    gchar *encoded = g_base64_encode(pixels, sizeof(pixels));
+    if (encoded != NULL) {
+        fprintf(stderr, "FLUTTER_PEER_INPUT_ANIMATION_PIXELS width=200 height=120 rgb_base64=%s\n", encoded);
+        g_free(encoded);
+    }
+    if (restore_needed && network_profile("healthy", &drops, &packets) != 0)
+        fputs("FLUTTER_PEER_X11_FAIL animation restoration; supervisor retains cleanup\n", stderr);
+    return -1;
+}
+
+static int exercise_input_animation(Display *source, Display *display, ViewerWindow *viewer,
+                                     SourceHistory *history, const ConnectionIdentity *connection,
+                                     const ProcessResources *baseline, int congestion) {
+    unsigned int request = 0U, original[4] = {0}, metrics[4] = {0};
+    int64_t last_frame = -1;
+    for (unsigned int window = 0U; window < (congestion ? 4U : 1U); ++window) {
+        if (window != 0U && exercise_animation_congestion(source, display, viewer, history, connection,
+                                                        baseline, window - 1U, &request, &last_frame) != 0)
+            return -1;
+        if (exercise_input_animation_window(source, display, viewer, history, connection, baseline,
+                                            window, &request, &last_frame, metrics) != 0) return -1;
+        if (window == 0U) memcpy(original, metrics, sizeof(original));
+        for (unsigned int index = 0U; index < 4U; ++index) {
+            if (metrics[index] > original[index] + 250U) {
+                fprintf(stderr, "FLUTTER_PEER_X11_FAIL animation-drift window=%u metric=%u baseline=%u current=%u\n",
+                        window, index, original[index], metrics[index]);
+                return -1;
+            }
+        }
+    }
+    if (congestion)
+        puts("FLUTTER_PEER_ANIMATION_CONGESTION_OK windows=4 samples=480 cycles=3 hold_ms=20000 "
+             "recovery_limit_ms=2500 drift_ms=250 baseline=fixed animation=continuous connection=preserved");
+    return 0;
 }
 
 static int exercise_input_latency(Display *source, Display *display, ViewerWindow *viewer,
@@ -9214,6 +9352,7 @@ int main(int argc, char **argv) {
                                     strcmp(argv[5], "--congestion-soak") != 0 &&
                                     strcmp(argv[5], "--input-latency") != 0 &&
                                     strcmp(argv[5], "--input-animation") != 0 &&
+                                    strcmp(argv[5], "--input-animation-congestion") != 0 &&
                                     strcmp(argv[5], "--input-recovery") != 0 &&
                                     strcmp(argv[5], "--input-loss") != 0 &&
                                     strcmp(argv[5], "--input-congestion") != 0 &&
@@ -9622,9 +9761,11 @@ int main(int argc, char **argv) {
         return result == 0 ? 0 : 1;
     }
 
-    if (argc == 6 && strcmp(argv[5], "--input-animation") == 0) {
+    if (argc == 6 && (strcmp(argv[5], "--input-animation") == 0 ||
+                     strcmp(argv[5], "--input-animation-congestion") == 0)) {
         int result = exercise_input_animation(source, display, &viewer, &history,
-                                               &current_connection, &baseline_resources);
+                                               &current_connection, &baseline_resources,
+                                               strcmp(argv[5], "--input-animation-congestion") == 0);
         if (atspi_exit() != 0) result = -1;
         if (close_viewer(display, viewer.window) != 0) result = -1;
         XCloseDisplay(display);

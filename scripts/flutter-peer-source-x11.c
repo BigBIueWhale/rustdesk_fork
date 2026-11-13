@@ -558,7 +558,7 @@ int main(int argc, char **argv) {
             if (received == 1) {
                 if (input_animation) {
                     response_us = monotonic_micros();
-                    if (response.request > 255U || response_us == 0U) {
+                    if (response.request > 65535U || response_us == 0U) {
                         fputs("FLUTTER_PEER_SOURCE_FAIL animation response exhausted\n", stderr);
                         exit_status = 1;
                         goto cleanup;
@@ -589,17 +589,19 @@ int main(int argc, char **argv) {
                                end - start, code_height / STATE_CODE_ROWS);
             }
         }
-        /* An independent one-byte response band cannot form a four-row frame code.
-         * It changes only after a complete native request; animation never waits for input. */
+        /* Two ordered response rows cannot form a four-row frame code.
+         * They change only after a complete native request; animation never waits for input. */
         if (input_animation) {
-            for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
-                unsigned int start = bar * source_width / STATE_CODE_BARS;
-                unsigned int end = (bar + 1U) * source_width / STATE_CODE_BARS;
-                const uint8_t *color = state_code_bar_is_white(response.request << 24U, 0U, bar)
-                    ? code_white : code_black;
-                XSetForeground(display, graphics, rgb_pixel(visual, color));
-                XFillRectangle(display, back_buffer, graphics, (int)start,
-                               (int)(source_height * 3U / 5U), end - start, source_height / 5U);
+            for (row = 0U; row < 2U; ++row) {
+                for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+                    unsigned int start = bar * source_width / STATE_CODE_BARS;
+                    unsigned int end = (bar + 1U) * source_width / STATE_CODE_BARS;
+                    const uint8_t *color = state_code_bar_is_white(response.request << 16U, row, bar)
+                        ? code_white : code_black;
+                    XSetForeground(display, graphics, rgb_pixel(visual, color));
+                    XFillRectangle(display, back_buffer, graphics, (int)start,
+                                   (int)(source_height * (6U + row) / 10U), end - start, source_height / 10U);
+                }
             }
         }
         /*
@@ -630,15 +632,17 @@ int main(int argc, char **argv) {
             break;
         }
         if (input_animation) {
-            for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
-                const uint8_t *color = state_code_bar_is_white(response.request << 24U, 0U, bar)
-                    ? code_white : code_black;
-                if (!root_pixel_matches(display, root,
-                        (int)((bar * 2U + 1U) * source_width / (STATE_CODE_BARS * 2U)),
-                        (int)(source_height * 7U / 10U), rgb_pixel(visual, color))) {
-                    fputs("FLUTTER_PEER_SOURCE_FAIL response pixels occluded\n", stderr);
-                    exit_status = 1;
-                    goto cleanup;
+            for (row = 0U; row < 2U; ++row) {
+                for (bar = 0U; bar < STATE_CODE_BARS; ++bar) {
+                    const uint8_t *color = state_code_bar_is_white(response.request << 16U, row, bar)
+                        ? code_white : code_black;
+                    if (!root_pixel_matches(display, root,
+                            (int)((bar * 2U + 1U) * source_width / (STATE_CODE_BARS * 2U)),
+                            (int)(source_height * (13U + row * 2U) / 20U), rgb_pixel(visual, color))) {
+                        fputs("FLUTTER_PEER_SOURCE_FAIL response pixels occluded\n", stderr);
+                        exit_status = 1;
+                        goto cleanup;
+                    }
                 }
             }
             if (response_us != 0U && fprintf(stderr,

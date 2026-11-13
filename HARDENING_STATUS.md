@@ -7796,8 +7796,8 @@ Package reinstall/remove/purge and joined cleanup pass. Capsule
 CTE/TUF and four zero endpoint deltas. This is Linux Xvfb presentation/lifecycle
 acceptance for this scenario, not physical scanout, all settings or a full release.
 
-Audio output acceptance remains **OPEN; capture delivery corrected and natively
-verified, installed playback pending**. With authenticated private audio tools
+**Installed Linux continuous audio and disconnect retirement — PASS on the rebuilt
+app; broader audio acceptance OPEN.** With authenticated private audio tools
 and unchanged app/package libraries, `f966e3b3` measures a healthy steady interval:
 160 source tone windows, versus 160 silent and four other viewer windows, with
 no qualifying viewer tone. The continuous source observer requests no latency
@@ -7817,8 +7817,19 @@ Capsules `pa-continuous-before-34280080.json` and
 `pa-continuous-fixed-80e0431d.json` bind the source/artifacts, observations and
 joined cleanup on both hosts. Exact corrected continuous measurements were not
 exported by the guest summary; its named success binds the stated assertions.
-Next rebuild the full app and replay installed audio/presentation/lifecycle.
-Physical audibility, audio latency and sustained recovery remain unproved.
+Rebuilt app `e7bd99a8` passes the same installed scenario: over 16.4 seconds,
+the source has 164 tone windows and the viewer 162 tone/two other windows, with
+no silence (98.8% qualifying viewer tone, above the fixed 95% threshold).
+Recording/playback belong to the exact CM/viewer and retire after viewer close;
+both audio daemons and observers exit zero and their sockets disappear.
+Display recovery after 2/6/12-second viewer holds is 1,926/1,148/1,104 ms on the
+same connection, followed by healthy maximum frame ages 348/342/360 ms.
+Ordinary-user refusal, credential persistence, reinstall/remove/purge
+and joined cleanup pass (`pa-capture-installed-e7bd99a8.json`).
+The full build passes 27 controls; all 74 retained payloads verify, with only
+`librustdesk.so` changed from `3c289cff` under the same build inputs/recipe
+(`pa-capture-app-e7bd99a8.json`). This establishes native null-sink output,
+not physical audibility, audio latency, sustained recovery or full acceptance.
 Earlier `c13eb56c` established
 that absent sockets produced errno6/Connection refused despite the binding's
 misleading `Access denied` text; product error reporting still needs the actual
@@ -9911,9 +9922,12 @@ on unchanged TCP, visible device loss and fresh capture
 listener deltas and joined VM/RAM/private-state retirement, with evidence copied
 to CTE/TUF. Superseded `4468059d`, `b09f3420` and `843003fe` payloads are retired
 with manifests/evidence retained. Subsequent compositor/refresh work also retires
-`e4c7550e` and `2eb7015e`; the current TUF four-app cap holds `6429f3cb`,
-`a36e5581`, `77cc3441` and `3c289cff`. Retained provenance includes
-`video-refresh-retired-2eb7015e.json`; historical camera evidence remains valid.
+`e4c7550e` and `2eb7015e`; the current TUF four-app cap holds `a36e5581`,
+`77cc3441`, `3c289cff` and `e7bd99a8`. The superseded `6429f3cb` payloads are
+retired after full manifest/inventory verification, freeing 70,565,888 allocated
+bytes with bounded evidence retained (`pa-app-retired-6429f3cb.json`). Retained
+provenance also includes `video-refresh-retired-2eb7015e.json`; historical camera
+evidence remains valid.
 
 **Installed Linux camera presentation — PASS on the retained app and normal package.**
 TUF `kCAd1m7iqo`, fixture `f8c5137f`, installs app `2eb7015e` through offline APT.
@@ -20803,14 +20817,15 @@ its fixed `id`, `registry_generation`, `action`, and `log` fields prevent action
 text from selecting an authority field. No blanket assertion for every possible
 CM side effect is made.
 
-**Linux `_pa` authority and capture lifetime — native continuous capture corrected;
-rebuilt installed playback and full acceptance OPEN.**
+**Linux `_pa` authority and capture lifetime — native continuous capture and
+rebuilt installed playback pass; full acceptance OPEN.**
 `80e0431d` corrects source-latency negotiation and pending-frame draining; all 16
 native capture/authority cases pass after the old code reproduces severe starvation.
-The installed steady source control passes while the prior app's viewer output
-fails (`installed-audio-steady-f966e3b3.json`, reconnect section above).
-Rebuild/replay installed audio and retain helper authority; misleading context-error
-reporting remains open. Earlier
+The prior app's installed viewer output fails despite a healthy source; rebuilt
+`e7bd99a8` passes steady playback, exact CM/viewer stream ownership, disconnect
+retirement and package lifecycle (`pa-capture-installed-e7bd99a8.json`, reconnect
+section above). Helper authority is retained. Misleading context-error reporting,
+audio latency and sustained recovery remain open. Earlier
 prelogin display passes did not exercise CM/audio. This installed UID-4001 desktop
 scenario does not close root/greeter capture, churn or full authority acceptance.
 

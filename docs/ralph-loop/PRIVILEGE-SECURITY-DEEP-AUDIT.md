@@ -153688,3 +153688,55 @@ No owned job/source freeze remains. Goal stays active; next rebuild and replay
 the installed app with the capture correction. This audit-only append preserves
 the prior16,339,701-byte prefix, SHA-256
 7d034d5ed483dab61ee627ad88bee8b2ec676d7910d6648773a3ec25277f737c.
+
+### Continuous capture correction — rebuilt installed playback acceptance
+
+R-S0 selection continues the reproduced audio failure through the real installed
+app. TUF SVJ11xmbqB builds e7bd99a8 with the retained authenticated engine and
+unchanged recipe/dependencies. All 27 widget/native controls pass; all 74 payloads
+verify, and only bundle/lib/librustdesk.so differs from app 3c289cff. New core
+SHA-256 9e11da495b653a6b26560cd5e98763b01f350d3cec513739aff62f67e40bb9e9;
+manifest 4c35327aad8911851f49d024a2e365431385f1c26071000a253a83f42effdb8a.
+pa-capture-app-e7bd99a8.json binds ten files/326,481 bytes on CTE/TUF.
+Build supervisor 1,253.466 seconds; scratch peak 11,917,873,152 bytes. Two compiler
+jobs reach the 10-GiB cgroup limit without swap/OOM/OOM-kill. QEMU 3528559 joins 0;
+private 66306:82228840 and RAM 29:14824 run.hknb54ao retire. Four endpoint deltas
+are zero. Outer SHA-256 5c4f93e8e733b4a28830977473c6fbf4ab6b1a2e504b9c6c80d96b867db572b8.
+
+Before admission, superseded app 6429f3cb's 73 payloads/manifest, exact metadata,
+hashes and inventory were verified and retired under the shared run/cache locks.
+This frees 70,565,888 allocated file bytes; pa-app-retired-6429f3cb.json retains
+three files/34,514 bytes on both hosts. Historical evidence/manifest remain;
+historical dependency reconstruction is not claimed. The four-app cap now holds
+a36e5581, 77cc3441, 3c289cff, e7bd99a8. No canonical input or unrelated data is removed.
+
+Installed replay oPBkEkRQZH uses that new manifest and the unchanged steady audio
+scenario. The normal package SHA-256 is
+499e9c33a8cb7d2edd99595b513a0fbda25fff5751f7a4b50eb9948c57ae7df4.
+Over 16.4 seconds, source windows are 164 tone/0 silent/0 other; viewer windows
+are 162 tone/0 silent/2 other, passing the fixed 95% threshold. The prior app had
+zero qualifying steady viewer windows. The continuous source observer requests
+no latency adjustment. Exact CM 8949/viewer 8833 own the recording/playback streams;
+owner disconnect retires both streams and restores silence. Both daemon and
+observer pairs exit 0; sockets disappear. Product libraries, helper authority and
+packaged service unit remain unchanged apart from the source-bound Rust core.
+
+Viewer holds 2/6/12 seconds recover on unchanged TCP in 1,926/1,148/1,104 ms;
+subsequent healthy maximum frame ages 348/342/360 ms, baseline 325 ms. Four viewer
+resource samples retain 50 FDs and bounded threads/RSS. Selected UID 4001 CM remains
+alive under the exact server generation; native PulseAudio context connects with
+errno 0. Ordinary-user refusal, authorized credential behavior, reinstall,
+remove/purge and unchanged user profile pass. These are native null-sink output
+and X11 presentation observations, not physical audibility/scanout or audio-latency
+acceptance. Full R-S0/R-F5, audio endurance/recovery, other platforms and independent
+review stay OPEN; the separate surviving-transport long-outage failure also remains.
+
+pa-capture-installed-e7bd99a8.json binds nine files/275,638 bytes, SHA-verified on
+CTE/TUF. Outer SHA-256 2e49915ce26b32d92135874b96f7baec43c42765298993877249cdb23af43145.
+QEMU 3533649 joins 0; private 66306:82228840 and RAM 29:14865 run.0j43n_l_ retire.
+Supervisor 213.294 seconds; scratch peak 4,448,985,088 bytes; four endpoint deltas
+are zero. Both VM receipts report tmpfs swap not disabled. No owned job or source
+freeze remains. The goal stays active; this closes the reproduced installed
+steady-playback failure, with broader recovery acceptance still pending.
+This append preserves the prior 16,340,657-byte prefix, SHA-256
+0ec8b995f32c474a28b78cd6ede5c834e0a2f0ddcbe28072bf711256c5e571a5.

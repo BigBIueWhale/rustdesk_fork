@@ -152355,3 +152355,18 @@ HARDENING_STATUS.md records this material evidence and the next attribution step
 its fresh isolated count is pending. This append preserves the prior
 16,247,382-byte prefix, SHA-256
 6dce7661e274b258889cddee1d404b9c121e0fba2cde0e3d5bdfa8d5aef07aa0.
+
+### Allocator-evidence ledger count
+
+TUF sDpjWtmB4L at ad3bda70 passes the fresh isolated ledger count: 423,006
+tokens / 1,927,886 bytes, input SHA-256
+00fca4c8222b485a24d03bc18c34290e45e7efa0b5b774b37643f98a79296953.
+The fixed method, seven controls and whole-input round trip pass; the approximate
+400,000-token target remains OPEN. QEMU 2828227 joins zero; exact private/RAM/
+process/socket retirement and three zero endpoint deltas independently reconcile.
+Supervisor duration is 30.585 seconds, peak RAM scratch 403,017,728 bytes,
+tmpfs_swap_disabled=false. Eight files/116,094 bytes are SHA-verified on both
+hosts, capsule allocator-evidence-ledger-ad3bda70.json; outer SHA-256
+ce19a75f11512db0178108ab9ddee585ad9a011836bb7caede6cf79656a4a69e.
+This audit-only append preserves the prior 16,251,772-byte prefix, SHA-256
+4c79c4de2d995415aae7d36e6eba9f5339c8f664d3fbede6d1b07ec03d74a001.

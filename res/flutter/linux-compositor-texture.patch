@@ -1,0 +1,214 @@
+diff --git a/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc b/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc
+index ebcad245..52fda91b 100644
+--- a/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc
++++ b/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.cc
+@@ -31,6 +31,13 @@ struct _FlCompositorOpenGL {
+   // Last rendered frame pixels (only set if shareable is FALSE).
+   uint8_t* pixels;
+ 
++  // Upload texture in the GTK context. Only GTK accesses these fields; its
++  // owner releases the texture before retiring that context.
++  GLuint render_texture;
++  GLsizei render_width;
++  GLsizei render_height;
++  guint64 render_generation;
++
+   // Shader program used to composite layers.
+   FlCompositorOpenGLShader* shader;
+ 
+@@ -239,6 +246,13 @@ static gboolean fl_compositor_opengl_render(FlCompositor* compositor,
+     return FALSE;
+   }
+ 
++  // Waiting can execute platform tasks, including retirement of this context.
++  guint64 render_generation = self->render_generation;
++  g_autoptr(GdkGLContext) render_context = gdk_gl_context_get_current();
++  if (render_context != nullptr) {
++    g_object_ref(render_context);
++  }
++
+   // If frame not ready, then wait for it.
+   gint scale_factor = gdk_window_get_scale_factor(window);
+   size_t width, height;
+@@ -267,8 +281,15 @@ static gboolean fl_compositor_opengl_render(FlCompositor* compositor,
+     g_mutex_unlock(&self->frame_mutex);
+     fl_task_runner_wait(self->task_runner, expiry_time);
+     g_mutex_lock(&self->frame_mutex);
++    if (render_generation != self->render_generation) {
++      g_mutex_unlock(&self->frame_mutex);
++      return FALSE;
++    }
+   }
+ 
++  if (render_context != nullptr) {
++    gdk_gl_context_make_current(render_context);
++  }
+   if (fl_framebuffer_get_shareable(self->framebuffer)) {
+     g_autoptr(FlFramebuffer) sibling =
+         fl_framebuffer_create_sibling(self->framebuffer);
+@@ -278,25 +299,30 @@ static gboolean fl_compositor_opengl_render(FlCompositor* compositor,
+     GLint saved_texture_binding;
+     glGetIntegerv(GL_TEXTURE_BINDING_2D, &saved_texture_binding);
+ 
+-    GLuint texture_id;
+-    glGenTextures(1, &texture_id);
+-    glBindTexture(GL_TEXTURE_2D, texture_id);
+-    GLsizei fb_width = 0;
+-    GLsizei fb_height = 0;
+-    if (self->framebuffer != nullptr) {
+-      fb_width =
+-          static_cast<GLsizei>(fl_framebuffer_get_width(self->framebuffer));
+-      fb_height =
+-          static_cast<GLsizei>(fl_framebuffer_get_height(self->framebuffer));
++    if (self->render_texture == 0) {
++      glGenTextures(1, &self->render_texture);
++    }
++    glBindTexture(GL_TEXTURE_2D, self->render_texture);
++    GLsizei fb_width =
++        static_cast<GLsizei>(fl_framebuffer_get_width(self->framebuffer));
++    GLsizei fb_height =
++        static_cast<GLsizei>(fl_framebuffer_get_height(self->framebuffer));
++    if (self->render_width != fb_width || self->render_height != fb_height) {
++      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fb_width, fb_height, 0, GL_RGBA,
++                  GL_UNSIGNED_BYTE, self->pixels);
++      self->render_width = fb_width;
++      self->render_height = fb_height;
++    } else {
++      glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, fb_width, fb_height, GL_RGBA,
++                     GL_UNSIGNED_BYTE, self->pixels);
+     }
+-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, fb_width, fb_height, 0, GL_RGBA,
+-                 GL_UNSIGNED_BYTE, self->pixels);
+-
+-    gdk_cairo_draw_from_gl(cr, window, texture_id, GL_TEXTURE, scale_factor, 0,
+-                           0, width, height);
+ 
+-    glDeleteTextures(1, &texture_id);
++    gdk_cairo_draw_from_gl(cr, window, self->render_texture, GL_TEXTURE,
++                          scale_factor, 0, 0, width, height);
+ 
++    if (render_context != nullptr) {
++      gdk_gl_context_make_current(render_context);
++    }
+     glBindTexture(GL_TEXTURE_2D, saved_texture_binding);
+   }
+ 
+@@ -348,3 +374,16 @@ FlCompositorOpenGL* fl_compositor_opengl_new(FlTaskRunner* task_runner,
+ 
+   return self;
+ }
++
++void fl_compositor_opengl_release_render_texture(FlCompositorOpenGL* self) {
++  g_return_if_fail(FL_IS_COMPOSITOR_OPENGL(self));
++
++  g_autoptr(GMutexLocker) locker = g_mutex_locker_new(&self->frame_mutex);
++  self->render_generation++;
++  if (self->render_texture != 0) {
++    glDeleteTextures(1, &self->render_texture);
++    self->render_texture = 0;
++  }
++  self->render_width = 0;
++  self->render_height = 0;
++}
+diff --git a/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.h b/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.h
+index 77641a7a..9c34b5d2 100644
+--- a/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.h
++++ b/engine/src/flutter/shell/platform/linux/fl_compositor_opengl.h
+@@ -42,6 +42,16 @@ FlCompositorOpenGL* fl_compositor_opengl_new(FlTaskRunner* task_runner,
+                                              FlOpenGLManager* opengl_manager,
+                                              gboolean shareable);
+ 
++/**
++ * fl_compositor_opengl_release_render_texture:
++ * @self: an #FlCompositorOpenGL.
++ *
++ * Releases the GTK upload texture. Call on the GTK thread with its rendering
++ * context current, before that context is retired. The Flutter framebuffer
++ * remains available to the raster thread and a subsequently realized widget.
++ */
++void fl_compositor_opengl_release_render_texture(FlCompositorOpenGL* self);
++
+ G_END_DECLS
+ 
+ #endif  // FLUTTER_SHELL_PLATFORM_LINUX_FL_COMPOSITOR_OPENGL_H_
+diff --git a/engine/src/flutter/shell/platform/linux/fl_view_renderer.cc b/engine/src/flutter/shell/platform/linux/fl_view_renderer.cc
+index dba92d94..e26b3b07 100644
+--- a/engine/src/flutter/shell/platform/linux/fl_view_renderer.cc
++++ b/engine/src/flutter/shell/platform/linux/fl_view_renderer.cc
+@@ -93,6 +93,7 @@ static void setup_opengl(FlViewRenderer* self) {
+ 
+   if (!gdk_gl_context_realize(self->render_context, &error)) {
+     g_warning("Failed to realize OpenGL context: %s", error->message);
++    g_clear_object(&self->render_context);
+     return;
+   }
+ 
+@@ -101,14 +102,18 @@ static void setup_opengl(FlViewRenderer* self) {
+   // then we have to copy the texture via the CPU.
+   gboolean shareable =
+       GDK_IS_WAYLAND_DISPLAY(gtk_widget_get_display(GTK_WIDGET(self)));
+-  self->compositor = FL_COMPOSITOR(fl_compositor_opengl_new(
+-      fl_engine_get_task_runner(self->engine),
+-      fl_engine_get_opengl_manager(self->engine), shareable));
++  if (self->compositor == nullptr) {
++    self->compositor = FL_COMPOSITOR(fl_compositor_opengl_new(
++        fl_engine_get_task_runner(self->engine),
++        fl_engine_get_opengl_manager(self->engine), shareable));
++  }
+ }
+ 
+ static void setup_software(FlViewRenderer* self) {
+-  self->compositor = FL_COMPOSITOR(
+-      fl_compositor_software_new(fl_engine_get_task_runner(self->engine)));
++  if (self->compositor == nullptr) {
++    self->compositor = FL_COMPOSITOR(
++        fl_compositor_software_new(fl_engine_get_task_runner(self->engine)));
++  }
+ }
+ 
+ static void paint_background(FlViewRenderer* self, cairo_t* cr) {
+@@ -141,6 +146,27 @@ static void fl_view_renderer_realize(GtkWidget* widget) {
+   }
+ }
+ 
++// Retire GTK resources on their owning thread, before the GDK window is lost.
++// The compositor itself outlives unrealize/dispose for pending raster work.
++static void release_render_context(FlViewRenderer* self) {
++  if (self->render_context == nullptr) {
++    return;
++  }
++  gdk_gl_context_make_current(self->render_context);
++  if (FL_IS_COMPOSITOR_OPENGL(self->compositor)) {
++    fl_compositor_opengl_release_render_texture(
++        FL_COMPOSITOR_OPENGL(self->compositor));
++  }
++  gdk_gl_context_clear_current();
++  g_clear_object(&self->render_context);
++}
++
++// Implements GtkWidget::unrealize.
++static void fl_view_renderer_unrealize(GtkWidget* widget) {
++  release_render_context(FL_VIEW_RENDERER(widget));
++  GTK_WIDGET_CLASS(fl_view_renderer_parent_class)->unrealize(widget);
++}
++
+ // Implements GtkWidget::draw.
+ static gboolean fl_view_renderer_draw(GtkWidget* widget, cairo_t* cr) {
+   FlViewRenderer* self = FL_VIEW_RENDERER(widget);
+@@ -171,7 +197,7 @@ static gboolean fl_view_renderer_draw(GtkWidget* widget, cairo_t* cr) {
+ static void fl_view_renderer_dispose(GObject* object) {
+   FlViewRenderer* self = FL_VIEW_RENDERER(object);
+ 
+-  g_clear_object(&self->render_context);
++  release_render_context(self);
+   g_clear_object(&self->engine);
+   g_clear_pointer(&self->background_color, gdk_rgba_free);
+ 
+@@ -197,6 +223,7 @@ static void fl_view_renderer_class_init(FlViewRendererClass* klass) {
+ 
+   GtkWidgetClass* widget_class = GTK_WIDGET_CLASS(klass);
+   widget_class->realize = fl_view_renderer_realize;
++  widget_class->unrealize = fl_view_renderer_unrealize;
+   widget_class->draw = fl_view_renderer_draw;
+ 
+   fl_view_renderer_signals[SIGNAL_FIRST_FRAME] =

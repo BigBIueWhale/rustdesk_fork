@@ -152370,3 +152370,44 @@ hosts, capsule allocator-evidence-ledger-ad3bda70.json; outer SHA-256
 ce19a75f11512db0178108ab9ddee585ad9a011836bb7caede6cf79656a4a69e.
 This audit-only append preserves the prior 16,251,772-byte prefix, SHA-256
 4c79c4de2d995415aae7d36e6eba9f5339c8f664d3fbede6d1b07ec03d74a001.
+
+## 2026-11-13 — Compositor allocation attribution and native reuse candidate
+
+Read-only ELF inspection resolves the existing gWsjH52feU 7.77-MB/5,906-call
+Mesa stack to the pinned engine's per-draw upload. The unchanged installed
+libflutter_linux_gtk.so is 18,149,200 bytes, SHA-256
+2be1a99cd1d737e12cf515da4b9865b81a33fb6a63532b694743cf06e26ff24e.
+The trace's offset-zero mapping establishes load base 0x7f9342800000; reported
+PC 0x7f9342c9b937 resolves to 0x49b937, the final byte of the indirect call at
+0x49b936. Its GOT slot 0x114c900 has an R_X86_64_GLOB_DAT relocation for
+epoxy_glTexImage2D. Adjacent calls generate, bind and delete that texture around
+gdk_cairo_draw_from_gl, matching fl_compositor_opengl_render's non-shareable
+branch in authenticated git-000.tar. Nearest exported symbol names in this
+stripped binary are not function attribution. This identifies the recorded
+allocation stack; it does not yet prove that reuse corrects the ordinary RSS failure.
+
+The candidate linux-compositor-texture.patch retains one GTK upload texture,
+updates equal-size frames with glTexSubImage2D and reallocates on resize.
+GTK unrealize/dispose releases it with its own context current; the compositor
+stays alive for pending raster work and a later realization. Retirement changes
+a generation so a platform task executed during the frame wait cannot recreate
+the old texture after teardown. The raster-thread finalizer owns no GTK cleanup.
+The patch is currently exercised only by the new --linux-flutter-engine-prepare
+--compositor shard; no retained engine or application artifact is changed.
+The shard extracts only the authenticated framework archive, compiles actual
+compositor/renderer/framebuffer/context/task-runner sources with the pinned
+devcheck toolchain, and compares original/candidate behavior using real GTK,
+Mesa and Xvfb. Only Flutter engine task dispatch is a boundary double. Acceptance
+requires changed pixels, one allocation across 120 same-size frames, resize,
+unrealize/re-realize and reentrant retirement. Compilation and execution remain
+pending; syntax/diff inspection alone does not close the component or R-F5.
+
+Primary sources: the pinned Flutter compositor/task-runner source and
+https://raw.githubusercontent.com/GNOME/gtk/3.24.38/gtk/gtkglarea.c
+show context-current cleanup before parent unrealize; the task runner executes
+expired platform tasks while waiting. Khronos glTexSubImage2D updates previously
+defined storage: https://raw.githubusercontent.com/KhronosGroup/OpenGL-Refpages/main/gl4/glTexSubImage2D.xml
+The unchanged resource and presentation bounds remain binding. HARDENING_STATUS.md
+is unchanged pending native evidence. This append preserves the prior
+16,252,664-byte audit prefix, SHA-256
+37026d387d5c351c7568d35be5ba4175720d22b42d40b933cdb199f5bbb3992c.

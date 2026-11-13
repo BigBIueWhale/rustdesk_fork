@@ -430,6 +430,82 @@ def native_display(env, deadline):
                 print("ENGINE_XVFB_OWNER=joined network=unix-only", flush=True)
 
 
+def compositor_test():
+    """Compile only the pinned GTK compositor and its native lifetime boundary."""
+    deadline = time.monotonic() + 180
+    pin_text = Path("/authority/pins.env").read_text()
+
+    def pin(name):
+        matches = re.findall(r'^' + re.escape(name) + r'="([A-Za-z0-9:._+-]+)"(?:\s*#.*)?$',
+                             pin_text, re.MULTILINE)
+        require(len(matches) == 1, "missing compositor input pin: " + name)
+        return matches[0]
+
+    source, before = authenticated("/inputs/graph/manifest.json",
+                                   int(pin("SIZE_FLUTTER_ENGINE_GRAPH_MANIFEST")),
+                                   pin("SHA256_FLUTTER_ENGINE_GRAPH_MANIFEST"))
+    with source:
+        graph = json.load(source)
+        require(unchanged(before, os.fstat(source.fileno())), "graph manifest changed")
+    entries = [entry for entry in graph["git"] if entry["destination"] == "."]
+    require(len(entries) == 1 and graph["framework_revision"] ==
+            pin("FLUTTER_PRESENTATION_CANDIDATE_FRAMEWORK_REVISION"),
+            "compositor source selection differs")
+    entry = entries[0]
+    require(len(parts(entry["file"])) == 1, "source archive filename differs")
+    source, before = authenticated("/inputs/graph/" + entry["file"],
+                                   entry["bytes"], entry["sha256"])
+    tree = Tree("/work")
+    try:
+        with source:
+            tree.unpack(source, ("flutter",), prefixed=True)
+            require(unchanged(before, os.fstat(source.fileno())), "compositor source changed")
+        tree.finish_links()
+    finally:
+        tree.close()
+    print("ENGINE_COMPOSITOR_SOURCE=pass revision=" + graph["framework_revision"]
+          + " archive_sha256=" + entry["sha256"], flush=True)
+    framework = Path("/work/flutter")
+    engine = framework / "engine/src"
+    env = {"PATH": "/usr/bin:/bin", "HOME": "/work/home", "LC_ALL": "C",
+           "TMPDIR": "/work/tmp", "LIBGL_ALWAYS_SOFTWARE": "1",
+           "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+    Path(env["HOME"]).mkdir(mode=0o700)
+    Path(env["TMPDIR"]).mkdir(mode=0o700)
+    flags = shlex.split(command(["/usr/bin/pkg-config", "--cflags", "--libs", "gtk+-3.0", "epoxy"],
+                                engine, env, deadline).decode())
+    units = ["fl_compositor", "fl_compositor_software", "fl_framebuffer", "fl_egl_image",
+             "fl_opengl_manager", "fl_compositor_opengl_shader", "fl_task_runner"]
+    patch = Path("/authority/compositor.patch")
+    patch_bytes = patch.read_bytes()
+    require(0 < len(patch_bytes) <= 32768, "compositor patch exceeds bound")
+    with native_display(env, deadline) as display_env:
+        for baseline in (True, False):
+            if not baseline:
+                command(["/usr/bin/git", "-c", "core.hooksPath=/dev/null", "apply",
+                         "--check", "--whitespace=error-all", str(patch)], framework, env, deadline)
+                command(["/usr/bin/git", "-c", "core.hooksPath=/dev/null", "apply",
+                         "--whitespace=error-all", str(patch)], framework, env, deadline)
+            stage = "baseline" if baseline else "candidate"
+            binary = "/work/compositor-" + stage
+            command(["/usr/bin/g++", "-std=c++17", "-O2", "-UG_DISABLE_ASSERT",
+                     "-DFLUTTER_LINUX_COMPILATION", "-DFLUTTER_ENGINE_NO_PROTOTYPES",
+                     *(["-DLEGACY_BASELINE"] if baseline else []), "-I" + str(engine),
+                     "/authority/compositor-test.cc",
+                     *[str(engine / "flutter/shell/platform/linux" / (unit + ".cc"))
+                       for unit in units], "-pthread", *flags, "-o", binary], engine, env, deadline)
+            digest = hashlib.sha256(Path(binary).read_bytes()).hexdigest()
+            print("ENGINE_COMPOSITOR_BINARY stage=" + stage + " sha256=" + digest
+                  + " patch_sha256=" + ("none" if baseline else hashlib.sha256(patch_bytes).hexdigest()),
+                  flush=True)
+            output = command([binary], engine, display_env, min(deadline, time.monotonic() + 30))
+            expected = (b"ENGINE_COMPOSITOR_NATIVE=baseline frames=120 allocations=120 updates=0 pixels=pass"
+                        if baseline else b"ENGINE_COMPOSITOR_NATIVE=pass frames=120 allocations=1 updates=119 "
+                        b"pixels=pass resize=pass unrealize=retired rerealize=fresh reentrant=aborted dispose=idempotent")
+            require(output.strip() == expected, "native compositor result differs")
+            print(output.decode(), end="", flush=True)
+
+
 def prepare(build_context=None):
     deadline = time.monotonic() + 240
     with open("/authority/pins.env", "rb") as source:
@@ -1439,12 +1515,14 @@ def self_test():
 
 def main():
     build_context = None
+    compositor_only = sys.argv[1:] == ["--compositor"]
     if len(sys.argv) == 4 and sys.argv[1] == "--build":
         require(all(re.fullmatch(r"[0-9a-f]{40}", value) for value in sys.argv[2:]),
                 "engine build source identity differs")
         build_context = sys.argv[2:]
     else:
-        require(sys.argv == [sys.argv[0]], "engine preparation takes no caller-selected paths or commands")
+        require(compositor_only or sys.argv == [sys.argv[0]],
+                "engine preparation takes no caller-selected paths or commands")
     require(os.getuid() == os.getgid() == 1000, "engine preparation requires UID/GID 1000")
     status = Path("/proc/self/status").read_text()
     require(re.search(r"^CapEff:\s+0000000000000000$", status, re.MULTILINE)
@@ -1454,6 +1532,9 @@ def main():
     require(Path("/proc/self/attr/current").read_text().startswith("docker-default "),
             "engine preparation AppArmor profile differs")
     resource.setrlimit(resource.RLIMIT_FSIZE, (FILE_LIMIT, FILE_LIMIT))
+    if compositor_only:
+        compositor_test()
+        return
     self_test()
     engine_output_self_test()
     prepare(build_context)

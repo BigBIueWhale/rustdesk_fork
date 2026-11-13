@@ -27,6 +27,7 @@ HBB_CONFIG_NATIVE=0
 HBB_FUSE_READ_TESTS=0
 HBB_SEND_DIGEST_TESTS=0
 COUNT_REQUIREMENTS=0
+ENGINE_COMPOSITOR_ONLY=0
 MEDIA_NOKHWA=0
 LINUX_PA_PLAYBACK=0
 APPLE_CURSOR_ONLY=0
@@ -620,6 +621,12 @@ case "$#:${1:-}" in
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
             || { echo 'engine build input/run overrides are forbidden' >&2; exit 2; }
         MODE=linux-flutter-engine-build
+        ;;
+    2:--linux-flutter-engine-prepare)
+        [ "$2" = --compositor ] && [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] \
+            && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] || exit 2
+        MODE=linux-flutter-engine-prepare
+        ENGINE_COMPOSITOR_ONLY=1
         ;;
     1:--android-frame-tests|1:--x11-display-tests)
         [ -z "${VERIFIER_VM_INPUT_ROOT+x}" ] && [ -z "${VERIFIER_VM_RUN_ROOT+x}" ] \
@@ -1278,6 +1285,8 @@ readonly ENGINE_PREPARE_SOURCE="$SCRIPT_DIR/prepare-flutter-linux-engine.py"
 readonly ENGINE_RETIREMENT_PATCH="$REPO_ROOT/res/flutter/linux-accessibility-retirement.patch"
 readonly ENGINE_RETIREMENT_TEST="$SCRIPT_DIR/test-flutter-linux-accessible-retirement.cc"
 readonly ENGINE_SETTINGS_TEST="$SCRIPT_DIR/test-flutter-linux-settings.cc"
+readonly ENGINE_COMPOSITOR_PATCH="$REPO_ROOT/res/flutter/linux-compositor-texture.patch"
+readonly ENGINE_COMPOSITOR_TEST="$SCRIPT_DIR/test-flutter-linux-compositor.cc"
 readonly ENGINE_GRAPH_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-graph"
 readonly ENGINE_METADATA_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-git-metadata"
 readonly ENGINE_SYSROOTS_ROOT="$REPO_ROOT/online/candidates/flutter-linux-engine-sysroots"
@@ -3392,7 +3401,9 @@ if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engin
     verify_committed_test_source "$ENGINE_RETIREMENT_PATCH"
     verify_committed_test_source "$ENGINE_RETIREMENT_TEST"
     verify_committed_test_source "$ENGINE_SETTINGS_TEST"
-    engine_prepare_source_before="$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST")"
+    verify_committed_test_source "$ENGINE_COMPOSITOR_PATCH"
+    verify_committed_test_source "$ENGINE_COMPOSITOR_TEST"
+    engine_prepare_source_before="$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST" "$ENGINE_COMPOSITOR_PATCH" "$ENGINE_COMPOSITOR_TEST")"
     for input in \
         "$DEV_CHECK_IMAGE_ARCHIVE:$SIZE_DEV_CHECK_IMAGE_ARCHIVE:$SHA256_DEV_CHECK_IMAGE_ARCHIVE" \
         "$VIRTIOFSD_PACKAGE:$SIZE_VERIFIER_VM_VIRTIOFSD_PACKAGE:$SHA256_VERIFIER_VM_VIRTIOFSD_PACKAGE" \
@@ -5035,6 +5046,8 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
         "repo/res/flutter/linux-accessibility-retirement.patch=$ENGINE_RETIREMENT_PATCH"
         "repo/scripts/test-flutter-linux-accessible-retirement.cc=$ENGINE_RETIREMENT_TEST"
         "repo/scripts/test-flutter-linux-settings.cc=$ENGINE_SETTINGS_TEST"
+        "repo/res/flutter/linux-compositor-texture.patch=$ENGINE_COMPOSITOR_PATCH"
+        "repo/scripts/test-flutter-linux-compositor.cc=$ENGINE_COMPOSITOR_TEST"
         "xvfb-debs=$ONLINE_INPUTS/xvfb-debs"
         "repo/scripts/smoke-xvfb-prepare.sh=$SCRIPT_DIR/smoke-xvfb-prepare.sh"
         "repo/scripts/smoke-xvfb-packages.tsv=$SCRIPT_DIR/smoke-xvfb-packages.tsv"
@@ -5615,6 +5628,9 @@ if [ "$MODE" = media-kernel-tests ]; then
     guest_invocation='python3 -I -S /mnt/rustdesk-verifier-inputs/media/boot.py --prepare'
 elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     guest_invocation+=" --$MODE $FOCUSED_TEST_COMMIT $FOCUSED_TEST_TREE"
+    if [ "$ENGINE_COMPOSITOR_ONLY" -eq 1 ]; then
+        guest_invocation+=' --compositor'
+    fi
 elif [ "$MODE" = debian-systemd-lifecycle ]; then
     guest_invocation+=" --debian-systemd-lifecycle /mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz /mnt/rustdesk-verifier-inputs/artifact/rustdesk-x86_64.deb $LIFECYCLE_ARTIFACT_SHA256 $LIFECYCLE_COMMIT"
 elif [ "$MODE" = network-impairment-probe ]; then
@@ -6463,6 +6479,13 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
     engine_prepare_receipt='FLUTTER_ENGINE_PREPARE=pass git=82 cipd=11 metadata=3 sysroots=3 hooks=6 indexes=original pub=path-only network=none engine_build=unexecuted'
     engine_prepare_vm_receipt="FLUTTER_ENGINE_PREPARE_VM=pass commit=$FOCUSED_TEST_COMMIT tree=$FOCUSED_TEST_TREE helper_sha256=$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" | /usr/bin/awk '{print $1}') runtime=$DEV_CHECK_IMAGE_CONFIG_ID uid=1000 gid=1000 inputs=readonly-landlocked vm_network=none container_network=none cleanup=joined"
     require_exact_fixed_receipt 'ENGINE_PREPARE_PRINCIPALS=pass root=refused foreign=refused work=absent' 'engine preparation principal refusals'
+    if [ "$ENGINE_COMPOSITOR_ONLY" -eq 1 ]; then
+        require_exact_fixed_receipt 'ENGINE_COMPOSITOR_NATIVE=baseline frames=120 allocations=120 updates=0 pixels=pass' 'original native compositor uploads'
+        require_exact_fixed_receipt 'ENGINE_COMPOSITOR_NATIVE=pass frames=120 allocations=1 updates=119 pixels=pass resize=pass unrealize=retired rerealize=fresh reentrant=aborted dispose=idempotent' 'native compositor pixel and context lifetime'
+        require_exact_fixed_receipt 'ENGINE_XVFB_OWNER=joined network=unix-only' 'native display-server ownership'
+        require_exact_fixed_receipt "$engine_prepare_vm_receipt" 'compositor source and finality'
+        require_exact_fixed_receipt 'VERIFIER_VM_CLOUD_INIT=pass' 'compositor cloud-init completion'
+    else
     require_exact_fixed_receipt 'ENGINE_PREPARE_EXTRACTION_TEST=pass cases=10 links=preserved unsafe=refused cleanup=joined' 'native engine extraction cases'
     require_exact_fixed_receipt 'ENGINE_TOOLKIT_INPUT_TEST=pass namespaces=preserved copied_icu=source-bound directory_links=refused traversal=refused duplicates=refused cleanup=joined' 'engine toolkit filesystem cases'
     require_exact_fixed_receipt 'ENGINE_TOOLKIT_GRAPH=pass roles=platform,icu,sky,fonts,shaders,frontend generator=original build=unexecuted' 'original GN toolkit graph'
@@ -6489,6 +6512,7 @@ elif [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-eng
         printf '%s\n' "${engine_artifacts[0]}"
     fi
     printf '%s\n' "$engine_prepare_receipt" "$engine_prepare_vm_receipt"
+    fi
 elif [ "$MODE" = linux-service-receiver-tests ]; then
     linux_receiver_binary_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/rustdesk" | /usr/bin/awk '{print $1}')
     linux_receiver_probe_sha=$(/usr/bin/sha256sum "$ANDROID_PEER_INPUT_ROOT/probe_client" | /usr/bin/awk '{print $1}')
@@ -10594,7 +10618,7 @@ if [ "$FLUTTER_APP_BUILD_ONLY" -eq 1 ]; then
 fi
 if [ "$MODE" = linux-flutter-engine-prepare ] || [ "$MODE" = linux-flutter-engine-build ]; then
     [ "$(engine_prepare_input_inventory)" = "$engine_prepare_inputs_before" ] \
-        && [ "$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST")" = "$engine_prepare_source_before" ] \
+        && [ "$(/usr/bin/sha256sum "$ENGINE_PREPARE_SOURCE" "$ENGINE_RETIREMENT_PATCH" "$ENGINE_RETIREMENT_TEST" "$ENGINE_SETTINGS_TEST" "$ENGINE_COMPOSITOR_PATCH" "$ENGINE_COMPOSITOR_TEST")" = "$engine_prepare_source_before" ] \
         || fail 'engine preparation input/source postcondition differs'
     [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{commit}')" = "$FOCUSED_TEST_COMMIT" ] \
         && [ "$(git_closed -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$FOCUSED_TEST_TREE" ] \

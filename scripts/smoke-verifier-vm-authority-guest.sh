@@ -6,6 +6,7 @@ FLUTTER_PEER_CANDIDATE=0
 FLUTTER_APP_BUILD_ONLY=0
 FLUTTER_APP_BUILD_CONTEXT=
 FLUTTER_APP_REPLAY=0
+ENGINE_COMPOSITOR_ONLY=0
 FLUTTER_INSTALLED_SETTINGS=0
 FLUTTER_VIEWER_SUSPEND=0
 FLUTTER_CLIPBOARD_TEXT=0
@@ -184,12 +185,16 @@ case "$#:${8:-}" in
             *) exit 2 ;;
         esac
         ;;
-    10:--linux-flutter-engine-prepare|10:--linux-flutter-engine-build)
+    10:--linux-flutter-engine-prepare|10:--linux-flutter-engine-build|11:--linux-flutter-engine-prepare)
         MODE=${8#--}
         ENGINE_PREPARE_COMMIT=${9}
         ENGINE_PREPARE_TREE=${10}
         [[ "$ENGINE_PREPARE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
             && [[ "$ENGINE_PREPARE_TREE" =~ ^[0-9a-f]{40}$ ]] || exit 2
+        if [ "$#" -eq 11 ]; then
+            [ "${11}" = --compositor ] || exit 2
+            ENGINE_COMPOSITOR_ONLY=1
+        fi
         ;;
     12:--hbb-common-fs)
         MODE=hbb-common-fs
@@ -821,11 +826,16 @@ run_linux_flutter_engine_prepare() {
     local patch=$VERIFY_REPO/res/flutter/linux-accessibility-retirement.patch
     local test=$VERIFY_REPO/scripts/test-flutter-linux-accessible-retirement.cc
     local settings_test=$VERIFY_REPO/scripts/test-flutter-linux-settings.cc
+    local compositor_patch=$VERIFY_REPO/res/flutter/linux-compositor-texture.patch
+    local compositor_test=$VERIFY_REPO/scripts/test-flutter-linux-compositor.cc
     local passwd=$ROOT/engine.passwd passwd_before
     local archive=/mnt/rustdesk-verifier-inputs/devcheck.docker.tar.gz
     local work=$ROOT/engine-prepare-work helper_before status=0
     local memory=2g memory_bytes=2147483648 cpus=2 nano_cpus=2000000000
     local -a helper_args=() output_mounts=()
+    if [ "$ENGINE_COMPOSITOR_ONLY" -eq 1 ]; then
+        helper_args=(--compositor)
+    fi
     if [ "$MODE" = linux-flutter-engine-build ]; then
         memory=12g; memory_bytes=12884901888; cpus=4; nano_cpus=4000000000
         helper_args=(--build "$ENGINE_PREPARE_COMMIT" "$ENGINE_PREPARE_TREE")
@@ -845,7 +855,7 @@ run_linux_flutter_engine_prepare() {
             --mount "type=bind,source=$VERIFY_REPO/scripts/publish-artifact-result.py,target=/authority/publish.py,readonly"
         )
     fi
-    helper_before="$(sha256sum "$helper" "$patch" "$test" "$settings_test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
+    helper_before="$(sha256sum "$helper" "$patch" "$test" "$settings_test" "$compositor_patch" "$compositor_test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
         "$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv" "$VERIFY_REPO/scripts/smoke-xvfb-files.tsv")"
     [ -f "$helper" ] && [ ! -L "$helper" ] || fail 'engine preparation source is absent'
     for principal in 0:0 4001:4001; do
@@ -893,6 +903,8 @@ run_linux_flutter_engine_prepare() {
         --mount "type=bind,source=$patch,target=/authority/retirement.patch,readonly"
         --mount "type=bind,source=$test,target=/authority/node-test.cc,readonly"
         --mount "type=bind,source=$settings_test,target=/authority/settings-test.cc,readonly"
+        --mount "type=bind,source=$compositor_patch,target=/authority/compositor.patch,readonly"
+        --mount "type=bind,source=$compositor_test,target=/authority/compositor-test.cc,readonly"
         --mount "type=bind,source=$passwd,target=/etc/passwd,readonly,bind-recursive=disabled"
         --mount "type=bind,source=$VERIFY_REPO/scripts/pins.env,target=/authority/pins.env,readonly"
         --mount "type=bind,source=$VERIFY_REPO/scripts/smoke-xvfb-files.tsv,target=/authority/xvfb-files.tsv,readonly"
@@ -942,6 +954,8 @@ run_linux_flutter_engine_prepare() {
         "bind|$patch|/authority/retirement.patch|false" \
         "bind|$test|/authority/node-test.cc|false" \
         "bind|$settings_test|/authority/settings-test.cc|false" \
+        "bind|$compositor_patch|/authority/compositor.patch|false" \
+        "bind|$compositor_test|/authority/compositor-test.cc|false" \
         "bind|$passwd|/etc/passwd|false" \
         "bind|$VERIFY_REPO/scripts/pins.env|/authority/pins.env|false" \
         "bind|$VERIFY_REPO/scripts/smoke-xvfb-files.tsv|/authority/xvfb-files.tsv|false" \
@@ -968,7 +982,7 @@ run_linux_flutter_engine_prepare() {
     [ -z "$("$CLIENT" --host "unix://$SOCK" ps -aq)" ] \
         && [ -z "$("$CLIENT" --host "unix://$SOCK" image ls -aq)" ] \
         || fail 'engine preparation left container/image state'
-    [ "$(sha256sum "$helper" "$patch" "$test" "$settings_test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
+    [ "$(sha256sum "$helper" "$patch" "$test" "$settings_test" "$compositor_patch" "$compositor_test" "$VERIFY_REPO/scripts/smoke-xvfb-prepare.sh" \
         "$VERIFY_REPO/scripts/smoke-xvfb-packages.tsv" "$VERIFY_REPO/scripts/smoke-xvfb-files.tsv")" = "$helper_before" ] \
         || fail 'engine preparation source changed'
     [ "$(sha256sum "$passwd")" = "$passwd_before" ] || fail 'engine passwd fixture changed'

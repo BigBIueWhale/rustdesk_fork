@@ -7666,10 +7666,17 @@ or context loss. `compositor-retry-1f19668a.json` binds nine files/84,527 bytes,
 four zero endpoint deltas and joined cleanup. The component patch is now included
 in the single authenticated `res/flutter/linux-accessibility-retirement.patch`;
 the duplicate candidate patch is removed. The engine manifest's existing patch
-digest binds the whole correction. Next: build the integrated engine/application
-and rerun ordinary repeated outages against the unchanged RSS/presentation bounds.
-Retained artifacts remain unchanged; no allocator tuning, relaxed bound or full
-memory-failure correction is claimed.
+digest binds the whole correction. The full engine toolkit now builds at
+`381500e6` (`cGHWKyLTU3`), including all six upstream consumer objects and the
+existing native settings/accessibility checks. All 341 packaged payloads verify;
+only `libflutter_linux_gtk.so` differs from engine `ddb1541d`. Capsule
+`compositor-engine-381500e6.json` binds source, patch, archive and joined cleanup.
+The three earlier engine archives are restored unchanged, alongside this new
+85-MiB toolkit. Application artifacts remain unchanged. Next: retire superseded
+app `e4c7550e` within the four-app cap, build with this engine, and run ordinary
+`--installed-remote-expired` against the unchanged three-outage RSS/presentation
+bounds. No allocator tuning, relaxed bound or full memory-failure correction
+is claimed.
 The separate surviving-transport delay failure, other outage schedules,
 physical scanout, endurance, desktop/mobile coverage, final artifacts,
 independent review and complete R-S0/R-F5 remain OPEN.

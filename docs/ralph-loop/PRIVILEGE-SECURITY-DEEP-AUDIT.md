@@ -152539,3 +152539,48 @@ are restored with the same inodes and hashes and no copies; the preservation
 and restoration receipts are verified on both hosts. The source freeze ends.
 This append preserves the prior 16,262,679-byte audit prefix, SHA-256
 bbf9e490935c1abde3a650d7a4d78c22e0e04f83d1370585196c54856d847762.
+
+### Engine integration checkpoint: complete toolkit built
+
+TUF cGHWKyLTU3 at 381500e6 passes the previously failing direct mock_epoxy
+recipe, all six upstream consumer compilations, existing native settings and
+accessibility checks, and the full 4,793-step engine toolkit build. The 341-file,
+89,128,960-byte archive SHA-256 is
+798e1ae1a0c0d821adfe4b0eaa0b5707583bd6aee73c8bc2e43ca9c534c61cf5;
+manifest 9045226f2c97f3ef182dd1bd5793c9070a53e9065fb4d62fa703f6795240f024.
+Every payload verifies. Against ddb1541d, only libflutter_linux_gtk.so changes:
+18,150,544 bytes, SHA-256
+83f37efd0652367e04b9a08dd4e5a19e490fe6e64c2373e6cdaa780535a3dfcb.
+The source tree is ca9dfc793ae4d42652d3215c2772670b621c3d1b; combined patch
+30474f3da6eebe273c67273e6cd582709830aca00e7f98ca3c303890812907ea.
+No application was executed by this engine build.
+
+QEMU 2975363 joins zero; private 66306:78033937 and RAM 29:13446 retire.
+Supervisor 734.625 seconds; peak RAM scratch 13,619,314,688 bytes, minimum host
+available memory 18,412,331,008 bytes, tmpfs_swap_disabled=false. The first three
+endpoint deltas are zero. The final snapshot adds two unattributed loopback TCP
+endpoints, 127.0.0.1:8096 and :9246; removals are zero. The sealed harness retains
+its kernel-enforced IP-socket denial through fork/exec. Preserve those endpoint
+observations without attributing them to the harness or inspecting/changing
+unrelated host services. This is not a four-zero-delta claim.
+compositor-engine-381500e6.json binds ten files/226,503 bytes, copied and
+SHA-verified on CTE/TUF; outer SHA-256
+8db529dcab5dd32b5f29e4a467512080b6e17be96f05bbe5bcf995b438909140.
+The three earlier engine archives are restored with unchanged inodes/hashes;
+preservation/restoration receipts verify on both hosts, with no archive copies.
+Four intentional toolkits total 356,515,840 bytes; temporary hold and run roots
+are absent. Source/input freeze ends only after these checks and evidence copies.
+
+This is a meaningful integration checkpoint for the selected ordinary R-F5 RSS
+failure, which remains OPEN. Next: replace superseded app e4c7550e, build the
+application with this exact engine, then reuse --installed-remote-expired
+(three 65-second outages, 480 responses, original 128-MiB RSS-growth bound and
+latency deadlines). All 74 old/new manifest entries show e4c7550e differs from
+the retained corrected 2eb7015e app only in librustdesk.so; its camera corrections
+are retained in 2eb7015e. Verify all payload bytes under the cache/run locks before
+retirement, preserve bounded evidence, and retain 2eb7015e as the ordinary RSS
+baseline. No fifth app cache is admitted. Application product sources have no
+diff from 2eb7015e; the engine integration is the intended behavioral change.
+HARDENING_STATUS.md records this checkpoint; its required fresh count follows.
+This append preserves the prior 16,263,962-byte audit prefix, SHA-256
+9eee0998210401dfb8c7962c65c51eaee2c7f693608ec1cfa9fe9dfd98fdca26.

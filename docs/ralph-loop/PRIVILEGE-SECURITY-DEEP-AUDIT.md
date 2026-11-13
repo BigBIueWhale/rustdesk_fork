@@ -153298,3 +153298,29 @@ scoped diff review and git diff --check pass. Reuse unchanged app3c289cff with
 the candidate package's actual revised unit; no application rebuild is needed.
 This append preserves the prior 16,311,300-byte audit prefix, SHA-256
 60de74614cfd92ded04838ff5b980bed2f1c7f1b6fb5e46c5346f7dcbb4e61e3.
+
+### Installed unit replay — distinguish packaging input from compiled source
+
+At 02b5fa37, yTLm4uCNBW refuses input capture because the replay's app-source
+comparison includes res/rustdesk.service. No VM boots and no native result exists.
+The admission/storage supervisor joins in3.216 seconds; peak scratch77,824 bytes,
+no overlay or QEMU. Private66306:84062467 and RAM29:14246 retire under the lock
+after the four exact private files are reconciled, including the unchanged pinned
+engine manifest. No listener inventory stage was reached. Capsule
+installed-cm-policy-02b5fa37.json binds three files/5,907 bytes on CTE/TUF;
+outer SHA-256
+4e0d88dbe63b36e7bd7d12623dfb88839fdc7d0088757c47da10547b6b603167.
+
+build.py:package_flutter_deb copies the current unit directly into the archive;
+verify-debian-package-authority.py compares its exact bytes with current source.
+The compiled Rust/Flutter application does not embed this unit. Extend the
+existing package-only input classification (four maintainer scripts) to this
+single unit, with the same committed-file validation and sealed metadata/hash
+inventory. Keep the remaining src/libs/flutter/manifests/build/resource comparison
+unchanged. The installed validator additionally compares the package-owned unit
+with the sealed current source. This permits an exact unchanged-app/revised-unit
+comparison without rebuilding unrelated application code or accepting stale
+package bytes. Shell syntax, whitespace and scoped diff review pass; repeat the
+previously refused launch with this necessary admission correction.
+This append preserves the prior16,314,675-byte audit prefix, SHA-256
+890e26d6597e9401bc8b7f05b6fd78eec9ca5134ae1893942ddc74421ee1e362.

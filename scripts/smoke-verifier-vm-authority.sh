@@ -1922,13 +1922,13 @@ installed_settings_input_inventory() {
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 17 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 18 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 19 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 20 ] \
        || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 21 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 22 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 23 ] || [ "$FLUTTER_INSTALLED_SETTINGS" -eq 24 ]; then
-        # These four scripts are consumed by the current package constructor,
-        # not compiled into the retained app. The archive validator exact-matches them.
-        for file in preinst postinst prerm postrm; do
-            app_sources+=(":(exclude)res/DEBIAN/$file")
-            verify_committed_test_source "$REPO_ROOT/res/DEBIAN/$file"
-            /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$REPO_ROOT/res/DEBIAN/$file"
-            /usr/bin/sha256sum -- "$REPO_ROOT/res/DEBIAN/$file"
+        # The current package constructor copies these inputs separately from
+        # the retained app. The archive validator exact-matches their bytes.
+        for file in DEBIAN/preinst DEBIAN/postinst DEBIAN/prerm DEBIAN/postrm rustdesk.service; do
+            app_sources+=(":(exclude)res/$file")
+            verify_committed_test_source "$REPO_ROOT/res/$file"
+            /usr/bin/stat -c '%n:%d:%i:%u:%g:%a:%h:%s:%y:%z' -- "$REPO_ROOT/res/$file"
+            /usr/bin/sha256sum -- "$REPO_ROOT/res/$file"
         done
     fi
     git_closed -C "$REPO_ROOT" diff --quiet "$FLUTTER_APP_COMMIT" HEAD -- "${app_sources[@]}" \

@@ -153456,3 +153456,18 @@ part of that work. No new download or application rebuild was needed here.
 All owned jobs/source freezes are closed; goal remains active. Fresh ledger
 count follows. This append preserves the prior16,322,612-byte audit prefix,
 SHA-256 a1496a892b0153f16bc8e86c8ecf88ad686e03111661c108e9e58b0860049520.
+
+### Installed audio prerequisite — ledger receipt
+
+LrT0OCLzYl at f665caa7 counts426,198 tokens /1,941,535 bytes with the fixed
+tiktoken0.12.0/cl100k_base/encode_ordinary method, seven controls and byte round
+trip. Ledger SHA-256 a2bf6c4fc86f4192a0523d6916a35a66cb3ca25c72bd12780d473ce87ab47974;
+the approximate400,000-token budget remains OPEN. QEMU3446604 joins0; private
+run.LrT0OCLzYl and RAM29:14401 retire. Supervisor30.041 seconds, scratch peak
+403,165,184 bytes, minimum available RAM46,797,393,920 bytes, three zero endpoint
+deltas, tmpfs_swap_disabled=false. Eight files/115,916 bytes are SHA-verified
+on both hosts in installed-audio-ledger-f665caa7.json. Outer SHA-256:
+80fa9114ba11d7e4f4bb77f14c4b7a617a95692f20de7e1dca62742a2c91bbcc.
+No owned runtime job or source freeze remains. This audit-only append preserves
+the prior16,325,216-byte prefix, SHA-256
+0b9f6caaac15e6348775c99c6184cda9b9cd09bf85a71494a8353ab881f30f12.

@@ -152828,3 +152828,19 @@ Source freeze ends after those checks. HARDENING_STATUS.md consolidates both
 diagnostic outcomes and leaves R-F5 OPEN; its required fresh isolated count follows.
 This append preserves the prior 16,279,175-byte audit prefix, SHA-256
 987cb7d52bc67f6cdcd5defa8b11594230ef326134988249c6b935490b21c0ce.
+
+### Fresh count after the TCP diagnostic ledger update
+
+At 4bbe35c1, TUF si95AKVB1R passes the fixed tiktoken 0.12.0/cl100k_base/
+encode_ordinary count, seven controls and byte round trip: 424,452 tokens,
+1,933,979 bytes, input SHA-256
+2c54f94a3fe7402e5b94a7b03a4bdf417258b8624261fa9445cae0cd5703fa7b.
+The approximate 400,000-token target remains OPEN. QEMU 3163472 joins zero;
+private 66306:82229906 and RAM 29:13712 retire, with three zero endpoint deltas.
+Supervisor 30.486 seconds; peak RAM scratch 403,161,088 bytes;
+tmpfs_swap_disabled=false. Eight files/116,146 bytes are SHA-verified on CTE/TUF;
+capsule compositor-tcp-ledger-4bbe35c1.json, outer SHA-256
+6e93870dd50ca6ae082cd88ce9a433b6ef4521a958c14ee9ffec8a32bccf91d3.
+This audit-only append preserves the counted ledger and prior 16,283,455-byte
+audit prefix, SHA-256
+6906b286c1601e0fbd89344de84aebf64711ecaf874c0bdbe17b85b43c38a961.

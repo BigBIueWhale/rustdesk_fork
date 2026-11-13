@@ -59,16 +59,6 @@ SystemCallArchitectures=native
 # Keep reboot/swap and the broader @mount namespace/root-changing set out.
 SystemCallFilter=@system-service mount umount umount2 pidfd_open pidfd_send_signal renameat2
 SystemCallFilter=~@reboot @swap
-# MemoryDenyWriteExecute (W^X for the root service): block any runtime W+X mmap/mprotect
-# — the classic code-injection primitive a memory-corruption bug would reach for. R-D3a
-# gated this on validating the JIT-free software codec path maps no W+X. VALIDATED:
-# examples/mdwe_codec_probe sets PR_SET_MDWE|REFUSE_EXEC_GAIN (the EXACT kernel primitive
-# systemd applies here, before any code runs) then drives the deployed software VP9 encoder
-# — vpx_codec_enc_init + 5/5 encodes complete clean (the controlled --server only ENCODES,
-# §13/Appendix C #2b; the decode path is the viewer's and runs no systemd unit). libvpx/aom
-# do CPU-feature SIMD dispatch via function pointers, never JIT, so no W+X is attempted.
-# Gated by smoke-server.sh (runs the probe, asserts MDWE_CODEC_OK) + verify.sh (presence).
-MemoryDenyWriteExecute=yes
 
 [Install]
 WantedBy=multi-user.target

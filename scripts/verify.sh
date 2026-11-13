@@ -12073,10 +12073,8 @@ grep -qE '^ProtectKernelTunables=yes$'      res/rustdesk.service || r_d3a_missin
 grep -qE '^RestrictRealtime=yes$'           res/rustdesk.service || r_d3a_missing="$r_d3a_missing RestrictRealtime"
 grep -qE '^LockPersonality=yes$'            res/rustdesk.service || r_d3a_missing="$r_d3a_missing LockPersonality"
 grep -qE '^SystemCallArchitectures=native$' res/rustdesk.service || r_d3a_missing="$r_d3a_missing SystemCallArchitectures-native"
-grep -qE '^MemoryDenyWriteExecute=yes$'  res/rustdesk.service || r_d3a_missing="$r_d3a_missing MemoryDenyWriteExecute(validated)"
-grep -q 'PR_SET_MDWE' examples/mdwe_codec_probe.rs           || r_d3a_missing="$r_d3a_missing mdwe_codec_probe"
 if [ -n "$r_d3a_missing" ]; then
-  echo "  FAIL R-D3a: systemd sandbox / validated-MDWE incomplete:$r_d3a_missing"; rc=1
+  echo "  FAIL R-D3a: systemd sandbox incomplete:$r_d3a_missing"; rc=1
 else
   echo "  ok  R-D3a systemd sandbox keeps owner-terminal mount semantics; clipboard FUSE uses fixed-helper fd passing"
 fi

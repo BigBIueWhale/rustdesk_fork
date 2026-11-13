@@ -234,7 +234,7 @@ PY
   build)
     verify_smoke_build_inputs
     prepare_smoke_cargo_home
-    cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --example video_pipeline_probe --color never
+    cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example video_pipeline_probe --color never
     cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe --color never
     cargo test --locked --offline --features linux-pkg-config --lib --no-run --color never
     mapfile -t viewer_pipeline_test_artifacts < <(
@@ -260,10 +260,6 @@ PY
     cc -shared -fPIC -O2 -Wall -Wextra -Werror -o /smoke-target/smoke-bind-loopback.so scripts/smoke-bind-loopback.c -ldl
     cc -O2 -Wall -Wextra -Werror -o /smoke-target/smoke-server-launcher scripts/smoke-server-launcher.c
     cc -O2 -Wall -Wextra -Werror -o /smoke-target/smoke-x11-motion scripts/smoke-x11-motion.c -lX11
-    ;;
-  mdwe)
-    /smoke-target/debug/examples/mdwe_codec_probe
-    echo "EXIT=0"
     ;;
   service-lifecycle-manual)
     [ ! -e /usr/bin/rustdesk ] && [ ! -L /usr/bin/rustdesk ] || {

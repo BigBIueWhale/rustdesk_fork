@@ -13,7 +13,7 @@
 # The production binary has no runtime bind-address switch; this harness uses an LD_PRELOAD bind
 # shim that rewrites only the public test bind (0.0.0.0:21118 -> 127.0.0.1:21118).
 #
-# The portable smoke exercises parked/listening startup, graceful drain, software VP9 MDWE,
+# The portable smoke exercises parked/listening startup, graceful drain,
 # CPace admission/refusal, bounded capacity, sealed relay, FileTransfer and limiter behavior.
 # Privileged service/init-system, installed-layout password, PID-reuse and packet-capture
 # acceptance executes directly in disposable VMs under R-S11dh.
@@ -531,16 +531,6 @@ if [ "$SMOKE_MODE" = video-pipeline-rootless ]; then
   echo "SMOKE VIDEO PIPELINE OK: exact committed RustDesk server captured a changing 640x480 Xvfb display, software-encoded it, and carried it over keyed 127.0.0.1:21118 sessions with exact generation receipts. One exact keyed Remote remained alive after intentionally withholding its first frame receipt while the concurrent production Session/Client I/O, receipt, mailbox, decoder-worker, and RGBA-publication path recovered from a deliberate 1.5-second publication stall without reconnect and joined its exact I/O/media ownership; the stalled peer was then identity-bound and reaped. The dedicated probe also software-decoded changing frames under finite bounds. Xvfb used only a private Unix socket; the runtime container had no network, capabilities, host namespaces, devices, published ports, Docker socket, Flutter/compositor presentation, native Windows/Android lifecycle, installed-service, sustained performance/soak, or release-artifact coverage."
   exit 0
 fi
-
-echo "== (0b) R-D3a MemoryDenyWriteExecute (W^X) validation: the deployed software VP9 encoder runs clean under the EXACT PR_SET_MDWE primitive systemd applies (so MemoryDenyWriteExecute=yes in the unit is safe) =="
-# The controlled --server only ENCODES (§13/Appendix C #2b); the probe sets PR_SET_MDWE|REFUSE_EXEC_GAIN
-# BEFORE vpx_codec_enc_init then drives 5 encodes. A runtime W+X mmap/mprotect (a JIT) would SIGSEGV
-# under MDWE; libvpx does function-pointer SIMD dispatch, never JIT, so it completes clean (exit 0).
-run_stage mdwe_out "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh mdwe
-record_stage_status R-D3a
-grep -qE 'MDWE_CODEC_OK' <<<"$mdwe_out" && grep -q 'EXIT=0' <<<"$mdwe_out" \
-  && echo "  ok  R-D3a: VP9 encoder W^X-clean under MemoryDenyWriteExecute (init + 5/5 encodes, no W+X mapping)" \
-  || { echo "  FAIL R-D3a: the codec path is NOT W^X-safe under MDWE — do NOT ship MemoryDenyWriteExecute=yes:"; tail -3 <<<"$mdwe_out"; rc=1; }
 
 echo "== (1) fail-closed startup: --server with NO password MUST PARK — stay alive but bind NOTHING (R-A4/R-S9, finding D) =="
 # Finding D: the empty-permanent-password startup process::exit was removed (on Android it crashed

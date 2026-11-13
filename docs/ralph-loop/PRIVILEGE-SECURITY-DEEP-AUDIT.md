@@ -153247,3 +153247,54 @@ and aligned fault address). The pinned guest ABI is explicitly required.
 Diff review and whitespace pass; execute the same source-bound app next.
 This append preserves the prior 16,309,524-byte audit prefix, SHA-256
 248a9292c20350b2dbdf01e318a1d9aea95a0656f7f1dfffce567e2f28aa51fc.
+
+### Installed CM fault — renderer execution conflicts with the unit policy
+
+OWaIwK7HEn at 32bfb867 captures exact CM7947's SIGSEGV delivery-stop:
+si_code2 (SEGV_ACCERR), errno0, fault address equals instruction address
+139871117142400. That address lies in anonymous inode0 mapping
+7f3648406000-7f3648409000 with rw-p permissions. The top stack word maps to
+executable /usr/lib/x86_64-linux-gnu/dri/swrast_dri.so, file offset7,378,244;
+it is a caller candidate, not an unwound backtrace. After original-signal
+delivery the exact child becomes a zombie with wait status11 and is reaped.
+CM logs remain absent, twenty endpoint attempts fail and eight audio attempts
+lack CM identity. Baseline12 states/max age335 ms precedes the same connection
+closure. This diagnostic cannot establish ordinary acceptance.
+
+Capsule installed-cm-fault-32bfb867.json binds nine files/241,385 bytes copied
+and SHA-verified on both hosts; outer SHA-256
+40a3b0b4bf9c5ac47ec7fcb6e97ad71309e32acf55d9bbedd59699ad03cb112b.
+QEMU3351076 joins zero; private66306:84062454 and RAM29:14204 retire under
+the shared lock. Supervisor93.530 seconds; scratch peak4,216,061,952 bytes;
+four zero endpoint deltas; tmpfs_swap_disabled=false. Source freeze ends after
+verified copies. The temporary signal tracer and forced diagnostic failure are
+removed; ordinary suspension acceptance is restored.
+
+Primary systemd documentation explicitly says MemoryDenyWriteExecute rejects
+executable permission gains and is incompatible with runtime-generated code:
+https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#MemoryDenyWriteExecute= .
+Mesa documents LLVMpipe's runtime generation of rasterization/shader code:
+https://docs.mesa3d.org/drivers/llvmpipe.html . The observed inaccessible
+instruction mapping/caller is consistent with that documented incompatibility;
+the following unchanged-app installed replay must test the policy correction.
+
+Remove the unconditional MemoryDenyWriteExecute setting from the shipped unit.
+R-D3a requires launcher confinement to preserve legitimate functionality; its
+current normative directive list does not require MDWE. This removes one
+defense-in-depth restriction from the service tree; it does not establish local
+escalation immunity. Exact process/IPC authority, capability bounds, syscall and
+address-family restrictions and remaining unit controls are unchanged. Forcing
+a different graphics driver or moving the helper outside its exact ownership
+tree would add a new product behavior solely to retain an incompatible optional
+setting. Retain the normal desktop rendering path instead.
+
+Delete the codec-only probe, its smoke build/stage and its presence gates. A few
+VP9 encodes never established compatibility of the whole service process tree;
+its claim omitted the required Flutter/graphics helper and is contradicted by
+the installed evidence. No replacement source-count gate is added. The existing
+ordinary-login installed suspension scenario observes the real startup and
+connection lifetime. All three changed shell scripts pass separate bash -n;
+scoped diff review and git diff --check pass. Reuse unchanged app3c289cff with
+the candidate package's actual revised unit; no application rebuild is needed.
+This append preserves the prior 16,311,300-byte audit prefix, SHA-256
+60de74614cfd92ded04838ff5b980bed2f1c7f1b6fb5e46c5346f7dcbb4e61e3.

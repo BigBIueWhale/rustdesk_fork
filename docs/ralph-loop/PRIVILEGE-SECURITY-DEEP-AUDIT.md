@@ -153740,3 +153740,17 @@ freeze remains. The goal stays active; this closes the reproduced installed
 steady-playback failure, with broader recovery acceptance still pending.
 This append preserves the prior 16,340,657-byte prefix, SHA-256
 0ec8b995f32c474a28b78cd6ede5c834e0a2f0ddcbe28072bf711256c5e571a5.
+
+### Installed audio acceptance — ledger receipt
+
+crO6UPtq9o at 42577f94 counts 426,768 tokens /1,943,819 bytes using pinned
+tiktoken 0.12.0/cl100k_base/encode_ordinary, seven controls and byte round trip.
+Ledger SHA-256 67da52861b9b12ee90c5356a6b2ddf1a3e0a7fa1caad59d7b667205be3900320;
+the approximate 400,000-token budget remains OPEN. QEMU 3550421 joins 0; private
+run.crO6UPtq9o and RAM 29:14907 run.uhqdx_xq retire. Supervisor 30.472 seconds,
+scratch peak 403,365,888 bytes, three zero endpoint deltas, tmpfs swap not disabled.
+pa-installed-ledger-42577f94.json binds eight files/116,074 bytes on CTE/TUF.
+Outer SHA-256 92897f9276e5cf5643096f1ce4c3ddb8d11396d636b75c42909a70dc8f8f508b.
+No owned job or source freeze remains; goal active. This audit-only append preserves
+the prior 16,344,297-byte prefix, SHA-256
+98d72e6fcc0c8a8a5e31ea07e6460689f1f27a5e9279ce25c1ebfe96bd8b40e4.

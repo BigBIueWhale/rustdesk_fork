@@ -152021,3 +152021,32 @@ RAM 29:13003, process/socket retirement reconcile. The approximate 400,000-token
 budget remains OPEN. This audit-only append leaves the counted ledger unchanged
 and preserves the prior 16,228,316-byte audit prefix, SHA-256
 23932905bd3fc17b70661df314dca793ba1445f3e71ce16bf092d46dddddffea.
+
+## 2026-11-13 — Allocation-tracing prerequisite for repeated reconnect
+
+Previous turn made progress: failure evidence was reconciled/copied and current
+status corrected. Continue R-F5's twice-reproduced second-outage RSS violation.
+Mapping evidence cannot identify allocation lifetime; acquiring a profiler is
+the next necessary prerequisite, ahead of unrelated coverage. No product change
+is justified yet. Heaptrack's startup collector observes malloc-family calls and
+stacks without runtime attachment; heaptrack_print supplies CLI analysis. Custom
+pool allocations can need annotations, and instrumented timings cannot establish
+ordinary performance acceptance. Primary sources reviewed:
+https://github.com/KDE/heaptrack and the v1.4.0 startup/CLI source at
+https://raw.githubusercontent.com/KDE/heaptrack/v1.4.0/src/track/heaptrack.sh.cmake
+and https://raw.githubusercontent.com/KDE/heaptrack/v1.4.0/src/analyze/print/heaptrack_print.cpp.
+
+Debian Bookworm publishes heaptrack 1.4.0-2, amd64, 115,620 bytes, SHA-256
+2ff6dbf3b992ef31bf8213a0efd3a9583ea9540212648eecf599c49b975da212
+at https://packages.debian.org/bookworm/amd64/heaptrack/download. Pin that
+independent publisher identity before acquisition. Reuse the existing signed
+snapshot/empty-dpkg-status dependency collector with a closed heaptrack-CLI root;
+the production Depends/Recommends root remains separate. The admitted plan is
+limited to 128 MiB overall and 16 MiB per package; the existing 64-MiB hard file
+ceiling also bounds APT metadata. The normal bounded acquisition VM and joined
+cleanup apply. No host install, GUI package, runtime attach or product rebuild
+is needed. Candidate input authentication and actual tracing remain unproved
+until executed. Shell/Python parsing and diff whitespace checks pass; these are
+preflight checks only. The ledger is unchanged. This append preserves the prior
+16,229,078-byte audit prefix, SHA-256
+a7a6bac463c08c4c968f37024a9e36e6aabd59a1b9b52c48a72e446f3d6744c2.

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Acquire the generated Debian package's runtime closure in the acquisition VM."""
+"""Acquire the application or heap-profiler dependency closure in the acquisition VM."""
 
 import hashlib
 import json
@@ -41,6 +41,11 @@ def run(arguments, timeout=180):
 
 def main():
     require(sys.argv[1:] == ['/outputs'] and Path('/.dockerenv').is_file(), 'closed acquisition arguments required')
+    kind = os.environ['RUNTIME_KIND']
+    require(kind in ('debian-runtime', 'heaptrack'), 'unknown dependency closure')
+    max_bytes = MAX_BYTES if kind == 'debian-runtime' else 128 * 1024 * 1024
+    max_file = MAX_FILE if kind == 'debian-runtime' else 16 * 1024 * 1024
+    receipt = 'DEBIAN_RUNTIME' if kind == 'debian-runtime' else 'HEAPTRACK'
     uid, gid = int(os.environ['RUNTIME_UID']), int(os.environ['RUNTIME_GID'])
     require(uid == os.getuid() != 0 and gid == os.getgid() != 0, 'runtime acquisition principal differs')
     info = OUTPUT.lstat()
@@ -74,13 +79,24 @@ def main():
                     'Acquire::https::Timeout=30', 'APT::Get::AllowUnauthenticated=false',
                     'Acquire::AllowInsecureRepositories=false', 'Acquire::ForceHash=SHA256']:
         options += ['-o', setting]
-    os.chdir('/source')
-    module = runpy.run_path('/source/build.py')
     control = OUTPUT / 'control'
-    module['generate_control_file'](module['get_version'](), control)
-    fields = dict(line.split(': ', 1) for line in control.read_text().splitlines() if ': ' in line)
-    require(fields['Package'] == 'rustdesk' and fields['Architecture'] == 'amd64', 'generated package identity differs')
-    dependencies = fields['Depends'] + ', ' + fields['Recommends']
+    if kind == 'debian-runtime':
+        os.chdir('/source')
+        module = runpy.run_path('/source/build.py')
+        module['generate_control_file'](module['get_version'](), control)
+        fields = dict(line.split(': ', 1) for line in control.read_text().splitlines() if ': ' in line)
+        require(fields['Package'] == 'rustdesk' and fields['Architecture'] == 'amd64', 'generated package identity differs')
+        dependencies = fields['Depends'] + ', ' + fields['Recommends']
+        generator = '/source/build.py'
+        roots = 'production-Depends-and-Recommends'
+    else:
+        version, size, sha = (os.environ['HEAPTRACK_' + key] for key in ('VERSION', 'SIZE', 'SHA256'))
+        require(re.fullmatch('[0-9A-Za-z.+:~\\-]+', version) and re.fullmatch('[1-9][0-9]*', size)
+                and re.fullmatch('[0-9a-f]{64}', sha) and int(size) <= max_file, 'heaptrack pins differ')
+        dependencies = f'heaptrack (= {version})'
+        control.write_text(f'Package: rustdesk-heaptrack-fixture\nArchitecture: amd64\nDepends: {dependencies}\n')
+        generator = __file__
+        roots = 'heaptrack-cli-only'
     run(['/usr/bin/apt-get', *options, '-o', 'APT::Update::Error-Mode=any', 'update', '-qq'])
     command = ['/usr/bin/apt-get', *options, '--yes', '--download-only', '--no-install-recommends', '--no-remove']
     plan = run([*command, '--print-uris', 'satisfy', dependencies])
@@ -94,17 +110,18 @@ def main():
                 'download plan leaves the authenticated snapshot')
         require(re.fullmatch(r'[A-Za-z0-9.+_:%~\-]+\.deb', filename) and filename not in expected,
                 'download filename differs or repeats')
-        require(re.fullmatch('SHA256:[0-9a-f]{64}', checksum) and 0 < int(size) <= MAX_FILE,
+        require(re.fullmatch('SHA256:[0-9a-f]{64}', checksum) and 0 < int(size) <= max_file,
                 'download size or SHA-256 is unavailable')
         expected[filename] = {'bytes': int(size), 'sha256': checksum[7:], 'uri': uri}
-    require(0 < len(expected) <= 512 and sum(record['bytes'] for record in expected.values()) <= MAX_BYTES,
+    require(0 < len(expected) <= 512 and sum(record['bytes'] for record in expected.values()) <= max_bytes,
             'runtime closure exceeds its admission bound')
-    print(f'DEBIAN_RUNTIME_PLAN=admitted packages={len(expected)} bytes={sum(r["bytes"] for r in expected.values())}', flush=True)
+    print(f'{receipt}_PLAN=admitted packages={len(expected)} bytes={sum(r["bytes"] for r in expected.values())}', flush=True)
     run([*command, 'satisfy', dependencies])
     require(status.read_bytes() == b'', 'download-only acquisition modified the private dpkg database')
     packages = sorted((OUTPUT / 'packages').glob('*.deb'))
     require({p.name for p in packages} == set(expected), 'downloaded package inventory differs from the admitted plan')
     records = []
+    heaptrack_found = False
     for path in packages:
         info = path.lstat()
         require(stat.S_ISREG(info.st_mode) and info.st_nlink == 1 and (info.st_uid, info.st_gid) == (uid, gid),
@@ -116,18 +133,26 @@ def main():
         name, version, architecture = metadata.split('\t')
         require(re.fullmatch('[a-z0-9][a-z0-9+.-]*', name) and re.fullmatch('[0-9A-Za-z.+:~\\-]+', version)
                 and architecture in ('amd64', 'all'), 'downloaded package metadata differs')
+        if kind == 'heaptrack' and name == 'heaptrack':
+            require(not heaptrack_found and architecture == 'amd64'
+                    and version == os.environ['HEAPTRACK_VERSION']
+                    and info.st_size == int(os.environ['HEAPTRACK_SIZE'])
+                    and record['sha256'] == os.environ['HEAPTRACK_SHA256'],
+                    'signed heaptrack package differs from the independent publisher pin')
+            heaptrack_found = True
         records.append('\t'.join([name, version, architecture, path.name, str(info.st_size), record['sha256']]))
         path.chmod(0o400)
+    require(kind != 'heaptrack' or heaptrack_found, 'heaptrack entry package is absent')
     (OUTPUT / 'manifest.tsv').write_text('\n'.join(sorted(records)) + '\n')
     (OUTPUT / 'plan.json').write_text(json.dumps(expected, sort_keys=True, indent=2) + '\n')
     (OUTPUT / 'contract').write_text(
         f'base={base}\ndebian_snapshot={snapshots[0]}\nsecurity_snapshot={snapshots[1]}\n'
-        f'generator_sha256={digest("/source/build.py")}\ncontrol_sha256={digest(control)}\n'
-        'closure=empty-dpkg-status\nroots=production-Depends-and-Recommends\n'
+        f'generator_sha256={digest(generator)}\ncontrol_sha256={digest(control)}\n'
+        f'closure=empty-dpkg-status\nroots={roots}\n'
         f'keyring_sha256={digest("/usr/share/keyrings/debian-archive-keyring.gpg")}\n')
     for name in ['control', 'manifest.tsv', 'plan.json', 'contract']:
         (OUTPUT / name).chmod(0o400)
-    print(f'DEBIAN_RUNTIME_CANDIDATE=downloaded packages={len(records)} bytes={sum(r["bytes"] for r in expected.values())} '
+    print(f'{receipt}_CANDIDATE=downloaded packages={len(records)} bytes={sum(r["bytes"] for r in expected.values())} '
           'authenticated=apt-signed-metadata hashes=sha256 installed=none', flush=True)
 
 

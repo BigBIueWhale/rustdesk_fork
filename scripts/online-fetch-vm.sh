@@ -51,7 +51,7 @@ case "$#:${1:-}" in
     1:--maintenance-promote-win-helper-certified-candidate|\
     1:--maintenance-discover-devcheck-image|1:--maintenance-stage-pa-runtime-candidate|\
     1:--maintenance-stage-polkit-runtime-candidate|1:--maintenance-stage-polkit-agent-candidate|1:--maintenance-stage-ledger-tokenizer|\
-    1:--maintenance-stage-debian-runtime-candidate|\
+    1:--maintenance-stage-debian-runtime-candidate|1:--maintenance-stage-heaptrack-candidate|\
     1:--maintenance-stage-xrandr-runtime-candidate|1:--maintenance-stage-window-manager-candidate|\
     1:--maintenance-build-devcheck-image-candidate|\
     1:--maintenance-promote-devcheck-image-candidate|\
@@ -122,6 +122,7 @@ elif [ "$REQUEST" = --maintenance-stage-polkit-runtime-candidate ] \
      || [ "$REQUEST" = --maintenance-discover-flutter-plugin-archives ] \
      || [ "$REQUEST" = --maintenance-stage-flutter-presentation-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-debian-runtime-candidate ] \
+     || [ "$REQUEST" = --maintenance-stage-heaptrack-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-polkit-agent-candidate ] \
      || [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ] \
      || [ "$REQUEST" = --maintenance-stage-xrandr-runtime-candidate ] \
@@ -671,6 +672,11 @@ if [ "$REQUEST" = --maintenance-stage-debian-runtime-candidate ]; then
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
         || fail 'Debian runtime candidate is occupied; inspect it before another acquisition'
 fi
+if [ "$REQUEST" = --maintenance-stage-heaptrack-candidate ]; then
+    candidate="$REPO_ROOT/online/candidates/heaptrack"
+    [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
+        || fail 'heaptrack candidate is occupied; inspect it before another acquisition'
+fi
 if [ "$REQUEST" = --maintenance-stage-xrandr-runtime-candidate ]; then
     candidate="$REPO_ROOT/online/candidates/xrandr-runtime"
     [ ! -e "$candidate" ] && [ ! -L "$candidate" ] \
@@ -878,6 +884,7 @@ if [ "$MODE" != authority-smoke ]; then
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-graph ] \
        || [ "$REQUEST" = --maintenance-stage-ledger-tokenizer ] \
        || [ "$REQUEST" = --maintenance-stage-debian-runtime-candidate ] \
+       || [ "$REQUEST" = --maintenance-stage-heaptrack-candidate ] \
        || [ "$REQUEST" = --maintenance-stage-xrandr-runtime-candidate ] \
        || [ "$REQUEST" = --maintenance-stage-window-manager-candidate ] \
        || [ "$REQUEST" = --maintenance-stage-flutter-linux-engine-git-metadata ] \

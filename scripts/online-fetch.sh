@@ -3670,10 +3670,28 @@ maintenance_stage_ledger_tokenizer() {
 
 maintenance_stage_debian_runtime_candidate() {
     require_devcheck_image_pins
-    local output="$ONLINE_FETCH_TMP/debian-runtime-output"
-    local parent="$ONLINE_CANDIDATE_ROOT/debian-runtime"
-    local part="$parent/.debian-runtime-candidate.tar.gz.part"
-    local candidate="$parent/debian-runtime-candidate.tar.gz"
+    local kind=${1:-debian-runtime} limit=536870912 receipt=DEBIAN_RUNTIME_CANDIDATE
+    local -a source_mounts=() profiler_pins=()
+    case "$kind" in
+        debian-runtime)
+            source_mounts=(
+                --mount "type=bind,source=$REPO_ROOT/build.py,target=/source/build.py,readonly,bind-recursive=disabled"
+                --mount "type=bind,source=$REPO_ROOT/Cargo.toml,target=/source/Cargo.toml,readonly,bind-recursive=disabled")
+            ;;
+        heaptrack)
+            require_image_pin HEAPTRACK_VERSION
+            require_image_pin HEAPTRACK_SIZE
+            require_image_pin HEAPTRACK_SHA256
+            profiler_pins=(--env "HEAPTRACK_VERSION=$HEAPTRACK_VERSION"
+                --env "HEAPTRACK_SIZE=$HEAPTRACK_SIZE" --env "HEAPTRACK_SHA256=$HEAPTRACK_SHA256")
+            limit=134217728 receipt=HEAPTRACK_CANDIDATE
+            ;;
+        *) die 'unknown Debian dependency closure' ;;
+    esac
+    local output="$ONLINE_FETCH_TMP/$kind-output"
+    local parent="$ONLINE_CANDIDATE_ROOT/$kind"
+    local part="$parent/.$kind-candidate.tar.gz.part"
+    local candidate="$parent/$kind-candidate.tar.gz"
     local archive_size archive_sha package_count directory
     for directory in "$ONLINE_CANDIDATE_ROOT" "$parent"; do
         if [ ! -e "$directory" ] && [ ! -L "$directory" ]; then
@@ -3690,9 +3708,9 @@ maintenance_stage_debian_runtime_candidate() {
     verify_or_load_devcheck_image
     online_docker_run_archive_acquisition \
         --mount "type=bind,source=$SCRIPT_DIR/stage-debian-runtime-candidate.py,target=/stage-debian-runtime-candidate.py,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$REPO_ROOT/build.py,target=/source/build.py,readonly,bind-recursive=disabled" \
-        --mount "type=bind,source=$REPO_ROOT/Cargo.toml,target=/source/Cargo.toml,readonly,bind-recursive=disabled" \
+        "${source_mounts[@]}" "${profiler_pins[@]}" \
         --mount "type=bind,source=$output,target=/outputs,bind-recursive=disabled" \
+        --env "RUNTIME_KIND=$kind" \
         --env "RUNTIME_UID=$ONLINE_FETCH_UID" --env "RUNTIME_GID=$ONLINE_FETCH_GID" \
         --env "RUNTIME_BASE=$DEV_CHECK_IMAGE_ID" \
         --env "RUNTIME_DEBIAN_SNAPSHOT=$DEV_CHECK_DEBIAN_SNAPSHOT" \
@@ -3716,14 +3734,14 @@ maintenance_stage_debian_runtime_candidate() {
             --owner=0 --group=0 --numeric-owner -cf - contract control manifest.tsv plan.json packages/*.deb
     ) | /usr/bin/gzip -n >"$part" || die 'Debian runtime candidate archive creation failed'
     archive_size="$(/usr/bin/stat -c '%s' "$part")"
-    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le 536870912 ] \
-        || die 'Debian runtime candidate archive exceeds 512 MiB'
+    [ "$archive_size" -gt 0 ] && [ "$archive_size" -le "$limit" ] \
+        || die 'Debian dependency candidate archive exceeds its bound'
     archive_sha="$(/usr/bin/sha256sum "$part" | /usr/bin/cut -d ' ' -f 1)"
     /usr/bin/chmod 0400 -- "$part"
     online_image_provenance maintenance-rename-noreplace --source "$part" --destination "$candidate" \
         || die 'Debian runtime candidate publication failed'
-    printf 'DEBIAN_RUNTIME_CANDIDATE=staged base=%s packages=%s bytes=%s sha256=%s path=%s\n' \
-        "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
+    printf '%s=staged base=%s packages=%s bytes=%s sha256=%s path=%s\n' \
+        "$receipt" "$DEV_CHECK_IMAGE_ID" "$package_count" "$archive_size" "$archive_sha" "$candidate"
 }
 
 maintenance_stage_polkit_runtime_candidate() {
@@ -9017,6 +9035,11 @@ main() {
         --maintenance-stage-debian-runtime-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-stage-debian-runtime-candidate takes no arguments"
             maintenance_stage_debian_runtime_candidate
+            return 0
+            ;;
+        --maintenance-stage-heaptrack-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-stage-heaptrack-candidate takes no arguments"
+            maintenance_stage_debian_runtime_candidate heaptrack
             return 0
             ;;
         --maintenance-stage-polkit-runtime-candidate)

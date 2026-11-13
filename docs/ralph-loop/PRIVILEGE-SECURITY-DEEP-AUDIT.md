@@ -153115,3 +153115,28 @@ audio acceptance or speculative authority change is claimed. Whitespace and
 scoped diff review pass; execute the corrected fixture next. This append preserves
 the prior 16,300,915-byte audit prefix, SHA-256
 0da289e0d12c550450f758972c360c2550ba91b21f7c995b55717815dca4da11.
+
+### Installed CM startup — login wait removed; endpoint still absent
+
+At acdecc87, unchanged app 3c289cff now reaches Start cm at 19:48:24.257815.
+The real account receipt confirms UID4001 /bin/bash. Twenty 300-ms connection
+attempts find no _cm socket; bootstrap fails at 19:48:30.280715 and the server
+closes connection1965 at 19:48:30.307016. Nine audio attempts lack CM identity.
+The viewer passed its three-second healthy baseline (12 states, maximum age
+328 ms), then failed the first suspension's connection check. No suspension,
+audio or complete package acceptance is claimed. Full 19,758-byte server prefix
+is retained; it establishes startup progress and failure, not the helper's exit
+cause. Add a 64-KiB/eight-file bounded snapshot of this fixture user's CM logs,
+explicitly labeled file diagnostics rather than live-process identity proof.
+This is the next necessary observation; do not repeat unchanged diagnostics.
+
+Run jbu537RVLW: QEMU3336508 joins zero; private66306:84062408 and RAM29:14050
+retire under the shared lock. Supervisor92.050 seconds, scratch peak4,216,135,680
+bytes, four zero endpoint deltas, tmpfs_swap_disabled=false. Empty failed-payload
+directory and duplicated private logs are reconciled before exact retirement.
+Capsule installed-cm-login-acdecc87.json binds nine files/231,720 bytes copied
+and SHA-verified on CTE/TUF; outer SHA-256
+97da62526f879a65681516cbd426fdc69b30bdc032746dbfe57f816e72b8c4dd.
+Source freeze ends only after those copies. This append preserves the prior
+16,302,732-byte audit prefix, SHA-256
+502e912765778f7cf51d13be15f31173add505698d3f5720ba57af09fbdc2e14.

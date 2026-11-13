@@ -682,6 +682,40 @@ def server_log_snapshot(settings, receiver, record, phase):
         os.close(descriptor)
 
 
+def cm_log_snapshot():
+    # Retain this fixture user's startup logs even if the helper has already exited.
+    # These files are diagnostic evidence; they do not prove a live CM peer identity.
+    directory = Path('/home/rdreceiver4001/.local/share/logs/RustDesk/cm')
+    if not directory.exists():
+        print('LINUX_INSTALLED_CM_LOGS=' + json.dumps({'directory': str(directory), 'present': False}), flush=True)
+        return
+    for parent in (directory, *directory.parents):
+        info = parent.lstat()
+        require(stat.S_ISDIR(info.st_mode) and info.st_uid in (0, 4001)
+                and not info.st_mode & 0o022, 'CM diagnostic directory authority differs')
+    paths = sorted(directory.glob('*.log'))
+    require(len(paths) <= 8, 'CM diagnostic log count exceeds its bound')
+    total = 0
+    for path in paths:
+        with os.fdopen(os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK), 'rb') as stream:
+            before = os.fstat(stream.fileno())
+            total += before.st_size
+            require(stat.S_ISREG(before.st_mode) and before.st_uid == 4001
+                    and before.st_nlink == 1 and not before.st_mode & 0o022 and total <= 65536,
+                    'CM diagnostic log authority or size differs')
+            data = stream.read(before.st_size)
+            after, current = os.fstat(stream.fileno()), path.lstat()
+        require(len(data) == before.st_size and after.st_size >= before.st_size
+                and (current.st_dev, current.st_ino) == (before.st_dev, before.st_ino),
+                'CM diagnostic log changed during observation')
+        print('LINUX_INSTALLED_CM_LOG=' + json.dumps({
+            'path': str(path), 'identity': f'{before.st_dev}:{before.st_ino}',
+            'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest(),
+            'data_base64': base64.b64encode(data).decode('ascii'),
+            'authority': 'fixture-user-file', 'live_process': 'unproved',
+        }, sort_keys=True), flush=True)
+
+
 def scenario(settings, receiver, record, network=False, heaptrack=False, allocator=False):
     require(network is False or network in NETWORK_PROFILES or network in ('input-soak', 'input-animation'),
             'unknown Remote scenario')
@@ -774,6 +808,8 @@ def scenario(settings, receiver, record, network=False, heaptrack=False, allocat
             print(log.read_text(), end='', flush=True)
         if network is False or network == 'expired':
             server_log_snapshot(settings, receiver, record, 'after')
+        if network is False:
+            cm_log_snapshot()
 
 
 if __name__ == '__main__':

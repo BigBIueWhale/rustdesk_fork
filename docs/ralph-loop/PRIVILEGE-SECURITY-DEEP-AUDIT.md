@@ -151286,3 +151286,14 @@ installed long-session validation against the unresolved transport-recovery
 design; do not rerun unchanged passing cases or infer complete R-F5 acceptance.
 This append preserves the prior 16,174,818-byte audit prefix, SHA-256
 c7b7edfaab406d18ab44350dd1ecca20e90687acaff8b1ff97dff95f27bcdedc.
+
+Fresh ledger count at fe878ed2, qx9RQeLfYc/tool27528: 419,923 tokens /
+1,914,999 bytes, SHA-256
+ec6df9522298c53551d8d8e7a4f675042113ae892ecbc78f87c8a8f032bed883.
+Pinned tiktoken 0.12.0/cl100k_base, seven controls and round trip pass.
+installed-input-mixed-ledger-fe878ed2.json binds eight files/115,819 bytes on CTE/TUF.
+QEMU 4066065 joins zero after 30.307 seconds; three zero listener deltas and
+exact private/process/socket/RAM retirement pass. The approximate 400,000-token
+target remains OPEN. This audit-only append preserves the counted ledger and
+prior 16,179,346-byte audit prefix, SHA-256
+8d9f0b0d22bd84e90903bc4a37b92019fa25590dd98ff5d7db2923e1ec2fec45.
